@@ -28,7 +28,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { assertValidProfileName } from "../util/profile-name.js";
-import { assertSafeName } from "../util/workspace.js";
+import { assertSafeName, assertWriteStaysInside } from "../util/workspace.js";
 
 // Provenance. `profile_restore` copies a snapshot over a browser profile, and a
 // browser profile holds cookies and saved logins, so a snapshot must be one
@@ -123,7 +123,9 @@ function snapshotDir(workspaceRoot: string, snapshot: string): string {
   // One plain segment, never `.` or `..`: a snapshot is replaced with a
   // recursive delete, so its directory must sit inside `profile-snapshots/`.
   assertSafeName("snapshot", snapshot);
-  return join(workspaceRoot, "profile-snapshots", snapshot);
+  const dir = join(workspaceRoot, "profile-snapshots", snapshot);
+  assertWriteStaysInside(workspaceRoot, dir, "profile_snapshot");
+  return dir;
 }
 
 export interface ProfileSnapshotResult {

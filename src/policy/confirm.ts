@@ -9,7 +9,7 @@
 //
 // Configuring via env: BROWX_CONFIRM_REQUIRED (handled in src/util/capabilities.ts).
 
-import { isOriginAllowed, type OriginPolicy } from "./origin.js";
+import { blockedByPattern, isOriginAllowed, type OriginPolicy } from "./origin.js";
 import type { ConfirmHook } from "../util/capabilities.js";
 import type { BrowxBridge } from "../helper/bridge.js";
 import type { OperatorGrant, OperatorPrompt } from "../helper/operator-channel.js";
@@ -172,8 +172,13 @@ export async function confirmNavigation(
   if (isOriginAllowed(url, ctx.policy)) {
     return { ok: true, reason: "on-allowlist", asked: false };
   }
+  const blockedBy = blockedByPattern(url, ctx.policy);
   if (!ctx.hooks.has("navigate_off_allowlist")) {
-    log.warn(`navigate: ${url} is off the allowed-origins list; no confirm hook set, proceeding`);
+    log.warn(
+      blockedBy !== null
+        ? `navigate: ${url} is blocked by BROWX_BLOCKED_ORIGINS entry "${blockedBy}"; no confirm hook set, proceeding`
+        : `navigate: ${url} is off the allowed-origins list; no confirm hook set, proceeding`,
+    );
     return { ok: true, reason: "off-allowlist; no hook", asked: false };
   }
   if (ctx.approvals?.consume("navigate_off_allowlist", ctx.sessionId)) {
@@ -186,6 +191,32 @@ export async function confirmNavigation(
     summary: `navigate to ${url} (off the allowed-origins list)`,
     grantable: "navigate_off_allowlist",
   });
+}
+
+/**
+ * Check the URL a navigation landed on. A redirect can end on an origin the
+ * requested URL did not name, so the same policy runs again on the final URL.
+ * When the landing origin is the requested one, the first decision stands.
+ * The navigation has already happened by then, so a refusal here reports the
+ * landing URL and leaves the page where it is.
+ */
+export async function confirmLanding(
+  requested: string,
+  landed: string,
+  ctx: ConfirmContext,
+): Promise<ConfirmDecision> {
+  if (landed === "about:blank" || originOf(requested) === originOf(landed)) {
+    return { ok: true, reason: "landed on requested origin", asked: false };
+  }
+  return confirmNavigation(landed, ctx);
+}
+
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -7,9 +7,13 @@
 // validation pipeline can both depend on `RuntimeHostHooks` without
 // importing back through the `runtime.js` barrel (which re-exports them).
 
-import type { z } from "zod";
 import type { Capability } from "../util/capabilities.js";
-import type { PluginRecord, PluginToolHandler, PluginToolResponse } from "./types.js";
+import type {
+  PluginInputSchema,
+  PluginRecord,
+  PluginToolHandler,
+  PluginToolResponse,
+} from "./types.js";
 
 export interface RuntimeHostHooks {
   /**
@@ -42,7 +46,7 @@ export interface RuntimeHostHooks {
    */
   registerTool(
     name: string,
-    def: { description: string; inputSchema?: Record<string, z.ZodTypeAny> | undefined },
+    def: { description: string; inputSchema?: PluginInputSchema | undefined },
     handler: PluginToolHandler,
     capability: string | undefined,
     ownerPlugin: string,

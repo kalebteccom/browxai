@@ -176,10 +176,10 @@ export async function fetchResponseBody(
     const { body, base64Encoded } = await cdp.send("Network.getResponseBody", { requestId });
     const sliced = body.length > maxBytes ? body.slice(0, maxBytes) : body;
     const truncated = body.length > maxBytes;
-    // egress masking. Base64 bodies pass through unchanged — the literal
-    // real-value scan would never match an encoded form, and the agent's
-    // contract for base64 is "decode then re-mask on your side." Document
-    // this caveat in docs/tool-reference.md.
+    // egress masking. Base64 bodies are not masked here: masking the encoded
+    // text would corrupt the body. The tool result pass still replaces a
+    // value's own base64 where it appears; anything else is "decode then
+    // re-mask on your side", as docs/tool-reference.md states.
     const out = !base64Encoded && secrets ? secrets.applyMaskInText(sliced) : sliced;
     return { ok: true, body: out, base64Encoded, ...(truncated ? { truncated: true } : {}) };
   } catch (e) {

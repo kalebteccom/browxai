@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CDPSession, Page } from "playwright-core";
@@ -309,6 +309,105 @@ describe("assetExport integration", () => {
       expect(r.persistedCount).toBe(3);
       const names = r.manifest.map((m) => m.savedAs).sort();
       expect(names).toEqual(["logo-1.png", "logo-2.png", "logo.png"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("never replaces a file already on disk, and picks the next free name", async () => {
+    const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
+    try {
+      mkdirSync(join(root, "out"));
+      writeFileSync(join(root, "out", "logo.png"), "earlier");
+      writeFileSync(join(root, "out", "logo-1.png"), "earlier too");
+      const buf = bufferWith([
+        {
+          method: "GET",
+          url: "https://x.com/a/logo.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 3,
+          requestId: "r1",
+        },
+      ]);
+      const page = stubPageWith(() => ({
+        ok: true,
+        base64: Buffer.from("new").toString("base64"),
+      }));
+      const r = await assetExport(
+        { cdp: stubCdpNoBody(), page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        { filter: {}, intoDir: "out" },
+      );
+      expect(r.persistedCount).toBe(1);
+      expect(r.manifest[0]!.savedAs).toBe("logo-2.png");
+      expect(readFileSync(join(root, "out", "logo.png"), "utf8")).toBe("earlier");
+      expect(readFileSync(join(root, "out", "logo-1.png"), "utf8")).toBe("earlier too");
+      expect(readFileSync(join(root, "out", "logo-2.png"), "utf8")).toBe("new");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("gives up on a file name after 1000 taken names and drops the asset", async () => {
+    const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
+    try {
+      mkdirSync(join(root, "out"));
+      writeFileSync(join(root, "out", "logo.png"), "taken");
+      for (let i = 1; i < 1000; i++) writeFileSync(join(root, "out", `logo-${i}.png`), "taken");
+      const buf = bufferWith([
+        {
+          method: "GET",
+          url: "https://x.com/a/logo.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 3,
+          requestId: "r1",
+        },
+      ]);
+      const page = stubPageWith(() => ({
+        ok: true,
+        base64: Buffer.from("new").toString("base64"),
+      }));
+      const r = await assetExport(
+        { cdp: stubCdpNoBody(), page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        { filter: {}, intoDir: "out" },
+      );
+      expect(r.persistedCount).toBe(0);
+      expect(r.droppedCount).toBe(1);
+      expect(r.warnings.join("\n")).toMatch(/no free file name.*after 1000 tries/);
+      // The 1001st name was never tried.
+      expect(existsSync(join(root, "out", "logo-1000.png"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to write chrome.pid at the workspace root", async () => {
+    const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
+    try {
+      writeFileSync(join(root, "chrome.pid"), "4242");
+      const buf = bufferWith([
+        {
+          method: "GET",
+          url: "https://x.com/chrome.pid",
+          type: "Other",
+          status: 200,
+          mimeType: "text/plain",
+          bytes: 1,
+          requestId: "r1",
+        },
+      ]);
+      const page = stubPageWith(() => ({ ok: true, base64: Buffer.from("1").toString("base64") }));
+      const r = await assetExport(
+        { cdp: stubCdpNoBody(), page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        { filter: {}, intoDir: "." },
+      );
+      expect(r.persistedCount).toBe(0);
+      expect(r.droppedCount).toBe(1);
+      expect(r.warnings.join("\n")).toMatch(/chrome\.pid/);
+      expect(readFileSync(join(root, "chrome.pid"), "utf8")).toBe("4242");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

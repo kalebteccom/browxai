@@ -9,7 +9,8 @@ import {
 import { askHumanProfileRefusal } from "./ask-human-gate.js";
 import { byobAttachRefusal } from "./byob-attach-gate.js";
 import { resolveOpenSessionPolicies } from "./open-session-policies.js";
-import { invalidNameRefusal, isValidProfileName, PROFILE_NAME_RULE } from "../util/profile-name.js";
+import { isValidProfileName, PROFILE_NAME_RULE } from "../util/profile-name.js";
+import { openSessionPrecheck } from "./open-session-precheck.js";
 import type {
   GateHost,
   RegisterHost,
@@ -29,30 +30,6 @@ function lifecycleJson(body: object): ToolResponse {
  *  lifted from an Error or stringified. */
 function lifecycleError(err: unknown): ToolResponse {
   return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
-}
-
-/** The refusal `open_session` returns before launching anything, or null: a
- *  session id or profile that is not one plain name (checked here as well as in
- *  the schema, because in-process SDK callers skip the MCP schema parse), or a
- *  session id that is already open. */
-function openSessionPrecheck(
-  isOpen: boolean,
-  session: string,
-  profile: string | undefined,
-): ToolResponse | null {
-  const badName = !isValidProfileName(session)
-    ? invalidNameRefusal("session id", session)
-    : profile !== undefined && !isValidProfileName(profile)
-      ? invalidNameRefusal("profile", profile)
-      : null;
-  if (badName) return lifecycleJson({ ok: false, code: "invalid-name", error: badName });
-  if (isOpen) {
-    return lifecycleJson({
-      ok: false,
-      error: `session "${session}" already open; close_session first`,
-    });
-  }
-  return null;
 }
 
 /** Build the optional `har` / `harsReplay` / `video` fields of the open_session
@@ -264,7 +241,7 @@ export function registerSessionLifecycleTools(
               .string()
               .optional()
               .describe(
-                "Workspace-rooted HAR file path. Default: `<workspace>/har/<session-id>-<ISO>.har`. Path traversal outside `$BROWX_WORKSPACE` is rejected.",
+                "Workspace-rooted HAR file path. Default: `<workspace>/har/<session-id>-<ISO>.har`. A path outside `$BROWX_WORKSPACE` is rejected, and a .zip path is refused (use .har).",
               ),
             mode: z
               .enum(["full", "minimal"])
@@ -276,7 +253,7 @@ export function registerSessionLifecycleTools(
               .enum(["embed", "attach", "omit"])
               .optional()
               .describe(
-                "Body persistence: `embed` (default for `.har`) inlines bodies, `attach` writes sidecar files (default for `.zip`), `omit` drops bodies.",
+                "Body persistence: `omit` (default) drops bodies, `embed` inlines them, `attach` writes sidecar files. `embed` and `attach` need the `network-body` capability.",
               ),
             urlFilter: z
               .string()
@@ -285,7 +262,7 @@ export function registerSessionLifecycleTools(
           })
           .optional()
           .describe(
-            "Record HAR for the lifetime of this session via Playwright's native `recordHar` context option. The file is finalized when the session closes (Playwright constraint — there is no mid-session flush on the native path). For runtime start/stop granularity use the `start_har`/`stop_har` tools instead. Honoured on `persistent` + `incognito` (we own the context); ignored on `attached` (consumer's Chrome is not-owned).",
+            "Record HAR for the lifetime of this session via Playwright's native `recordHar` context option. The file is finalized when the session closes (Playwright constraint — there is no mid-session flush on the native path). For runtime start/stop granularity use the `start_har`/`stop_har` tools instead. On close the file is rewritten with `Cookie` / `Set-Cookie` / `Authorization` values dropped and registered secrets masked. Honoured on `persistent` + `incognito` (we own the context); ignored on `attached` (consumer's Chrome is not-owned).",
           ),
         hars: z
           .array(z.string())
@@ -334,7 +311,7 @@ export function registerSessionLifecycleTools(
       recordVideo,
     }) => {
       const early = openSessionPrecheck(registry.has(session), session, profile);
-      if (early) return early;
+      if (early) return lifecycleJson(early);
       const engineResult = resolveOpenSessionEngine(engine);
       if (!engineResult.ok) return engineResult.response;
       const resolved = resolveOpenSessionPolicies(
@@ -346,6 +323,7 @@ export function registerSessionLifecycleTools(
           permissionPolicy,
           notificationPolicy,
           fsPickerPolicy,
+          harContent: har?.content,
         },
       );
       if (!resolved.ok) return resolved.response;

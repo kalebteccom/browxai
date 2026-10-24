@@ -64,7 +64,8 @@ Off by default, each opted in deliberately:
 - `eval` enables `eval_js` and `poll_eval`, which run arbitrary JavaScript in
   the page.
 - `byob-attach` allows attaching to an externally launched Chrome.
-- `network-body` exposes full response bodies.
+- `network-body` exposes full response bodies: `network_body`, the body of
+  `caches_get`, and HAR `embed` and `attach`.
 - `clipboard` enables the OS-clipboard side effect of the `shortcut` tool.
   Observation still works without it.
 - `file-io` enables `upload_file` and the file-picker write path.
@@ -118,7 +119,9 @@ Navigation can be scoped with an allow list and a block list
 (`allowedOrigins`, `blockedOrigins`), with wildcard support such as
 `https://*.example.com`. The block list overrides the allow list. An
 off-allowlist navigation routes through the confirmation hook if one is set, or
-proceeds with a warning if not.
+proceeds with a warning if not. An entry without a port matches the scheme's
+default port only; an entry with a port matches that port. `navigate` checks the
+landed URL after a redirect too.
 
 Treat the origin policy as defense in depth, not a hard security boundary. The
 [threat model](/security/threat-model/) is explicit about where the real

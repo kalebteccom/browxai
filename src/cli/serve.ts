@@ -9,11 +9,10 @@
 // runs this subcommand and passes `--socket`. There is no auto-discovery; an
 // SDK client must be given the endpoint URL out-of-band.
 //
-// Security posture: the socket is created with restrictive perms (0700) so
-// only the owning user can connect. Capability gates are enforced at the
+// Permissions: the socket is created with owner-only permissions (the umask is
+// set before it is created), so only the owning user can connect. Capability gates are enforced at the
 // server, identical to stdio.
 
-import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import { createServer as createNetServer, type Server } from "node:net";
 import { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
 import {
@@ -26,6 +25,13 @@ import { resolveEngineSelection, UnknownEngineError, type EngineKind } from "../
 import { SocketTransport } from "../transport/socket-transport.js";
 import { log } from "../util/logging.js";
 import { isHeadlessEnv } from "../util/config-store.js";
+import {
+  SocketPathError,
+  isPipePath,
+  listenPrivate,
+  removeStaleSocket,
+  resolveSocketPath,
+} from "./serve-socket.js";
 
 interface ServeOptions {
   readonly socketPath: string;
@@ -74,8 +80,15 @@ export async function runServe(rawArgs: string[]): Promise<number> {
     }
     throw err;
   }
-  const code = await startServe({ socketPath, attachCdp, headless, browserType });
-  return code;
+  try {
+    return await startServe({ socketPath, attachCdp, headless, browserType });
+  } catch (err) {
+    if (err instanceof SocketPathError) {
+      process.stderr.write(`${err.message}\n`);
+      return 2;
+    }
+    throw err;
+  }
 }
 
 /** Exposed for tests — programmatic `browxai serve` startup that returns the
@@ -84,12 +97,15 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
   server: Server;
   shutdown: () => Promise<void>;
 }> {
-  // Existing socket file → remove. A stale socket left over from a crashed
-  // run would otherwise block .listen() with EADDRINUSE.
-  if (opts.socketPath.startsWith("/") && existsSync(opts.socketPath)) {
+  const socketPath = resolveSocketPath(opts.socketPath);
+  // A stale socket left over from a crashed run would block .listen() with
+  // EADDRINUSE, so a socket at the path is removed. Anything else at the path
+  // is left alone and the start fails.
+  if (!isPipePath(socketPath)) {
     try {
-      unlinkSync(opts.socketPath);
-    } catch {
+      removeStaleSocket(socketPath);
+    } catch (err) {
+      if (err instanceof SocketPathError) throw err;
       /* race; the listen() below will fail loudly if it actually mattered */
     }
   }
@@ -164,20 +180,8 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
     })();
   });
 
-  await new Promise<void>((resolve, reject) => {
-    netServer.once("error", reject);
-    netServer.listen(opts.socketPath, () => resolve());
-  });
-
-  // Tighten perms on the listening socket (POSIX only — chmod is a no-op /
-  // throws on Windows pipes).
-  if (opts.socketPath.startsWith("/")) {
-    try {
-      chmodSync(opts.socketPath, 0o700);
-    } catch {
-      /* best-effort; on macOS the socket inherits umask which is usually fine */
-    }
-  }
+  // The socket is created owner-only: the permissions are set before it exists.
+  await listenPrivate(netServer, socketPath);
 
   const shutdown = async (): Promise<void> => {
     for (const conn of liveConnections) {
@@ -188,9 +192,9 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
       netServer.close(() => resolve());
     });
     await browxai.shutdown().catch(() => undefined);
-    if (opts.socketPath.startsWith("/") && existsSync(opts.socketPath)) {
+    if (!isPipePath(socketPath)) {
       try {
-        unlinkSync(opts.socketPath);
+        removeStaleSocket(socketPath);
       } catch {
         /* tolerated */
       }

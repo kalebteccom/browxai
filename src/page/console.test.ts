@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ConsoleBuffer } from "./console.js";
+import { ConsoleBuffer, MAX_CONSOLE_MESSAGE_CHARS, capConsoleText } from "./console.js";
 
 // ConsoleBuffer.ingest is the non-Playwright console feed — the safari engine
 // pumps its BiDi log.entryAdded stream through it. These cover the
@@ -28,5 +28,26 @@ describe("ConsoleBuffer.ingest (the safari BiDi feed)", () => {
     buf.ingest("info", "b");
     buf.ingest("info", "c");
     expect(buf.recent().map((m) => m.text)).toEqual(["b", "c"]);
+  });
+});
+
+describe("console message size cap", () => {
+  it("leaves a message at the cap as it is", () => {
+    const text = "a".repeat(MAX_CONSOLE_MESSAGE_CHARS);
+    expect(capConsoleText(text)).toBe(text);
+  });
+
+  it("cuts a longer message and says how much was dropped", () => {
+    const out = capConsoleText("a".repeat(MAX_CONSOLE_MESSAGE_CHARS + 25));
+    expect(out.startsWith("a".repeat(MAX_CONSOLE_MESSAGE_CHARS))).toBe(true);
+    expect(out.endsWith("[truncated 25 chars]")).toBe(true);
+  });
+
+  it("stores an oversized ingested message capped", () => {
+    const buf = new ConsoleBuffer();
+    buf.ingest("error", "x".repeat(1024 * 1024));
+    const [msg] = buf.recent();
+    expect(msg!.text.length).toBeLessThan(MAX_CONSOLE_MESSAGE_CHARS + 64);
+    expect(msg!.text).toContain("[truncated");
   });
 });

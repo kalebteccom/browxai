@@ -166,10 +166,12 @@ describePool("byob-attach capability gate — real Chrome, capability unset", ()
         expect(opened.reason).toMatch(/capability-required/);
 
         // The default session a BROWX_ATTACH_CDP server creates lazily is
-        // attached too, and is refused the same way.
-        const lazy = await call("snapshot", {});
-        expect(lazy).toMatch(/capability-required/);
-        expect(lazy).toMatch(/byob-attach/);
+        // attached too, and is refused with the same envelope.
+        const lazy = JSON.parse(await call("snapshot", {})) as typeof opened;
+        expect(lazy.ok).toBe(false);
+        expect(lazy.requiredCapability).toBe("byob-attach");
+        expect(lazy.error).toMatch(/capability is not in the server's ACTIVE set/);
+        expect(lazy.reason).toMatch(/capability-required/);
 
         const listed = JSON.parse(await call("list_sessions", {})) as unknown;
         expect(JSON.stringify(listed)).not.toMatch(/"gated"/);

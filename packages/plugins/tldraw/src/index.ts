@@ -224,7 +224,16 @@ export function register(api: PluginApi): void {
     {
       description:
         "Create a shape via `editor.createShapes([{type, x, y, props}])`. Returns `{ok, shapeId}` (resolved by diffing the page shape list before/after). Bad-arg / app-not-loaded / create-failed surface structured errors.",
-      inputSchema: {},
+      inputSchema: {
+        type: "object",
+        properties: {
+          type: { type: "string", description: "Shape type, for example `geo` or `text`." },
+          x: { type: "number", description: "X position, in page coordinates." },
+          y: { type: "number", description: "Y position, in page coordinates." },
+          props: { type: "object", description: "Shape props passed to Tldraw as given." },
+        },
+        required: ["type", "x", "y"],
+      },
     },
     (args) => handlers.create_shape(api, args),
   );
@@ -234,7 +243,11 @@ export function register(api: PluginApi): void {
     {
       description:
         "Delete one shape via `editor.deleteShapes([shapeId])`. Returns `{ok, shapeId}` on success.",
-      inputSchema: {},
+      inputSchema: {
+        type: "object",
+        properties: { shapeId: { type: "string", description: "Id of the shape to delete." } },
+        required: ["shapeId"],
+      },
     },
     (args) => handlers.delete_shape(api, args),
   );
@@ -244,7 +257,17 @@ export function register(api: PluginApi): void {
     {
       description:
         "Set the active selection via `editor.setSelectedShapes(shapeIds)`. Returns `{ok, shapeIds}`.",
-      inputSchema: {},
+      inputSchema: {
+        type: "object",
+        properties: {
+          shapeIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Ids of the shapes to select.",
+          },
+        },
+        required: ["shapeIds"],
+      },
     },
     (args) => handlers.select_shapes(api, args),
   );

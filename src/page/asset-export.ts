@@ -280,6 +280,47 @@ interface ExportState {
 
 type EntryDisposition = "continue" | "break";
 
+/** Name attempts per asset before giving up. Each failed attempt is a name
+ *  already taken on disk. */
+const MAX_NAME_ATTEMPTS = 1000;
+
+/** Write `bytes` under `intoDir` with exclusive create, so an export never
+ *  replaces a file that is already there, from this run or from anything
+ *  else. A taken name moves on to the next `-N` suffix. */
+function writeAssetFile(
+  st: ExportState,
+  url: string,
+  bytes: Buffer,
+): { ok: true; name: string; path: string } | { ok: false; warning: string } {
+  const base = filenameFromUrl(url);
+  for (let attempt = 0; attempt < MAX_NAME_ATTEMPTS; attempt++) {
+    const name = resolveCollision(base, st.used);
+    st.used.add(name);
+    // Defence in depth — the sanitised name has no separators, so the join
+    // can't leave `intoDir`; verify anyway ($BROWX_WORKSPACE-rooted by construction).
+    const path = resolve(join(st.intoDir, name));
+    if (path !== st.intoDir && !path.startsWith(st.intoDir + sep)) {
+      return { ok: false, warning: `refused to write outside intoDir: ${url}` };
+    }
+    try {
+      // The filename comes from the page's URL, so it can name an operator
+      // file (`config.json` when `intoDir` is the workspace root).
+      assertWritableWorkspacePath(st.workspaceRoot, path, "asset_export");
+    } catch (err) {
+      return { ok: false, warning: err instanceof Error ? err.message : String(err) };
+    }
+    try {
+      writeFileSync(path, bytes, { flag: "wx" });
+      return { ok: true, name, path };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") continue;
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, warning: `write failed for ${url}: ${msg}` };
+    }
+  }
+  return { ok: false, warning: `no free file name for ${url} after ${MAX_NAME_ATTEMPTS} tries` };
+}
+
 /** Persist one fetched body to disk, appending its manifest entry (or recording
  *  a drop / workspace-escape refusal). Returns "break" only on a maxBytes stop. */
 function persistAssetBody(
@@ -293,34 +334,13 @@ function persistAssetBody(
     );
     return "break";
   }
-  const finalName = resolveCollision(filenameFromUrl(entry.url), st.used);
-  st.used.add(finalName);
-  // Defence in depth — the sanitised name has no separators, so the join can't
-  // escape `intoDir`; verify anyway ($BROWX_WORKSPACE-rooted by construction).
-  const resolved = resolve(join(st.intoDir, finalName));
-  if (resolved !== st.intoDir && !resolved.startsWith(st.intoDir + sep)) {
+  const written = writeAssetFile(st, entry.url, fetched.bytes);
+  if (!written.ok) {
     st.droppedCount += 1;
-    st.warnings.push(`refused to write outside intoDir: ${entry.url}`);
+    st.warnings.push(written.warning);
     return "continue";
   }
-  // The filename comes from the page's URL, so it can name an operator file
-  // (`config.json` when `intoDir` is the workspace root).
-  try {
-    assertWritableWorkspacePath(st.workspaceRoot, resolved, "asset_export");
-  } catch (err) {
-    st.droppedCount += 1;
-    st.warnings.push(err instanceof Error ? err.message : String(err));
-    return "continue";
-  }
-  try {
-    writeFileSync(resolved, fetched.bytes);
-  } catch (err) {
-    st.droppedCount += 1;
-    st.warnings.push(
-      `write failed for ${entry.url}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return "continue";
-  }
+  const { name: finalName, path: resolved } = written;
   let sizeBytes = fetched.bytes.length;
   try {
     sizeBytes = statSync(resolved).size;

@@ -10,6 +10,110 @@ surface" covers.
 
 ### Changed
 
+- **Secret scopes match the page origin exactly.** A `register_secret` scope is
+  now an origin (`https://app.example.com`, `http://localhost:3000`) or a bare
+  host meaning https, and may be a list. `fill`, `press` and `fill_form`
+  materialise a scoped value only when the origin of the frame that receives it
+  (the target's frame, or the focused frame for a targetless `press`) has the
+  same scheme, host and port. A scope with a path, query or `*` is refused at
+  registration. The result carries the normalised `origins`. A `blob:` or
+  `filesystem:` frame URL counts as the origin it wraps, the same rule
+  `BROWX_ALLOWED_ORIGINS` uses.
+- **Scoped secrets fill through the checked element.** `fill`, `fill_form` and
+  `press` type a scoped value into the same element whose frame passed the
+  scope check, and read that frame's URL again right before typing. If the
+  frame moved to another origin in between, the action returns `ok:false` and
+  nothing is typed. A targetless `press` re-checks the focused frame the same
+  way. Unscoped values are unchanged.
+- **`get_credential` now requires the account to be listed in
+  `BROWX_CREDENTIAL_ORIGINS`.** The new setting binds credentials to configured
+  origins: `acme=https://app.acme.com|https://sso.acme.com`. The registered
+  password is scoped to that list and typed only into a frame on one of those
+  origins. An account with no entry is refused before the vault is asked, with
+  a message naming the setting. The setting is read at start, so restart after
+  changing it. The result carries `origins`. An account named like an object
+  member (`constructor`, `toString`) counts as not listed.
+- **`get_totp` and `get_credential` check the account name.** It must start
+  with a letter or digit and use only letters, digits, space and
+  `. _ @ + : / -`, at most 128 characters. The `op`, `bw` and `lpass` calls pass
+  the account after `--`.
+- **Tool output masks registered secrets.** With `secrets` on, every tool
+  result's text is masked for registered values on the way out, including
+  `extract`, `shadow_trees`, `cookies_get`, `idb_get` and `caches_get`. JSON
+  results keep their layout and stay valid. The error text of a tool that
+  fails is masked the same way, and so are plugin tool results and errors.
+  A value of 6 characters or more is also masked percent-encoded (in a URL
+  query or form body) and as its own base64 or base64url encoding. A JSON
+  number whose digits contain a value is replaced as a whole by the string
+  `"<NAME>"`.
+- **`caches_get` returns the body only with `network-body`.** Without it the
+  result carries the headers and metadata, `byteLength`, `bodyOmitted: true`
+  and `requiredCapability: "network-body"`.
+- **`start_har` defaults to no bodies; `embed` needs `network-body`.** The
+  default `content` for `start_har` and `open_session({har})` is now `omit`.
+  Replaying a HAR recorded with `omit` serves empty bodies; record with `embed`
+  (needs `network-body`) when the replay needs them.
+  `embed` and `attach` are refused without `network-body`. `omit` now really
+  omits bodies; it used to fall through to Playwright's `attach` default.
+- **HAR files drop credential headers on close.** When a recording session
+  closes, the HAR is rewritten with `Cookie`, `Set-Cookie` and `Authorization`
+  values emptied (names kept) and registered secrets masked in headers, URLs and
+  text bodies.
+- **`browxai plugin` passes the spec to the package manager as a spec.** The
+  spec follows `--`, a spec or name that starts with `-` exits 2 before the
+  package manager runs, and `install`, `upgrade` and `sync` run with lifecycle
+  scripts off (`--ignore-scripts`). Build a `file:` plugin before installing it.
+- **The plugin entry resolves inside the package.** `browxai.register` must name
+  a file inside the package directory, checked on the real path. An absolute
+  path, a `../` path or a symlink out of the package marks the plugin
+  `load-error` with the reason. `plugins-lock.json` hashes only files inside the
+  package.
+- **The `kalebtec` trust tier follows the recorded install.** A plugin is
+  `kalebtec` only when `plugins-lock.json` records a plain registry spec of its
+  exact `@browxai/*` name and the registry integrity hash, and the installed
+  package.json carries that name. An `npm:` alias, a git or tarball install, or
+  a lock entry without the hash is `community`, and a `kalebtec` claim in the
+  manifest or `plugins.json` is dropped with a warning. The lock now stores
+  `integrity`. Existing installs read as `community` until
+  `browxai plugin sync` or `upgrade` re-pins them.
+- **File-reading tools check containment on the real path.** `upload_file`,
+  `drop_files`, `inject_storage_state` from a path, HAR replay, replay-artifact
+  reads, heap reads and `extensions_install` resolve symlinks before deciding
+  whether a path is inside `$BROWX_WORKSPACE`. A link inside the workspace that
+  leads out of it, such as a `file:` plugin install under `plugins/node_modules`,
+  is refused with "resolves through a link to a path outside $BROWX_WORKSPACE".
+- **`app_install` reads its bundle from the workspace.** `apkPath` is now
+  workspace-relative and must resolve inside `$BROWX_WORKSPACE`, on its real
+  path, like `upload_file`. An absolute path elsewhere on the host, a `../` path
+  or a path starting with `-` is refused, with the same message whether or not
+  the path exists. Copy the `.apk` or `.app` into the workspace first.
+- **`browxai chrome stop` confirms the process is Chrome before stopping it.**
+  It reads the command line of the PID in `chrome.pid` (`/proc` on Linux, `ps`
+  on macOS, `tasklist` on Windows) and exits 1 without sending a signal when the
+  command line cannot be read or is not a Chrome (on Linux and macOS, one
+  started for this workspace's profile; on Windows the flag is not checked).
+  `start` records its profile directory in `chrome.profile`
+  next to `chrome.pid`, and `stop` requires `--user-data-dir=` to name that
+  directory (the workspace default profile for a `chrome.pid` written by an
+  older release). It reads the command line again before the SIGKILL that
+  follows an ignored SIGTERM.
+- **Writes stay inside the workspace on the real path.** `pdf_save`,
+  `screenshot({path})`, the page and element exports, `asset_export`, HAR and
+  video files, heap and trace files, `dump_storage_state`, `auth_save`,
+  `artifact_save`, download capture, `profile_snapshot` and the diagnostics log
+  resolve symlinks before they write. A link inside `$BROWX_WORKSPACE` that
+  leads out of it is refused with "resolves through a link to a path outside
+  $BROWX_WORKSPACE". A file that does not exist yet is checked through its
+  parent directory. The protected operator files and directories are unchanged,
+  and `chrome.profile` joins them. A link that points nowhere is followed to
+  where it points, so a write through a dangling link out of the workspace is
+  refused, and the containment check ignores case on macOS and Windows.
+- **`asset_export` never replaces an existing file.** Files are created
+  exclusively, and a name already on disk in `intoDir`, from an earlier export
+  or anything else, moves to the next free `-N` name. Re-exporting into the same
+  directory now adds `logo-1.png` next to the earlier `logo.png`.
+  `chrome.pid` joins the workspace files that path-taking tools neither write
+  nor read.
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.
@@ -70,6 +174,41 @@ surface" covers.
 - **zod 4.** Tool input schemas are built with zod 4, and a plugin's `inputSchema`
   values are zod 4 schemas. `idb_put` now lists `value` as required in its
   advertised input schema.
+- **Origin entries match more exactly.** A trailing dot on a host
+  (`https://ads.example.com.`) matches the entry for the same host. An entry
+  matches the port a request uses: no port means 80 for `http` and 443 for
+  `https`, so `https://app.example.com` no longer matches
+  `https://app.example.com:8443`, and an entry with a port matches that port
+  only. A `blob:` or `filesystem:` URL matches by the origin it wraps.
+- **`navigate` checks the URL it landed on.** After a redirect, the final URL
+  goes through the same origin policy and confirm hook as the requested one. A
+  redirect to a blocked or unlisted origin asks for confirmation (with
+  `navigate_off_allowlist` in `BROWX_CONFIRM_REQUIRED`, the default). If the
+  answer is no, `navigate` returns a deny and the page stays on the landed URL.
+  With the hook off it only logs a warning, which names the
+  `BROWX_BLOCKED_ORIGINS` entry that matched.
+- **Page-sized data is capped.** A console message is stored cut to 8,192
+  characters and ends in a `[truncated N chars]` marker. `download_get` returns
+  at most 16 MiB inline: a larger file fails with an error naming the limit and
+  the saved path, and `pathOnly:true` returns the path without reading the file.
+  The socket transport closes a connection whose message line passes 32 MiB.
+- **`network_body` on Firefox and WebKit reads a body when asked.** It no longer
+  reads every response as it arrives. A body over 256,000 bytes (the finished
+  transfer size, else `content-length`), or of unknown size, is not read and the
+  result says so. A compressed body must be under 32,000 bytes on the wire.
+  A mutation's `responseShape` is left out on Firefox and WebKit when the
+  response size is unknown or over 256,000 bytes.
+- **`browxai serve` creates its socket owner-only and handles the path with
+  care.** The permissions are set before the socket is created, a relative
+  `--socket` path is resolved to an absolute one, and a leftover file at the path
+  is removed only when it is a socket. Anything else there stops the start with a
+  message naming the path.
+- **`solve_captcha` does not follow redirects from the provider.** A redirect on
+  the submit or the poll call ends the solve with an error that says so and
+  names `BROWX_CAPTCHA_API_BASE`.
+- **`export_session_report` redacts the page URL.** The `url` field now drops
+  the query string, fragment and userinfo, the same way `network_read` shows
+  URLs.
 
 ### Fixed
 
@@ -108,6 +247,37 @@ surface" covers.
 - Docs: install steps now state Node 22 and that Chrome is the default browser;
   the `BROWX_CHANNEL` row said the bundled build; the BYOB recipe used a stale
   profile directory; the harness READMEs said Node 20.
+- Lazily created sessions refuse a missing `byob-attach` capability with the same
+  structured refusal as `open_session`.
+- **First-party plugins no longer log an "untested combination" warning.** Their
+  `browxaiVersion` range was `^0.7.0`, which excludes every later 0.x host. It is
+  now `>=0.13.0` and reaches npm with the next plugin release. The plugin
+  READMEs also gained the capabilities each needs, an enable example and an
+  example prompt.
+- **Plugin tool parameters now reach the handler over MCP.** Every plugin tool
+  registered an empty input schema, and the MCP SDK drops each argument a schema
+  does not declare, so `example.echo({ msg })` and the canvas tools ran with `{}`
+  and agents saw no parameters. A plugin can now declare its arguments as a JSON
+  Schema object (no `zod` needed) or a zod shape, and the declared parameters show
+  up on `tools/list`. The four first-party plugins declare theirs. A tool that
+  declares nothing behaves as before.
+- **Plugin capability hints now name `BROWX_CAPABILITIES` with the defaults.**
+  When a plugin's capability is off, `browxai doctor`, `plugins_list` and the
+  refusal on a plugin tool suggested `set_config({capabilities})`, which can only
+  narrow the set. They now say to set `BROWX_CAPABILITIES` (for example
+  `read,navigation,action,human,canvas`, since the variable replaces the default
+  set) and restart.
+- **`browxai plugin install file:<dir>` records the package name and accepts
+  relative paths.** It wrote the directory name, so
+  `file:/abs/packages/plugins/figma` was recorded as `figma` instead of
+  `@browxai/plugin-figma`, and a relative path resolved from
+  `<workspace>/plugins/`. The name now comes from `<dir>/package.json`, a
+  relative path resolves from your shell's working directory, and a directory
+  without a `package.json` name is refused before anything is installed.
+- **`BrowxaiClientWithPlugins` is now exported from `browxai`.** The first-party
+  plugins' `schema.d.ts` files tell consumers to write
+  `import type { BrowxaiClientWithPlugins } from "browxai"`, which failed
+  because only the SDK module defined it.
 
 ## [0.13.0] - 2026-10-22
 

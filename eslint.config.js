@@ -884,7 +884,6 @@ export default tseslint.config(
       // (D4(c)) retires the secrets reads.
       "src/tools/read-observe-dom-tools.ts",
       "src/tools/read-observe-verify-tools.ts",
-      "src/tools/read-observe-capture-tools.ts",
       "src/tools/read-observe-buffer-tools.ts",
       // `network_read` / `ws_read` / `network_body` split out of
       // read-observe-buffer-tools.ts (above) when the sub-interface gate pushed that
@@ -892,7 +891,6 @@ export default tseslint.config(
       // egress-masking `caps.enabled.has("secrets")` that moved with it, not a new
       // violation; it rides its origin file's allowlist entry.
       "src/tools/read-observe-network-tools.ts",
-      "src/tools/secrets-captcha-tools.ts",
       // The P3 split extracted the persistent-session extension context rebuild
       // out of extensions-batch-tools.ts (already allowlisted) into
       // extensions-rebuild.ts. The inline reads here are creation-time wiring

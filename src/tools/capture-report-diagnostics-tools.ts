@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { sep as pathSep } from "node:path";
 import { estimateTokens } from "../util/tokens.js";
+import { sanitizeUrl } from "../util/url-sanitizer.js";
 import { resolveWorkspaceWritePath as writePath } from "../session/storage.js";
 import { DEFAULT_SESSION_ID } from "../session/registry.js";
 import {
@@ -57,7 +58,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
     {
       capability: "read",
       description:
-        "Bundle a session's current QA evidence into one JSON object — url, console errors, recent network summary, named regions, live sessions — so multi-agent QA results are auditable without normalising each agent's notes by hand. `note` records a free-text label/summary. Returns the bundle (not written to disk).",
+        "Bundle a session's current QA evidence into one JSON object — url (redacted like `network_read`: no query string, fragment or userinfo), console errors, recent network summary, named regions, live sessions — so multi-agent QA results can be checked without normalising each agent's notes by hand. `note` records a free-text label/summary. Returns the bundle (not written to disk).",
       inputSchema: {
         note: z.string().optional().describe("Free-text label / summary for this session's run."),
         ...SESSION_ARG,
@@ -85,7 +86,8 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
         ok: true,
         session: e.id,
         mode: e.mode,
-        url: await targetFor(e).url(),
+        // Same URL redaction `network_read` and `console_read` apply.
+        url: sanitizeUrl(await targetFor(e).url()),
         openedAt: new Date(e.openedAt).toISOString(),
         generatedAt: new Date().toISOString(),
         ...(note ? { note } : {}),

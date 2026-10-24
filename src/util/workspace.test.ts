@@ -15,8 +15,10 @@ import { join, resolve } from "node:path";
 import {
   assertReadableWorkspacePath,
   assertWritableWorkspacePath,
+  assertWriteStaysInside,
   resolveDefaultProfileDir,
   resolveWorkspace,
+  resolveWorkspaceReadPath,
   resolveWorkspaceWritePath,
 } from "./workspace.js";
 
@@ -177,5 +179,117 @@ describe("read-protected workspace paths", () => {
     expect(() =>
       assertReadableWorkspacePath(root, join(root, "uploads", "a.png"), "t"),
     ).not.toThrow();
+  });
+});
+
+describe("read paths stay inside the real workspace", () => {
+  let root: string;
+  let outside: string;
+  beforeEach(() => {
+    root = join(tmp, "wsl");
+    outside = join(tmp, "outside");
+    mkdirSync(root);
+    mkdirSync(outside);
+    writeFileSync(join(outside, "secret.txt"), "s");
+  });
+
+  it("refuses a file reached through a directory symlink that leads out", () => {
+    mkdirSync(join(root, "plugins", "node_modules"), { recursive: true });
+    symlinkSync(outside, join(root, "plugins", "node_modules", "p"));
+    expect(() =>
+      resolveWorkspaceReadPath(root, "plugins/node_modules/p/secret.txt", "upload_file"),
+    ).toThrow(/outside \$BROWX_WORKSPACE/);
+    expect(() =>
+      assertReadableWorkspacePath(root, join(root, "plugins/node_modules/p/secret.txt"), "t"),
+    ).toThrow(/outside \$BROWX_WORKSPACE/);
+  });
+
+  it("refuses a file symlink that leads out, and a dangling one", () => {
+    symlinkSync(join(outside, "secret.txt"), join(root, "s.txt"));
+    symlinkSync(join(outside, "not-yet.txt"), join(root, "later.txt"));
+    expect(() => assertReadableWorkspacePath(root, join(root, "s.txt"), "drop_files")).toThrow(
+      /outside \$BROWX_WORKSPACE/,
+    );
+    expect(() => assertReadableWorkspacePath(root, join(root, "later.txt"), "t")).toThrow(
+      /outside \$BROWX_WORKSPACE/,
+    );
+  });
+
+  it("allows a symlink that stays inside, and a new file under an existing parent", () => {
+    mkdirSync(join(root, "uploads"));
+    writeFileSync(join(root, "uploads", "a.png"), "x");
+    symlinkSync(join(root, "uploads"), join(root, "alias"));
+    expect(resolveWorkspaceReadPath(root, "alias/a.png", "t")).toBe(join(root, "alias", "a.png"));
+    expect(resolveWorkspaceReadPath(root, "uploads/new/b.png", "t")).toBe(
+      join(root, "uploads", "new", "b.png"),
+    );
+  });
+
+  it("follows a workspace root that is itself a symlink", () => {
+    const linkedRoot = join(tmp, "ws-link");
+    symlinkSync(root, linkedRoot);
+    writeFileSync(join(root, "a.txt"), "x");
+    expect(resolveWorkspaceReadPath(linkedRoot, "a.txt", "t")).toBe(join(linkedRoot, "a.txt"));
+  });
+});
+
+describe("write paths stay inside the real workspace", () => {
+  let root: string;
+  let outside: string;
+  beforeEach(() => {
+    root = join(tmp, "wsw");
+    outside = join(tmp, "outside-w");
+    mkdirSync(root);
+    mkdirSync(outside);
+    writeFileSync(join(outside, "existing.txt"), "keep");
+  });
+
+  it("refuses a new file under a directory symlink that leads out", () => {
+    symlinkSync(outside, join(root, "exports"));
+    expect(() => resolveWorkspaceWritePath(root, "exports/out.png", "screenshot")).toThrow(
+      /refusing to write.*outside \$BROWX_WORKSPACE/,
+    );
+    expect(() =>
+      assertWritableWorkspacePath(root, join(root, "exports", "a", "b.txt"), "t"),
+    ).toThrow(/outside \$BROWX_WORKSPACE/);
+    expect(existsSync(join(outside, "out.png"))).toBe(false);
+  });
+
+  it("refuses a file symlink that leads out, and a dangling one", () => {
+    symlinkSync(join(outside, "existing.txt"), join(root, "s.txt"));
+    symlinkSync(join(outside, "later.txt"), join(root, "later.txt"));
+    expect(() => assertWritableWorkspacePath(root, join(root, "s.txt"), "pdf_save")).toThrow(
+      /outside \$BROWX_WORKSPACE/,
+    );
+    expect(() => assertWritableWorkspacePath(root, join(root, "later.txt"), "pdf_save")).toThrow(
+      /outside \$BROWX_WORKSPACE/,
+    );
+  });
+
+  it("allows a new file under an existing parent, and a link that stays inside", () => {
+    mkdirSync(join(root, "shots"));
+    symlinkSync(join(root, "shots"), join(root, "alias"));
+    expect(resolveWorkspaceWritePath(root, "shots/new/a.png", "t")).toBe(
+      join(root, "shots", "new", "a.png"),
+    );
+    expect(resolveWorkspaceWritePath(root, "alias/a.png", "t")).toBe(join(root, "alias", "a.png"));
+  });
+
+  it("keeps the protected-file rules for a path that stays inside", () => {
+    expect(() => assertWritableWorkspacePath(root, join(root, "config.json"), "t")).toThrow(
+      /only the operator changes/,
+    );
+    expect(() => assertWritableWorkspacePath(root, join(root, "chrome.profile"), "t")).toThrow(
+      /only the operator changes/,
+    );
+  });
+
+  it("assertWriteStaysInside checks the real path and nothing else", () => {
+    symlinkSync(outside, join(root, ".artifacts"));
+    expect(() => assertWriteStaysInside(root, join(root, ".artifacts", "s", "a"), "t")).toThrow(
+      /outside \$BROWX_WORKSPACE/,
+    );
+    // Not a protected path: the plain check lets it through.
+    expect(() => assertWriteStaysInside(root, join(root, "profile", "x"), "t")).not.toThrow();
   });
 });

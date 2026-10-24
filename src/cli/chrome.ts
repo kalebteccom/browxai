@@ -7,8 +7,9 @@
 // `$BROWX_WORKSPACE/chrome.pid`. `login` launches the same Chrome on the same
 // profile with NO debug port, so a person can clear a bot-protection challenge
 // and sign in with nothing attached; the cookies stay in the profile. `stop`
-// reads the PID file and SIGTERMs the process; cleans up. Stdout is fine — this
-// is a CLI subcommand.
+// reads the PID file, confirms the process is Chrome running on the profile
+// directory `start` recorded in `chrome.profile`, SIGTERMs it and cleans up.
+// Stdout is fine — this is a CLI subcommand.
 //
 // The `start` Chrome is the *BYOB target* an adopter would `BROWX_ATTACH_CDP=…`
 // against. browxai itself does NOT attach to it from `chrome start` — start the
@@ -17,7 +18,7 @@
 // is already held unless `--force` is given.
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveWorkspace } from "../util/workspace.js";
 import { capabilitiesAssignment } from "../util/capabilities.js";
@@ -28,9 +29,27 @@ import {
   findInstalledChrome,
   parseHttpUrl,
 } from "./chrome-launch.js";
+import { looksLikeChrome, processCommandLine } from "./chrome-process.js";
 import { isValidProfileName, PROFILE_NAME_RULE } from "../util/profile-name.js";
 
 const DEFAULT_PORT = 9222;
+
+/** Written next to `chrome.pid`: the profile directory `start` launched on. */
+const PROFILE_FILE = "chrome.profile";
+
+/** The profile directory `stop` expects the PID to be running on: the one
+ *  `start` recorded, or the workspace default for a `chrome.pid` an earlier
+ *  release wrote without it. */
+function expectedProfileDir(root: string): string {
+  const file = join(root, PROFILE_FILE);
+  const recorded = existsSync(file) ? readFileSync(file, "utf8").trim() : "";
+  return recorded || resolveProfileDir(resolveWorkspace(), undefined);
+}
+
+function removePidFiles(root: string): void {
+  unlinkSync(join(root, "chrome.pid"));
+  rmSync(join(root, PROFILE_FILE), { force: true });
+}
 
 export async function runChrome(args: string[]): Promise<number> {
   const sub = args[0];
@@ -83,7 +102,8 @@ function startChrome(opts: string[]): Promise<number> {
   }
   const insecure = opts.includes("--insecure"); // opt-in security-lowered (BYOB recipe's `--disable-web-security`)
   const noBackgroundThrottling = opts.includes("--disable-background-throttling");
-  const pidFile = join(resolveWorkspace().root, "chrome.pid");
+  const root = resolveWorkspace().root;
+  const pidFile = join(root, "chrome.pid");
 
   if (existsSync(pidFile)) {
     const oldPid = readFileSync(pidFile, "utf8").trim();
@@ -93,7 +113,7 @@ function startChrome(opts: string[]): Promise<number> {
       );
       return Promise.resolve(1);
     }
-    unlinkSync(pidFile);
+    removePidFiles(root);
   }
 
   const target = resolveLaunchTarget(opts);
@@ -117,6 +137,7 @@ function startChrome(opts: string[]): Promise<number> {
     return Promise.resolve(1);
   }
   writeFileSync(pidFile, String(child.pid), "utf8");
+  writeFileSync(join(root, PROFILE_FILE), profileDir, "utf8");
   process.stdout.write(
     `browxai chrome started\n  pid:     ${child.pid}\n  port:    ${port}\n  profile: ${profileDir}\n  attach:  BROWX_ATTACH_CDP=http://127.0.0.1:${port}\n  caps:    ${capabilitiesAssignment("byob-attach")}\n\nstop with: browxai chrome stop\n`,
   );
@@ -158,16 +179,43 @@ async function stopChrome(): Promise<number> {
   }
   const pid = Number(readFileSync(pidFile, "utf8").trim());
   if (!pid || !isProcessAlive(pid)) {
-    unlinkSync(pidFile);
+    removePidFiles(ws.root);
     process.stdout.write(`browxai chrome (pid ${pid}) no longer running; cleaned up pid file\n`);
     return 0;
   }
+  // chrome.pid is a plain file in the workspace. Signal the PID only when the
+  // process behind it is Chrome on this workspace's profile directory.
+  const profileDir = expectedProfileDir(ws.root);
+  const isOurChrome = (): boolean => {
+    const line = processCommandLine(pid);
+    return line !== undefined && looksLikeChrome(line, process.platform, profileDir);
+  };
+  const commandLine = processCommandLine(pid);
+  if (commandLine === undefined || !looksLikeChrome(commandLine, process.platform, profileDir)) {
+    const seen =
+      commandLine === undefined
+        ? "its command line could not be read"
+        : `its command line is not a Chrome launched with --user-data-dir=${profileDir}`;
+    process.stderr.write(
+      `not stopping pid ${pid} from ${pidFile}: ${seen}.\n` +
+        `If browxai's Chrome is still open, quit it by hand. Then delete ${pidFile}.\n`,
+    );
+    return 1;
+  }
   try {
     process.kill(pid, "SIGTERM");
-    // Give it a beat; if it's still alive, SIGKILL.
+    // Give it a beat. If it is still alive, SIGKILL, after checking again that
+    // the PID still belongs to that Chrome: it may have exited in the meantime
+    // and its number been handed to another process.
     await sleep(800);
-    if (isProcessAlive(pid)) process.kill(pid, "SIGKILL");
-    unlinkSync(pidFile);
+    if (isProcessAlive(pid)) {
+      if (isOurChrome()) process.kill(pid, "SIGKILL");
+      else
+        process.stderr.write(
+          `pid ${pid} no longer reads as that Chrome after SIGTERM; not sending SIGKILL.\n`,
+        );
+    }
+    removePidFiles(ws.root);
     process.stdout.write(`browxai chrome (pid ${pid}) stopped\n`);
     return 0;
   } catch (e) {

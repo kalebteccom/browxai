@@ -20,8 +20,9 @@ The `browxai` bin dispatches sub-commands; with no args it starts the MCP server
 - `browxai doctor`: environment + connectivity health-check (Node 22 or later? build present? workspace writable? `BROWX_TEST_ATTRIBUTES` set? `BROWX_ATTACH_CDP` reachable? a browser to launch: the installed Google Chrome, or the bundled Chromium when Chrome is absent?), plus a **plugins section**: `plugins.json` parseable, every declared plugin installed (drift → `browxai plugin sync`), no orphan installs in `plugins/node_modules/`, lock health (`plugins-lock.json` present, `contentSha256` pins match the installed contents, no stale pins), and per-plugin manifest sanity without executing any plugin code (`apiVersion` vs the runtime contract, namespace validity + uniqueness, declared capabilities ⊆ the enabled set, `dependsOn` resolvable + acyclic). `−` rows (e.g. no plugins declared) are informational, and an opt-in engine row that is not ready (firefox, webkit, android, electron) prints an `enable with:` line; any `✗` fails doctor. Exits 0 if all checks pass.
 - `browxai chrome start [--port N] [--profile NAME] [--force] [--insecure] [--disable-background-throttling]`: launch an attachable **installed Google Chrome** (not the bundled Chromium; it refuses when Chrome is not installed) on the workspace's default profile (`<workspace>/profile`, or `BROWX_DEFAULT_PROFILE`), the same profile persistent sessions use, or `<workspace>/profiles/NAME` with `--profile`. It refuses a profile another Chrome already holds (Chrome's `SingletonLock`), and `--force` launches anyway. PID stored at `$BROWX_WORKSPACE/chrome.pid`. `--insecure` opts into `--disable-web-security` (use only against test/dev targets). `--disable-background-throttling` launches with `--disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding`, so agents driving a backgrounded tab on this attach target keep full timer / `requestAnimationFrame` rate, the same knob as `open_session({ backgroundThrottling:"disabled" })`, applied at the launcher because an attached Chrome's flags are fixed at launch.
 - `browxai chrome login [--url URL] [--profile NAME] [--force]`: open the installed Chrome on the same profile with **no remote debugging port** and no automation flags, so a person can clear a bot-protection challenge and sign in with nothing attached to the browser. The cookies stay in the profile. Quit that Chrome when done (it is released only on quit), then browxai sessions on the profile reuse them. Same held-profile refusal and `--force` as `start`. See [Sites behind bot protection](https://browxai.com/guides/sites-behind-bot-protection/).
-- `browxai chrome stop` / `browxai chrome status`: clean teardown / liveness check.
+- `browxai chrome stop` / `browxai chrome status`: clean teardown / liveness check. `start` records the profile directory it launched on in `$BROWX_WORKSPACE/chrome.profile`, next to `chrome.pid`. `stop` confirms the process is that Chrome before stopping it: it reads the PID's command line (`/proc/<pid>/cmdline` on Linux, `ps` on macOS, `tasklist` on Windows) and sends no signal, exiting 1, when the command line cannot be read or is not a Chrome launched with `--user-data-dir=<the recorded profile directory>` (the workspace default profile when only an older `chrome.pid` exists; Windows reports the image name only, so the directory is not compared there). It reads the command line again before the SIGKILL that follows an ignored SIGTERM, and skips the SIGKILL when the PID no longer belongs to that Chrome.
 - `browxai init <workspace> [--test-attrs a,b,...] [--no-write]`: bootstrap a per-app workspace. Creates `<workspace>/.browxai/`, writes a workspace-scope `.mcp.json` with both managed + attached MCP entries, sniffs the consumer codebase for the dominant test-attribute convention and orders `BROWX_TEST_ATTRIBUTES` accordingly.
+- `browxai serve --socket <path>`: run the server on a Unix socket (or a Windows pipe name) instead of stdio. The socket is created owner-only (`0600`). A relative path is resolved to an absolute one, and a leftover file at the path is removed only when it is a socket. Anything else there, or a missing `--socket`, exits 2. A connection whose message line passes 32 MiB is closed.
 - `browxai plugin <sub>`: manage browxai plugins. Subcommands: `install <pkg>` / `remove <pkg>` / `list` / `info <pkg>` / `upgrade [<pkg>]` / `sync`. All ops write under the workspace root (the declarative `plugins.json`, the install dir at `plugins/`, and the auto-generated `plugins-lock.json` pin). Every command emits a "Server restart required" notice: plugin lifecycle is resolved-once-at-server-start. See `docs/plugins.md` and `docs/plugin-authoring.md`.
 
 ## Plugins
@@ -85,8 +86,9 @@ The `BROWX_*` env vars below remain honoured as a **legacy compatibility layer**
 | `BROWX_CAPABILITIES`                            | `read,navigation,action,human`          | Comma-separated list of capability categories enabled at server start. The list replaces the default set, so `BROWX_CAPABILITIES=eval` enables `eval` alone and every other tool is disabled; write `read,navigation,action,human,eval` to add one. Off-by-default: `eval` (`eval_js` + `poll_eval` tools), `byob-attach` (every `attached` session: `BROWX_ATTACH_CDP`, the `android` and `electron` engines; refused with `requiredCapability: "byob-attach"` without it), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect; observability still works without it), `file-io` (`upload_file` tool), `secrets` (per-session sensitive-data registry + egress masking), `extensions` (per-session unpacked-Chromium-extension management, headed + persistent only), `self-approval` (`approve_actions`), `human-gate-override` (lets `set_permission_policy` / `set_fs_picker_policy` / `set_notification_policy` move a policy off `ask-human`, and `open_session` reopen a name that held `ask-human` with a policy that leaves it; gates no tool), `operator-channel` (sends `await_human`, the confirm hooks and the permission / notification `ask-human` prompts to the host daemon's socket; gates no tool, see `BROWX_OPERATOR_SOCKET`), `live-view` (lets the daemon on that socket start a screencast of a session; needs `operator-channel`, gates no tool, see [Live view](#live-view-operator-channel)). A disabled tool returns a structured error on call. This is also the ceiling for a saved `capabilities` list, which can only narrow it. |
 | `BROWX_CONFIRM_REQUIRED`                        | `navigate_off_allowlist,byob_action`    | Comma-separated list of policy hooks that route through `await_human({kind:"confirm"})` before dispatch. Valid: `navigate_off_allowlist`, `file_download`, `file_upload`, `byob_action`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `BROWX_OPERATOR_SOCKET`, `BROWX_OPERATOR_TOKEN` | _(unset)_                               | The host daemon's Unix socket and the shared secret that authenticates it. Both are read once at start, removed from the environment, and used only when the off-by-default `operator-channel` capability is on; with the capability on and either missing the server refuses to start, and with it off both are ignored with a warning. The socket must be mode `0600` in a `0700` directory owned by the user running browxai, else the server refuses to start. The token must be at least 16 characters. Neither value appears in any log, error or tool result. See [`docs/threat-model.md`](./threat-model.md) section 7.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `BROWX_ALLOWED_ORIGINS`                         | _(unset)_                               | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary**; see threat model.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `BROWX_BLOCKED_ORIGINS`                         | _(unset)_                               | Comma-separated blocklist; overrides the allowlist.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `BROWX_ALLOWED_ORIGINS`                         | _(unset)_                               | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary**; see threat model. An entry without a port matches the scheme's default port only (80 for `http`, 443 for `https`); an entry with a port matches that port. `navigate` checks the landed URL too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `BROWX_BLOCKED_ORIGINS`                         | _(unset)_                               | Comma-separated blocklist; overrides the allowlist. Entries match ports as for the allowlist: no port means the default port only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `BROWX_CREDENTIAL_ORIGINS`                      | _(unset)_                               | Origins each `get_credential` account may be typed into, as `acct=https://a.example\|https://b.example,other=host`: `,` between accounts, `\|` between origins, each origin in the `register_secret` scope form. `get_credential` refuses an account that is not listed, before the vault is asked. An entry that does not parse is ignored with a startup warning. Read at start; restart after changing it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `BROWX_DISABLE_WEB_SECURITY`                    | _(unset)_                               | `1` launches managed/incognito sessions with SOP/CORS off (see `disableWebSecurity`). The only way to turn it on.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `BROWX_PLUGINS`                                 | _(unset)_                               | Comma-separated plugin names a saved `plugins` config list may name. `plugins.json` (written by `browxai plugin install`) is unaffected.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `BROWX_CONFIG_READONLY`                         | _(unset)_                               | `1` (or `true`) leaves `set_config`, `reset_config` and `approve_actions` out of `tools/list` and makes the config store refuse writes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -135,15 +137,15 @@ The pool holds at most `BROWX_ATTACH_POOL_MAX` sessions per endpoint (default 8)
 
 **Session engine** (`open_session({ engine })`): pick the browser engine per session. Omit it to inherit the server default (`--engine` / `BROWX_ENGINE` / `createServer({ browserType })`, else `chromium`), byte-identical to before. A single server can hold sessions on different engines at the same time (`list_sessions` reports each session's `engine`), and the capability gate is per session: the CDP-deep tools run on a chromium session and structured-refuse on a firefox/webkit one in the **same** server. Need a Chromium-only tool while on Firefox? Open a second `engine:"chromium"` session instead of restarting the server. An unimplemented engine is refused with a structured `{ ok:false, code:"unknown-engine", implementedEngines }`, never a silent fallback. Engine × mode:
 
-| engine               | `persistent` / `incognito`                                                                                       | `attached`                                                                                                  | omitted-mode default                                |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `chromium`           | ✅                                                                                                               | ✅ with `BROWX_ATTACH_CDP` and `byob-attach` (else `byob-attach-endpoint-required` / `capability-required`) | `attached` if `BROWX_ATTACH_CDP`, else `persistent` |
-| `firefox` / `webkit` | ✅                                                                                                               | refuses (`firefox`/`webkit-attach-not-supported`; no CDP/BiDi attach client yet)                            | same as chromium                                    |
-| `android`            | refuses (`android-launch-not-supported`, attach-only)                                                            | ✅ over adb discovery (no `BROWX_ATTACH_CDP`), with `byob-attach`                                           | `attached` (android is attach-only)                 |
-| `safari`             | `persistent` ✅, `incognito` refuses                                                                             | refuses (`safari-attach-not-supported`)                                                                     | same as chromium                                    |
-| `ios-app`            | `persistent` ✅, `incognito` refuses                                                                             | refuses (`ios-app-attach-not-supported`)                                                                    | same as chromium                                    |
-| `android-app`        | `persistent` ✅ (leases a live device), `incognito` refuses (`native-incognito-not-supported` — use `app_reset`) | refuses; the device lease IS the attach                                                                     | `persistent`                                        |
-| `electron`           | refuses (`electron-launch-not-supported`, attach-only)                                                           | ✅ with `BROWX_ATTACH_CDP` pointed at the app's `--remote-debugging-port`, with `byob-attach`               | `attached` (electron is attach-only)                |
+| engine               | `persistent` / `incognito`                                                                                       | `attached`                                                                                                                                            | omitted-mode default                                |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `chromium`           | ✅                                                                                                               | ✅ with `BROWX_ATTACH_CDP` and `byob-attach` (else `byob-attach-endpoint-required`, or the standard refusal with `requiredCapability: "byob-attach"`) | `attached` if `BROWX_ATTACH_CDP`, else `persistent` |
+| `firefox` / `webkit` | ✅                                                                                                               | refuses (`firefox`/`webkit-attach-not-supported`; no CDP/BiDi attach client yet)                                                                      | same as chromium                                    |
+| `android`            | refuses (`android-launch-not-supported`, attach-only)                                                            | ✅ over adb discovery (no `BROWX_ATTACH_CDP`), with `byob-attach`                                                                                     | `attached` (android is attach-only)                 |
+| `safari`             | `persistent` ✅, `incognito` refuses                                                                             | refuses (`safari-attach-not-supported`)                                                                                                               | same as chromium                                    |
+| `ios-app`            | `persistent` ✅, `incognito` refuses                                                                             | refuses (`ios-app-attach-not-supported`)                                                                                                              | same as chromium                                    |
+| `android-app`        | `persistent` ✅ (leases a live device), `incognito` refuses (`native-incognito-not-supported` — use `app_reset`) | refuses; the device lease IS the attach                                                                                                               | `persistent`                                        |
+| `electron`           | refuses (`electron-launch-not-supported`, attach-only)                                                           | ✅ with `BROWX_ATTACH_CDP` pointed at the app's `--remote-debugging-port`, with `byob-attach`                                                         | `attached` (electron is attach-only)                |
 
 The two native engines are documented together under **Native app control** below.
 
@@ -745,7 +747,7 @@ Recent console messages (ring buffer). For per-action attribution, use `ActionRe
 
 **Inputs:** `{ limit?: number (default 50, max 500) }`
 
-**Output:** JSON array of `{ ts, type, text }`.
+**Output:** JSON array of `{ ts, type, text }`. A message longer than 8,192 characters is stored cut to that length and ends in `… [truncated N chars]`.
 
 **Example.**
 
@@ -818,7 +820,7 @@ watch({ durationMs: 5000 })
 
 ### `network_body` _(gated)_
 
-Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default**: requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast, so fetch right after the request; not retained across navigations.
+Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default**: requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast, so fetch right after the request; not retained across navigations. On Firefox and WebKit the body is read when you ask for it, and only if its size is known and within the cap: a response whose `content-length` (or finished transfer size) is over 256 KB, or unknown, comes back as `{ ok:false, truncated:true, error }` and is not read. A compressed response must be under 32 KB on the wire.
 
 Why gated: full bodies routinely carry PII / auth tokens. The `responseShape` (top-level keys only) is the safe default for "did the mutation write back the right shape"; `network_body` is the higher-risk debugging escape hatch for "assert this exact field value" (e.g. a realtime broadcast payload, paired with `ws_read`).
 
@@ -1344,7 +1346,7 @@ fill_form({
 //   and `element` = the submit click's probe.
 ```
 
-**Atomic pre-resolution.** Every field's target, and the submit target if supplied, is resolved BEFORE any DOM write lands. If any target fails to resolve (unknown ref, selector that matches zero nodes, scoped secret rejected because the page URL doesn't match the scope, …), the call returns `ok:false` with a structured `fieldResolution: [{ index, targetSummary, ok, error? }]` block listing every field's outcome, and **NO partial fills happen**. The agent gets a single "this form isn't ready" signal instead of a half-filled form to recover from.
+**Atomic pre-resolution.** Every field's target, and the submit target if supplied, is resolved BEFORE any DOM write lands. If any target fails to resolve (unknown ref, selector that matches zero nodes, scoped secret rejected because the field's frame origin doesn't match the scope, …), the call returns `ok:false` with a structured `fieldResolution: [{ index, targetSummary, ok, error? }]` block listing every field's outcome, and **NO partial fills happen**. The agent gets a single "this form isn't ready" signal instead of a half-filled form to recover from.
 
 **Sequential dispatch.** Once resolution succeeds, fields are filled in array order via the same Playwright `.fill()` path the single-field primitive uses. The first per-field error stops the loop; later fields are reported as `skipped` on `fillFailure: { atIndex, skipped: number[] }` so the agent can see how far the dispatch got. Submit is skipped on any per-field error (no submitting a partially-filled form).
 
@@ -1548,8 +1550,9 @@ on-disk trace, preserving the no-trace contract.
 #### `download_get({ id, pathOnly?, session? })`
 
 - `id: string`: download id from `ActionResult.downloads[].id`.
-- `pathOnly?: boolean`: omit the base64 payload, return only path + metadata.
+- `pathOnly?: boolean`: omit the base64 payload, return only path + metadata. The file is not read.
 - → `{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`.
+- A file over 16 MiB is not returned inline. The call fails with an error that names the limit and the saved path, and `pathOnly:true` still returns the path.
 
 **Example (the whole pipeline).**
 
@@ -1603,7 +1606,9 @@ Filenames are derived from the URL path basename, percent-decoded, and
 **sanitised**: no path separators, no NUL/control bytes, no leading dots,
 length-capped, all-stripped names fall back to `"asset"`. Two responses with
 the same basename are collision-resolved with a `-N` suffix
-(`logo.png`, `logo-1.png`, …).
+(`logo.png`, `logo-1.png`, …). Files are created exclusively: a name that
+already exists in `intoDir`, from an earlier export or anything else, is never
+replaced and moves on to the next free `-N` name.
 
 **Example.**
 
@@ -1723,7 +1728,7 @@ synthetic IDs; each entry is keyed by its `(cacheName, url)` pair.
 
 - `caches_list_storages({ session? })` → `{count, names:[…], origin}` (`caches.keys()`).
 - `caches_list({ cacheName, urlPattern?, session? })` → `{count, entries:[{url, method}], origin, cacheName}`. `urlPattern` is a case-sensitive substring filter on each entry's request URL (no regex; post-filter the result for richer matching).
-- `caches_get({ cacheName, url, session? })` → text-like content-types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, anything with `charset=`) arrive as `{found:true, kind:"text", text, contentType, status, headers}`; everything else as `{found:true, kind:"binary", contentBase64, byteLength, …}`. `{found:false}` when no entry matches the URL.
+- `caches_get({ cacheName, url, session? })` → `{found:true, kind, contentType, status, headers, byteLength, cacheName, url, origin}`. The response body rides the off-by-default `network-body` capability, as `network_body` does. With it, text-like content-types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, anything with `charset=`) add `text` (`kind:"text"`) and everything else adds `contentBase64` (`kind:"binary"`). Without it the body is left out and the result carries `bodyOmitted:true`, `requiredCapability:"network-body"` and a `hint`. `{found:false}` when no entry matches the URL.
 - `caches_put({ cacheName, url, response:{ status?, headers?, body? | contentBase64? }, session? })`: auto-opens (= creates) the named cache storage. `response.body` is a UTF-8 string; for binary content pass `response.contentBase64` instead. The two are mutually exclusive. Default `status` 200.
 - `caches_delete({ cacheName, url, session? })` → `{ok, existed}` (idempotent).
 - `caches_clear({ cacheName, session? })` → `{ok, cleared:N}` (cache storage itself remains).
@@ -2282,21 +2287,23 @@ Override the page's `Math.random` with a Mulberry32 PRNG seeded from a caller-su
 
 Full-session reproducibility: capture every request the page made into a HAR (HTTP Archive) file, then later replay a session against that archive instead of the live network. Two recording entrypoints + one replay entrypoint:
 
-- `start_har({ path?, mode?, content?, urlFilter?, session? })`: begin HAR recording on a live session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is logged into an in-memory HAR. **`path`** is workspace-rooted (path traversal outside `$BROWX_WORKSPACE` is rejected); default is `<workspace>/har/<session-id>-<ISO>.har`. **`mode`** = `"full"` (default, full HAR with sizes/timing/cookies) or `"minimal"` (just enough for `routeFromHAR` to replay). **`content`** = `"embed"` (default: bodies inlined), `"attach"` (sidecar files / `.zip` entries), or `"omit"` (drop bodies). **`urlFilter`** narrows to matching requests. → `{ ok, session, path, mode, content, replacedPrior, finalizesOn:"close_session", hint, tokensEstimate }`. Re-calling `start_har` while a recorder is active transparently stops the prior one and swaps targets (`replacedPrior:true`). Capability `action`.
+- `start_har({ path?, mode?, content?, urlFilter?, session? })`: begin HAR recording on a live session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is logged into an in-memory HAR. **`path`** is a workspace-rooted `.har` path (a path outside `$BROWX_WORKSPACE`, or a `.zip` path, is rejected); default is `<workspace>/har/<session-id>-<ISO>.har`. **`mode`** = `"full"` (default, full HAR with sizes/timing/cookies) or `"minimal"` (just enough for `routeFromHAR` to replay). **`content`** = `"omit"` (default: no bodies), `"embed"` (bodies inlined) or `"attach"` (sidecar files). `embed` and `attach` write request and response bodies to disk, so they also need the off-by-default `network-body` capability; without it the call is refused with `requiredCapability: "network-body"`. **`urlFilter`** narrows to matching requests. → `{ ok, session, path, mode, content, replacedPrior, finalizesOn:"close_session", hint, tokensEstimate }`. Re-calling `start_har` while a recorder is active transparently stops the prior one and swaps targets (`replacedPrior:true`). Capability `action`.
 - `stop_har({ session? })`: remove the HAR recording route so further requests aren't logged. → `{ ok, session, wasActive, path?, finalized:false, nativeRecord, har?, inlineBytes?, hint, tokensEstimate }`. If the file is already on disk _and_ under ~256 KB, it's also inlined on the result. Capability `action`.
-- `open_session({ har: { path?, mode?, content?, urlFilter? } })`: wire HAR at context creation via Playwright's native `recordHar` option (the blessed primitive when you know up-front you want a HAR for the whole session). Honoured on `persistent` + `incognito`; ignored on `attached` (consumer's Chrome is not-owned; a runtime `start_har` is the BYOB path). Once wired this way, `start_har` refuses, and `stop_har` reports the constraint and a no-op (the native primitive can't be toggled off mid-session). `stop_har` will return `nativeRecord:true` here.
+- `open_session({ har: { path?, mode?, content?, urlFilter? } })`: wire HAR at context creation via Playwright's native `recordHar` option (the blessed primitive when you know up-front you want a HAR for the whole session). `content` defaults to `"omit"` and needs `network-body` for `embed` / `attach`, as on `start_har`. Honoured on `persistent` + `incognito`; ignored on `attached` (consumer's Chrome is not-owned; a runtime `start_har` is the BYOB path). Once wired this way, `start_har` refuses, and `stop_har` reports the constraint and a no-op (the native primitive can't be toggled off mid-session). `stop_har` will return `nativeRecord:true` here.
 - `open_session({ hars: ["a.har", "b.har", …] })`: REPLAY one or more HAR files against the new session. Each file is wired with `context.routeFromHAR(file, {notFound:"fallback"})` immediately post-create: requests in the archive are served from it, anything missing falls through to live network. Workspace-rooted paths only; a missing file errors (no silent fallback on a typo). Compose multiple HARs to layer fixtures.
 
 **Finalize timing**: Playwright writes the .har file on `context.close()`. There is no public mid-session flush. The canonical flow is **`start_har` → drive the page → `stop_har` (optional) → `close_session` → read the .har from disk**. Both `start_har` and `open_session({har})` honour this; every result carries `finalizesOn:"close_session"` so the constraint is visible to the agent rather than implicit.
+
+**Credential headers and secrets on close**: when the session closes and the file is written, browxai rewrites it: the `Cookie`, `Set-Cookie` and `Authorization` header values (and the `cookies` arrays Playwright parses from them) are emptied with the names kept, and with `secrets` on, registered values become `<NAME>` in header values, URLs, query values, request bodies and text response bodies, including text sidecar files beside a `.har`. Without `network-body`, request bodies are emptied as well: `postData.text` is removed and `postData.params` is set to `[]`, because Playwright writes urlencoded form values there even with `content:"omit"`. With `network-body` on, request bodies are kept (masked) as before. Base64 bodies are left as written. A `.zip` HAR path is refused by `start_har` and `open_session({har})`; use a `.har` path. Every file a session recorded to (a second `start_har` adds one) is scrubbed on close. Replaying a scrubbed HAR serves responses without those header values.
 
 **Re-recording within a session**: `stop_har` then `start_har` again with a fresh `path` works cleanly; on the runtime path the prior recorder is transparently flushed before the new one wires. On the native (`open_session({har})`) path the recorder is locked to the session's lifetime; close + reopen the session to swap.
 
 **Inline cap**: `stop_har` inlines the .har on the result when the file exists and is ≤ ~256 KB; otherwise the caller reads it from `path` after `close_session`.
 
-**Example (record once, replay forever).**
+**Example (record once, replay forever).** Replay serves the bodies the archive holds, so record with `content: "embed"` (needs `network-body`). A HAR recorded with the default `omit` replays empty bodies.
 
 ```jsonc
-start_har({ path: "har/checkout.har", urlFilter: "**/api/**" })
+start_har({ path: "har/checkout.har", content: "embed", urlFilter: "**/api/**" })
 // …drive the checkout flow…
 stop_har({})
 close_session({ session: "default" })   // finalizes the file on disk
@@ -2309,7 +2316,7 @@ open_session({ session: "replay", hars: ["har/checkout.har"] })
 
 Record every page in the session as a `.webm` via Playwright's native `recordVideo` context option. The same shape as the native HAR path (`open_session({har})`): video is wired at context creation and finalized when the context closes. Playwright does NOT expose a runtime start or a mid-context flush, so the tool surface is the symmetric stop + read pair rather than start/stop. Capability `file-io` (sibling to `upload_file` / `download_get`).
 
-- `open_session({ recordVideo: { path?, size? }, … })`: wire video at context creation via Playwright's native `recordVideo` option. **`path`** is workspace-rooted (path traversal outside `$BROWX_WORKSPACE` is rejected); default is `<workspace>/videos/<session-id>-<ISO>.webm`. **`size`** is `{width, height}` (Playwright's option; defaults to viewport scaled to fit 800x800). Honoured on `persistent` + `incognito` (we own the context); **refused on `attached`** with a structured error (the consumer's Chrome is not-owned, so we don't wire context-creation primitives on it). Returns a `video: { path, size?, finalizesOn:"close_session" }` field on the `open_session` result.
+- `open_session({ recordVideo: { path?, size? }, … })`: wire video at context creation via Playwright's native `recordVideo` option. **`path`** is workspace-rooted (a path outside `$BROWX_WORKSPACE` is rejected); default is `<workspace>/videos/<session-id>-<ISO>.webm`. **`size`** is `{width, height}` (Playwright's option; defaults to viewport scaled to fit 800x800). Honoured on `persistent` + `incognito` (we own the context); **refused on `attached`** with a structured error (the consumer's Chrome is not-owned, so we don't wire context-creation primitives on it). Returns a `video: { path, size?, finalizesOn:"close_session" }` field on the `open_session` result.
 - `stop_video({ session? })`: signal that the recording should be finalized. **The.webm is written to disk only when the session closes** (`close_session`). Playwright provides no mid-context flush on the native `recordVideo` primitive. This call marks the recorder as `pendingFinalize:true` and returns the reserved target path; the actual file appears on disk after `close_session`. → `{ ok, session, wasActive, path?, pendingFinalize, finalized:false, finalizesOn:"close_session", hint, tokensEstimate }`. Returns a structured error on `attached` sessions or when no recorder is active. Capability `file-io`.
 - `get_video({ format?, session? })`: read the finalized video off disk. `format:"path"` (default) returns the absolute path + on-disk size. `format:"bytes"` additionally inlines as base64 when the file is under ~1 MiB; larger files return path + `tooLargeToInline:true` so the caller reads them off disk. → `{ ok, session, path, bytes, format, videoBase64?, tooLargeToInline?, hint, tokensEstimate }`. Returns a structured error when the file isn't yet on disk (the get-before-`close_session` case, pointing the caller at `close_session`), on `attached` sessions, or when no recorder was wired. Capability `file-io`.
 
@@ -2455,7 +2462,7 @@ poll_eval({ expr: "window.__jobs?.pending === 0", intervalMs: 500, timeoutMs: 10
 - `screenshot_marks({ candidates, label?, session? })`: composed PNG with numbered bounding boxes painted over the supplied candidates: the set-of-marks primitive multimodal agents reach for when they want to ground a vision read against a small palette of stable refs ("click 2" instead of estimating a coordinate). Each candidate is either a bare `{ref}` (looked up against the current snapshot for its bbox) OR a full `find()` candidate row passed through (`{ref, role, name, testId, bbox}`: fast path, no extra tree walk). `label` is `"index"` (default) → paints 1..N array positions, `"ref"` → paints the existing `eN`, `"role"` → paints the role for visual grounding. The numbering scheme **shares the existing `name_ref` / `eN` namespace**, with no parallel ID space, so the result's `mapping[index] === ref` and an agent can address either way (`click({ref: mapping[2]})`). Candidates with `bbox:null` (clipped / off-screen) are kept in `marks` with `painted:false` so the mapping stays complete. Image-library choice: a transient in-page DOM overlay drawn over the viewport, screenshot taken, overlay removed: dependency-free (browxai has no Node-side image library in `dependencies`) and running in the same coordinate space `find().evidence.bbox` reports. → `{ marks:[{index, ref, role?, name?, testId?, bbox, painted}], mapping:{"1":"eN", …}, warnings }` + the PNG.
 - `name_region({ name, box, session? })` / `region({ name, session? })`: bind a viewport rectangle to a mnemonic and resolve it back to `{ box, center }`; pass `center` to `click({coords})` to act on the same media segment without coordinate drift across a sub-agent's select→copy→re-check. Example: `name_region({ name: "clip_4", box: { x: 220, y: 410, width: 80, height: 32 } })`, then `region({ name: "clip_4" })` → `{ box, center: { x: 260, y: 426 } }` → `click({ coords: center })`.
 - `cross_session_sample({ action, actionSession, sampleSession, metric, durationMs, … })`: drive an action in one session and trace a metric in **another** over the same window, in one call, for realtime-propagation assertions ("an action in session A should reflect in session B"). → `{ action, sample }`.
-- `export_session_report({ note?, session? })`: bundle a session's QA evidence (url, console errors, recent network summary, named regions, live sessions, `note`) into one JSON object for auditable multi-agent QA. Returned, not written to disk. When a `start_recording({replay})` writer completed on this session, the report links the resulting archive under `replayArtifact: { path, absolutePath }` — the archive carries real page content and is as sensitive as the session was, so treat it accordingly.
+- `export_session_report({ note?, session? })`: bundle a session's QA evidence (url, redacted like `network_read` URLs: no query string, fragment or userinfo; console errors, recent network summary, named regions, live sessions, `note`) into one JSON object for multi-agent QA review. Returned, not written to disk. When a `start_recording({replay})` writer completed on this session, the report links the resulting archive under `replayArtifact: { path, absolutePath }` — the archive carries real page content and is as sensitive as the session was, so treat it accordingly.
 - `session_metrics({ session? })` returns a per-session cumulative tool-call rollup: `callsByTool`, `durationMsByTool`, `errorsByTool`, `tokensEstimateSum`, `capabilityDenials`, `sessionStartedAt`, `sessionDurationMs`. Pair with `export_session_report` for a full audit pass: that one is **QA evidence** (what the page looked like / what fired); this one is **dispatch evidence** (what the agent ran, how expensive it got, what got denied). Read-only: it piggybacks on the per-call envelope data the server already has; no new instrumentation, no per-call disk writes. Capability denials (gate-blocked calls) are counted as a session-wide scalar: the denial shape is a property of the capability config, not the tool, and the count alone is the actionable signal. Per-tool `errors` count `ok:false` results that were NOT denials. Note: this is dispatch-level rollup; for an **rrweb-based session-replay artifact** (a la Browserbase) use `start_recording({replay})` / `end_recording` behind the off-by-default `replay` capability. `export_session_report` covers the JSON-evidence half of the pairing and links the artifact under `replayArtifact` when one exists.
 
 ### `export_playwright_script({ path?, session? })`
@@ -2628,20 +2635,34 @@ capability**, the same posture class as `eval` / `network-body` /
 - `value`: the real secret. Stored per-session in memory only; never
   persisted, never logged. The registry never echoes it back, even on
   registration confirmation.
-- `scope?`: optional URL substring (case-insensitive). When set,
-  dispatch-side substitution **refuses** if the current page URL doesn't
-  contain the scope (prevents cross-origin leak). Egress masking is global
-  regardless of scope.
+- `scope?`: optional origin, or a list of origins. Each entry is an origin
+  (`https://app.example.com`, `http://localhost:3000`, `app://com.acme.app`
+  for a native app) or a bare host (`app.example.com`, `app.example.com:8443`)
+  meaning `https://` on that host. A path, query, fragment, credentials or a
+  `*` wildcard is refused at registration. When set, dispatch-side
+  substitution **refuses** unless the origin of the frame that receives the
+  value matches an entry exactly: same scheme, same host, same port. There
+  are no subdomain rules: `app.example.com` does not match
+  `login.app.example.com`. The receiving frame is the one that owns the
+  `fill` / `press` target element (so a field inside an iframe is checked
+  against the iframe's origin), or the focused frame for a targetless
+  `press`. The value is then typed into that same element, and its frame's
+  URL is read again right before typing: if the frame moved to another
+  origin in between, the action returns `ok:false` and nothing is typed. A
+  targetless `press` re-checks the focused frame the same way. Frames with no
+  origin to name (`about:blank`, `about:srcdoc`, `data:`) never match. Egress
+  masking is global regardless of scope.
 
-**Returns:** `{ ok, registered, scope, names, tokensEstimate }`. `names`
-echoes the live alias list (NOT values).
+**Returns:** `{ ok, registered, scope, origins, names, tokensEstimate }`.
+`origins` lists the normalised origins the scope matches (`null` when
+unscoped). `names` echoes the live alias list (NOT values).
 
 **Example.**
 
 ```jsonc
 register_secret({ name: "PASSWORD", value: "s3cr3t-hunter2", scope: "app.example.com" })
 // → { "ok": true, "registered": "PASSWORD", "scope": "app.example.com",
-//     "names": ["PASSWORD"], "tokensEstimate": 38 }
+//     "origins": ["https://app.example.com"], "names": ["PASSWORD"], "tokensEstimate": 52 }
 fill({ selector: "input[type=password]", value: "<PASSWORD>" })
 // every subsequent tool result shows <PASSWORD>, never the real value
 ```
@@ -2667,7 +2688,7 @@ scanned on the way out:
 | `ActionResult.network.mutations[].urlPattern` + `responseShape`               | masked                                                                                   |
 | `ActionResult.network.wsFrames[].payload` + `url`                             | masked                                                                                   |
 | `network_read.requests[].url` (session ring)                                  | masked                                                                                   |
-| `network_body.body` (response body)                                           | masked: JSON / text only; base64 bodies pass through unchanged (see below)               |
+| `network_body.body` (response body)                                           | masked: JSON / text; base64 bodies only where the value's own base64 appears (see below) |
 | `ws_read.frames[].payload` + `.url`                                           | masked                                                                                   |
 | `console_read.recent[].text` + `errors` + `pageErrors`                        | masked                                                                                   |
 | `snapshot()` tree (a11y node names)                                           | masked                                                                                   |
@@ -2680,7 +2701,22 @@ scanned on the way out:
 | `verify_count` / `verify_visible` / `verify_predicate`, `failure.actual`      | masked (deep-walk)                                                                       |
 | `act_and_diff().diff` (classDelta / styleDelta / attrDelta values)            | masked (deep-walk); covers `aria-*` / `data-*` attribute values + inline-style values    |
 | `watch()` regions / network / WS over the watch window                        | masked (NetworkTap takes the secrets registry; result deep-walked)                       |
+| `extract`, `shadow_trees`, `cookies_get`, `idb_get`, `caches_get` page data   | masked (every tool result, see below)                                                    |
+| any other tool's text result                                                  | masked (every tool result, see below)                                                    |
 | `screenshot()` (image bytes)                                                  | **partial, warning only**, see below                                                     |
+
+**Every tool result.** On top of the per-sink masking above, every
+registered tool's result goes through one more pass on the way out: each
+text item has registered values replaced with `<NAME>`. A JSON result is
+parsed and its string values, object keys and any number whose digits hold
+a value are masked, then it is written back in the same layout, so a value
+that JSON encoding changed is caught and the document stays valid. Such a
+number is replaced as a whole by the string `"<NAME>"`, so its type changes
+from number to string; other numbers stay numbers. A result with no
+registered value in it is returned untouched without being parsed, so
+already-masked sinks cost one substring scan. Image items are not touched.
+This pass covers every session's registered values, and it runs only when
+the `secrets` capability is on.
 
 **Masking guarantees.** The egress layer composes with the existing
 URL sanitiser at the same boundary: URL sanitiser runs first (regex on URL
@@ -2696,6 +2732,12 @@ Longest-value-first: when two registered values overlap (one is a
 substring of another), the longer one is masked first, so a partial leak
 of the shorter alias is impossible.
 
+Encoded forms: a value of 6 characters or more is also masked where it
+appears percent-encoded (`encodeURIComponent`, and the form-body encoding
+that writes a space as `+`) or as its own base64 or base64url encoding,
+padded or not. A shorter value is masked only as typed, since its encodings
+are short enough to turn up by chance.
+
 **Limitations** (enumerated for the threat model):
 
 1. **`screenshot()` is a partial sink.** PNG/JPEG bytes are not OCR'd
@@ -2705,16 +2747,20 @@ of the shorter alias is impossible.
    of the bounding boxes that contain a matched value) is a typed seam for
    v0.2.x. For verified-clean evidence, prefer `snapshot()` / `find()` /
    `text_search()` (all fully masked) over a screenshot.
-2. **Base64 response bodies pass through unchanged in `network_body`.** A
-   literal-substring scan can't match an encoded form. Decode + re-mask on
-   the agent side if you fetch base64 bodies that may carry a secret. The
-   common case (JSON / text) is fully masked.
+2. **Base64 response bodies pass through `network_body` mostly unchanged.**
+   The body is masked only where the value's own base64 appears at an
+   encoding boundary. A value inside a larger encoded string is usually not
+   found: base64 of `user:password` (`Authorization: Basic …`), a binary body,
+   or a value at an offset that shifts its encoding. A prefix whose length is
+   a multiple of 3 bytes (`alice:`) keeps the boundary, so that tail is masked. Decode + re-mask on the agent
+   side if you fetch base64 bodies that may carry a secret. The common case
+   (JSON / text) is fully masked.
 3. **Cap is 32 secrets per session.** Bounded so the per-sink scan stays
    O(secrets × text-len) reasonable; realistic auth flows fit well under.
 4. **`scope` narrows dispatch, not egress.** Scoped secrets won't be
-   substituted into a `fill` on a wrong-origin page (refused with a clear
-   error), but if a registered value reaches a sink for any reason, it's
-   masked regardless of scope.
+   substituted into a `fill` in a frame on another origin (refused with a
+   clear error), but if a registered value reaches a sink for any reason,
+   it's masked regardless of scope.
 
 **Capability gate.** Off by default. Add `secrets` to
 `BROWX_CAPABILITIES` to enable. A one-time loud warning fires at server
@@ -2763,6 +2809,25 @@ Optional CLI-path overrides (when the binary lives outside PATH):
 `BROWX_OATHTOOL_BIN`, `BROWX_1PASSWORD_BIN`, `BROWX_BITWARDEN_BIN`,
 `BROWX_LASTPASS_BIN`.
 
+Per-account origins for `get_credential`, in the same `account=value,…`
+form as the seeds, with `|` between origins. `get_credential` needs the
+account listed here; an unlisted account is refused before the vault is
+asked:
+
+```
+BROWX_CREDENTIAL_ORIGINS="acme=https://app.acme.com|https://sso.acme.com,other=other.example"
+```
+
+Each origin takes the `register_secret` scope forms. An account whose list
+has an entry that does not parse is ignored with a startup warning, so it is
+refused like an unlisted one. The variable is read at start: restart browxai
+after changing it.
+
+**Account names.** `account` must start with a letter or digit and use only
+letters, digits, space and `. _ @ + : / -`, at most 128 characters. Anything
+else is refused before the vault is asked; use the vault item's id for a
+name with other characters.
+
 ### `get_totp({ account })`
 
 Look up a one-time TOTP code. Returns `{ok, code, provider}` on success;
@@ -2781,13 +2846,18 @@ verify-step flow. The agent passes the code directly to
 ### `get_credential({ account, session? })`
 
 Look up a `{username, password}` pair. Returns `{ok, username, aliasName,
-provider}` on success, **never the cleartext password**. The password is
+origins, provider}` on success, **never the cleartext password**. The password is
 auto-registered into the per-session secrets registry under
-`<PASSWORD_<account>>` (account sanitised to `/^[A-Z][A-Z0-9_]*$/`). The
-agent then drives:
+`<PASSWORD_<account>>` (account sanitised to `/^[A-Z][A-Z0-9_]*$/`), scoped
+to `origins`: the account's `BROWX_CREDENTIAL_ORIGINS` list. `fill` then
+materialises the password only into a frame on one of those origins. An
+account with no `BROWX_CREDENTIAL_ORIGINS` entry is refused before the vault
+is asked; the error names the variable and the account and gives an example
+value. With `acme-corp=https://app.acme.com` set, the agent drives:
 
 ```
-get_credential({account:"acme-corp"}) → {username:"alice@…", aliasName:"PASSWORD_ACME_CORP"}
+navigate({url:"https://app.acme.com/login"})
+get_credential({account:"acme-corp"}) → {username:"alice@…", aliasName:"PASSWORD_ACME_CORP", origins:["https://app.acme.com"]}
 fill({selector:"input[name=username]", value:"alice@…"})
 fill({selector:"input[name=password]", value:"<PASSWORD_ACME_CORP>"})
 ```
@@ -2808,16 +2878,16 @@ transcript on first reference). Enable both:
   credential-bearing provider, OR `await_human` for the username/password
   half and `get_totp` for the TOTP half.
 - `1password` reads the `username` + `password` labelled fields via
-  `op item get <account> --fields label=username,label=password --format json`.
+  `op item get --fields label=username,label=password --format json -- <account>`.
 - `bitwarden` reads `login.username` + `login.password` via
-  `bw get item <account>`.
-- `lastpass` reads via `lpass show --username --password <account>`.
+  `bw get item -- <account>`.
+- `lastpass` reads via `lpass show --username --password -- <account>`.
 
 **Posture.** Off by default; loud one-time warning at server boot when the
 capability is on. Provider is per-deployment, never bundled, never
 auto-installed. All shell invocations use fixed argv (no shell
-interpolation, account name passed as a discrete argv element; no
-injection surface). 5-second wall-clock timeout per call so a hung CLI
+interpolation, account name passed as a discrete argv element after `--`,
+and an account name can never start with `-`). 5-second wall-clock timeout per call so a hung CLI
 can't block tool dispatch.
 
 ## Extensions registry (capability `extensions`)
@@ -2988,6 +3058,8 @@ provider, funds the account, and sets the env vars:
   an `https` URL, because the API key and the challenge go to it. Plain `http`
   is accepted only for `127.0.0.1`, `::1` and `localhost`; any other base makes
   the tool return an error that names the variable.
+  A redirect on the submit or poll call ends the solve with an error naming
+  `BROWX_CAPTCHA_API_BASE`, because the request carries the API key.
 - `BROWX_CAPTCHA_TIMEOUT_MS` (optional, default `120000`): per-attempt
   deadline.
 - `BROWX_CAPTCHA_POLL_MS` (optional, default `5000`): poll interval.
@@ -3612,7 +3684,7 @@ These take a session and drive the device it leased. They are ONE surface over b
 | `app_reset({ appId, session? })`                 | clears data **and** granted runtime permissions               | **refuses** — iOS has no per-app clear; `erase` wipes every app |
 | `app_foreground({ session? })`                   | `{appId, activity}` plus the `app://<package>/<activity>` url | `{appId}` plus the `app://<bundle-id>/` url                     |
 
-- `app_install` is **the broadest thing these engines do** — the bundle is arbitrary code that then runs on the device. On Android it reports adb's own failure reason (wrong ABI, insufficient storage, unsigned build) rather than a bare non-zero exit.
+- `app_install` is **the broadest thing these engines do** — the bundle is arbitrary code that then runs on the device. `apkPath` is workspace-relative and must resolve inside `$BROWX_WORKSPACE`, symlinks included, like every file-reading tool; a path starting with `-` or outside the workspace is refused with one message that does not say whether the path exists. On Android it reports adb's own failure reason (wrong ABI, insufficient storage, unsigned build) rather than a bare non-zero exit.
 - `app_launch` may return while the app is still on a splash screen. On `android-app`, follow with `snapshot`, which surfaces `native-hierarchy-not-idle` while an indeterminate spinner keeps the window busy.
 - `app_reset` is **destructive** where it works: logins, local databases and cached files are gone. It is the native answer to `incognito`, which a native app has no equivalent of.
 - `app_foreground` answers `null` during a window transition, which is a real state. It returns `{ ok, device, foreground, url, appUnderTest }` — `appUnderTest` is what the SESSION thinks it is driving, which can differ from what is frontmost when a permission dialog or a share sheet takes focus.

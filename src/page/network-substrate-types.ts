@@ -80,8 +80,8 @@ export interface NetworkSubstrate {
    *  verbatim CDP `NetworkTap`; off Chromium it is the Playwright-event tap. */
   openActionTap(): ActionNetworkTap;
   /** Fetch a full response body by request id (network_body, capability
-   *  `network-body`). CDP fetches on demand; the Playwright path returns a body
-   *  captured at response time. */
+   *  `network-body`). CDP fetches on demand; the Playwright path reads the body
+   *  from a recent response when asked, within a size cap. */
   fetchBody(requestId: string, secrets: SecretRegistry | null): Promise<FetchBodyResult>;
   /** Install a request interception (`route`, or `route_queue` when the spec
    *  carries `responses`) and report the session's route list after it.

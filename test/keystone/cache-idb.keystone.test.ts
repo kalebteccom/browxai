@@ -45,6 +45,9 @@ beforeAll(async () => {
   }
   workspace = mkdtempSync(join(tmpdir(), "browx-cache-idb-keystone-"));
   process.env.BROWX_WORKSPACE = workspace;
+  // `caches_get` returns response bodies only with `network-body`; the
+  // round-trip below reads them.
+  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,network-body";
   fixture = await startFixture();
   server = await createServer({ headless: true });
   handlers = server.handlers;
@@ -54,6 +57,7 @@ afterAll(async () => {
   await server?.shutdown().catch(() => undefined);
   await fixture?.close().catch(() => undefined);
   delete process.env.BROWX_WORKSPACE;
+  delete process.env.BROWX_CAPABILITIES;
   for (const [k, v] of Object.entries(savedEnv)) if (v !== undefined) process.env[k] = v;
   if (workspace) rmSync(workspace, { recursive: true, force: true });
 }, KEYSTONE_TIMEOUT);

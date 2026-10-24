@@ -22,9 +22,11 @@ import { join } from "node:path";
 import { resolveWorkspace } from "../util/workspace.js";
 import { pluginPaths, type PluginPaths } from "./resolver.js";
 import { registerPluginCommand, pluginCommandFor } from "./command-registry.js";
+import { parseFileSpec } from "./file-spec.js";
 import { type LockEntry, readLock, writeLock, sha256OfPackage } from "./lock-store.js";
-import { runPm } from "./pm-runner.js";
-import { inferTrustFromInstallIdentity } from "./trust.js";
+import { checkPmTarget, runPm } from "./pm-runner.js";
+import { readRegistryIntegrity } from "./registry-integrity.js";
+import { inferTrustFromInstallIdentity, isVerifiedFirstParty } from "./trust.js";
 
 // Back-compat barrel — preserve the public surface of `./cli.js` for callers
 // (`./doctor-plugins.js`, `./cli.test.ts`, `./doctor-plugins.test.ts`) that
@@ -81,32 +83,25 @@ function pinEntry(paths: PluginPaths, name: string, source: string): LockEntry |
   if (!existsSync(pkgJsonPath)) return null;
   try {
     const parsed = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as { version?: string };
+    const version = parsed.version ?? "0.0.0";
+    const integrity = readRegistryIntegrity(paths.installDir, name, version);
     return {
       name,
-      version: parsed.version ?? "0.0.0",
+      version,
       source,
       contentSha256: sha256OfPackage(pkgRoot),
+      ...(integrity ? { integrity } : {}),
     };
   } catch {
     return null;
   }
 }
 
-/** Resolve the plugin name a `pnpm add` spec installs.
- *  Heuristic: drop a leading `file:` (the dir name is what npm uses);
- *  otherwise strip a trailing `@<version>` range. The CLI logs the
- *  resolved name before writing it to plugins.json so an operator can
- *  see what was added. */
+/** Resolve the plugin name a registry `add` spec installs: strip a trailing
+ *  `@<version>` range. (`file:` specs read the name from the directory's own
+ *  package.json, see `parseFileSpec`.) The CLI logs the resolved name before
+ *  writing it to plugins.json so an operator can see what was added. */
 function resolveInstalledName(source: string): string {
-  if (source.startsWith("file:")) {
-    const rel = source.slice("file:".length).replace(/\/+$/, "");
-    const base = rel.split("/").pop() ?? rel;
-    // For file: installs, the actual installed name in node_modules is
-    // the package's `name` field — not the directory base. Walk
-    // node_modules afterward and find the match. Best-effort fallback:
-    // use the dir base if the package.json isn't reachable yet.
-    return base;
-  }
   // Strip trailing `@version` (but tolerate scoped names that start with `@`).
   const at = source.lastIndexOf("@");
   if (at <= 0) return source;
@@ -156,27 +151,44 @@ function findActualPackageName(paths: PluginPaths, hint: string): string {
   return hint;
 }
 
-async function cmdInstall(spec: string): Promise<number> {
+async function cmdInstall(requested: string, cwd?: string): Promise<number> {
   const ws = resolveWorkspace();
   const paths = pluginPaths(ws.root);
+  try {
+    checkPmTarget(requested);
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    return 2;
+  }
+  // A `file:` spec resolves against the current directory and is made absolute
+  // here: the package manager runs inside the install dir and would resolve a
+  // relative path from there.
+  const file = parseFileSpec(requested, cwd);
+  if (file && !file.ok) {
+    process.stderr.write(`browxai plugin: cannot install "${requested}": ${file.error}\n`);
+    return 1;
+  }
+  const spec = file ? file.spec : requested;
   process.stderr.write(`browxai plugin: installing "${spec}" into ${paths.installDir}\n`);
   const code = await runPm(paths, "add", spec);
   if (code !== 0) {
     process.stderr.write(`browxai plugin: install failed (exit ${code})\n`);
     return code;
   }
-  const hintName = resolveInstalledName(spec);
-  const name = findActualPackageName(paths, hintName);
-  // Persist into plugins.json.
-  const data = readPluginsJson(paths);
-  const trust = inferTrustFromInstallIdentity(spec.startsWith("file:") ? spec : name);
-  data.plugins[name] = { enabled: true, ...(trust === "local" ? { trust: "local" } : {}) };
-  writePluginsJson(paths, data);
-  // Persist into plugins-lock.json.
+  const name = file ? file.name : findActualPackageName(paths, resolveInstalledName(spec));
+  // Persist into plugins-lock.json, then plugins.json. The trust tier reads
+  // the pinned entry: the recorded spec and the registry integrity.
   const lock = readLock(paths);
   const pinned = pinEntry(paths, name, spec);
   if (pinned) lock.entries[name] = pinned;
   writeLock(paths, lock);
+  const data = readPluginsJson(paths);
+  const trust = inferTrustFromInstallIdentity(
+    spec,
+    isVerifiedFirstParty(name, pinned ?? undefined),
+  );
+  data.plugins[name] = { enabled: true, ...(trust === "local" ? { trust: "local" } : {}) };
+  writePluginsJson(paths, data);
   process.stderr.write(
     `browxai plugin: installed ${name}@${pinned?.version ?? "?"} (trust=${trust})\n`,
   );
@@ -341,12 +353,12 @@ function help(): number {
 // checks the old `case` performed) and returns the SAME exit code, so the
 // dispatch in `runPlugin` is a pure registry lookup. Adding a verb is one
 // `registerPluginCommand(...)` line here, not a new `switch` arm.
-registerPluginCommand("install", (rest) => {
+registerPluginCommand("install", (rest, cwd) => {
   if (!rest[0]) {
     process.stderr.write("browxai plugin install: missing <pkg> argument\n");
     return 1;
   }
-  return cmdInstall(rest[0]);
+  return cmdInstall(rest[0], cwd);
 });
 registerPluginCommand("remove", (rest) => {
   if (!rest[0]) {
@@ -370,14 +382,14 @@ registerPluginCommand("sync", () => cmdSync());
  *  help branch (no verb / `help` / `--help` / `-h`) and the unknown-verb
  *  diagnostic stay inline — they are the subcommand's fixed contract; the
  *  extensibility verbs resolve through the add-only registry above. */
-export async function runPlugin(args: ReadonlyArray<string>): Promise<number> {
+export async function runPlugin(args: ReadonlyArray<string>, cwd?: string): Promise<number> {
   const [sub, ...rest] = args;
   if (sub === undefined || sub === "help" || sub === "--help" || sub === "-h") {
     return help();
   }
   const handler = pluginCommandFor(sub);
   if (handler) {
-    return handler(rest);
+    return handler(rest, cwd);
   }
   process.stderr.write(`browxai plugin: unknown subcommand "${sub}"\n`);
   help();

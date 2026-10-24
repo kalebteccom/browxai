@@ -72,9 +72,95 @@ describe("SecretRegistry.materialize — dispatch-side substitution", () => {
     const ok = r.materialize("<TOKEN>", "https://app.example.com/dashboard");
     expect(ok.ok).toBe(true);
     expect(ok.value).toBe("tok-xyz");
-    const refused = r.materialize("<TOKEN>", "https://attacker.example/");
+    const refused = r.materialize("<TOKEN>", "https://other.example/");
     expect(refused.ok).toBe(false);
-    expect(refused.error).toMatch(/scoped to "app.example.com"/);
+    expect(refused.error).toMatch(/scoped to "https:\/\/app.example.com"/);
+    expect(refused.value).toBe("<TOKEN>");
+  });
+
+  it("matches the scope as an origin, never as a substring of the URL", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "TOKEN", value: "tok-xyz", scope: "app.example.com" });
+    for (const url of [
+      "https://evil.test/?app.example.com",
+      "https://evil.test/app.example.com/login",
+      "https://app.example.com.evil.test/",
+      "https://evil.test/#https://app.example.com",
+      "https://app.example.com@evil.test/",
+      "about:blank",
+      "about:srcdoc",
+      "data:text/html,app.example.com",
+      "not a url",
+    ]) {
+      const m = r.materialize("<TOKEN>", url);
+      expect(m.ok, url).toBe(false);
+      expect(m.materialised, url).toBe(false);
+    }
+    expect(r.materialize("<TOKEN>", "https://APP.example.com/x?y=1").ok).toBe(true);
+    expect(r.materialize("<TOKEN>", "https://app.example.com:443/").ok).toBe(true);
+  });
+
+  it("compares scheme and port", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "BARE", value: "v-bare", scope: "app.example.com" });
+    r.register({ name: "DEV", value: "v-dev", scope: "http://localhost:3000" });
+    expect(r.materialize("<BARE>", "http://app.example.com/").ok).toBe(false);
+    expect(r.materialize("<BARE>", "https://app.example.com:8443/").ok).toBe(false);
+    expect(r.materialize("<DEV>", "http://localhost:3000/login").ok).toBe(true);
+    expect(r.materialize("<DEV>", "https://localhost:3000/login").ok).toBe(false);
+    expect(r.materialize("<DEV>", "http://localhost:3001/login").ok).toBe(false);
+    expect(r.materialize("<DEV>", "http://localhost/login").ok).toBe(false);
+  });
+
+  it("accepts a list of origins and matches any one of them exactly", () => {
+    const r = new SecretRegistry();
+    r.register({
+      name: "SSO",
+      value: "v-sso",
+      scope: ["https://app.example.com", "https://sso.example.com/"],
+    });
+    expect(r.scopeOrigins("SSO")).toEqual(["https://app.example.com", "https://sso.example.com"]);
+    expect(r.materialize("<SSO>", "https://sso.example.com/auth").ok).toBe(true);
+    expect(r.materialize("<SSO>", "https://app.example.com/").ok).toBe(true);
+    expect(r.materialize("<SSO>", "https://example.com/").ok).toBe(false);
+  });
+
+  it("rejects a scope that is not an origin at registration", () => {
+    const r = new SecretRegistry();
+    for (const scope of [
+      "https://app.example.com/login",
+      "https://app.example.com/?x=1",
+      "https://user@app.example.com",
+      "*.example.com",
+      "app.example.com/login",
+      "",
+    ]) {
+      expect(() => r.register({ name: "X", value: "v", scope }), scope).toThrow(/scope/);
+    }
+    expect(() => r.register({ name: "X", value: "v", scope: [] })).toThrow(/empty/);
+    expect(r.size()).toBe(0);
+  });
+
+  it("only asks callers to resolve the receiving frame for a scoped alias", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "OPEN", value: "v-open" });
+    r.register({ name: "SCOPED", value: "v-scoped", scope: "app.example.com" });
+    expect(r.needsScopeCheck("<OPEN>")).toBe(false);
+    expect(r.needsScopeCheck("<SCOPED>")).toBe(true);
+    expect(r.needsScopeCheck("plain text")).toBe(false);
+    expect(r.needsScopeCheck("<MISSING>")).toBe(false);
+    // Re-registering without a scope drops the old one.
+    r.register({ name: "SCOPED", value: "v-scoped" });
+    expect(r.needsScopeCheck("<SCOPED>")).toBe(false);
+    expect(r.scopeOrigins("SCOPED")).toBeNull();
+  });
+
+  it("matches a native app scope against the app:// target url", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PIN", value: "4321", scope: "app://com.acme.app" });
+    expect(r.materialize("<PIN>", "app://com.acme.app/CheckoutActivity").ok).toBe(true);
+    expect(r.materialize("<PIN>", "app://com.acme.app.evil/Main").ok).toBe(false);
+    expect(r.materialize("<PIN>", "https://com.acme.app/").ok).toBe(false);
   });
 });
 
@@ -108,6 +194,87 @@ describe("SecretRegistry.applyMaskInText — egress masking", () => {
     const r = new SecretRegistry();
     r.register({ name: "PATTERN", value: "a+b.c*d" });
     expect(r.applyMaskInText("payload=a+b.c*d end")).toBe("payload=<PATTERN> end");
+  });
+});
+
+describe("SecretRegistry.applyMaskInText — encoded forms", () => {
+  const VALUE = "p@ss word/+é!";
+  const reg = (): SecretRegistry => {
+    const r = new SecretRegistry();
+    r.register({ name: "PW", value: VALUE });
+    return r;
+  };
+
+  it("masks the value percent-encoded in a URL query", () => {
+    const url = `https://app.test/login?user=alice&pw=${encodeURIComponent(VALUE)}&x=1`;
+    expect(reg().applyMaskInText(url)).toBe("https://app.test/login?user=alice&pw=<PW>&x=1");
+  });
+
+  it("masks the value form-encoded in a request body", () => {
+    const body = new URLSearchParams({ user: "alice", pw: VALUE }).toString();
+    expect(body).toContain("+word"); // the space became `+`
+    expect(reg().applyMaskInText(body)).toBe("user=alice&pw=<PW>");
+  });
+
+  it("masks the value's own base64 and base64url, padded or not", () => {
+    const b64 = Buffer.from(VALUE, "utf8").toString("base64");
+    const b64url = Buffer.from(VALUE, "utf8").toString("base64url");
+    const r = reg();
+    expect(r.applyMaskInText(`token=${b64};`)).toBe("token=<PW>;");
+    expect(r.applyMaskInText(`token=${b64url};`)).toBe("token=<PW>;");
+    expect(r.applyMaskInText(`token=${b64.replace(/=+$/, "")};`)).toBe("token=<PW>;");
+  });
+
+  it("does not reach a base64 of a larger string such as Basic credentials", () => {
+    // `bob:` is 4 bytes, so the value's base64 starts off a 3-byte boundary.
+    const basic = Buffer.from(`bob:${VALUE}`, "utf8").toString("base64");
+    expect(reg().applyMaskInText(`Authorization: Basic ${basic}`)).toBe(
+      `Authorization: Basic ${basic}`,
+    );
+  });
+
+  it("masks the tail of a larger base64 when the prefix is a multiple of 3 bytes", () => {
+    // `alice:` is 6 bytes, so the value's base64 lands on the same boundary.
+    const basic = Buffer.from(`alice:${VALUE}`, "utf8").toString("base64");
+    expect(reg().applyMaskInText(`Authorization: Basic ${basic}`)).toContain("<PW>");
+  });
+
+  it("matches only the value itself for values shorter than six characters", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PIN", value: "a b!" });
+    expect(r.applyMaskInText("pin=a%20b!")).toBe("pin=a%20b!");
+    expect(r.applyMaskInText(`pin=${Buffer.from("a b!").toString("base64")}`)).not.toContain(
+      "<PIN>",
+    );
+    expect(r.applyMaskInText("pin=a b!")).toBe("pin=<PIN>");
+  });
+
+  it("is idempotent across every form", () => {
+    const r = reg();
+    const text = [
+      VALUE,
+      encodeURIComponent(VALUE),
+      new URLSearchParams({ pw: VALUE }).toString(),
+      Buffer.from(VALUE, "utf8").toString("base64"),
+    ].join(" | ");
+    const once = r.applyMaskInText(text);
+    expect(once).not.toMatch(/word|cEBz/);
+    expect(r.applyMaskInText(once)).toBe(once);
+    expect(r.applyMaskInResultText(once)).toBe(once);
+  });
+
+  it("masks an encoded form inside a JSON tool result and keeps it valid", () => {
+    const text = JSON.stringify({ url: `https://a.test/?pw=${encodeURIComponent(VALUE)}` });
+    expect(JSON.parse(reg().applyMaskInResultText(text))).toEqual({
+      url: "https://a.test/?pw=<PW>",
+    });
+  });
+
+  it("picks up a value registered after the first mask", () => {
+    const r = reg();
+    expect(r.applyMaskInText("Zm9vYmFyYmF6")).toBe("Zm9vYmFyYmF6");
+    r.register({ name: "OTHER", value: "foobarbaz" });
+    expect(r.applyMaskInText("Zm9vYmFyYmF6")).toBe("<OTHER>");
   });
 });
 

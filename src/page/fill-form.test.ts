@@ -226,6 +226,8 @@ describe("fillForm — secrets-masking composes through the loop", () => {
     // first field uses a plain string and would normally pass — we assert
     // it's NOT typed in.
     const fakeSecrets = {
+      // No frame receiver in this fake ctx, so materialize checks the page URL.
+      needsScopeCheck: () => false,
       materialize: (raw: string) => {
         if (raw === "alice") return { ok: true as const, value: "alice" };
         if (raw === "<SCOPED>") {

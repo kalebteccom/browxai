@@ -70,6 +70,10 @@ describe("no-trace contract — static source guard", () => {
       // are workspace-equivalent (the operator's chosen target).
       "socketPath",
       "opts.socketPath",
+      // `removeStaleSocket(path)` in cli/serve-socket.ts unlinks the operator's
+      // `--socket` path after an lstat check that it is a socket. Only a socket
+      // is removed; anything else throws first.
+      "removeStaleSocket",
       // plugin CLI subcommands write to paths derived from
       // `pluginPaths(workspaceRoot)` (see src/plugin/resolver.ts). Every
       // `paths.root` / `paths.installDir` / `paths.declarationFile` /

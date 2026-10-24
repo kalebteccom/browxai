@@ -261,6 +261,7 @@ describe("capability denials with the default capability set", () => {
         expect(denied.ok).toBe(false);
         expect(denied.requiredCapability).toBe("file-io");
         expect(denied.error).toMatch(/ACTIVE set/);
+        expect(denied.hint).toMatch(/BROWX_CAPABILITIES/);
         expect([...denied.activeCapabilities].sort()).toEqual([...DEFAULT_SET].sort());
         expect(existsSync(join(workspace, "ks-capability-denials"))).toBe(false);
       },
@@ -273,6 +274,39 @@ describe("capability denials with the default capability set", () => {
         await call("navigate", { session, url: `${fixture.url}/` });
         const res = await server.handlers.screenshot!({ session });
         expect(res.content.some((c) => c.type === "image")).toBe(true);
+      },
+      KEYSTONE_TIMEOUT,
+    );
+  });
+
+  describe("network-body on start_har bodies", () => {
+    it.each(["embed", "attach"])(
+      "refuses start_har({content:%s}) and records nothing",
+      async (content) => {
+        const denied = await call<Denied>("start_har", {
+          session,
+          content,
+          path: `ks-har-denials/${content}.har`,
+        });
+        expect(denied.ok).toBe(false);
+        expect(denied.requiredCapability).toBe("network-body");
+        expect([...denied.activeCapabilities].sort()).toEqual([...DEFAULT_SET].sort());
+      },
+      KEYSTONE_TIMEOUT,
+    );
+
+    it(
+      "starts a recording with no bodies by default",
+      async () => {
+        const started = await call<{ ok: boolean; content: string }>("start_har", {
+          session,
+          path: "ks-har-denials/default.har",
+        });
+        expect(started.ok).toBe(true);
+        expect(started.content).toBe("omit");
+        const stopped = await call<{ ok: boolean; wasActive: boolean }>("stop_har", { session });
+        expect(stopped.ok).toBe(true);
+        expect(stopped.wasActive).toBe(true);
       },
       KEYSTONE_TIMEOUT,
     );

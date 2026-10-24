@@ -1,33 +1,45 @@
 # @browxai/plugin-example
 
-The canonical browxai reference plugin. Exercises every primitive of
-the v1 plugin-runtime contract — a `register(api)` entry module,
-namespaced tool registration, an empty `capabilities` array (runs on a
-server with the default capability set), an empty `dependsOn` graph, a
-unit-test file, and a typed `schema.d.ts` SDK overlay. It is the
-fixture the plugin-runtime keystone test loads end-to-end, and the
-layout plugin authors copy to start their own plugin (see
-`docs/plugin-authoring.md` in the browxai repo).
+The reference browxai plugin, and the layout to copy when you write your own. It adds three tools that touch no page and need no capability: `example.echo({msg})` returns `{ok, result}`, `example.add({a, b})` returns `{ok, sum}`, and `example.now()` returns `{ok, iso, epochMs}`. The plugin-runtime keystone test loads it end to end.
 
-Three tools:
+## Capabilities it needs
 
-- `example.echo({msg})` → `{ok, result}` — round-trip primitive.
-- `example.add({a, b})` → `{ok, sum}` — typed-arg demonstration.
-- `example.now()` → `{ok, iso, epochMs}` — argless tool shape.
+None. The manifest has `"capabilities": []`, so it loads on a server with the default four (`read`, `navigation`, `action`, `human`).
 
-## Install
+## Enable it
 
 ```sh
-$ browxai plugin install @browxai/plugin-example
+browxai plugin install @browxai/plugin-example
+BROWX_CAPABILITIES=read,navigation,action,human browxai
 ```
 
-No extra capabilities required. Restart the browxai server after
-install (plugin lifecycle is resolved-once-at-server-start). The tools
-surface as `example.echo` (etc.) on MCP `tools/list`, and on the SDK as
-`client.plugins.example.echo(...)`.
+`BROWX_CAPABILITIES` is optional here. The line lists the four defaults, so add to it if you also run other plugins that need more. Restart the server after every install. Plugins load once, at server start. Then check `plugins_list()` for `status: "loaded"`.
+
+## Example prompt
+
+> Call `example.echo` with the message "hello", then `example.add` with 2 and 3, and tell me what each returned.
+
+## Use it as a template
+
+Copy this directory, then change:
+
+| File                | Change                                                                                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `package.json`      | `name`, `version`, `description`, `repository`, `homepage`, `browxai.namespace` and `browxai.capabilities`. Delete `browxai.trust` unless you publish under `@browxai/*`.                  |
+| `src/index.ts`      | Replace the three tools. Keep `handlers` exported so tests can call them. Declare every argument a tool reads in `inputSchema` (a JSON Schema object or zod fields), or the host drops it. |
+| `src/index.test.ts` | Test your handlers.                                                                                                                                                                        |
+| `schema.d.ts`       | Rename `ExamplePluginSchema` and list your tools for SDK users.                                                                                                                            |
+
+Leave `tsconfig.json` and `LICENSE` as they are (set your own license holder). Build with `pnpm build`, install from the directory (a relative or absolute path), restart, and check:
+
+```sh
+pnpm build
+browxai plugin install file:/abs/path/to/your-plugin
+browxai doctor
+```
+
+The full contract (manifest fields, `register(api)`, call graph, SDK typing) is in the authoring guide: <https://browxai.com/plugins/authoring/>.
 
 ## Full reference
 
-The first-party plugin reference — tool tables, error envelopes, and a
-usage walkthrough for this plugin and the three canvas adapters — lives
-at <https://browxai.com/plugins/first-party/>.
+Tool tables, error envelopes and a walkthrough for this plugin and the three canvas adapters: <https://browxai.com/plugins/first-party/>.

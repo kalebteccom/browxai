@@ -30,7 +30,7 @@ below depends on it.
 | Surface                    | State  | Where                                                                                                                                                                                                                                                              |
 | -------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | MCP server over stdio      | Exists | `browxai` bin, `src/cli.ts`. Over 180 core tools registered from `src/tools/*-tools.ts`, plus plugin tools.                                                                                                                                                        |
-| MCP over a Unix socket     | Exists | `browxai serve --socket <path>`, `src/cli/serve.ts`. Several clients share one session registry. Socket is chmod 0700. Its `tools/list` returns open schemas with `browxai/<name>` descriptions, so it suits SDK clients, not a model.                             |
+| MCP over a Unix socket     | Exists | `browxai serve --socket <path>`, `src/cli/serve.ts`. Several clients share one session registry. Socket is created owner-only (mode 0600). Its `tools/list` returns open schemas with `browxai/<name>` descriptions, so it suits SDK clients, not a model.         |
 | Typed SDK                  | Exists | `createBrowxai()` in `src/sdk/index.ts`, transports `in-process`, `stdio-child`, `socket` (`src/sdk/types.ts`).                                                                                                                                                    |
 | Plugin contract            | Exists | `register(api)` with `registerTool`, `callTool`, `log` (`docs/plugin-authoring.md`, `src/plugin/`). Plugins can add tools. They cannot subscribe to events.                                                                                                        |
 | Events to an outside party | None   | browxai sends no MCP notifications and has no webhook or event socket. Logging is stderr only (`src/util/logging.ts`).                                                                                                                                             |
@@ -154,7 +154,7 @@ Example Claude Code entry:
 - Under one workspace: `config.json` (the `user` / `project` config layers),
   `profile/` and `profiles/<name>/` (browser profiles), `.auth-states/<name>.json`,
   plugin installs, `diagnostics/`, `screenshots/`, `videos/`, and
-  `chrome.pid` for `browxai chrome start` (which runs on `profile/` or `profiles/<name>/`).
+  `chrome.pid` and `chrome.profile` for `browxai chrome start` (which runs on `profile/` or `profiles/<name>/`).
 - Names follow `^[A-Za-z0-9._-]+$` (`assertSafeName`). remotxai profile ids use
   the same character set, so a remotxai profile id is a valid browxai profile
   or directory name as is.

@@ -7,7 +7,8 @@
 // so there is no import cycle.
 //
 // All shell invocations: fixed argv, no shell interpolation, account name
-// is passed as a discrete argv element (no injection surface). stdout is
+// is passed as a discrete argv element after a `--` end-of-options marker, and
+// must match `ACCOUNT_RE` (so it cannot start with `-`). stdout is
 // captured to a string, stderr is captured to a string for failure
 // diagnostics, no exec-via-shell paths.
 
@@ -56,6 +57,9 @@ export interface CredentialResult {
    *  runtime materialises the real value at dispatch. NEVER the cleartext
    *  password. */
   aliasName?: string;
+  /** The origins the registered password may be typed into, e.g.
+   *  `["https://app.example.com"]`. Present on success. */
+  origins?: string[];
   error?: string;
   hint?: string;
   provider: ProviderName;
@@ -84,7 +88,7 @@ export type ProviderCredentialInternal = CredentialResult & { _password?: string
 // Shell helper — fixed argv, no shell interpolation
 // ---------------------------------------------------------------------------
 
-interface RunResult {
+export interface RunResult {
   ok: boolean;
   stdout: string;
   stderr: string;
@@ -234,4 +238,26 @@ export function parseFieldsJson(raw: string): { username?: string; password?: st
   } catch {
     return {};
   }
+}
+
+// ---------------------------------------------------------------------------
+// Account names
+// ---------------------------------------------------------------------------
+
+/** What an `account` may look like: an item name or id the vault CLIs accept.
+ *  It starts with a letter or digit (so it can never read as a CLI flag), then
+ *  letters, digits, space and `. _ @ + : / -`, up to 128 characters. Space and
+ *  `/` cover 1Password and LastPass item names (`Acme Corp`, `Shared/Acme`);
+ *  Bitwarden ids and 1Password ids fit the rest. A name with any other
+ *  character is addressed by its item id instead. */
+export const ACCOUNT_RE = /^[A-Za-z0-9][A-Za-z0-9 ._@+:/-]{0,127}$/;
+
+/** Null when `account` is acceptable, else the error to return. */
+export function accountError(account: string): string | null {
+  if (ACCOUNT_RE.test(account)) return null;
+  return (
+    `account "${account.slice(0, 64)}" is not a valid account name: it must start with a ` +
+    `letter or digit and use only letters, digits, space and . _ @ + : / - (at most 128 ` +
+    `characters). Use the vault item's id for a name with other characters.`
+  );
 }

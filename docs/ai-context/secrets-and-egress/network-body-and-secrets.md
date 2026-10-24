@@ -6,7 +6,7 @@ The two capabilities most likely to leak are `network-body` (response bodies) an
 
 ### `network-body`
 
-When granted, `network_body` returns the full response body, post-content-length. `route_intercept` can rewrite payloads too. Without the capability, `network_read` returns metadata only: URL, status, headers with auth stripped, MIME and byte count.
+When granted, `network_body` returns the full response body, post-content-length. The same gate covers the body of `caches_get` and HAR `embed` / `attach` (`start_har`, `open_session({har})`). `route_intercept` can rewrite payloads too. Without the capability, `network_read` returns metadata only: URL, status, headers with auth stripped, MIME and byte count.
 
 Why it's off by default: response bodies routinely carry PII, OAuth tokens and customer data. A naive recorder running with `network-body` granted would write all of it to disk.
 
@@ -22,7 +22,7 @@ When `diagnostics`, `network-body` and `secrets` are all active, the egress pipe
 2. **The secrets-masking sink applies first.** Every registered secret value is replaced.
 3. The recorder writes second, and sees only the masked payload.
 
-Reverse that and the recorder file gets raw secrets. Masking is `SecretRegistry.applyMaskInText` in `src/util/secrets.ts`, and `src/util/secrets-sinks.test.ts` holds one masking test per egress sink.
+Reverse that and the recorder file gets raw secrets. After the per-sink pass, the tool wrapper runs one more pass over the whole result (`maskToolResponse` in `src/tools/host-egress-mask.ts`): every text item, JSON results kept valid, the error text of a throwing tool, and plugin tool results. A value of 6 characters or more is also masked percent-encoded and as its own base64 or base64url. Masking is `SecretRegistry.applyMaskInText` in `src/util/secrets.ts`, and `src/util/secrets-sinks.test.ts` holds one masking test per egress sink.
 
 ## Adding a new egress path
 

@@ -35,6 +35,7 @@ import { EgressSanitiser } from "../util/egress-sanitiser.js";
 import { screenshotSave } from "../page/screenshot-save.js";
 import type { ActionContext } from "../page/actionresult.js";
 import {
+  capabilitiesWith,
   isToolEnabled,
   declareToolCapability,
   toolCapabilityMap,
@@ -51,6 +52,8 @@ import type { CredentialProvider, CredentialsConfig } from "../util/credentials.
 import type { StartOptions } from "../server.js";
 import type { ToolHost, ToolRegistration, ToolResponse } from "./host.js";
 import { buildObservation } from "./host-observation.js";
+import { activeSecretRegistries, maskedToolError, maskToolResponse } from "./host-egress-mask.js";
+import { byobAttachRefusal } from "./byob-attach-gate.js";
 
 /** The createServer locals the host's closures close over. Each field is the
  *  exact local `createServer` built before the host literal; the closures move
@@ -172,7 +175,10 @@ export function buildHost(deps: HostDeps): ToolHost {
             requiredCapability,
             activeCapabilities: active,
             ...(reason ? { reason } : {}),
-            hint: "This tool's capability (`requiredCapability` above) is not in the server's active set. Fix: add it to `BROWX_CAPABILITIES` (that variable REPLACES the default set, so keep `read,navigation,action,human` in the list, e.g. `read,navigation,action,human,<capability>`), then RESTART the browxai server — capabilities are resolved ONCE at server start, so `set_config` alone won't enable it. Two gotchas if it still doesn't take after a restart: (1) a persisted `set_config({capabilities})` layer can only NARROW the start-time set, so a saved list that omits this capability keeps it off even when BROWX_CAPABILITIES names it; `reset_config` clears it; (2) `get_config({scope:\"resolved\"}).capabilities` is the *live enforced* set (what this gate checks). See docs/threat-model.md.",
+            hint:
+              "This tool's capability (`requiredCapability` above) is not in the server's active set. Fix: add it to `BROWX_CAPABILITIES` (that variable REPLACES the default set, so keep the defaults in the list, e.g. `" +
+              capabilitiesWith("<capability>") +
+              '`), then RESTART the browxai server. Capabilities are resolved ONCE at server start and `set_config` can only narrow them, so it cannot enable one. Two gotchas if it still doesn\'t take after a restart: (1) a persisted `set_config({capabilities})` layer narrows the start-time set, so a saved list that omits this capability keeps it off even when BROWX_CAPABILITIES names it; `reset_config` clears it; (2) `get_config({scope:"resolved"}).capabilities` is the *live enforced* set (what this gate checks). See docs/threat-model.md.',
           },
           null,
           2,
@@ -428,6 +434,8 @@ export function buildHost(deps: HostDeps): ToolHost {
   // codegen, D7).
   const BATCH_ALLOWED_TOOLS = new Set<string>();
   const registrations = new Map<string, ToolRegistration>();
+  // The registries a tool result is masked with, read per call.
+  const liveRegistries = () => activeSecretRegistries(caps.enabled.has("secrets"), registry.list());
 
   const register = <S extends z.ZodRawShape = Record<string, never>>(
     name: string,
@@ -475,22 +483,46 @@ export function buildHost(deps: HostDeps): ToolHost {
       // wedges still lands in the replay log. `noteReplayCall` is a no-op
       // when the session has no active recording, so the hot path stays cheap.
       noteReplayCall(name, args);
-      const inner = tracked
-        ? await noteWedgeOutcome(args, await handler(args))
-        : await handler(args);
+      // A tool that creates the default session lazily can hit the `byob-attach`
+      // refusal inside the registry; it leaves here as the same structured gate
+      // refusal `open_session` returns, for every tool and for `batch` alike.
+      const run = async (): Promise<ToolResponse> => {
+        try {
+          return await handler(args);
+        } catch (err) {
+          const refusal = byobAttachRefusal(gateCheck, err);
+          if (refusal) return refusal;
+          throw err;
+        }
+      };
+      const raw = tracked ? await noteWedgeOutcome(args, await run()) : await run();
+      // Tool output masks registered secrets: one pass over every text item,
+      // before metrics, diagnostics and replay see the result.
+      const inner = maskToolResponse(raw, liveRegistries());
       noteMetrics(name, args, inner, startedAt);
       noteDiagnostics(name, args, inner, startedAt);
       noteReplayResult(name, args, inner);
       return inner;
     };
     toolHandlers[name] = wrapped;
+    // `toolHandlers` keeps the throwing form: composing tools (`batch`,
+    // `act_and_*`) catch an inner tool's error themselves. Over MCP, a throw
+    // would become SDK-built error text with no masking, so the callback the
+    // server holds builds that same error result here and masks it.
+    const onWire = async (rawArgs: unknown): Promise<ToolResponse> => {
+      try {
+        return await wrapped(rawArgs);
+      } catch (err) {
+        return maskedToolError(err, liveRegistries());
+      }
+    };
     // The SDK's `registerTool` generic cannot relate its conditional-typed
     // callback to a still-generic `S`; widening the config's schema to a concrete
     // `ZodRawShape` lets that conditional resolve, so `wrapped` (whose args are
     // narrowed at the wire boundary above and whose result is a CallToolResult)
     // matches with no assertion.
     const sdkConfig: { description: string; inputSchema?: z.ZodRawShape } = def;
-    server.registerTool(name, sdkConfig, wrapped);
+    server.registerTool(name, sdkConfig, onWire);
   };
 
   // ---------- action tools ----------

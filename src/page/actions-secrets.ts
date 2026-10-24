@@ -16,19 +16,172 @@ import type {
   ActionResult,
   ElementProbe,
 } from "./actionresult.js";
+import type { ElementHandle, Frame, Locator, Page } from "playwright-core";
 import { refOrSelector, type ActionTarget } from "./locator.js";
+
+/** Which frame receives a value. A thunk yields the target locator (the value
+ *  lands in the frame that owns its element); `"focused"` is a targetless
+ *  keyboard press (the value lands in the focused frame); `undefined` means no
+ *  frame is involved and the main frame stands in. */
+export type SecretReceiver = (() => Locator) | "focused" | undefined;
+
+/** The receiver a scoped value was checked against, kept so the dispatch
+ *  goes to that same receiver. `handle` is the element the check ran on (absent
+ *  for a focused-frame press). `recheck` re-reads the receiving frame's URL and
+ *  returns an error when the scope no longer allows it. */
+export interface BoundReceiver {
+  handle?: ElementHandle;
+  recheck(): Promise<string | undefined>;
+  dispose(): Promise<void>;
+}
+
+export type Materialised =
+  { ok: true; value: string; alias?: string; bound?: BoundReceiver } | { ok: false; error: string };
+
+/** How deep the focused-frame walk descends before it stops. */
+const MAX_FRAME_DEPTH = 16;
 
 /** Dispatch-side secret materialisation. Wraps `SecretRegistry.materialize`
  *  with a no-registry fallback so non-secrets callers don't need to feature-
- *  detect. Exported for composing primitives (e.g. multi-field fill). */
-export function materialiseValue(
+ *  detect. A scoped alias is checked against the URL of the frame that
+ *  receives it, resolved from `receiver`; the result then carries `bound`,
+ *  which the caller dispatches through (`fillChecked` / `pressChecked`) and
+ *  disposes when done. Exported for composing primitives (e.g. multi-field
+ *  fill). */
+export async function materialiseValue(
   ctx: ActionContext,
   raw: string,
-): { ok: true; value: string; alias?: string } | { ok: false; error: string } {
+  receiver?: SecretReceiver,
+  timeoutMs = 5_000,
+): Promise<Materialised> {
   if (!ctx.secrets) return { ok: true, value: raw };
-  const m = ctx.secrets.materialize(raw, ctx.page.url());
-  if (!m.ok) return { ok: false, error: m.error! };
-  return m.alias ? { ok: true, value: m.value, alias: m.alias } : { ok: true, value: m.value };
+  const secrets = ctx.secrets;
+  if (!secrets.needsScopeCheck(raw) || receiver === undefined) {
+    const m = secrets.materialize(raw, ctx.page.url());
+    if (!m.ok) return { ok: false, error: m.error! };
+    return m.alias ? { ok: true, value: m.value, alias: m.alias } : { ok: true, value: m.value };
+  }
+  let bound: BoundReceiver | undefined;
+  let url: string;
+  try {
+    bound = await bindReceiver(ctx.page, receiver, timeoutMs, (u) => {
+      const m = secrets.materialize(raw, u);
+      return m.ok ? undefined : m.error!;
+    });
+    url = await boundUrl(bound, ctx.page);
+  } catch (e) {
+    await bound?.dispose();
+    return {
+      ok: false,
+      error:
+        `secret "${raw}" is scoped, and the frame that would receive it could not be ` +
+        `resolved: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+  const m = secrets.materialize(raw, url);
+  if (!m.ok) {
+    await bound.dispose();
+    return { ok: false, error: m.error! };
+  }
+  return { ok: true, value: m.value, ...(m.alias ? { alias: m.alias } : {}), bound };
+}
+
+/** The URL `bound` currently reports, for the final materialise call. */
+async function boundUrl(bound: BoundReceiver, page: Page): Promise<string> {
+  if (bound.handle) return (await ownerFrameOf(bound.handle)).url();
+  return (await focusedFrame(page)).url();
+}
+
+async function ownerFrameOf(handle: ElementHandle): Promise<Frame> {
+  const frame = await handle.ownerFrame();
+  if (!frame) throw new Error("the target element has no owner frame");
+  return frame;
+}
+
+/** Resolve the receiver once and keep it. Everything read here comes from
+ *  Playwright's frame tree and its isolated selector engine, never from a value
+ *  the page's own scripts could rewrite. */
+async function bindReceiver(
+  page: Page,
+  receiver: (() => Locator) | "focused",
+  timeoutMs: number,
+  check: (url: string) => string | undefined,
+): Promise<BoundReceiver> {
+  if (receiver === "focused") {
+    return {
+      recheck: async () => {
+        try {
+          return check((await focusedFrame(page)).url());
+        } catch (e) {
+          return `the focused frame could not be resolved: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      },
+      dispose: () => Promise.resolve(),
+    };
+  }
+  const handle = await receiver().elementHandle({ timeout: timeoutMs });
+  return {
+    handle,
+    recheck: async () => {
+      try {
+        return check((await ownerFrameOf(handle)).url());
+      } catch (e) {
+        return `the target element's frame could not be read: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+    dispose: () => handle.dispose().catch(() => undefined),
+  };
+}
+
+/** Fill a materialised value. A scope-checked value goes through the element
+ *  handle the check ran on, after re-reading its frame's URL: a frame that
+ *  navigated away since the check is refused and nothing is typed. A handle
+ *  whose document was replaced fails inside Playwright rather than typing into
+ *  the new document. Any other value fills through the locator as before. */
+export async function fillChecked(
+  loc: Locator,
+  mat: { value: string; bound?: BoundReceiver },
+  timeoutMs: number,
+): Promise<void> {
+  const handle = mat.bound?.handle;
+  if (!mat.bound || !handle) return loc.fill(mat.value, { timeout: timeoutMs });
+  const refused = await mat.bound.recheck();
+  if (refused) throw new Error(refused);
+  await handle.fill(mat.value, { timeout: timeoutMs });
+}
+
+/** Press a materialised key, the `fillChecked` counterpart. With a target the
+ *  scoped key goes through the checked handle; a targetless press re-checks the
+ *  focused frame's URL right before the keyboard dispatch. */
+export async function pressChecked(
+  page: Page,
+  loc: Locator | undefined,
+  mat: { value: string; bound?: BoundReceiver },
+  timeoutMs: number,
+): Promise<void> {
+  if (mat.bound) {
+    const refused = await mat.bound.recheck();
+    if (refused) throw new Error(refused);
+    if (mat.bound.handle) return mat.bound.handle.press(mat.value, { timeout: timeoutMs });
+  }
+  if (loc) return loc.press(mat.value, { timeout: timeoutMs });
+  await page.keyboard.press(mat.value);
+}
+
+/** The frame a targetless key press lands in: descend from the main frame
+ *  through each focused `<iframe>` / `<frame>` owner element. */
+async function focusedFrame(page: Page): Promise<Frame> {
+  let frame = page.mainFrame();
+  for (let depth = 0; depth < MAX_FRAME_DEPTH; depth++) {
+    const owner = frame.locator("iframe:focus, frame:focus");
+    if ((await owner.count()) === 0) break;
+    const handle = await owner.first().elementHandle({ timeout: 1_000 });
+    const child = await handle.contentFrame();
+    await handle.dispose().catch(() => undefined);
+    if (!child) break;
+    frame = child;
+  }
+  return frame;
 }
 
 /** Build a clean ActionResult-shaped failure for a secrets-materialisation

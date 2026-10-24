@@ -27,6 +27,8 @@ import { registerSecretsCaptchaTools } from "./secrets-captcha-tools.js";
 import { SafariTargetSubstrate } from "../page/target-substrate.js";
 import type { SafariSessionHandle } from "../engine/index.js";
 import type { ToolHost, ToolResponse } from "./host.js";
+import { SecretRegistry } from "../util/secrets.js";
+import { makeFakeProvider, type CredentialResult } from "../util/credentials.js";
 
 type CapturedHandler = (args: Record<string, unknown>) => Promise<ToolResponse>;
 
@@ -111,5 +113,112 @@ describe("solve_captcha — no Playwright page", () => {
     });
     await captureSolveCaptcha()({ type: "hcaptcha", siteKey: "hc-key" });
     expect(new URLSearchParams(submitted).get("pageurl")).toBe(PAGE_URL);
+  });
+});
+
+// get_credential binds the vault password to the origins the operator listed
+// for the account in BROWX_CREDENTIAL_ORIGINS, and refuses any other account.
+describe("get_credential — origin binding and account names", () => {
+  function captureGetCredential(opts: { pageUrl: string; origins?: Record<string, string[]> }): {
+    handler: CapturedHandler;
+    secrets: SecretRegistry;
+    lookups: string[];
+  } {
+    const handlers: Record<string, CapturedHandler> = {};
+    const secrets = new SecretRegistry();
+    const lookups: string[] = [];
+    const provider = makeFakeProvider(
+      {
+        getTotp: () => Promise.resolve({ ok: true, code: "123456", provider: "1password" }),
+        getCredential: (account: string) => {
+          lookups.push(account);
+          return Promise.resolve({
+            ok: true,
+            provider: "1password",
+            username: "alice",
+            _password: "vault-pass-2",
+          } as CredentialResult);
+        },
+      },
+      "1password",
+    );
+    const host = {
+      z,
+      register: (name: string, _def: unknown, handler: CapturedHandler) => {
+        handlers[name] = handler;
+      },
+      gateCheck: () => undefined,
+      entryFor: () => ({ secrets }),
+      caps: { enabled: new Set<string>(["secrets", "credentials"]) },
+      credentialsResolved: {
+        provider,
+        config: { provider: "1password", warnings: [], origins: opts.origins ?? {} },
+      },
+      targetFor: () => ({ url: () => Promise.resolve(opts.pageUrl) }),
+    } as unknown as ToolHost;
+    registerSecretsCaptchaTools(host);
+    return { handler: handlers.get_credential!, secrets, lookups };
+  }
+
+  it("refuses an unlisted account before asking the vault", async () => {
+    const { handler, secrets, lookups } = captureGetCredential({
+      pageUrl: "https://app.example.com/login",
+      origins: { other: ["https://other.example.com"] },
+    });
+    const body = bodyOf(await handler({ account: "acme" }));
+    expect(body.ok).toBe(false);
+    expect(String(body.error)).toContain("BROWX_CREDENTIAL_ORIGINS");
+    expect(String(body.error)).toContain('"acme"');
+    expect(String(body.error)).toContain("acme=https://");
+    expect(String(body.error)).toMatch(/restart/);
+    expect(lookups).toEqual([]);
+    expect(secrets.size()).toBe(0);
+  });
+
+  it("refuses an unlisted account even with no origins configured at all", async () => {
+    const { handler, lookups } = captureGetCredential({ pageUrl: "https://app.example.com/" });
+    const body = bodyOf(await handler({ account: "acme" }));
+    expect(body.ok).toBe(false);
+    expect(lookups).toEqual([]);
+  });
+
+  it.each(["constructor", "__proto__", "toString", "hasOwnProperty"])(
+    "treats the account name %s as unlisted",
+    async (account) => {
+      const { handler, secrets, lookups } = captureGetCredential({
+        pageUrl: "https://app.example.com/",
+        origins: { acme: ["https://app.example.com"] },
+      });
+      const body = bodyOf(await handler({ account }));
+      expect(body.ok).toBe(false);
+      expect(lookups).toEqual([]);
+      expect(secrets.size()).toBe(0);
+    },
+  );
+
+  it("binds a listed account to its listed origins, whatever page is open", async () => {
+    const { handler, secrets, lookups } = captureGetCredential({
+      pageUrl: "https://elsewhere.test/",
+      origins: { acme: ["https://sso.example.com", "https://app.example.com"] },
+    });
+    const body = bodyOf(await handler({ account: "acme" }));
+    expect(body.ok).toBe(true);
+    expect(lookups).toEqual(["acme"]);
+    expect(body.origins).toEqual(["https://sso.example.com", "https://app.example.com"]);
+    expect(JSON.stringify(body)).not.toContain("vault-pass-2");
+    expect(secrets.materialize("<PASSWORD_ACME>", "https://elsewhere.test/").ok).toBe(false);
+    expect(secrets.materialize("<PASSWORD_ACME>", "https://sso.example.com/").ok).toBe(true);
+    expect(secrets.materialize("<PASSWORD_ACME>", "https://app.example.com/x").ok).toBe(true);
+    expect(secrets.materialize("<PASSWORD_ACME>", "https://evil.test/?app.example.com").ok).toBe(
+      false,
+    );
+  });
+
+  it("rejects an account that could read as a CLI flag, before asking the vault", async () => {
+    const { handler, lookups } = captureGetCredential({ pageUrl: "https://app.example.com/" });
+    const body = bodyOf(await handler({ account: "--session=x" }));
+    expect(body.ok).toBe(false);
+    expect(String(body.error)).toMatch(/not a valid account name/);
+    expect(lookups).toEqual([]);
   });
 });

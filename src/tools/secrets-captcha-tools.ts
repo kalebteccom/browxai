@@ -4,7 +4,12 @@ import {
   unconfiguredFailure,
   type CaptchaType,
 } from "../page/solve-captcha.js";
-import { applyCredentialToRegistry, type ProviderCredentialInternal } from "../util/credentials.js";
+import {
+  accountError,
+  applyCredentialToRegistry,
+  type ProviderCredentialInternal,
+} from "../util/credentials.js";
+import { capabilityMissing } from "../util/capabilities.js";
 import { estimateTokens } from "../util/tokens.js";
 import type { ToolHost } from "./host.js";
 import { SESSION_ARG } from "./schemas.js";
@@ -39,6 +44,37 @@ async function readSiteKeyFromSelector(
   } catch {
     return undefined;
   }
+}
+
+/** The `{ok:false}` envelope the credentials tools return before any vault
+ *  call: a rejected account name, or nothing to bind a password to. */
+function accountRefusal(
+  provider: string,
+  error: string,
+): { content: Array<{ type: "text"; text: string }> } {
+  return captchaJsonResult({ ok: false, provider, error });
+}
+
+/** The origins the operator listed for `account` in `BROWX_CREDENTIAL_ORIGINS`,
+ *  or undefined when the account is not listed. `Object.hasOwn` keeps names
+ *  such as `constructor` or `toString` from resolving through the prototype. */
+function listedOrigins(
+  configured: Readonly<Record<string, readonly string[]>> | undefined,
+  account: string,
+): readonly string[] | undefined {
+  if (!configured || !Object.hasOwn(configured, account)) return undefined;
+  const origins = configured[account];
+  return Array.isArray(origins) && origins.length > 0 ? origins : undefined;
+}
+
+/** The refusal for an account with no `BROWX_CREDENTIAL_ORIGINS` entry. */
+function unlistedAccountError(account: string): string {
+  return (
+    `get_credential: account "${account}" is not listed in BROWX_CREDENTIAL_ORIGINS, so there is ` +
+    "no origin to bind its password to. List the origins it may be typed into, for example " +
+    `BROWX_CREDENTIAL_ORIGINS="${account}=https://app.example.com|https://sso.example.com", ` +
+    "then restart browxai (the variable is read at start)."
+  );
 }
 
 /** Either the Playwright `Page` the selector-derived site-key read needs, or the
@@ -90,7 +126,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     {
       capability: "secrets",
       description:
-        'Register a sensitive value the agent will use without ever seeing the real string in any tool result. **Gated behind the off-by-default `secrets` capability** — same posture class as `eval` / `network-body` / `disableWebSecurity`. Pair: the agent calls `fill({value:"<NAME>"})` / `press({key:"<NAME>"})` and the runtime substitutes the registered real value AT dispatch (so the page receives the actual string), while EVERY egress sink — `ActionResult.network`, `network_read`, `network_body`, `ws_read`, `console_read`, `snapshot`, `find` evidence — strips occurrences of the real value back to `<NAME>` before returning to the agent. `name` must match `/^[A-Z][A-Z0-9_]*$/` (uppercase identifier — the `<NAME>` mask is the stable contract). Optional `scope` (URL substring, case-insensitive) narrows the *dispatch* side: a scoped secret won\'t be substituted into a `fill` whose page URL doesn\'t contain the scope (refuses with a clear error). Per-session registry, capped at 32 entries. `screenshot` is a PARTIAL sink: when the page\'s text content contains a registered value, a warning is appended; pixel-level redaction (region-blur) is deferred — call snapshot/find for verified-clean evidence instead. NEVER re-emits or logs the real value.',
+        'Register a sensitive value the agent will use without ever seeing the real string in any tool result. **Gated behind the off-by-default `secrets` capability** — same posture class as `eval` / `network-body` / `disableWebSecurity`. Pair: the agent calls `fill({value:"<NAME>"})` / `press({key:"<NAME>"})` and the runtime substitutes the registered real value AT dispatch (so the page receives the actual string), while EVERY egress sink — `ActionResult.network`, `network_read`, `network_body`, `ws_read`, `console_read`, `snapshot`, `find` evidence — strips occurrences of the real value back to `<NAME>` before returning to the agent. `name` must match `/^[A-Z][A-Z0-9_]*$/` (uppercase identifier — the `<NAME>` mask is the stable contract). Optional `scope` (an origin like `https://app.example.com`, a bare host meaning https, or a list of them) narrows the *dispatch* side: a scoped secret is substituted only into a frame whose origin matches one entry exactly (scheme, host and port), and refuses with a clear error anywhere else. Per-session registry, capped at 32 entries. `screenshot` is a PARTIAL sink: when the page\'s text content contains a registered value, a warning is appended; pixel-level redaction (region-blur) is deferred — call snapshot/find for verified-clean evidence instead. NEVER re-emits or logs the real value.',
       inputSchema: {
         name: z
           .string()
@@ -103,10 +139,10 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
             "The real secret value. Stored per-session in memory only; never persisted, never logged.",
           ),
         scope: z
-          .string()
+          .union([z.string(), z.array(z.string()).min(1)])
           .optional()
           .describe(
-            "Optional URL substring (case-insensitive). When set, dispatch-side substitution refuses if the current page URL doesn't contain the scope (prevents cross-origin leak). Egress masking is global regardless.",
+            'Optional origin, or list of origins: `"https://app.example.com"`, `"http://localhost:3000"`, or a bare host `"app.example.com"` (meaning https). Dispatch-side substitution happens only in a frame whose origin matches an entry exactly (scheme, host and port); no wildcards, no subdomains, no paths. Egress masking is global regardless.',
           ),
         ...SESSION_ARG,
       },
@@ -119,14 +155,18 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     }: {
       name: string;
       value: string;
-      scope?: string;
+      scope?: string | string[];
       session?: string;
     }) => {
       const g = gateCheck("register_secret");
       if (g) return g;
       const e = await entryFor(session);
       try {
-        e.secrets.register({ name, value, ...(scope ? { scope } : {}) });
+        e.secrets.register({
+          name,
+          value,
+          ...(scope !== undefined && scope !== "" ? { scope } : {}),
+        });
       } catch (err) {
         return {
           content: [
@@ -141,15 +181,19 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
           ],
         };
       }
+      const origins = e.secrets.scopeOrigins(name);
       const body = {
         ok: true,
         registered: name,
         scope: scope ?? null,
+        // The normalised origins the scope matches, so the agent sees what a
+        // bare host resolved to.
+        origins,
         // never echo the value back. Echo only the registered names — useful
         // for the agent to confirm what aliases are live without leaking.
         names: e.secrets.names(),
         tokensEstimate: estimateTokens(
-          JSON.stringify({ ok: true, registered: name, scope, names: e.secrets.names() }),
+          JSON.stringify({ ok: true, registered: name, scope, origins, names: e.secrets.names() }),
         ),
       };
       return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
@@ -294,7 +338,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     {
       capability: "credentials",
       description:
-        "Look up a one-time TOTP code from the deployment's configured credentials vault. **Gated behind the off-by-default `credentials` capability** — same posture class as `eval` / `network-body` / `secrets`. Provider is selected per-deployment via `BROWX_CREDENTIALS_PROVIDER` (`oathtool` default — no paid dependency, seeds via env or file; or `1password` / `bitwarden` / `lastpass` via their respective CLIs the operator installs out-of-band). Returns `{ok, code, provider}` on success; `{ok:false, error, hint, provider}` on failure (missing seed / CLI not on PATH / CLI not logged in — actionable hint included). TOTP codes are NOT masked through the secrets registry: a TOTP is single-use and short-lived, so masking buys little while complicating verify-step flows — the code is returned in plaintext so the agent can pass it to `fill({value: code})` or compare against on-page text. `account` semantics depend on the provider (oathtool: a key from `BROWX_OATHTOOL_SEEDS`; 1password/bitwarden/lastpass: an item name / id the CLI accepts).",
+        "Look up a one-time TOTP code from the deployment's configured credentials vault. **Gated behind the off-by-default `credentials` capability** — same posture class as `eval` / `network-body` / `secrets`. Provider is selected per-deployment via `BROWX_CREDENTIALS_PROVIDER` (`oathtool` default — no paid dependency, seeds via env or file; or `1password` / `bitwarden` / `lastpass` via their respective CLIs the operator installs out-of-band). Returns `{ok, code, provider}` on success; `{ok:false, error, hint, provider}` on failure (missing seed / CLI not on PATH / CLI not logged in — actionable hint included). TOTP codes are NOT masked through the secrets registry: a TOTP is single-use and short-lived, so masking buys little while complicating verify-step flows — the code is returned in plaintext so the agent can pass it to `fill({value: code})` or compare against on-page text. `account` semantics depend on the provider (oathtool: a key from `BROWX_OATHTOOL_SEEDS`; 1password/bitwarden/lastpass: an item name / id the CLI accepts); it must start with a letter or digit and use only letters, digits, space and `. _ @ + : / -` (max 128).",
       inputSchema: {
         account: z
           .string()
@@ -306,6 +350,8 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     async ({ account }: { account: string }) => {
       const g = gateCheck("get_totp");
       if (g) return g;
+      const bad = accountError(account);
+      if (bad) return accountRefusal(credentialsResolved.config.provider, bad);
       const result = await credentialsResolved.provider.getTotp(account);
       const body = {
         ...result,
@@ -320,7 +366,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     {
       capability: "credentials",
       description:
-        'Look up a `{username, password}` pair from the deployment\'s configured credentials vault. **Gated behind the off-by-default `credentials` capability** AND additionally requires the `secrets` capability (without it the lookup refuses — returning a password in cleartext would leak it into the transcript on first reference). On success, the password is AUTO-REGISTERED into the per-session secrets registry under `<PASSWORD_<account>>` (account name sanitised to `/^[A-Z][A-Z0-9_]*$/`); the agent then passes `fill({value: "<PASSWORD_acct>"})` and the runtime materialises the real value AT Playwright dispatch. The returned object carries `{ok, username, aliasName, provider}` — **never the cleartext password**. Pair with `get_totp` for the 2FA half. `oathtool` provider does NOT support `get_credential` (TOTP-only) — pair with a credential-bearing provider. `account` semantics are provider-specific (1password: item name; bitwarden: item id; lastpass: item name).',
+        'Look up a `{username, password}` pair from the deployment\'s configured credentials vault. **Gated behind the off-by-default `credentials` capability** AND additionally requires the `secrets` capability (without it the lookup refuses — returning a password in cleartext would put it in the transcript on first reference). On success, the password is AUTO-REGISTERED into the per-session secrets registry under `<PASSWORD_<account>>` (account name sanitised to `/^[A-Z][A-Z0-9_]*$/`), bound to the origins listed for that account in `BROWX_CREDENTIAL_ORIGINS` (`acct=https://a.example.com|https://b.example.com`, read at start). An account with no entry there is refused before the vault is asked. The agent then passes `fill({value: "<PASSWORD_acct>"})` and the runtime materialises the real value AT Playwright dispatch, only into a frame on one of those origins. The returned object carries `{ok, username, aliasName, origins, provider}` — **never the cleartext password**. `account` must start with a letter or digit and use only letters, digits, space and `. _ @ + : / -` (max 128). Pair with `get_totp` for the 2FA half. `oathtool` provider does NOT support `get_credential` (TOTP-only) — pair with a credential-bearing provider. `account` semantics are provider-specific (1password: item name; bitwarden: item id; lastpass: item name).',
       inputSchema: {
         account: z
           .string()
@@ -333,6 +379,13 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     async ({ account, session }: { account: string; session?: string }) => {
       const g = gateCheck("get_credential");
       if (g) return g;
+      const provider = credentialsResolved.config.provider;
+      const bad = accountError(account);
+      if (bad) return accountRefusal(provider, bad);
+      // The password is bound to the origins the operator listed for this
+      // account. An unlisted account is refused here, before the vault is asked.
+      const origins = listedOrigins(credentialsResolved.config.origins, account);
+      if (!origins) return accountRefusal(provider, unlistedAccountError(account));
       const e = await entryFor(session);
       const raw = (await credentialsResolved.provider.getCredential(
         account,
@@ -340,8 +393,8 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       // `applyCredentialToRegistry` enforces the `secrets`-capability
       // pairing rule and strips `_password` before the result leaves this
       // module — so the response we serialise never contains cleartext.
-      const registry = caps.enabled.has("secrets") ? e.secrets : null;
-      const result = applyCredentialToRegistry(raw, registry, account);
+      const registry = capabilityMissing("secrets", caps) ? null : e.secrets;
+      const result = applyCredentialToRegistry(raw, registry, account, origins);
       const body = {
         ...result,
         tokensEstimate: estimateTokens(JSON.stringify(result)),

@@ -13,8 +13,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
 import { ZodError } from "zod";
 import { log } from "../util/logging.js";
+import { readLock } from "./lock-store.js";
 import { parseManifestField, type ResolvedManifest, type TrustTier } from "./manifest.js";
-import { clampDeclaredTrust, inferTrustFromInstallIdentity } from "./trust.js";
+import { packagePathProblem } from "./package-paths.js";
+import {
+  clampDeclaredTrust,
+  inferTrustFromInstallIdentity,
+  isVerifiedFirstParty,
+} from "./trust.js";
 
 /** Per-entry overrides in the object form of `plugins.json`. */
 export interface PluginEntryOverride {
@@ -154,7 +160,8 @@ export type ResolveResult =
  *
  * `trustOverride` (from `plugins.json`) wins; otherwise the trust tier
  * comes from the manifest itself, defaulting to `community` (the safe
- * assumption for an externally-sourced plugin).
+ * assumption for an externally-sourced plugin). Either source reaches
+ * `kalebtec` only for a verified first-party install (see `./trust.js`).
  */
 export function resolveDeclaredPlugin(paths: PluginPaths, decl: DeclaredPlugin): ResolveResult {
   const pkgRoot = join(paths.nodeModulesDir, decl.name);
@@ -198,6 +205,14 @@ export function resolveDeclaredPlugin(paths: PluginPaths, decl: DeclaredPlugin):
       error: e instanceof Error ? e.message : String(e),
     };
   }
+  const outside = packagePathProblem(pkgRoot, manifest.register);
+  if (outside) {
+    return {
+      kind: "invalid-manifest",
+      name: decl.name,
+      error: `browxai.register "${manifest.register}" ${outside}. The entry must be a file inside the package, so the lock's content pin covers it.`,
+    };
+  }
   const entryPath = resolvePath(pkgRoot, manifest.register);
   if (!existsSync(entryPath)) {
     return {
@@ -206,14 +221,7 @@ export function resolveDeclaredPlugin(paths: PluginPaths, decl: DeclaredPlugin):
       error: `browxai.register points at ${manifest.register} but resolved path ${entryPath} does not exist`,
     };
   }
-  const pkgName = raw.name ?? decl.name;
-  const claimed = clampDeclaredTrust(manifest.trust, pkgName);
-  if (claimed.rejected) {
-    log.warn(
-      `plugin "${pkgName}": manifest declares trust "${claimed.rejected}" but the package is not under the @browxai/* scope — ignoring the claim and deriving the tier from the install identity.`,
-    );
-  }
-  const trust: TrustTier = decl.trust ?? claimed.trust ?? inferTrustFromInstallIdentity(decl.name);
+  const trust = resolveTrust(paths, decl, manifest.trust, raw.name);
   return {
     kind: "resolved",
     manifest: {
@@ -226,6 +234,35 @@ export function resolveDeclaredPlugin(paths: PluginPaths, decl: DeclaredPlugin):
       browxai: manifest,
     },
   };
+}
+
+/** The trust tier for a resolved plugin: the `plugins.json` override, else the
+ *  manifest's own claim, else what the install supports. `kalebtec` from
+ *  either declared source stands only for a verified first-party install. */
+function resolveTrust(
+  paths: PluginPaths,
+  decl: DeclaredPlugin,
+  manifestTrust: TrustTier | undefined,
+  installedName: unknown,
+): TrustTier {
+  const shownName = typeof installedName === "string" ? installedName : decl.name;
+  const firstParty = isVerifiedFirstParty(
+    decl.name,
+    readLock(paths).entries[decl.name],
+    typeof installedName === "string" ? installedName : "",
+  );
+  const override = clampDeclaredTrust(decl.trust, firstParty);
+  const claimed = clampDeclaredTrust(manifestTrust, firstParty);
+  for (const [source, c] of [
+    ["plugins.json sets", override],
+    ["manifest declares", claimed],
+  ] as const) {
+    if (!c.rejected) continue;
+    log.warn(
+      `plugin "${shownName}": ${source} trust "${c.rejected}", but plugins-lock.json does not record a registry install of that exact @browxai/* name with an integrity hash. Using the tier the install supports.`,
+    );
+  }
+  return override.trust ?? claimed.trust ?? inferTrustFromInstallIdentity(decl.name, firstParty);
 }
 
 /**

@@ -7,8 +7,11 @@
 // is no public mid-session flush. We honour that:
 //
 //   - `start_har({path?})` calls `context.routeFromHAR(harPath, {update:true,
-//     updateMode:"full", updateContent:"embed"})`. From that point every request
-//     in the context is logged into the in-memory HAR.
+//     updateMode:"full"})`, with no bodies unless `content` asks for them
+//     (`embed` / `attach`, which need the `network-body` capability). From that
+//     point every request in the context is logged into the in-memory HAR.
+//   - On close the file is scrubbed (`har-scrub.ts`): Cookie, Set-Cookie and
+//     Authorization values dropped, registered secrets masked.
 //   - `stop_har()` calls `context.unrouteAll({behavior:"wait"})` to remove the
 //     recording route. The HAR FILE on disk is written when the context closes
 //     (`close_session` is the standard finalize point). Until then the path is
@@ -32,16 +35,21 @@
 import { existsSync, mkdirSync, statSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { BrowserContext } from "playwright-core";
-import {
-  resolveWorkspacePath,
-  resolveWorkspaceReadPath,
-  resolveWorkspaceWritePath,
-} from "../session/storage.js";
+import { resolveWorkspaceReadPath, resolveWorkspaceWritePath } from "../session/storage.js";
 
 /** Maximum size (in bytes) at which a finalized HAR is returned inline rather
  *  than only by path. Mirrors the same cap used by `network_body` / storage
  *  dumps — agents that hit it should rely on the path field instead. */
 export const HAR_INLINE_CAP_BYTES = 256 * 1024;
+
+/** Bodies are left out of a recording unless the caller asks for them. */
+export const HAR_DEFAULT_CONTENT = "omit" as const;
+
+/** True when a content policy writes response bodies to disk, which needs the
+ *  `network-body` capability. */
+export function harWritesBodies(content: "embed" | "attach" | "omit" | undefined): boolean {
+  return (content ?? HAR_DEFAULT_CONTENT) !== "omit";
+}
 
 /** Per-session HAR recorder state. One per `SessionEntry`. */
 export interface HarRecorderState {
@@ -50,12 +58,15 @@ export interface HarRecorderState {
   active: boolean;
   /** Workspace-absolute path the HAR is being written to. Reserved at start. */
   path?: string;
+  /** Every path this session recorded to, oldest first. A second `start_har`
+   *  adds to the list, and the close-time scrub walks all of it. */
+  paths: string[];
   /** epoch ms the recorder was started. */
   startedAt?: number;
   /** Capture mode (full vs minimal). Same semantics as Playwright. */
   mode?: "full" | "minimal";
-  /** Content policy — `embed` inlines bodies (default for `.har`), `attach`
-   *  splits into sidecar files (default for `.zip`), `omit` drops bodies. */
+  /** Content policy — `omit` drops bodies (the default), `embed` inlines
+   *  them, `attach` splits them into sidecar files. */
   content?: "embed" | "attach" | "omit";
   /** When true, the HAR was wired at context creation via Playwright's native
    *  `recordHar` option (open_session({har:{...}})) — `stop_har` is a no-op
@@ -65,7 +76,7 @@ export interface HarRecorderState {
 }
 
 export function newHarRecorderState(): HarRecorderState {
-  return { active: false };
+  return { active: false, paths: [] };
 }
 
 /** Configuration accepted by `start_har` AND `open_session({har})`. */
@@ -97,9 +108,14 @@ export function resolveHarPath(
   userPath: string | undefined,
   tool: string,
 ): string {
+  if (userPath && userPath.toLowerCase().endsWith(".zip")) {
+    throw new Error(
+      `${tool}: a .zip HAR path is not supported, because the archive cannot be scrubbed on close. Use a .har path.`,
+    );
+  }
   const resolved = userPath
     ? resolveWorkspaceWritePath(workspaceRoot, userPath, tool)
-    : resolveWorkspacePath(workspaceRoot, `har/${defaultHarFilename(sessionId)}`, tool);
+    : resolveWorkspaceWritePath(workspaceRoot, `har/${defaultHarFilename(sessionId)}`, tool);
   // `resolved` is workspace-rooted by construction (resolveWorkspacePath rejects
   // any escape from `workspaceRoot`); so `dirname(resolved)` is workspace-rooted
   // too — the mkdirSync below never touches cwd. BROWX_WORKSPACE-derived.
@@ -164,16 +180,21 @@ export async function startHar(
   }
   const path = resolveHarPath(workspaceRoot, sessionId, cfg.path, "start_har");
   const mode = cfg.mode ?? "full";
-  const content = cfg.content ?? "embed";
+  const content = cfg.content ?? HAR_DEFAULT_CONTENT;
   const options: Parameters<BrowserContext["routeFromHAR"]>[1] = {
     update: true,
     updateMode: mode,
-    updateContent: content === "omit" ? undefined : content,
+    // Passed through even for `omit`. Playwright's typings list only
+    // `embed` / `attach` here, but its HAR recorder takes `omit` too, and
+    // leaving the option out makes it fall back to `attach` (bodies written
+    // as sidecar files).
+    updateContent: content as "embed" | "attach",
   };
   if (cfg.urlFilter !== undefined) options.url = cfg.urlFilter;
   await context.routeFromHAR(path, options);
   state.active = true;
   state.path = path;
+  if (!state.paths.includes(path)) state.paths.push(path);
   state.startedAt = Date.now();
   state.mode = mode;
   state.content = content;
@@ -251,7 +272,7 @@ export function buildRecordHarOption(
 } {
   const path = resolveHarPath(workspaceRoot, sessionId, cfg.path, "open_session");
   const mode = cfg.mode ?? "full";
-  const content = cfg.content ?? "embed";
+  const content = cfg.content ?? HAR_DEFAULT_CONTENT;
   const recordHar: {
     path: string;
     mode?: "full" | "minimal";

@@ -35,6 +35,11 @@ import {
   type ProviderName,
   type TotpResult,
 } from "./credentials-contract.js";
+import { parseScope } from "./secret-scope.js";
+
+/** The process runner the vault adapters call. A parameter so tests can see
+ *  the exact argv without spawning a CLI. */
+type RunArgv = typeof runArgv;
 
 // ---------------------------------------------------------------------------
 // `none` provider — explicit no-op
@@ -125,9 +130,14 @@ class OathtoolProvider implements CredentialProvider {
 
 class OnePasswordProvider implements CredentialProvider {
   readonly name = "1password" as const;
-  constructor(private readonly binary = "op") {}
+  constructor(
+    private readonly binary = "op",
+    private readonly run: RunArgv = runArgv,
+  ) {}
   async getTotp(account: string): Promise<TotpResult> {
-    const r = await runArgv([this.binary, "item", "get", account, "--otp"], { timeoutMs: 5000 });
+    const r = await this.run([this.binary, "item", "get", "--otp", "--", account], {
+      timeoutMs: 5000,
+    });
     if (r.spawnError && /ENOENT/.test(r.spawnError)) {
       return {
         ok: false,
@@ -156,17 +166,18 @@ class OnePasswordProvider implements CredentialProvider {
     return { ok: true, code, provider: "1password" };
   }
   async getCredential(account: string): Promise<CredentialResult> {
-    // `op item get <name> --fields label=username,label=password --format json`
-    const r = await runArgv(
+    // `op item get --fields label=username,label=password --format json -- <name>`
+    const r = await this.run(
       [
         this.binary,
         "item",
         "get",
-        account,
         "--fields",
         "label=username,label=password",
         "--format",
         "json",
+        "--",
+        account,
       ],
       { timeoutMs: 5000 },
     );
@@ -210,9 +221,12 @@ class OnePasswordProvider implements CredentialProvider {
 
 class BitwardenProvider implements CredentialProvider {
   readonly name = "bitwarden" as const;
-  constructor(private readonly binary = "bw") {}
+  constructor(
+    private readonly binary = "bw",
+    private readonly run: RunArgv = runArgv,
+  ) {}
   async getTotp(account: string): Promise<TotpResult> {
-    const r = await runArgv([this.binary, "get", "totp", account], { timeoutMs: 5000 });
+    const r = await this.run([this.binary, "get", "totp", "--", account], { timeoutMs: 5000 });
     if (r.spawnError && /ENOENT/.test(r.spawnError)) {
       return {
         ok: false,
@@ -241,7 +255,7 @@ class BitwardenProvider implements CredentialProvider {
     return { ok: true, code, provider: "bitwarden" };
   }
   async getCredential(account: string): Promise<CredentialResult> {
-    const r = await runArgv([this.binary, "get", "item", account], { timeoutMs: 5000 });
+    const r = await this.run([this.binary, "get", "item", "--", account], { timeoutMs: 5000 });
     if (r.spawnError && /ENOENT/.test(r.spawnError)) {
       return {
         ok: false,
@@ -293,9 +307,14 @@ class BitwardenProvider implements CredentialProvider {
 
 class LastpassProvider implements CredentialProvider {
   readonly name = "lastpass" as const;
-  constructor(private readonly binary = "lpass") {}
+  constructor(
+    private readonly binary = "lpass",
+    private readonly run: RunArgv = runArgv,
+  ) {}
   async getTotp(account: string): Promise<TotpResult> {
-    const r = await runArgv([this.binary, "show", "--field=otp", account], { timeoutMs: 5000 });
+    const r = await this.run([this.binary, "show", "--field=otp", "--", account], {
+      timeoutMs: 5000,
+    });
     if (r.spawnError && /ENOENT/.test(r.spawnError)) {
       return {
         ok: false,
@@ -324,7 +343,7 @@ class LastpassProvider implements CredentialProvider {
     return { ok: true, code, provider: "lastpass" };
   }
   async getCredential(account: string): Promise<CredentialResult> {
-    const r = await runArgv([this.binary, "show", "--username", "--password", account], {
+    const r = await this.run([this.binary, "show", "--username", "--password", "--", account], {
       timeoutMs: 5000,
     });
     if (r.spawnError && /ENOENT/.test(r.spawnError)) {
@@ -373,6 +392,36 @@ class LastpassProvider implements CredentialProvider {
 export interface CredentialsConfig {
   provider: ProviderName;
   warnings: readonly string[];
+  /** Operator-configured origins per account (`BROWX_CREDENTIAL_ORIGINS`).
+   *  A `get_credential` value for a listed account is bound to these origins;
+   *  `get_credential` refuses any account that is not listed. */
+  origins?: Readonly<Record<string, readonly string[]>>;
+}
+
+/** Parse `acct=https://a.example.com|https://b.example.com,other=app.example.com`.
+ *  Each origin goes through the same parser `register_secret` scopes use; an
+ *  account with an entry that does not parse is dropped with a warning, so a
+ *  typo never widens where the value can go. */
+export function parseCredentialOrigins(
+  raw: string | undefined,
+  warnings: string[],
+): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [account, value] of Object.entries(parseSeedsEnv(raw))) {
+    const entries = value
+      .split("|")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    try {
+      parseScope(entries);
+      out[account] = entries;
+    } catch (e) {
+      warnings.push(
+        `BROWX_CREDENTIAL_ORIGINS: ignoring account "${account}": ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+  return out;
 }
 
 /**
@@ -386,12 +435,16 @@ export interface CredentialsConfig {
  *   BROWX_1PASSWORD_BIN=/custom/path/to/op
  *   BROWX_BITWARDEN_BIN=/custom/path/to/bw
  *   BROWX_LASTPASS_BIN=/custom/path/to/lpass
+ *   BROWX_CREDENTIAL_ORIGINS="acct1=https://app.example.com|https://sso.example.com"
  *
  * Default is `oathtool` (the self-managed, no-paid-dependency path). The
  * provider object is constructed eagerly; if its CLI is missing, that
  * surfaces per-call, never at startup (so the server still boots).
  */
-export function resolveCredentialsProvider(env: NodeJS.ProcessEnv = process.env): {
+export function resolveCredentialsProvider(
+  env: NodeJS.ProcessEnv = process.env,
+  run: RunArgv = runArgv,
+): {
   provider: CredentialProvider;
   config: CredentialsConfig;
 } {
@@ -417,19 +470,20 @@ export function resolveCredentialsProvider(env: NodeJS.ProcessEnv = process.env)
       break;
     }
     case "1password":
-      provider = new OnePasswordProvider(env.BROWX_1PASSWORD_BIN?.trim() || undefined);
+      provider = new OnePasswordProvider(env.BROWX_1PASSWORD_BIN?.trim() || undefined, run);
       break;
     case "bitwarden":
-      provider = new BitwardenProvider(env.BROWX_BITWARDEN_BIN?.trim() || undefined);
+      provider = new BitwardenProvider(env.BROWX_BITWARDEN_BIN?.trim() || undefined, run);
       break;
     case "lastpass":
-      provider = new LastpassProvider(env.BROWX_LASTPASS_BIN?.trim() || undefined);
+      provider = new LastpassProvider(env.BROWX_LASTPASS_BIN?.trim() || undefined, run);
       break;
     case "none":
       provider = new NoneProvider();
       break;
   }
-  return { provider, config: { provider: name, warnings } };
+  const origins = parseCredentialOrigins(env.BROWX_CREDENTIAL_ORIGINS, warnings);
+  return { provider, config: { provider: name, warnings, origins } };
 }
 
 /**

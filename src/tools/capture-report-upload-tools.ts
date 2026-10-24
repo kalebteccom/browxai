@@ -290,7 +290,7 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
     {
       capability: "file-io",
       description:
-        "Return the bytes (base64) of a previously-captured download. Pass the `id` from `ActionResult.downloads[]` (or `downloads_capture({on:true}).captured[]`). Set `pathOnly:true` to skip the base64 payload and return just the workspace-rooted path metadata (useful for very large artifacts an agent only needs to forward to another tool by path). → `{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`. Gated by the off-by-default **`file-io`** capability.",
+        "Return the bytes (base64) of a previously-captured download. Pass the `id` from `ActionResult.downloads[]` (or `downloads_capture({on:true}).captured[]`). Set `pathOnly:true` to skip the base64 payload and return just the workspace-rooted path metadata (useful for very large artifacts an agent only needs to forward to another tool by path). A file over 16 MiB is not returned inline: the call fails with an error naming the limit and the saved path, and `pathOnly:true` still works. →`{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`. Gated by the off-by-default **`file-io`** capability.",
       inputSchema: {
         id: z.string().describe("Download id from ActionResult.downloads[].id."),
         pathOnly: z
@@ -305,7 +305,7 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
       if (g) return g;
       const e = await entryFor(args.session);
       try {
-        const r = readCapturedBytes(e.downloads, args.id);
+        const r = readCapturedBytes(e.downloads, args.id, { pathOnly: args.pathOnly });
         const body: Record<string, unknown> = {
           ok: true,
           id: args.id,
@@ -314,7 +314,7 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
           path: r.path,
         };
         if (r.mimeType !== undefined) body.mimeType = r.mimeType;
-        if (!args.pathOnly) body.content = r.base64;
+        if (r.base64 !== undefined) body.content = r.base64;
         const json = JSON.stringify(body);
         return {
           content: [

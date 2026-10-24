@@ -224,11 +224,10 @@ export interface IosNativeHandle extends NativeSessionHandle {
 }
 
 /** The secret-scope string a native session presents in place of a page URL.
- *  `SecretRegistry.materialize` checks scope by case-insensitive substring
- *  containment, so `app://com.acme.app/` contains `com.acme.app` and a secret
- *  registered with `scope: "com.acme.app"` would scope here and refuse in a
- *  different app's session — with no change to the check itself (RFC 0008 §1.5,
- *  §6). NOTE that no native `fill` reaches `materialize` today: substitution
+ *  `SecretRegistry.materialize` matches a scope as an exact origin, and this
+ *  URL's origin is `app://com.acme.app`, so a secret registered with
+ *  `scope: "app://com.acme.app"` would scope here and refuse in a different
+ *  app's session (RFC 0008 §1.5, §6). NOTE that no native `fill` reaches `materialize` today: substitution
  *  lives in the Playwright action core, so a `<NAME>` alias is typed literally on
  *  both native engines and `fill` warns that it was.
  *

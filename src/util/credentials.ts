@@ -20,6 +20,9 @@
 // the agent then uses `fill({value:"<PASSWORD_acct>"})` and Playwright
 // receives the real value at dispatch via the registry's materialise path.
 // The egress-masking layer also catches the value in every other sink.
+// The registration carries a scope: the origins the operator listed for the
+// account in BROWX_CREDENTIAL_ORIGINS, so `fill` materialises the password
+// only into a frame on one of those origins. An unlisted account is refused.
 // `get_totp` returns the 6-digit code directly (TOTPs are single-use and short-lived
 // — the value is "spent" the moment it's typed, so masking buys little
 // and complicates the agent's verify-step flow).
@@ -38,8 +41,10 @@ export * from "./credentials-providers.js";
 
 /**
  * Apply a credential lookup to the per-session secrets registry:
- * registers the password under an account-derived alias, then returns the
- * public credential shape (username + aliasName only, NEVER the password).
+ * registers the password under an account-derived alias, scoped to `origins`,
+ * then returns the public credential shape (username + aliasName only, NEVER
+ * the password). An empty `origins` refuses: a vault password is never
+ * registered without the origins it may be typed into.
  *
  * Callers pass `registry` only when the `secrets` capability is enabled.
  * When it's not, the function returns a structured refusal — registering
@@ -50,7 +55,7 @@ export function applyCredentialToRegistry(
   result: ProviderCredentialInternal,
   registry: SecretRegistry | null,
   account: string,
-  pageUrl?: string,
+  origins: readonly string[],
 ): CredentialResult {
   if (!result.ok) {
     // Surface refusal verbatim; never carries a password.
@@ -73,12 +78,21 @@ export function applyCredentialToRegistry(
         "Add `secrets` to BROWX_CAPABILITIES alongside `credentials`, then restart.",
     };
   }
+  if (origins.length === 0) {
+    return {
+      ok: false,
+      provider: result.provider,
+      error:
+        "credentials lookup refused: no origin to bind the password to. List the " +
+        "account's origins in BROWX_CREDENTIAL_ORIGINS, then restart.",
+    };
+  }
   const aliasName = aliasFromAccount(account);
   try {
     registry.register({
       name: aliasName,
       value: result._password,
-      ...(pageUrl ? {} : {}),
+      scope: origins,
     });
   } catch (e) {
     return {
@@ -92,6 +106,7 @@ export function applyCredentialToRegistry(
     provider: result.provider,
     username: result.username,
     aliasName,
+    origins: registry.scopeOrigins(aliasName) ?? [],
   };
 }
 

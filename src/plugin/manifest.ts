@@ -26,8 +26,10 @@ import { z } from "zod";
  * capability-gate / call-graph-enforcement time. Surfaced on `plugins_list`
  * so the operator can audit.
  *
- *  - `kalebtec`  — published by Kalebtec under `@browxai/plugin-*`.
- *                  Reference plugins; same release/CI hygiene as the host.
+ *  - `kalebtec`  — published by Kalebtec under `@browxai/plugin-*` and
+ *                  installed from the registry under that exact name
+ *                  (see `./trust.ts`). Reference plugins; same
+ *                  release/CI hygiene as the host.
  *  - `community` — third-party npm packages (`browxai-plugin-*` or
  *                  `@<org>/browxai-plugin-*`). Adopter installs by name.
  *  - `local`     — file-path-installed plugins. Used during plugin

@@ -23,6 +23,7 @@ import { mkdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import type { BrowserContext, Download } from "playwright-core";
 import { log } from "../util/logging.js";
+import { assertWriteStaysInside } from "../util/workspace.js";
 
 /** What lands on `ActionResult.downloads[]` and `download_get`. Workspace-rooted
  *  paths only; never absolute outside `$BROWX_WORKSPACE`. */
@@ -54,15 +55,22 @@ export class DownloadsRegistry {
   /** Active captures, keyed by id. Bounded to MAX_ENTRIES — oldest evicted. */
   private entries = new Map<string, CapturedDownload>();
   private nextId = 1;
-  /** Captures that have fired and are not yet sliced into an ActionResult. */
+  /** Captures that have fired and are not yet sliced into an ActionResult. An
+   *  entry leaves when an action-window slice picks it up, when its capture is
+   *  evicted, or after `PENDING_TTL_MS`. */
   private pendingSince: CapturedDownload[] = [];
   /** Max captures kept in memory + on disk per session before LRU-evicting
    *  the oldest. Prevents an unbounded download loop from filling the disk. */
   private static MAX_ENTRIES = 100;
+  /** How long a capture waits in `pendingSince` for an action window to claim it. */
+  static readonly PENDING_TTL_MS = 60_000;
 
   constructor(
     /** Per-session storage dir: `$BROWX_WORKSPACE/.downloads/<sessionId>/`. */
     readonly storageDir: string,
+    /** The workspace root, when known. A capture then checks the real path of
+     *  the file stays inside it. */
+    readonly workspaceRoot?: string,
   ) {}
 
   /** List all captured downloads for this session (most-recent first). */
@@ -79,7 +87,21 @@ export class DownloadsRegistry {
    *  snapshot of the captures so the action-window can include them on the
    *  ActionResult without exposing the live registry. */
   since(tsMs: number): CapturedDownload[] {
+    // A slice from `tsMs` claims every pending capture it covers.
+    this.pendingSince = this.pendingSince.filter((d) => d.capturedAt < tsMs);
+    this.dropStalePending();
     return [...this.entries.values()].filter((d) => d.capturedAt >= tsMs);
+  }
+
+  /** Number of captures still waiting for an action-window slice. */
+  pendingCount(): number {
+    this.dropStalePending();
+    return this.pendingSince.length;
+  }
+
+  private dropStalePending(): void {
+    const cutoff = Date.now() - DownloadsRegistry.PENDING_TTL_MS;
+    this.pendingSince = this.pendingSince.filter((d) => d.capturedAt >= cutoff);
   }
 
   /** Record a capture. Caller has already persisted the file at `path`. */
@@ -88,6 +110,7 @@ export class DownloadsRegistry {
     const entry: CapturedDownload = { id, ...record };
     this.entries.set(id, entry);
     this.pendingSince.push(entry);
+    this.dropStalePending();
     // LRU evict oldest if over the cap.
     while (this.entries.size > DownloadsRegistry.MAX_ENTRIES) {
       const oldestKey = this.entries.keys().next().value;
@@ -95,6 +118,7 @@ export class DownloadsRegistry {
       const victim = this.entries.get(oldestKey);
       this.entries.delete(oldestKey);
       if (victim) {
+        this.pendingSince = this.pendingSince.filter((d) => d !== victim);
         // unlink under the workspace-rooted storageDir (BROWX_WORKSPACE).
         try {
           unlinkSync(victim.path);
@@ -205,6 +229,9 @@ async function handleDownload(download: Download, registry: DownloadsRegistry): 
   // Ensure storage dir exists (created lazily; sessions that never opt in
   // never create it). The dir is workspace-rooted (BROWX_WORKSPACE/.downloads
   // via the SessionEntry factory in server.ts — never cwd).
+  if (registry.workspaceRoot) {
+    assertWriteStaysInside(registry.workspaceRoot, registry.storageDir, "downloads_capture");
+  }
   mkdirSync(registry.storageDir, { recursive: true });
   // Compose final on-disk path. We can't know the id yet (registry assigns
   // it on `record`); use a millisecond+random prefix to disambiguate
@@ -222,6 +249,9 @@ async function handleDownload(download: Download, registry: DownloadsRegistry): 
     return;
   }
   try {
+    if (registry.workspaceRoot) {
+      assertWriteStaysInside(registry.workspaceRoot, resolved, "downloads_capture");
+    }
     await download.saveAs(resolved);
   } catch (err) {
     log.warn("downloads: saveAs failed", {
@@ -246,16 +276,44 @@ async function handleDownload(download: Download, registry: DownloadsRegistry): 
   });
 }
 
-/** Read a captured download's bytes. Returns base64. Throws if the id is
- *  unknown or the file vanished. */
+/** Largest file `download_get` returns inline as base64: 16 MiB. A larger capture
+ *  stays on disk and is reachable by path (`pathOnly:true`). */
+export const MAX_DOWNLOAD_GET_BYTES = 16 * 1024 * 1024;
+
+/** Read a captured download's bytes. Returns base64, or only the size and path
+ *  when `pathOnly` is set. Throws if the id is unknown, the file vanished, or the
+ *  file is over `maxBytes`. The size is checked before any byte is read. */
 export function readCapturedBytes(
   reg: DownloadsRegistry,
   id: string,
-): { base64: string; bytes: number; path: string; mimeType?: string; suggestedFilename: string } {
+  opts: { pathOnly?: boolean; maxBytes?: number } = {},
+): { base64?: string; bytes: number; path: string; mimeType?: string; suggestedFilename: string } {
   const entry = reg.get(id);
   if (!entry) {
     throw new Error(
       `download_get: unknown id "${id}". Call downloads_capture({on:true}) before the action that triggers the download, then read the id from ActionResult.downloads[]`,
+    );
+  }
+  const maxBytes = opts.maxBytes ?? MAX_DOWNLOAD_GET_BYTES;
+  let size: number;
+  try {
+    size = statSync(entry.path).size;
+  } catch (err) {
+    throw new Error(
+      `download_get: file vanished for id "${id}" at ${entry.path} (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
+  if (opts.pathOnly) {
+    return {
+      bytes: size,
+      path: entry.path,
+      mimeType: entry.mimeType,
+      suggestedFilename: entry.suggestedFilename,
+    };
+  }
+  if (size > maxBytes) {
+    throw new Error(
+      `download_get: "${entry.suggestedFilename}" is ${size} bytes, over the ${maxBytes}-byte limit for inline content. The file is saved at ${entry.path}; call download_get with pathOnly:true to get the path without the content.`,
     );
   }
   let buf: Buffer;

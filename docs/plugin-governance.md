@@ -10,20 +10,31 @@ mechanically that is what it is.
 
 ## Three tiers
 
-The tier is **derived from the package identity**, never asserted by the plugin.
+The tier is **derived from how the package was installed**, never asserted by
+the plugin.
 
 - **`kalebtec`**: published under the `@browxai/*` npm scope, released from the
   browxai monorepo through the same OIDC trusted-publishing pipeline as the host
-  package, npm-provenance signed. A manifest may declare `"trust": "kalebtec"`,
-  but the declaration is honoured **only** when the package name is also under
-  `@browxai/*`. A claim without the matching scope is dropped with a warning and
-  the tier falls back to what the install identity supports.
+  package, npm-provenance signed. A plugin gets this tier only when
+  `plugins-lock.json` records all of the following for it:
+  - a plain registry spec of exactly its `@browxai/*` name
+    (`@browxai/plugin-figma` or `@browxai/plugin-figma@^0.1.0`), with no
+    `npm:` alias, git URL, tarball URL or `file:` path;
+  - the registry integrity hash the package manager recorded for that name and
+    version;
+  - an installed `package.json` whose `name` is that same name.
 
-- **`community`**: any third-party npm package. The default for anything not
-  under the `@browxai/*` scope and not installed from a local path.
+  A package name alone does not count: an install can alias any package to an
+  `@browxai/*` name, and a git dependency can name itself anything. A
+  `"trust": "kalebtec"` claim, in a manifest or in `plugins.json`, is dropped
+  with a warning when the lock does not back it.
+
+- **`community`**: everything else that is not a `file:` install, including an
+  `@browxai/*` name installed by alias, from git or from a tarball URL.
 
 - **`local`**: installed from a `file:` path. Used during plugin development
-  (`browxai plugin install file:./my-plugin/`).
+  (`browxai plugin install file:./my-plugin`; a relative path resolves from
+  your shell's working directory, an absolute path works too).
 
 An operator can override the tier per entry in `plugins.json`:
 
@@ -35,8 +46,13 @@ An operator can override the tier per entry in `plugins.json`:
 }
 ```
 
-The operator override wins over everything, because the operator is the only
-party who can decide what to run. A plugin cannot upgrade itself.
+The operator override wins for `community` and `local`, because the operator is
+the only party who can decide what to run. A plugin cannot upgrade itself, and
+an override to `kalebtec` holds only for an install the lock backs as above.
+
+`browxai plugin install`, `upgrade` and `sync` run the package manager with
+lifecycle scripts off (`--ignore-scripts`). A plugin ships built code, so
+nothing in the plugin contract runs at install time.
 
 ## Capability disclosure
 
@@ -75,6 +91,8 @@ Because plugins run with full Node access in the host process:
 - Prefer `@browxai/*` first-party plugins.
 - Read what a third-party plugin declares before enabling it:
   `browxai plugin info <pkg>`, and audit the live set with `plugins_list`.
+  `browxai doctor` flags a `plugins-lock.json` hash mismatch and installs that
+  were not declared.
 - Grant only the capabilities the plugin actually needs. The capability gate
   narrows what the plugin's **tools** can reach through the host; it does not
   constrain what the plugin's own code can do.
@@ -85,6 +103,8 @@ Because plugins run with full Node access in the host process:
 ## Revocation
 
 Removal from a curated registry is not available, since there is no registry.
-What an operator can do today is remove the entry from `plugins.json` and
-re-run `browxai plugin sync`. Security reports against a first-party plugin
+What an operator can do today is run `browxai plugin remove <pkg>`, which
+uninstalls the package and deletes its entries in `plugins.json` and
+`plugins-lock.json`, then restart the server. To keep the install but stop
+loading it, set `"enabled": false` on its `plugins.json` entry. Security reports against a first-party plugin
 follow the disclosure policy in [`SECURITY.md`](../SECURITY.md).

@@ -49,7 +49,7 @@ import {
   appendFileSync,
 } from "node:fs";
 import { join, sep as pathSep } from "node:path";
-import { resolveWorkspacePath } from "./workspace.js";
+import { assertWriteStaysInside, resolveWorkspacePath } from "./workspace.js";
 import type { SecretRegistry } from "./secrets.js";
 import type { DiagnosticsRecord } from "./diagnostics-redact.js";
 
@@ -241,6 +241,7 @@ export class DiagnosticsRecorder {
     let path: string;
     try {
       path = resolveDiagnosticsPath(this.workspaceRoot, record.sessionId, this.serverStartIso);
+      assertWriteStaysInside(this.workspaceRoot, path, "diagnostics");
     } catch {
       // Workspace-escape: skip silently. The session id was already
       // validated upstream (session ids are agent-provided strings); a

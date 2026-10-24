@@ -9,6 +9,8 @@ import { EgressSanitiser } from "./egress-sanitiser.js";
 import { ConsoleBuffer } from "../page/console.js";
 import { NetworkBuffer, NetworkTap, WsBuffer, fetchResponseBody } from "../page/network.js";
 import { verifyPredicate } from "../page/verify.js";
+import { maskToolResponse } from "../tools/host-egress-mask.js";
+import { cacheEntryForCaps } from "../tools/storage-caches-tools.js";
 
 // Minimal CDP stub: records `on` handlers by event name and lets the test
 // fire them. `send` resolves (Network.enable is idempotent).
@@ -578,6 +580,98 @@ describe("sink: verify_predicate — deep failure.actual masking (the unbounded-
     const json = JSON.stringify(r.applyMaskDeep(rawBody));
     expect(json).not.toContain("987654");
     expect(json).toContain("your code is <OTP>");
+  });
+});
+
+// The page-data readers below return what the page holds and never called the
+// egress sanitiser themselves. They are covered by the `register` wrapper's one
+// masking pass (`maskToolResponse`), so each row runs that tool's result shape
+// through it, in the JSON layout the tool emits.
+describe("sink: page-data readers through the register wrapper", () => {
+  const secretsWith = (): SecretRegistry => {
+    const r = new SecretRegistry();
+    r.register({ name: "PASSWORD", value: "hunter2" });
+    return r;
+  };
+  const viaWrapper = (body: unknown): string => {
+    const res = maskToolResponse(
+      { content: [{ type: "text", text: JSON.stringify(body, null, 2) }] },
+      [secretsWith()],
+    );
+    return (res.content[0] as { text: string }).text;
+  };
+  const cachedEntry = {
+    found: true,
+    kind: "text",
+    text: '{"password":"hunter2"}',
+    contentType: "application/json",
+    status: 200,
+    headers: { "x-echo": "hunter2" },
+    cacheName: "v1",
+    url: "https://app.test/me",
+    origin: "https://app.test",
+  };
+
+  it("extract: a filled field read back by a schema", () => {
+    const out = viaWrapper({
+      ok: true,
+      data: { email: "a@b.test", password: "hunter2", rows: [{ note: "pw hunter2" }] },
+      tokensEstimate: 20,
+    });
+    expect(out).not.toContain("hunter2");
+    expect(JSON.parse(out).data).toEqual({
+      email: "a@b.test",
+      password: "<PASSWORD>",
+      rows: [{ note: "pw <PASSWORD>" }],
+    });
+  });
+
+  it("shadow_trees: an input value inside a shadow root", () => {
+    const out = viaWrapper({
+      ok: true,
+      hosts: [{ host: "login-form", tree: { tag: "input", value: "hunter2", children: [] } }],
+    });
+    expect(out).not.toContain("hunter2");
+    expect(out).toContain("<PASSWORD>");
+  });
+
+  it("cookies_get: a cookie value carrying the password", () => {
+    const out = viaWrapper({
+      ok: true,
+      cookie: { name: "remember", value: "user%3Dalice%26pw%3Dhunter2", domain: "app.test" },
+    });
+    expect(out).not.toContain("hunter2");
+    expect(JSON.parse(out).cookie.value).toBe("user%3Dalice%26pw%3D<PASSWORD>");
+  });
+
+  it("idb_get: a stored record, value and key", () => {
+    const out = viaWrapper({
+      ok: true,
+      found: true,
+      key: "hunter2",
+      value: { draft: { password: "hunter2" } },
+    });
+    expect(out).not.toContain("hunter2");
+    expect(JSON.parse(out)).toMatchObject({
+      key: "<PASSWORD>",
+      value: { draft: { password: "<PASSWORD>" } },
+    });
+  });
+
+  it("caches_get: a cached text body, with network-body on", () => {
+    const out = viaWrapper({ ok: true, ...cacheEntryForCaps(cachedEntry, true) });
+    expect(out).not.toContain("hunter2");
+    expect(JSON.parse(out).text).toBe('{"password":"<PASSWORD>"}');
+  });
+
+  it("caches_get: without network-body the body is left out and the headers are masked", () => {
+    const body = JSON.parse(viaWrapper({ ok: true, ...cacheEntryForCaps(cachedEntry, false) }));
+    expect(body.text).toBeUndefined();
+    expect(body.bodyOmitted).toBe(true);
+    expect(body.requiredCapability).toBe("network-body");
+    expect(body.byteLength).toBe(22);
+    expect(body.headers).toEqual({ "x-echo": "<PASSWORD>" });
+    expect(body.status).toBe(200);
   });
 });
 

@@ -11,7 +11,14 @@ import {
 } from "./actionresult.js";
 import { locatorFor, resolveTargetChecked, refOrSelector, targetDescriptor } from "./locator.js";
 import { preProbe, probe, captureHit, captureFocusedRef } from "./actions-probe.js";
-import { materialiseValue, maskProbe, failedFill, failedPress } from "./actions-secrets.js";
+import {
+  materialiseValue,
+  maskProbe,
+  failedFill,
+  failedPress,
+  fillChecked,
+  pressChecked,
+} from "./actions-secrets.js";
 import { directClick } from "./actions-direct-dispatch.js";
 import { invariant } from "../util/invariant.js";
 // The eleven verb argument shapes live on the vendor-free leaf
@@ -150,7 +157,12 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
   // (`<NAME>`), NEVER the real value — so `ActionResult.action.value`, any
   // recorder appendage, and the post-probe's `valueRequested` echo the
   // alias. Plain strings pass through unchanged.
-  const mat = materialiseValue(ctx, args.value);
+  const mat = await materialiseValue(
+    ctx,
+    args.value,
+    () => locatorFor(ctx.page, ctx.refs, args.target),
+    args.deadlineMs ?? DEFAULT_TIMEOUT_MS,
+  );
   if (!mat.ok) return failedFill(args.target, args.value, mat.error);
   const descriptorValue = mat.alias ? `<${mat.alias}>` : args.value;
   const descriptor: DispatchedAction = {
@@ -158,18 +170,23 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
     value: descriptorValue,
     ...refOrSelector(args.target),
   };
-  return runInActionWindow(ctx, descriptor, args, async () => {
-    const loc = locatorFor(ctx.page, ctx.refs, args.target);
-    const pre = await preProbe(loc);
-    await loc.fill(mat.value, { timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
-    // pass the alias as `valueRequested` so `value === valueRequested`
-    // comparison still works without the real secret reaching the probe.
-    const probed = await probe(loc, args.target, descriptorValue, pre);
-    // Defence-in-depth: the field's DOM value reflects what we typed, so
-    // `probed.value` carries the secret. Mask before returning — the
-    // action-window will surface it on the ActionResult otherwise.
-    return maskProbe(probed, ctx);
-  });
+  try {
+    return await runInActionWindow(ctx, descriptor, args, async () => {
+      const loc = locatorFor(ctx.page, ctx.refs, args.target);
+      const pre = await preProbe(loc);
+      // A scoped secret fills through the element its scope was checked on.
+      await fillChecked(loc, mat, args.deadlineMs ?? DEFAULT_TIMEOUT_MS);
+      // pass the alias as `valueRequested` so `value === valueRequested`
+      // comparison still works without the real secret reaching the probe.
+      const probed = await probe(loc, args.target, descriptorValue, pre);
+      // Defence-in-depth: the field's DOM value reflects what we typed, so
+      // `probed.value` carries the secret. Mask before returning — the
+      // action-window will surface it on the ActionResult otherwise.
+      return maskProbe(probed, ctx);
+    });
+  } finally {
+    await mat.bound?.dispose();
+  }
 }
 
 export async function navigate(ctx: ActionContext, args: NavigateArgs): Promise<ActionResult> {
@@ -188,7 +205,13 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
   // field. Playwright's `press` accepts modifier+key strings ("Shift+A") and
   // single chars; the `<NAME>` shape doesn't collide with either, so the
   // alias detection in the registry is unambiguous.
-  const mat = materialiseValue(ctx, args.key);
+  const target = args.target;
+  const mat = await materialiseValue(
+    ctx,
+    args.key,
+    target ? () => locatorFor(ctx.page, ctx.refs, target) : "focused",
+    args.deadlineMs ?? DEFAULT_TIMEOUT_MS,
+  );
   if (!mat.ok) return failedPress(args.target, args.key, mat.error);
   const descriptorValue = mat.alias ? `<${mat.alias}>` : args.key;
   const descriptor: DispatchedAction = {
@@ -196,17 +219,18 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
     value: descriptorValue,
     ...(args.target ? refOrSelector(args.target) : {}),
   };
-  return runInActionWindow(ctx, descriptor, args, async () => {
-    if (args.target) {
+  const timeout = args.deadlineMs ?? DEFAULT_TIMEOUT_MS;
+  try {
+    return await runInActionWindow(ctx, descriptor, args, async () => {
+      if (!args.target) return pressChecked(ctx.page, undefined, mat, timeout);
       const loc = locatorFor(ctx.page, ctx.refs, args.target);
       const pre = await preProbe(loc);
-      await loc.press(mat.value, { timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
-      const probed = await probe(loc, args.target, undefined, pre);
-      return maskProbe(probed, ctx);
-    } else {
-      await ctx.page.keyboard.press(mat.value);
-    }
-  });
+      await pressChecked(ctx.page, loc, mat, timeout);
+      return maskProbe(await probe(loc, args.target, undefined, pre), ctx);
+    });
+  } finally {
+    await mat.bound?.dispose();
+  }
 }
 
 export async function hover(ctx: ActionContext, args: HoverArgs): Promise<ActionResult> {
@@ -389,7 +413,7 @@ export { preProbe, probe, captureHit, captureFocusedRef } from "./actions-probe.
 // builders) lives in `actions-secrets.ts` — the second reason-to-change,
 // separated from the verb primitives. Re-exported so `fill-form` and any other
 // composer import `materialiseValue` / `maskProbe` from this path unchanged.
-export { materialiseValue, maskProbe } from "./actions-secrets.js";
+export { materialiseValue, maskProbe, fillChecked } from "./actions-secrets.js";
 
 // The `scroll` action surface (scroll verb + scroll-behaviour types + the pure
 // `scrollMode` dispatch resolver) lives in `actions-scroll.ts` next to its

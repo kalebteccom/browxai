@@ -71,6 +71,38 @@ describe("DownloadsRegistry", () => {
   });
 });
 
+describe("DownloadsRegistry pending captures", () => {
+  const record = (reg: DownloadsRegistry, name: string, capturedAt: number) =>
+    reg.record({ suggestedFilename: name, sizeBytes: 1, path: `/tmp/x/${name}`, capturedAt });
+
+  it("drops a pending capture once an action window slices it", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(10_000);
+      const reg = new DownloadsRegistry("/tmp/x");
+      record(reg, "a", 10_000);
+      expect(reg.pendingCount()).toBe(1);
+      reg.since(5_000);
+      expect(reg.pendingCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops a pending capture nobody claimed after the timeout", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(10_000);
+      const reg = new DownloadsRegistry("/tmp/x");
+      record(reg, "a", 10_000);
+      vi.setSystemTime(10_000 + DownloadsRegistry.PENDING_TTL_MS + 1);
+      expect(reg.pendingCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("readCapturedBytes", () => {
   it("returns base64 + size for a captured file", () => {
     const dir = mkdtempSync(join(tmpdir(), "brx-dl-"));
@@ -87,10 +119,48 @@ describe("readCapturedBytes", () => {
       });
       const r = readCapturedBytes(reg, "d1");
       expect(r.bytes).toBe(5);
-      expect(Buffer.from(r.base64, "base64").toString()).toBe("hello");
+      expect(Buffer.from(r.base64 ?? "", "base64").toString()).toBe("hello");
       expect(r.path).toBe(p);
       expect(r.mimeType).toBe("text/plain");
       expect(r.suggestedFilename).toBe("x.txt");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a file over the byte cap, naming the cap and the saved path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "brx-dl-"));
+    try {
+      const reg = new DownloadsRegistry(dir);
+      const p = join(dir, "big.bin");
+      writeFileSync(p, "0123456789");
+      reg.record({ suggestedFilename: "big.bin", sizeBytes: 10, path: p, capturedAt: Date.now() });
+      let message = "";
+      try {
+        readCapturedBytes(reg, "d1", { maxBytes: 4 });
+      } catch (err) {
+        message = err instanceof Error ? err.message : String(err);
+      }
+      expect(message).toContain("4-byte limit");
+      expect(message).toContain(p);
+      // A file at the cap still reads.
+      expect(readCapturedBytes(reg, "d1", { maxBytes: 10 }).bytes).toBe(10);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("pathOnly returns size and path without reading the file or applying the cap", () => {
+    const dir = mkdtempSync(join(tmpdir(), "brx-dl-"));
+    try {
+      const reg = new DownloadsRegistry(dir);
+      const p = join(dir, "big.bin");
+      writeFileSync(p, "0123456789");
+      reg.record({ suggestedFilename: "big.bin", sizeBytes: 10, path: p, capturedAt: Date.now() });
+      const r = readCapturedBytes(reg, "d1", { pathOnly: true, maxBytes: 4 });
+      expect(r.base64).toBeUndefined();
+      expect(r.bytes).toBe(10);
+      expect(r.path).toBe(p);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

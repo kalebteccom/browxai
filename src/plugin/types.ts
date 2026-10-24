@@ -16,6 +16,28 @@ export interface PluginToolResponse {
   >;
 }
 
+/**
+ * A tool's declared input, in either of two forms:
+ *   - a zod raw shape (`{ msg: z.string() }`), the shape core tools use;
+ *   - a JSON Schema object (`{ type: "object", properties, required }`), for
+ *     plugins that do not depend on zod. The host converts the common subset
+ *     (string, number, integer, boolean, array, object, string enum,
+ *     descriptions, bounds); other keywords accept any value.
+ * Either way the host validates each call against the declared fields and
+ * drops keys the schema does not name, so declare every argument the handler
+ * reads. An empty object (or omitting the field) declares an argless tool.
+ */
+export type PluginInputSchema = Readonly<Record<string, z.ZodTypeAny>> | PluginJsonSchemaObject;
+
+/** The JSON Schema object form of {@link PluginInputSchema}. */
+export interface PluginJsonSchemaObject {
+  readonly type: "object";
+  readonly properties?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  readonly required?: ReadonlyArray<string>;
+  /** `true` keeps keys `properties` does not name; any other value drops them. */
+  readonly additionalProperties?: boolean;
+}
+
 /** Tool handler signature. Plugin authors implement this. */
 export type PluginToolHandler = (args: unknown) => Promise<PluginToolResponse>;
 
@@ -37,9 +59,9 @@ export interface PluginApi {
    *
    *   - `name`         The full tool name (`figma.move_node`). Will appear
    *                    on MCP `tools/list` exactly as given.
-   *   - `def`          Tool description + optional input schema. The
-   *                    schema is the same `inputSchema` shape host tools
-   *                    use — a `Record<string, z.ZodTypeAny>`. Pass an
+   *   - `def`          Tool description + optional input schema: a zod
+   *                    raw shape (the shape host tools use) or a JSON
+   *                    Schema object, see `PluginInputSchema`. Pass an
    *                    empty object (or omit) for argless tools.
    *   - `handler`      Async function returning the MCP envelope. The
    *                    runtime applies the per-tool capability gate +
@@ -48,7 +70,7 @@ export interface PluginApi {
    */
   registerTool(
     name: string,
-    def: { description: string; inputSchema?: Record<string, z.ZodTypeAny> | undefined },
+    def: { description: string; inputSchema?: PluginInputSchema | undefined },
     handler: PluginToolHandler,
   ): void;
 
@@ -126,5 +148,5 @@ export interface PluginToolRecord {
   readonly capability?: string | undefined;
   /** Description + input schema (passed to MCP tools/list). */
   readonly description: string;
-  readonly inputSchema?: Record<string, z.ZodTypeAny> | undefined;
+  readonly inputSchema?: PluginInputSchema | undefined;
 }
