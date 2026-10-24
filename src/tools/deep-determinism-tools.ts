@@ -171,29 +171,36 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
     {
       capability: "read",
       description:
-        "Run ONE action and wait for a specific network response to complete — async SPAs fire follow-up requests after the action-result window, so `ActionResult.network` misses them. The waiter is armed BEFORE the action dispatches (no race). `action` is `{tool,args}` from the batch whitelist. `match` selects the response: `urlPattern` (case-insensitive substring), `method`, `status` — at least one required. Returns `{ action: <inner result>, network: { matched, method?, url?, status? } }` (url redacted, same as `network_read`). `timeoutMs` is the max wait (default 10000).",
+        "Run one action and wait for a matching network response to finish. Use it when an SPA fires follow-up requests after the action-result window, which `ActionResult.network` misses; use `wait_for` to wait on page content instead. The waiter is armed before the action runs, so there is no race. `match` selects the response by `urlPattern` (case-insensitive substring), `method` or `status`; at least one is required. Returns `{ action: <inner result>, network: { matched, method?, url?, status? } }` with the url redacted as in `network_read`. `timeoutMs` is the max wait (default 10000).",
       inputSchema: {
-        action: z.object({
-          tool: z.string().describe("Inner tool name (batch whitelist)."),
-          args: z.record(z.string(), z.unknown()).optional(),
-        }),
+        action: z
+          .object({
+            tool: z.string().describe("Inner tool name (batch whitelist)."),
+            args: z
+              .record(z.string(), z.unknown())
+              .optional()
+              .describe("Inner tool args (same shape as a top-level call)."),
+          })
+          .describe(
+            "The inner call `{tool, args}`. Any batchable tool except `batch`, `await_human`, recording tools and this tool.",
+          ),
         match: z
           .object({
             urlPattern: z
               .string()
               .optional()
               .describe("Case-insensitive substring of the request URL."),
-            method: z.string().optional(),
-            status: z.number().int().optional(),
+            method: z.string().optional().describe("HTTP method, e.g. POST."),
+            status: z.number().int().optional().describe("Exact HTTP status, e.g. 200."),
           })
-          .describe("At least one field required."),
+          .describe("Which response to wait for. At least one field is required."),
         timeoutMs: z
           .number()
           .int()
           .positive()
           .max(120_000)
           .optional()
-          .describe("Max wait for the matching response (default 10000)."),
+          .describe("Max wait in ms for the matching response (default 10000, max 120000)."),
         ...SESSION_ARG,
       },
     },

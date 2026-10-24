@@ -54,18 +54,27 @@ export function registerBatchActTools(
     {
       capability: "read",
       description:
-        "run ONE action and capture a metric trace *across its transition*, in one call — closes the state-capture-latency blind spot (a separate read lands after the spinner/pending UI already resolved). The sampler (fixed-enum, no agent JS) starts, the inner action dispatches concurrently, both are awaited. `action` is `{tool,args}` from the batch whitelist (no `batch`/`await_human`/recording/self); the inner tool's capability + deadline + the confirm hooks still apply. Sample target via `ref`/`selector`/`named` (or omit for the document scroller; not coords). Returns `{ action: <inner result>, ...sampleResult }`.",
+        "Run one action and trace a metric across its transition in one call, so a spinner or pending state that resolves before a separate read is still captured. Use `sample` for a window with no action, and `act_and_diff` for DOM changes. The sampler (fixed metric enum, no page JS) starts, the inner `action` runs at the same time, and both are awaited. The inner tool's capability, deadline and confirm hooks still apply. Target the sample with `ref`, `selector` or `named`, or omit it for the document scroller (`coords` is refused). Returns `{ action: <inner result>, ...sampleResult }`.",
       inputSchema: {
-        action: z.object({
-          tool: z.string().describe("Inner tool name (batch whitelist)."),
-          args: z
-            .record(z.string(), z.unknown())
-            .optional()
-            .describe("Inner tool args (same shape as a top-level call)."),
-        }),
+        action: z
+          .object({
+            tool: z.string().describe("Inner tool name (batch whitelist)."),
+            args: z
+              .record(z.string(), z.unknown())
+              .optional()
+              .describe("Inner tool args (same shape as a top-level call)."),
+          })
+          .describe(
+            "The inner call `{tool, args}`. Any batchable tool except `batch`, `await_human`, recording tools and this tool.",
+          ),
         ...REF_OR_SELECTOR,
         metric: z.enum(ELEMENT_METRICS).describe("Fixed metric to trace (same enum as `sample`)."),
-        durationMs: z.number().int().positive().max(30_000).describe("Trace window (ms, ≤30000)."),
+        durationMs: z
+          .number()
+          .int()
+          .positive()
+          .max(30_000)
+          .describe("Trace window in ms (max 30000)."),
         everyFrame: z
           .boolean()
           .optional()
@@ -160,12 +169,19 @@ export function registerBatchActTools(
     {
       capability: "read",
       description:
-        "Run ONE action and report the DOM changes it caused within a `scope` — for selection-heavy UIs where the state change (which clip/row became selected) shows only as class / `aria-*` / `data-*` / inline-style changes, invisible to snapshot/find/text_search. Captures a structural DOM map before, dispatches the inner action, captures after, diffs. `action` is `{tool,args}` from the batch whitelist (no `batch`/`await_human`/recording/self); the inner tool's capability + deadline still apply. Returns `{ action: <inner result>, diff: { changed:[{path,tag,testId,classDelta,styleDelta,attrDelta}], added, removed, counts } }`.",
+        "Run one action and report the DOM changes it caused inside a `scope`. Prefer it over `click` followed by `snapshot` when the change shows only as class, `aria-*`, `data-*` or inline-style edits (a selected row or clip), which snapshot, find and text_search miss. It maps the DOM before, runs the inner `action`, maps it again and diffs. The inner tool's capability and deadline still apply. Returns `{ action: <inner result>, diff: { changed:[{path,tag,testId,classDelta,styleDelta,attrDelta}], added, removed, counts } }`.",
       inputSchema: {
-        action: z.object({
-          tool: z.string().describe("Inner tool name (batch whitelist)."),
-          args: z.record(z.string(), z.unknown()).optional().describe("Inner tool args."),
-        }),
+        action: z
+          .object({
+            tool: z.string().describe("Inner tool name (batch whitelist)."),
+            args: z
+              .record(z.string(), z.unknown())
+              .optional()
+              .describe("Inner tool args (same shape as a top-level call)."),
+          })
+          .describe(
+            "The inner call `{tool, args}`. Any batchable tool except `batch`, `await_human`, recording tools and this tool.",
+          ),
         scope: z
           .string()
           .optional()
@@ -252,7 +268,7 @@ export function registerBatchActTools(
     {
       capability: "action",
       description:
-        "Run the same call sequence N times and report what shifted between runs — for diagnosing intermittent CI flakes BEFORE chasing them through logs. Inner calls are dispatched through the `batch` whitelist (capability + confirm hooks unchanged); each run uses `stopOnError:false` internally so a mid-sequence failure does NOT hide the variance picture for later steps. Returns per-step success-rate, distinct errors, distinct resolution signatures, the earliest `firstDivergence` step where ok shifted across runs, and a `cachedResolvers[]` artifact — `{step → resolved ref/selectorHint}` for steps where every run agreed AND succeeded. The artifact mirrors the `ActionDescriptor` shape for `plan` steps so a follow-up call can re-execute against a fresh snapshot. `stopOnAllGreen: K` short-circuits when K consecutive runs are all-green (skips redundant work once you've proved the sequence is stable).",
+        "Run the same call sequence `n` times and report what differed between runs, to find an intermittent flake before reading logs. Use `batch` for a single run. Inner calls follow the `batch` whitelist, with capability and confirm hooks unchanged. Each run uses `stopOnError:false`, so a failure mid-sequence does not hide later steps. Returns per-step success rate, distinct errors, distinct resolution signatures, the first step where `ok` diverged (`firstDivergence`), and `cachedResolvers[]`: `{step, ref or selectorHint}` for steps where every run agreed and succeeded. `stopOnAllGreen: K` stops early after K consecutive all-green runs.",
       inputSchema: {
         calls: z
           .array(

@@ -153,7 +153,7 @@ export function registerBatchHumanTools(
     "batch",
     {
       description:
-        "Run a sequence of tool calls server-side and return their results as one response. Eliminates round-trip overhead for known-safe sequences (e.g. fill several fields then submit). Each call is dispatched through the same handlers as a top-level call; capability gating, confirmation hooks, and ActionResults are unchanged. Stops at the first failure unless `stopOnError: false`. Disallows nested `batch` and human-blocking tools.",
+        "Run up to 32 tool calls in order on the server and return all results in one response, to save round trips on a known sequence (fill several fields, then submit). Use `fill_form` for form fields only, and `flake_check` to repeat a sequence. Each call goes through the same handler as a top-level call, so capability gates, confirm hooks and ActionResults are unchanged. Only batchable tools run; a call naming any other tool returns an error naming it. `batch` itself, `await_human` and recording tools cannot be inner calls. Stops at the first failure unless `stopOnError:false`.",
       inputSchema: {
         calls: z
           .array(

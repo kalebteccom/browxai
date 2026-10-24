@@ -36,11 +36,11 @@ export function registerGestureCoordTools(
       capability: "action",
       deep: true,
       description:
-        "Coordinate-space wheel event — dispatched via CDP at `coords` (viewport CSS px) regardless of the current pointer position. For canvas, virtualised lists, and map tiles that listen for `wheel` and ignore element-level scroll. `deltaX`/`deltaY` are CSS px (DOM `WheelEvent` convention: positive `deltaY` scrolls content up); at least one must be non-zero.",
+        "Fire a wheel event at viewport `coords` (CSS px) through CDP, whatever the pointer position. Use `scroll` for ordinary page or container scrolling, and this for canvas, virtualised lists and map tiles that listen for `wheel` and ignore element scroll. `deltaX` and `deltaY` are CSS px (DOM `WheelEvent` convention: positive `deltaY` scrolls down); at least one must be non-zero.",
       inputSchema: {
         coords: z
           .object({ x: z.number(), y: z.number() })
-          .describe("Viewport CSS px — where the wheel event fires."),
+          .describe("Viewport point in CSS px where the wheel event fires."),
         deltaX: z.number().optional().describe("Horizontal wheel delta in CSS px (default 0)."),
         deltaY: z.number().optional().describe("Vertical wheel delta in CSS px (default 0)."),
         ...SESSION_ARG,

@@ -220,17 +220,43 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
     {
       capability: "read",
       description:
-        "Drive an action in one session and sample a metric in ANOTHER over the same window, in one call — for realtime-propagation assertions (an action in session A should reflect in session B within a freshness budget). `action` is `{tool,args}` from the batch whitelist, dispatched in `actionSession`; the document-scroller `metric` is traced in `sampleSession`. Returns `{ action: <inner result>, sample }`.",
+        "Run an action in one session and trace a metric in another session over the same window, to assert that a change in session A reaches session B within a time budget. Use `act_and_sample` when one session does both. The inner `action` runs in `actionSession`; the document-scroller `metric` is traced in `sampleSession`. Load the page in each session first. Returns `{ action: <inner result>, sample }`.",
       inputSchema: {
-        action: z.object({ tool: z.string(), args: z.record(z.string(), z.unknown()).optional() }),
-        actionSession: z.string().describe("Session the action runs in."),
-        sampleSession: z.string().describe("Session whose page is sampled."),
+        action: z
+          .object({
+            tool: z.string().describe("Inner tool name (batch whitelist)."),
+            args: z
+              .record(z.string(), z.unknown())
+              .optional()
+              .describe("Inner tool args (same shape as a top-level call)."),
+          })
+          .describe(
+            "The inner call `{tool, args}`. Any batchable tool except `batch`, `await_human`, recording tools and this tool.",
+          ),
+        actionSession: z.string().describe("Session id the action runs in."),
+        sampleSession: z.string().describe("Session id whose page is sampled."),
         metric: z
           .enum(ELEMENT_METRICS)
           .describe("Fixed metric (document scroller of sampleSession)."),
-        durationMs: z.number().int().positive().max(30_000),
-        everyFrame: z.boolean().optional(),
-        intervalMs: z.number().int().positive().max(5000).optional(),
+        durationMs: z
+          .number()
+          .int()
+          .positive()
+          .max(30_000)
+          .describe("Trace window in ms (max 30000)."),
+        everyFrame: z
+          .boolean()
+          .optional()
+          .describe("Sample every animation frame. Default false: sample on a fixed interval."),
+        intervalMs: z
+          .number()
+          .int()
+          .positive()
+          .max(5000)
+          .optional()
+          .describe(
+            "Sample interval in ms (default 100, min 16). Ignored when everyFrame is true.",
+          ),
       },
     },
     async (args) => {

@@ -53,7 +53,7 @@ export function registerFormsPlanTools(
       capability: "read",
       batchable: true,
       description:
-        "Resolve a natural-language `query` for a single element + a target action `verb` into a serialisable `ActionDescriptor` — no dispatch happens. The descriptor binds the picked ref (same `eN` namespace as snapshot/find/name_ref — NOT a parallel id system), the verb's args, evidence (selectorHint, stability, score, top alternatives + any low-confidence warnings), and an `expiresAt` deadline. Hand it back verbatim to `execute` to dispatch; cache it for replay / self-healing; or inspect `evidence` and refuse to dispatch when the stability is too low. NOT a mock dispatch — the value is captured intent, not suppressed effects.",
+        "Turn a natural-language element `query` and an action `verb` into a serialisable `ActionDescriptor` without running it. Use `find` when you only need ranked candidates. The descriptor binds the picked ref (the same `eN` namespace as snapshot, find and name_ref), the verb's args, evidence (selectorHint, stability, score, top alternatives, low-confidence warnings) and an `expiresAt` deadline. Pass it unchanged to `execute`, cache it for replay, or read `evidence` and skip it when stability is low. Nothing is dispatched.",
       inputSchema: {
         query: z
           .string()
@@ -153,7 +153,7 @@ export function registerFormsPlanTools(
       capability: "action",
       batchable: true,
       description:
-        'Dispatch a previously-planned `ActionDescriptor` (from `plan`). Re-resolves the bound ref via the same stable-key scheme snapshot/find use; refuses with structured `reason:"expired"` past `expiresAt`, or `reason:"ref-gone"` when the ref is no longer in the session\'s registry — in both cases NO action runs, re-plan against the current snapshot. The underlying action verb\'s capability is enforced (a descriptor with verb:"click" still requires the `action` capability); a successful dispatch returns the same `ActionResult` shape as calling the verb\'s tool directly.',
+        'Run an `ActionDescriptor` returned by `plan`. The bound ref is re-resolved first. Past `expiresAt` it refuses with `reason:"expired"`, and when the ref is gone it refuses with `reason:"ref-gone"`; in both cases nothing runs, so call `plan` again against a fresh snapshot. The verb\'s own capability is enforced (a `click` descriptor needs `action`). A successful run returns the same ActionResult as calling that verb\'s tool directly.',
       inputSchema: {
         descriptor: z
           .object({
