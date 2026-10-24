@@ -162,7 +162,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
         "Bind a viewport rectangle to a mnemonic so a sub-agent can re-select the same media segment / timeline row without re-deriving coordinates (drift). Resolve it later with `region`. Per-session.",
       inputSchema: {
         name: z.string().describe('Mnemonic, e.g. "matching_audio_clip".'),
-        box: BOX_SCHEMA,
+        box: BOX_SCHEMA.describe("Viewport rectangle `{x, y, width, height}` in CSS px."),
         ...SESSION_ARG,
       },
     },
@@ -187,7 +187,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       capability: "human",
       description:
         "Resolve a `name_region` mnemonic to its `{ box, center }`. Pass `center` to a coords-based action (`click({coords})`) to act on the bound region.",
-      inputSchema: { name: z.string(), ...SESSION_ARG },
+      inputSchema: { name: z.string().describe("Name given to `name_region`."), ...SESSION_ARG },
     },
     async ({ name, session }) => {
       const g = gateCheck("region");

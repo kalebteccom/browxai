@@ -147,7 +147,7 @@ export function registerFormsRecordingModeTools(
       description:
         "Attach a doc annotation (copy + optional arrow position + optional target ref) to the most-recent recorded step, or to a specific `stepId`. Optional `label` tags a span in an active `.browx` replay artifact — the coverage view in the offline player groups spans by that label (e.g. an acceptance-criterion id). No-op on the YAML side if no recording is active; the label still lands on the replay log if one is running.",
       inputSchema: {
-        copy: z.string().describe("Annotation copy"),
+        copy: z.string().describe("Annotation text for the flow-file."),
         arrow: z
           .string()
           .optional()

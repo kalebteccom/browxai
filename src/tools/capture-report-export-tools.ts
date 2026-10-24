@@ -29,7 +29,7 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
     {
       capability: "file-io",
       description:
-        'Filter every resource the session has loaded (the always-on `NetworkBuffer` ring) and persist matching responses to a workspace-rooted directory — the first-class alternative to scraping `<img src>` / `<link href>` then re-fetching each one through `eval_js`. Filter shape: `{mime?: string[], urlPattern?: string, minBytes?: number, maxBytes?: number, status?: number[]}`. `mime` is substring match against the captured response `Content-Type` (case-insensitive, any one match wins; e.g. `["image/", "video/"]`). `urlPattern` is a RegExp source matched case-insensitively against the URL (e.g. `"\\\\.(woff2?|ttf|otf)$"`). `minBytes`/`maxBytes` bound the encoded response size when known. `status` defaults to 2xx (200..299). Filenames are derived from the URL path basename, **sanitised** (no path separators / NULs / leading dots / control bytes; length-capped), and collision-resolved with `-N` suffix. `intoDir` defaults to `$BROWX_WORKSPACE/assets/<sessionId>-<ISO>/`; an explicit value is resolved INSIDE `$BROWX_WORKSPACE` (escape rejected). Per-call caps: `maxCount` (default 10000) + `maxBytes` (default 500 MiB) bound runaway exports — callers can raise both up to hard ceilings. **CORS caveat**: when the response body has been discarded by the renderer (bodies are short-lived) the tool falls back to an in-page `fetch()` against the original URL — cross-origin URLs without permissive CORS headers land in `droppedCount`, never a crash. → `{ ok, intoDir, totalCount, matchedCount, persistedCount, droppedCount, manifest: [{url, mime?, status?, sizeBytes, savedAs}], warnings, tokensEstimate }`. The manifest is also written to `<intoDir>/_manifest.json`. `tokensEstimate` sizes the result envelope (the manifest blob), NOT the exported files. Gated by the off-by-default **`file-io`** capability — same posture as `download_get`.',
+        'Save the resources the session has loaded (responses in its network buffer) that match a filter into a workspace-rooted directory, for example every image or font a page used. Use `page_archive` for a self-contained copy of the page and `download_get` for files the page downloaded. `filter` is `{mime?: string[], urlPattern?: string, minBytes?: number, maxBytes?: number, status?: number[]}`: `mime` is a case-insensitive substring of the `Content-Type` (any one match wins, such as `["image/","video/"]`), `urlPattern` is a case-insensitive RegExp source (such as `"\\\\.(woff2?|ttf|otf)$"`), and `status` defaults to 2xx. File names come from the URL basename, sanitised and de-duplicated with a `-N` suffix; an existing file is never overwritten. `intoDir` must resolve inside `$BROWX_WORKSPACE` (default `assets/<sessionId>-<ISO>/`). Per-call caps: `maxCount` (default 10000) and `maxBytes` (default 500 MiB). When the renderer has already dropped a body, the tool re-fetches the URL from the page, and cross-origin URLs without permissive CORS count in `droppedCount`. Returns `{ ok, intoDir, totalCount, matchedCount, persistedCount, droppedCount, manifest: [{url, mime?, status?, sizeBytes, savedAs}], warnings, tokensEstimate }`; the manifest is also written to `<intoDir>/_manifest.json`. Requires the `file-io` capability (off by default).',
       inputSchema: {
         filter: z
           .object({
@@ -60,12 +60,14 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
               .optional()
               .describe("Allow-list of HTTP status codes. Default: 200..299."),
           })
-          .describe("Filter applied to every entry in the session's network ring."),
+          .describe(
+            "Which entries of the session's network buffer to save: `{mime?: string[], urlPattern?: string, minBytes?: number, maxBytes?: number, status?: number[]}`. `minBytes` and `maxBytes` bound the encoded response size in bytes. All given fields must match.",
+          ),
         intoDir: z
           .string()
           .optional()
           .describe(
-            "Workspace-rooted output directory. Default `assets/<sessionId>-<ISO>/`. Rejected if it escapes $BROWX_WORKSPACE.",
+            "Workspace-rooted output directory. Default `assets/<sessionId>-<ISO>/`. A path that leaves $BROWX_WORKSPACE is rejected.",
           ),
         maxCount: z
           .number()
@@ -149,7 +151,7 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
       capability: "action",
       deep: true,
       description:
-        "Print the current page to a workspace-rooted PDF via Playwright `page.pdf()` (CDP `Page.printToPDF`). The first-class alternative to screenshot-and-OCR or driving the browser's print-to-file dialog with `shortcut`. → `{ ok, path, bytes, format, scale, printBackground }`. Defaults: `format:\"A4\"`, `scale:1`, `printBackground:false` (matches browser-print's default — opt in when background colour/imagery matters). Output `path` is resolved INSIDE `$BROWX_WORKSPACE` (a path escaping the workspace is rejected); omit it for a default `pdfs/<sessionId>-<ts>.pdf`. **Refuses on `attached`/BYOB sessions** — `page.pdf()` drives Chromium's PrintToPDF and would mutate the human's window state; open a managed (`persistent`/`incognito`) session and re-run there. Capability `action`.",
+        'Print the current page to a workspace-rooted PDF (`page.pdf()`, CDP `Page.printToPDF`), when you need text and layout as a document rather than an image. Defaults: `format:"A4"`, `scale:1`, `printBackground:false` (the browser-print default; turn it on when background colour or imagery matters). `path` must resolve inside `$BROWX_WORKSPACE` (default `pdfs/<sessionId>-<ts>.pdf`). Refused on `attached` sessions, because printing would change your own Chrome window: open a `persistent` or `incognito` session and run it there. Returns `{ ok, path, bytes, format, scale, printBackground }`.',
       inputSchema: {
         path: z
           .string()
@@ -254,7 +256,7 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
     {
       capability: "file-io",
       description:
-        "Save the current page as a self-contained archive. Two formats: `directory` (default) writes `<path>/index.html` + `<path>/assets/` sidecar with every linked resource (images, fonts, scripts, stylesheets, CSS background-images surfaced via getComputedStyle); HTML refs rewritten to relative `assets/...` paths. `single-file` writes one HTML at `<path>` with every resource inlined as a `data:` URI (browsers struggle past ~150 MB — large pages should prefer `directory`). `path` is resolved INSIDE `$BROWX_WORKSPACE` (escape rejected); omit for `archives/<sessionId>-<ISO>` (directory) or `archives/<sessionId>-<ISO>.html` (single-file). `maxSizeMb` caps the total archive (default 200) — resources past the budget land in `droppedCount`. Resource fetching runs `await fetch(url)` IN-page (subject to the page's CSP `connect-src` — cross-origin blocks are caught, dropped, and counted). → `{ ok, format, path, sizeBytes, resourceCount, droppedCount, warnings[] }`. **Secrets-masking caveat**: the archive is intentionally UNMASKED — running the egress masking layer would corrupt inline JSON/CSS/binary bytes; treat the archive as sensitive (same posture as `dump_storage_state`). Caller must navigate + settle the page BEFORE calling; `page_archive` does not inject its own wait. Capability `file-io`.",
+        'Save the current page as a self-contained archive, to keep or share a page. Use `dom_export` for the DOM only and `element_export` for one subtree. `format:"directory"` (default) writes `<path>/index.html` plus `<path>/assets/` with every linked resource (images, fonts, scripts, stylesheets, CSS background images), with HTML references rewritten to relative `assets/...` paths. `"single-file"` writes one HTML at `<path>` with resources inlined as `data:` URIs; browsers struggle past about 150 MB, so prefer `directory` for large pages. `path` must resolve inside `$BROWX_WORKSPACE` (default `archives/<sessionId>-<ISO>`, or `.html` for single-file). `maxSizeMb` caps the archive (default 200); resources past it count in `droppedCount`. Resources are fetched from inside the page, so its CSP `connect-src` applies and blocked ones are dropped and counted. Load and settle the page first; the tool does not wait. The output is not masked, so treat it as sensitive. Returns `{ ok, format, path, sizeBytes, resourceCount, droppedCount, warnings[] }`. Requires the `file-io` capability (off by default).',
       inputSchema: {
         path: z
           .string()
