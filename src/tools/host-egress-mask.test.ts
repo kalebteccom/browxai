@@ -126,6 +126,23 @@ describe("maskToolResponse", () => {
     expect(JSON.parse(t)).toEqual({ value: "<PW>", pa: { "<PW>": 1 }, pin: "<PIN>" });
   });
 
+  it("replaces a number holding a value as a whole, and leaves other numbers alone", () => {
+    const out = maskToolResponse(
+      text({ exact: 48151623, inside: 9481516230, other: 1623, neg: -48151623, s: "48151623" }),
+      [reg()],
+    );
+    const body = JSON.parse((out.content[0] as { text: string }).text);
+    // A masked number becomes the placeholder string; no surrounding digits remain.
+    expect(body).toEqual({
+      exact: "<PIN>",
+      inside: "<PIN>",
+      other: 1623,
+      neg: "<PIN>",
+      s: "<PIN>",
+    });
+    expect(typeof body.other).toBe("number");
+  });
+
   it("masks plain text and keeps compact JSON compact", () => {
     const out = maskToolResponse(
       {

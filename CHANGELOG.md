@@ -40,7 +40,9 @@ surface" covers.
   results keep their layout and stay valid. The error text of a tool that
   fails is masked the same way, and so are plugin tool results and errors.
   A value of 6 characters or more is also masked percent-encoded (in a URL
-  query or form body) and as its own base64 or base64url encoding.
+  query or form body) and as its own base64 or base64url encoding. A JSON
+  number whose digits contain a value is replaced as a whole by the string
+  `"<NAME>"`.
 - **`caches_get` returns the body only with `network-body`.** Without it the
   result carries the headers and metadata, `byteLength`, `bodyOmitted: true`
   and `requiredCapability: "network-body"`.

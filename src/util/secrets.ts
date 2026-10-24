@@ -253,15 +253,24 @@ export class SecretRegistry {
    *  parent is visited, so each node only handles its own strings. */
   private maskJsonNode(v: unknown): unknown {
     if (typeof v === "string") return this.applyMaskInText(v);
-    if (typeof v === "number") {
-      const digits = String(v);
-      return this.containsAnySecret(digits).hit ? this.applyMaskInText(digits) : v;
-    }
+    if (typeof v === "number") return this.maskJsonNumber(v);
     if (!v || typeof v !== "object" || Array.isArray(v)) return v;
     const obj = v as Record<string, unknown>;
     const keys = Object.keys(obj);
     if (!keys.some((k) => this.containsAnySecret(k).hit)) return v;
     return Object.fromEntries(keys.map((k) => [this.applyMaskInText(k), obj[k]]));
+  }
+
+  /** A JSON number cannot hold `<NAME>`. A number whose digits contain a
+   *  registered value, as the whole number or part of it, is replaced as a
+   *  whole by the string `"<NAME>"` (the longest matching value's alias), so
+   *  no digits beside the value are left to narrow it down. The field's type
+   *  changes from number to string in that case only; every other number
+   *  stays a number. */
+  private maskJsonNumber(v: number): unknown {
+    const digits = String(v);
+    const hit = this.maskForms().find((f) => digits.includes(f.form));
+    return hit ? `<${hit.name}>` : v;
   }
 
   /** Convenience: mask the string fields of an object/array, at any depth.

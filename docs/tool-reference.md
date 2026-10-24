@@ -2704,7 +2704,9 @@ registered tool's result goes through one more pass on the way out: each
 text item has registered values replaced with `<NAME>`. A JSON result is
 parsed and its string values, object keys and any number whose digits hold
 a value are masked, then it is written back in the same layout, so a value
-that JSON encoding changed is caught and the document stays valid. A result with no
+that JSON encoding changed is caught and the document stays valid. Such a
+number is replaced as a whole by the string `"<NAME>"`, so its type changes
+from number to string; other numbers stay numbers. A result with no
 registered value in it is returned untouched without being parsed, so
 already-masked sinks cost one substring scan. Image items are not touched.
 This pass covers every session's registered values, and it runs only when
