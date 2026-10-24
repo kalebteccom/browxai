@@ -280,6 +280,15 @@ surface" covers.
   `import type { BrowxaiClientWithPlugins } from "browxai"`, which failed
   because only the SDK module defined it.
 
+### Maintenance
+
+- CI is two Woodpecker workflows, `.woodpecker/gate.yml` and
+  `.woodpecker/browser.yml`. The real-browser keystone shards run on a
+  dedicated browser runner, in parallel with the rest of the gate, and build
+  only the example plugin they read instead of waiting for the full build. The
+  commit status contexts are now `ci/woodpecker/push/gate` and
+  `ci/woodpecker/push/browser`.
+
 ## [0.13.0] - 2026-10-22
 
 Installed Chrome on one default profile per workspace.

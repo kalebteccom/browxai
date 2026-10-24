@@ -1,16 +1,12 @@
 # ci-optimised: v1
-# Woodpecker is the only CI for this repo; the one GitHub workflow left is release.yml (OIDC publish), which has no equivalent here.
-# secret-scan and zizmor download pinned release binaries into a host cache (neither tool ships in a node image).
-# INVARIANT: every heavy command goes through scripts/gate-slot.sh, which draws from the slot pool shared with trackxai and remotxai.
-# INVARIANT: no step builds an image; images are pulled by exact tag.
-# The repo is public, so Woodpecker never runs pull_request events; a branch is gated by the pipeline of its push.
-# GATE vs MAIN: every gate step runs on pushes to any branch except main, once, before the merge. A push to main runs only `main-check`:
-# the squash merge landed a tree that was gated at the same head, so nothing is rebuilt.
+# Woodpecker is the only CI for this repo; the one GitHub workflow left is release.yml (OIDC publish). secret-scan and zizmor download pinned release binaries into a host cache (neither tool ships in a node image).
+# INVARIANT: every heavy command goes through scripts/gate-slot.sh, which draws from the slot pool shared with trackxai and remotxai. No step builds an image; images are pulled by exact tag.
+# SPLIT: the real-browser keystones live in browser.yml (label browser: "true", run by the browser-runner agent); this file has no label, runs on the general agents and runs in parallel with it.
+# The repo is public, so Woodpecker never runs pull_request events; a branch is gated by the pipeline of its push. GATE vs MAIN: every gate step runs on pushes to any branch except main, once, before the merge. A push to main runs only `main-check`: the squash merge landed a tree that was gated at the same head, so nothing is rebuilt.
 when:
   - event: push
 
-# WORKAROUND: Woodpecker steps share one workspace, so two steps that run `pnpm install` at once would race on node_modules.
-# `install` therefore runs once, first, and every step that needs node_modules depends on it; those steps then run in parallel.
+# WORKAROUND: the steps of one workflow share one workspace, so two steps that run `pnpm install` at once would race on node_modules. `install` therefore runs once, first, and every step that needs node_modules depends on it; those steps then run in parallel.
 # No installed dependency is bound to the Node ABI: install scripts are off (.npmrc) and the only native code, sharp, ships Node-API prebuilds as per-platform packages; so one install under Node 22 serves the Node 26 steps.
 steps:
   - name: install
@@ -107,9 +103,7 @@ steps:
       - 'git log -1 --format=%s | grep -Eq "\(#[0-9]+\)$" || { echo "main-check: the head commit is not a PR squash merge, nothing proves it was gated" >&2; exit 1; }'
       - 'echo "main-check ok: tree gated before the merge, no rebuild"'
 
-  # secret-scan: trufflehog 3.99.3.
-  # SECURITY: the release asset is cached on the host, its sha256 is checked on every run and the binary is unpacked fresh from the verified file; a mismatch fails the step.
-  # Only this step and zizmor mount the tools cache. No secret is used.
+  # secret-scan: trufflehog 3.99.3. Only this step and zizmor mount the tools cache; no secret is used. SECURITY: the release asset is cached on the host, its sha256 is checked on every run and the binary is unpacked fresh from the verified file; a mismatch fails the step.
   - name: secret-scan
     image: node:26-bookworm
     depends_on: []
@@ -182,54 +176,3 @@ steps:
         BIN=$(mktemp -d)
         tar -xzf $DIR/$ASSET -C $BIN
         bash scripts/gate-slot.sh $BIN/zizmor --persona=auditor --min-severity=low --no-online-audits --color=never -- .
-
-  # Real Chromium, Firefox and WebKit, in two shards. Android needs a USB device and Safari needs macOS, so those keystones still skip and run manually.
-  # The gate-slot pool bounds how many heavy commands run at once, so the shards do not wait for the unit steps. Browsers are installed once, in `browsers`, before the shards start: two shards installing into the shared cache volume would race.
-  - name: browsers
-    # WORKAROUND: the only playwright image on the box is older than the playwright-core the lockfile pins (see package.json), so a plain node image downloads the matching browsers into the cache volume (the OS libraries are installed per container by each shard).
-    image: node:26-bookworm
-    depends_on: [install]
-    when: *gate-when
-    volumes: &browser-volumes
-      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
-      - /home/gitops/cache/browxai/corepack:/corepack
-      - /home/gitops/cache/browxai/playwright-browsers:/playwright-browsers
-      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
-    environment: &browser-env
-      COREPACK_HOME: /corepack
-      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-      PLAYWRIGHT_BROWSERS_PATH: /playwright-browsers
-    commands:
-      - command -v corepack >/dev/null || npm install --global corepack
-      - corepack enable
-      - pnpm config set store-dir /pnpm-store
-      - bash scripts/gate-slot.sh pnpm exec playwright-core install chromium firefox webkit
-
-  # plugin-runtime.keystone.test.ts copies packages/plugins/example/dist/ into a staged workspace and fails with ENOENT without it. dist comes from package-contents (it runs `pnpm build` in the shared workspace), so both shards depend on it.
-  - name: keystone-1
-    image: node:26-bookworm
-    depends_on: [install, package-contents, browsers]
-    when: *gate-when
-    volumes: *browser-volumes
-    environment: *browser-env
-    commands:
-      - command -v corepack >/dev/null || npm install --global corepack
-      - corepack enable
-      - pnpm config set store-dir /pnpm-store
-      # OS libraries live in the container, not in the browser cache, so each shard installs them itself.
-      - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium firefox webkit
-      - bash scripts/gate-slot.sh pnpm test:keystone --shard=1/2
-
-  - name: keystone-2
-    image: node:26-bookworm
-    depends_on: [install, package-contents, browsers]
-    when: *gate-when
-    volumes: *browser-volumes
-    environment: *browser-env
-    commands:
-      - command -v corepack >/dev/null || npm install --global corepack
-      - corepack enable
-      - pnpm config set store-dir /pnpm-store
-      # OS libraries live in the container, not in the browser cache, so each shard installs them itself.
-      - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium firefox webkit
-      - bash scripts/gate-slot.sh pnpm test:keystone --shard=2/2

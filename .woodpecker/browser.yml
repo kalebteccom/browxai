@@ -1,0 +1,57 @@
+# ci-optimised: v1
+# Real Chromium, Firefox and WebKit keystones in two shards, on the browser-runner agent: it only takes a workflow with `labels: browser: "true"` (3 workflows at once; per step 24 GB RAM, 8 CPUs, 4 GB /dev/shm). Android needs a USB device and Safari needs macOS, so those keystones still skip and run manually.
+# Same rules as gate.yml: push events only (the repo is public), heavy commands through scripts/gate-slot.sh, images by exact tag, no brace-style variable references. Runs in parallel with gate.yml on every branch except main; a push to main only runs `main-check` there.
+labels:
+  browser: "true"
+when:
+  - event: push
+    branch:
+      exclude: [main]
+
+# Workspaces are per workflow, so this file installs for itself (the pnpm store is cached on the host), builds the one dist the keystones read and downloads the browsers, all once before the shards: two shards writing the shared cache volume would race.
+steps:
+  - name: install
+    image: node:22-bookworm
+    depends_on: []
+    volumes: &volumes
+      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
+      - /home/gitops/cache/browxai/corepack:/corepack
+      - /home/gitops/cache/browxai/playwright-browsers:/playwright-browsers
+      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
+    environment: &env
+      COREPACK_HOME: /corepack
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      PLAYWRIGHT_BROWSERS_PATH: /playwright-browsers
+    commands:
+      - corepack enable
+      - pnpm config set store-dir /pnpm-store
+      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
+      # plugin-runtime.keystone.test.ts copies packages/plugins/example/dist/ into a staged workspace and fails with ENOENT without it. No other keystone reads dist/, so only that package is built; the full build stays in gate.yml (package-contents).
+      - bash scripts/gate-slot.sh pnpm --filter ./packages/plugins/example build
+      # WORKAROUND: the only playwright image on the box is older than the playwright-core the lockfile pins, so a plain node image downloads the matching browsers into the cache volume.
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install chromium firefox webkit
+
+  - name: keystone-1
+    image: node:26-bookworm
+    depends_on: [install]
+    volumes: *volumes
+    environment: *env
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - pnpm config set store-dir /pnpm-store
+      # OS libraries live in the container, not in the browser cache, so each shard installs them itself.
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium firefox webkit
+      - bash scripts/gate-slot.sh pnpm test:keystone --shard=1/2
+
+  - name: keystone-2
+    image: node:26-bookworm
+    depends_on: [install]
+    volumes: *volumes
+    environment: *env
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - pnpm config set store-dir /pnpm-store
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium firefox webkit
+      - bash scripts/gate-slot.sh pnpm test:keystone --shard=2/2
