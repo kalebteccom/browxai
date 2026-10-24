@@ -3,6 +3,15 @@
 // that's the coherence constraint.
 
 import { walk, isGenericNoise, type A11yNode } from "./a11y-types.js";
+import {
+  MAX_ROW_TEXT,
+  TEXT_BUDGET,
+  canCarryText,
+  clipText,
+  isDocumentRoot,
+  ownText,
+  ownsItsText,
+} from "./snapshot-text.js";
 
 export interface SerialiseOptions {
   /** Indent string per depth level. Default `"  "`. */
@@ -18,6 +27,11 @@ export interface SerialiseOptions {
    *  `role`, `name`, or `testId`. A matching node *and its entire subtree* is skipped.
    *  Useful for omitting known-noisy regions (long lists, virtualised tables). */
   omit?: string[];
+  /** Maximum characters of carried text per row. Default 120. */
+  maxTextLen?: number;
+  /** Total characters of carried text for the whole output. Default 4000. Past
+   *  it rows come out without text and a trailer line says how many. */
+  textBudget?: number;
 }
 
 /** Render an A11yNode tree to the compact `role "name" [ref=eN] [state]` form. */
@@ -27,6 +41,7 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
   const pruneGeneric = opts.pruneGeneric ?? true;
   const maxNodes = opts.maxNodes ?? Infinity;
   const omitPatterns = (opts.omit ?? []).map((p) => p.toLowerCase());
+  const text = newTextState(opts);
 
   const lines: string[] = [];
   let emitted = 0;
@@ -37,10 +52,10 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
   // Manual walk so we can prune subtrees on `omit` matches (the generator yields
   // depth-first; pruning needs to skip descendants explicitly). `visitForSerialise`
   // decides this node's disposition (skip-subtree / emit / silent-skip); the loop
-  // only owns stack management.
-  const stack: Array<{ node: A11yNode; depth: number }> = [{ node: root, depth: 0 }];
+  // only owns stack management. cap: each node is pushed once and the tree is finite.
+  const stack: StackEntry[] = [{ node: root, depth: 0, parentRole: "", underOwner: false }];
   while (stack.length) {
-    const { node, depth } = stack.pop()!;
+    const { node, depth, parentRole, underOwner } = stack.pop()!;
     const v = visitForSerialise(node, depth, {
       omitPatterns,
       pruneGeneric,
@@ -48,6 +63,9 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
       indent,
       emitted,
       maxNodes,
+      text,
+      parentRole,
+      underOwner,
     });
     elidedBranches += v.elidedBranches;
     elided += v.elided;
@@ -63,18 +81,74 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
     // not their parent's plus one, so a spliced button read as nested under an
     // unrelated sibling.
     const childDepth = v.line === null ? depth : depth + 1;
-    for (let i = node.children.length - 1; i >= 0; i--) {
-      stack.push({ node: node.children[i]!, depth: childDepth });
-    }
+    pushChildren(stack, node, childDepth, underOwner || ownsItsText(node.role));
   }
-  if (truncated)
-    lines.push(
-      `... [+${elided} more nodes elided; raise maxNodes or pass scope=<ref> to drill in]`,
-    );
-  if (elidedBranches > 0 && !truncated) {
-    lines.push(`... [omit matched ${elidedBranches} subtree(s), ${elided} nodes total]`);
-  }
+  lines.push(...trailerLines({ truncated, elided, elidedBranches, text }));
   return lines.join("\n");
+}
+
+/** The closing notes: what the node cap, `omit` and the text budget left out. */
+function trailerLines(t: {
+  truncated: boolean;
+  elided: number;
+  elidedBranches: number;
+  text: TextState;
+}): string[] {
+  const out: string[] = [];
+  if (t.truncated) {
+    out.push(
+      `... [+${t.elided} more nodes elided; raise maxNodes or pass scope=<ref> to drill in]`,
+    );
+  } else if (t.elidedBranches > 0) {
+    out.push(`... [omit matched ${t.elidedBranches} subtree(s), ${t.elided} nodes total]`);
+  }
+  if (t.text.omittedRows > 0) {
+    out.push(
+      `... [text left off ${t.text.omittedRows} row(s) past the ${t.text.budgetTotal} character text budget; use text_search or extract to read it]`,
+    );
+  }
+  return out;
+}
+
+function newTextState(opts: SerialiseOptions): TextState {
+  const budget = opts.textBudget ?? TEXT_BUDGET;
+  return {
+    maxRowLen: opts.maxTextLen ?? MAX_ROW_TEXT,
+    budget,
+    budgetTotal: budget,
+    omittedRows: 0,
+  };
+}
+
+/** Push a node's children so they pop in document order. */
+function pushChildren(
+  stack: StackEntry[],
+  node: A11yNode,
+  depth: number,
+  underOwner: boolean,
+): void {
+  for (let i = node.children.length - 1; i >= 0; i--) {
+    stack.push({ node: node.children[i]!, depth, parentRole: node.role, underOwner });
+  }
+}
+
+/** One stack frame of the serialise walk. `parentRole` and `underOwner` say
+ *  whether this node's text can ride on its own row. */
+interface StackEntry {
+  node: A11yNode;
+  depth: number;
+  parentRole: string;
+  /** An ancestor already owns its text (a link, a heading, a text field). */
+  underOwner: boolean;
+}
+
+/** Running count of the carried-text budget for one `serialise` call. */
+interface TextState {
+  maxRowLen: number;
+  budget: number;
+  /** The budget the call started with, for the trailer line. */
+  budgetTotal: number;
+  omittedRows: number;
 }
 
 interface VisitOpts {
@@ -84,6 +158,9 @@ interface VisitOpts {
   indent: string;
   emitted: number;
   maxNodes: number;
+  text: TextState;
+  parentRole: string;
+  underOwner: boolean;
 }
 
 interface VisitResult {
@@ -109,9 +186,9 @@ function visitForSerialise(node: A11yNode, depth: number, o: VisitOpts): VisitRe
       truncated: false,
     };
   }
-  if (o.pruneGeneric && isGenericNoise(node)) {
-    return { line: null, skipSubtree: false, elided: 0, elidedBranches: 0, truncated: false };
-  }
+  const candidate = o.pruneGeneric && !o.underOwner ? candidateText(node, o.parentRole) : "";
+  const noise = o.pruneGeneric && isGenericNoise(node);
+  if (noise && !candidate) return SILENT;
   if (o.emitted >= o.maxNodes) {
     // this node + its descendants we'd have emitted.
     return {
@@ -122,13 +199,46 @@ function visitForSerialise(node: A11yNode, depth: number, o: VisitOpts): VisitRe
       truncated: true,
     };
   }
+  const text = candidate ? spendText(candidate, o.text) : undefined;
+  if (noise && text === undefined) return SILENT;
   return {
-    line: formatNode(node, depth, o.indent, o.maxNameLen),
+    line: formatNode(node, depth, o.indent, o.maxNameLen, text),
     skipSubtree: false,
     elided: 0,
     elidedBranches: 0,
     truncated: false,
   };
+}
+
+const SILENT: VisitResult = {
+  line: null,
+  skipSubtree: false,
+  elided: 0,
+  elidedBranches: 0,
+  truncated: false,
+};
+
+/** The text this node would put on its row, before the budget. A nameless
+ *  container reads its own `StaticText` children. A `StaticText` directly under
+ *  the document root has no container to ride on, so it is a row itself. */
+function candidateText(node: A11yNode, parentRole: string): string {
+  if (node.role === "StaticText") {
+    if (node.testId || !isDocumentRoot(parentRole)) return "";
+    return (node.name ?? "").replace(/\s+/g, " ").trim();
+  }
+  return canCarryText(node) ? ownText(node) : "";
+}
+
+/** Clip `candidate` to the row cap and what is left of the budget. Returns
+ *  undefined, and counts the row, when the budget is spent. */
+function spendText(candidate: string, state: TextState): string | undefined {
+  if (state.budget <= 0) {
+    state.omittedRows++;
+    return undefined;
+  }
+  const clipped = clipText(candidate, Math.min(state.maxRowLen, state.budget));
+  state.budget -= clipped.length;
+  return clipped;
 }
 
 function matchesOmit(node: A11yNode, patterns: string[]): boolean {
@@ -154,9 +264,18 @@ export function findByRef(root: A11yNode, ref: string): A11yNode | null {
   return null;
 }
 
-function formatNode(node: A11yNode, depth: number, indent: string, maxNameLen: number): string {
+function formatNode(
+  node: A11yNode,
+  depth: number,
+  indent: string,
+  maxNameLen: number,
+  text?: string,
+): string {
   const pad = indent.repeat(depth);
-  const nm = node.name ? ` "${truncate(node.name, maxNameLen)}"` : "";
+  // Carried text rides where a name would. A node that has a name never gets
+  // text (see `canCarryText`), so the two cannot collide.
+  const nm =
+    text !== undefined ? ` "${text}"` : node.name ? ` "${truncate(node.name, maxNameLen)}"` : "";
   // Emit the actual attribute name (e.g. `[data-testid="…"]` or `[data-type="…"]`) so
   // the agent can transcribe it directly. Falls back to `data-testid` when the source
   // didn't tell us which attr matched.
