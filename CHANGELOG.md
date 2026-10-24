@@ -10,7 +10,7 @@ surface" covers.
 
 ### Changed
 
-- **`tools/list` is about 18 percent smaller.** It dropped from 328,777 to 268,332 characters
+- **`tools/list` is about 18 percent smaller.** It dropped from 328,777 to 269,340 characters
   (about 82,000 to 67,000 tokens) for the same 209 tools. The shared `session`, `timeoutMs`,
   `mode`, `contextRef`, `ref` and `coords` descriptions are shorter, and the stdio listing no
   longer carries `execution.taskSupport: "forbidden"` or the draft-07 `$schema` marker on every
