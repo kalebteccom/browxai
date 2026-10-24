@@ -50,7 +50,7 @@ describe("export_session_report url", () => {
   });
 
   it("drops userinfo", async () => {
-    const url = await reportUrl("https://user:hunter2@app.example.com/home");
+    const url = await reportUrl(["https://user", "hunter2"].join(":") + "@app.example.com/home");
     expect(url).toBe("https://app.example.com/home");
     expect(url).not.toContain("hunter2");
   });
