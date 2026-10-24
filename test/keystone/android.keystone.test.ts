@@ -105,32 +105,21 @@ afterAll(async () => {
 
 describeAndroid("android keystone — real Chrome-on-Android over adb + CDP (BYOB)", () => {
   it(
-    "attaches to real Chrome-on-Android and the seam tags it engine:android",
+    "attaches to real Chrome-on-Android tagged engine:android and drives navigate → snapshot → find (CDP substrate)",
     async () => {
-      const session = "android-flow";
+      const session = "android-read";
       const opened = await callJson<{ ok: boolean }>("open_session", {
         session,
         mode: "attached",
       });
       expect(opened.ok).toBe(true);
-
-      const listed = await callJson<{
-        sessions: Array<{ id: string; engine: string }>;
-      }>("list_sessions", {});
-      const row = listed.sessions.find((s) => s.id === session);
-      expect(row, "opened session present in list_sessions").toBeTruthy();
-      // The headline behavior: a real Chrome-on-Android session is tagged android
-      // through the BrowserEngine port — the BYOB-to-real-profile win.
-      expect(row!.engine).toBe("android");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "drives navigate → snapshot → find on real Chrome-on-Android (CDP substrate)",
-    async () => {
-      const session = "android-read";
-      await callJson("open_session", { session, mode: "attached" });
+      // A real Chrome-on-Android session is tagged android through the
+      // BrowserEngine port.
+      const listed = await callJson<{ sessions: Array<{ id: string; engine: string }> }>(
+        "list_sessions",
+        {},
+      );
+      expect(listed.sessions.find((s) => s.id === session)?.engine).toBe("android");
 
       // navigate the real device's Chrome to a stable public page.
       const nav = await callJson<{ ok: boolean }>("navigate", {

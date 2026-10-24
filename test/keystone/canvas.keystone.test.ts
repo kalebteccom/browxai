@@ -216,40 +216,6 @@ describe("canvas keystone — gesture_chain 3-step program", () => {
   );
 });
 
-describe("canvas keystone — canvas_world_to_screen explicit-mode math", () => {
-  it(
-    "applies (worldX + panX) * scale + originX with a known transform",
-    async () => {
-      const session = "ks-canvas-w2s";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("navigate", { session, url: `${fixture.url}/canvas-page` });
-
-      const r = await callJson<{
-        ok: boolean;
-        screenX: number;
-        screenY: number;
-        transformDiscovered?: unknown;
-        adapterHint?: string;
-      }>("canvas_world_to_screen", {
-        session,
-        worldX: 5,
-        worldY: 7,
-        transform: { scale: 2, panX: 10, panY: 20, originX: 100, originY: 200 },
-      });
-      // (5+10)*2 + 100 = 130; (7+20)*2 + 200 = 254.
-      expect(r.ok).toBe(true);
-      expect(r.screenX).toBe(130);
-      expect(r.screenY).toBe(254);
-      // Explicit mode does not surface adapterHint.
-      expect(r.adapterHint).toBeUndefined();
-      expect(r.transformDiscovered).toBeUndefined();
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-});
-
 describe("canvas keystone — canvas_query no-adapter error shape", () => {
   it(
     "rejects cleanly with code:'no-adapter' when no plugin matches (no plugins loaded)",

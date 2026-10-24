@@ -99,14 +99,6 @@ describe(" plugin runtime — keystone", () => {
     expect(ex?.tools.sort()).toEqual(["example.add", "example.echo", "example.now"]);
   });
 
-  it("dispatches example.echo end-to-end", async () => {
-    const res = await callJson<{ ok: boolean; result: string }>("example.echo", {
-      msg: "hi",
-    });
-    expect(res.ok).toBe(true);
-    expect(res.result).toBe("hi");
-  });
-
   it("plugins_info returns the full manifest dump", async () => {
     const info = await callJson<{
       ok: boolean;

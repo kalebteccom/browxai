@@ -107,11 +107,13 @@ afterAll(async () => {
 
 describe("snapshot keystone — the two tiers report one element once", () => {
   it(
-    "gives one anchor one ref, and that ref clicks",
+    "reports each element once: one ref per anchor that clicks, twins kept apart, DOM-only on its own line",
     async () => {
-      const session = "ks-dedup-anchor";
+      const session = "ks-dedup-join";
       await openOn(session);
       const snap = await callText("snapshot", { session });
+
+      // One anchor, one ref, and that ref clicks.
       const anchorLines = bodyOf(snap).filter((l) => l.includes('"Only Once"'));
       // Pre-join this was two lines: `link "Only Once" [ref=eN]` from the a11y
       // tier and `a "Only Once" [ref=eM] [from-dom]` from the DOM walk.
@@ -119,54 +121,35 @@ describe("snapshot keystone — the two tiers report one element once", () => {
       expect(anchorLines[0]).toContain("link ");
       expect(anchorLines[0]).toContain("[from-both]");
 
+      // The false-merge guard. `role + name` would have collapsed these two
+      // buttons into one ref: they share their role, their accessible name AND
+      // their test attribute, and differ only in position and in state. The
+      // backend node id does not collapse them, because it is an identity
+      // rather than a resemblance.
+      const saveLines = bodyOf(snap).filter((l) => l.includes('button "Save"'));
+      expect(saveLines, `save lines:\n${saveLines.join("\n")}`).toHaveLength(2);
+      expect(new Set(saveLines.map(refOf)).size).toBe(2);
+      // The second button is disabled and the first is not, so a single
+      // element reported twice could not produce this pair.
+      expect(saveLines.filter((l) => l.includes("disabled"))).toHaveLength(1);
+      // Both went through the join, so neither is a leftover duplicate.
+      expect(saveLines.every((l) => l.includes("[from-both]"))).toBe(true);
+
+      // The `tabindex` div is a nameless `generic` in the accessibility tree,
+      // a node the serialiser emits no line for. Folding the DOM walk's entry
+      // into it would take the div out of the snapshot entirely, so the merge
+      // refuses and the `[from-dom]` line stands.
+      const widget = bodyOf(snap).filter((l) => l.includes("opaque-widget"));
+      expect(widget, `widget lines:\n${widget.join("\n")}`).toHaveLength(1);
+      expect(widget[0]).toContain("[from-dom]");
+      expect(statsOf(snap).domWalkNew).toBeGreaterThanOrEqual(1);
+
       const clicked = await callJson<{ ok: boolean }>("click", {
         session,
         ref: refOf(anchorLines[0]!),
       });
       expect(clicked.ok).toBe(true);
       await expectLog(session, "anchor-clicked");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "keeps two same-role, same-name, same-testid elements apart",
-    async () => {
-      // The false-merge guard. `role + name` would have collapsed these two
-      // buttons into one ref — they share their role, their accessible name AND
-      // their test attribute, and differ only in position and in state. The
-      // backend node id does not collapse them, because it is an identity
-      // rather than a resemblance.
-      const session = "ks-dedup-twins";
-      await openOn(session);
-      const snap = await callText("snapshot", { session });
-      const saveLines = bodyOf(snap).filter((l) => l.includes('button "Save"'));
-      expect(saveLines, `save lines:\n${saveLines.join("\n")}`).toHaveLength(2);
-      expect(new Set(saveLines.map(refOf)).size).toBe(2);
-      // Two lines that really are two elements: the second button is disabled
-      // and the first is not, so a single element reported twice could not
-      // produce this pair.
-      expect(saveLines.filter((l) => l.includes("disabled"))).toHaveLength(1);
-      // Both went through the join, so neither is a leftover duplicate.
-      expect(saveLines.every((l) => l.includes("[from-both]"))).toBe(true);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "leaves an element only the DOM walk reports on its own line",
-    async () => {
-      // The `tabindex` div is a nameless `generic` in the accessibility tree —
-      // a node the serialiser emits no line for. Folding the DOM walk's entry
-      // into it would take the div out of the snapshot entirely, so the merge
-      // refuses and the `[from-dom]` line stands.
-      const session = "ks-dedup-dom-only";
-      await openOn(session);
-      const snap = await callText("snapshot", { session });
-      const widget = bodyOf(snap).filter((l) => l.includes("opaque-widget"));
-      expect(widget, `widget lines:\n${widget.join("\n")}`).toHaveLength(1);
-      expect(widget[0]).toContain("[from-dom]");
-      expect(statsOf(snap).domWalkNew).toBeGreaterThanOrEqual(1);
     },
     KEYSTONE_TIMEOUT,
   );

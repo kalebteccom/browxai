@@ -117,32 +117,22 @@ afterAll(async () => {
 
 describeFf("firefox keystone — the second engine is real (adapter + seam)", () => {
   it(
-    "opens a real Firefox session and the seam tags it engine:firefox",
+    "opens a real Firefox session tagged engine:firefox and drives the CDP-free class-A surface (cookies, storageState, screenshot)",
     async () => {
-      const session = "ff-flow";
-      const opened = await callJson<{ ok: boolean; mode: string }>("open_session", {
+      const session = "ff-classA";
+      const opened = await callJson<{ ok: boolean }>("open_session", {
         session,
         mode: "incognito",
       });
       expect(opened.ok).toBe(true);
 
-      const listed = await callJson<{
-        sessions: Array<{ id: string; engine: string }>;
-      }>("list_sessions", {});
-      const row = listed.sessions.find((s) => s.id === session);
-      expect(row, "opened session present in list_sessions").toBeTruthy();
-      // The core claim: a real-browser session is tagged firefox through the
-      // BrowserEngine port — the port generalized to a second engine.
-      expect(row!.engine).toBe("firefox");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "drives the CDP-free class-A surface on real Firefox (cookies, storageState, screenshot)",
-    async () => {
-      const session = "ff-classA";
-      await callJson("open_session", { session, mode: "incognito" });
+      // The seam tags a real-browser session with its engine through the
+      // BrowserEngine port.
+      const listed = await callJson<{ sessions: Array<{ id: string; engine: string }> }>(
+        "list_sessions",
+        {},
+      );
+      expect(listed.sessions.find((s) => s.id === session)?.engine).toBe("firefox");
 
       // cookies_set / cookies_list — context-level jar, Playwright cross-browser.
       const set = await callJson<{ ok: boolean }>("cookies_set", {

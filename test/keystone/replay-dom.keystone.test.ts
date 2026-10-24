@@ -163,7 +163,7 @@ function stream(cap: Capture): string {
 
 describeDom("replay DOM capture keystone — rrweb against real Chromium", () => {
   it(
-    "injects the recorder before the page's first script, and the full snapshot carries the real DOM",
+    "injects the recorder before the page's first script, the full snapshot carries the real DOM, and mutations arrive incrementally",
     async () => {
       const cap = await startCapture();
       try {
@@ -198,22 +198,8 @@ describeDom("replay DOM capture keystone — rrweb against real Chromium", () =>
         expect(snapshotText).toContain("SHADOW-MARKER");
         await settle(cap, () => stream(cap).includes("IFRAME-MARKER"));
         expect(stream(cap)).toContain("IFRAME-MARKER");
-      } finally {
-        await cap.close();
-      }
-    },
-    KEYSTONE_TIMEOUT,
-  );
 
-  it(
-    "delivers subsequent mutations as incremental events, not as another full snapshot",
-    async () => {
-      const cap = await startCapture();
-      try {
-        const page = await cap.context.newPage();
-        await page.goto(`${fixture.url}/`, { waitUntil: "load" });
-        await settle(cap, (e) => e.some((x) => x.payload.type === RRWEB_FULL_SNAPSHOT));
-
+        // Later mutations arrive as incremental events, not as another full snapshot.
         const snapshotsBefore = cap.events.filter(
           (e) => e.payload.type === RRWEB_FULL_SNAPSHOT,
         ).length;
@@ -222,10 +208,8 @@ describeDom("replay DOM capture keystone — rrweb against real Chromium", () =>
             (e) =>
               e.payload.type === RRWEB_INCREMENTAL && JSON.stringify(e).includes("MUTATION-MARKER"),
           );
-
         await page.click("#add");
         await settle(cap, () => marker().length > 0);
-
         expect(marker().length).toBeGreaterThanOrEqual(1);
         expect(cap.events.filter((e) => e.payload.type === RRWEB_FULL_SNAPSHOT).length).toBe(
           snapshotsBefore,

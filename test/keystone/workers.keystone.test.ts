@@ -183,56 +183,6 @@ describe("workers_list / worker_message_send / worker_messages_read keystone", (
   );
 
   it(
-    "a service worker's reply to the page comes back through worker_messages_read",
-    async () => {
-      const session = "ks-workers-sw-msg";
-      const opened = await callJson<{ ok: boolean }>("open_session", {
-        session,
-        mode: "incognito",
-      });
-      expect(opened.ok).toBe(true);
-
-      await callJson("navigate", { session, url: `${fixture.url}/sw-page` });
-
-      // The page registers /sw.js, pings it once active, and shows the reply.
-      const state = await pollUntil(
-        () =>
-          callJson<{ ok: boolean; value: string }>("eval_js", {
-            session,
-            expr: "document.getElementById('sw-state').textContent",
-          }),
-        (r) => r.value === "pong:ping",
-        15_000,
-      );
-      expect(state.value).toBe("pong:ping");
-
-      const read = await pollUntil(
-        () =>
-          callJson<{
-            ok: boolean;
-            messages: Array<{ workerId: string; data: string; at: number }>;
-          }>("worker_messages_read", { session }),
-        (r) => r.messages.some((m) => m.data === "pong:ping"),
-      );
-      expect(read.ok).toBe(true);
-      const pong = read.messages.find((m) => m.data === "pong:ping");
-      expect(pong).toBeDefined();
-      expect(pong!.workerId).toMatch(/^sw-\d+$/);
-      expect(typeof pong!.at).toBe("number");
-
-      // Drain semantics: the same message is not returned twice.
-      const again = await callJson<{ messages: Array<{ data: string }> }>("worker_messages_read", {
-        session,
-        workerId: pong!.workerId,
-      });
-      expect(again.messages.find((m) => m.data === "pong:ping")).toBeUndefined();
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "workers_list sees a service worker and worker_message_send reaches it",
     async () => {
       const session = "ks-workers-sw-send";

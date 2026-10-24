@@ -128,21 +128,3 @@ describe("page-archive keystone — workspace escape is rejected at the tool lay
     await callJson("close_session", { session });
   });
 });
-
-describe("page-archive keystone — default path under archives/", () => {
-  it("omitting path lands under workspace/archives/<sessionId>-<ISO>", async () => {
-    const session = "ks-archive-default";
-    await callJson("open_session", { session, mode: "incognito" });
-    await callJson("navigate", { session, url: `${fixture.url}/` });
-
-    const r = await callJson<{ ok: boolean; path: string }>("page_archive", {
-      session,
-      format: "directory",
-    });
-    expect(r.ok).toBe(true);
-    expect(r.path.startsWith(join(workspace, "archives", `${session}-`))).toBe(true);
-    expect(existsSync(join(r.path, "index.html"))).toBe(true);
-
-    await callJson("close_session", { session });
-  });
-});

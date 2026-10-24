@@ -113,25 +113,18 @@ afterAll(async () => {
 
 describeElectron("electron keystone — a real desktop app over its debugging port", () => {
   it(
-    "resolves engine:electron from the protocol, with no operator declaration",
+    "resolves engine:electron from the protocol, then reads the app: snapshot returns a real tree and find ranks real candidates",
     async () => {
+      const session = SESSION;
       const listed = await callJson<{
         sessions: Array<{ id: string; engine: string; mode: string }>;
       }>("list_sessions", {});
       const row = listed.sessions.find((s) => s.id === SESSION);
       expect(row, "opened session present in list_sessions").toBeTruthy();
-      // The headline. `createServer` was given no browserType, so this is
-      // `Browser.getVersion`'s user agent talking, not a config value echoed back.
+      // `createServer` was given no browserType, so this is `Browser.getVersion`'s
+      // user agent talking, not a config value echoed back.
       expect(row!.engine).toBe("electron");
       expect(row!.mode).toBe("attached");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "reads the app: snapshot returns a real tree and find ranks real candidates",
-    async () => {
-      const session = SESSION;
       // Electron IS Chromium, so this is the verbatim CDP snapshot substrate —
       // selected by CDP presence, no electron-specific code on the read path.
       const snap = await callText("snapshot", { session });

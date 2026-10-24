@@ -110,127 +110,83 @@ async function rawIdbRead(
 }
 
 describe("idb_put fidelity keystone — values must round-trip as structured objects, not JSON strings", () => {
-  it(
-    "writes an object, reads back via raw eval_js as an object (not a JSON string)",
-    async () => {
-      const session = "ks-idbput-obj";
+  it.each([
+    {
+      name: "an object reads back as an object (not a JSON string)",
+      key: "ks-fidelity-obj",
+      value: { hello: "world", n: 42, nested: { a: [1, 2, 3] } },
+      type: "object",
+    },
+    { name: "a number reads back as a number", key: "num", value: 42, type: "number" },
+    { name: "a string reads back as a string", key: "str", value: "hello", type: "string" },
+  ])(
+    "idb_put writes $name via raw eval_js",
+    async ({ key, value, type }) => {
+      const session = `ks-idbput-${key}`;
       await callJson("open_session", { session, mode: "incognito" });
       await callJson("navigate", { session, url: `${fixture.url}/` });
       await waitForSeed(session);
-
-      const payload = { hello: "world", n: 42, nested: { a: [1, 2, 3] } };
 
       const put = await callJson<{ ok: boolean; error?: string }>("idb_put", {
         session,
         dbName: "app",
         storeName: "kv",
-        key: "ks-fidelity-obj",
-        value: payload,
+        key,
+        value,
       });
       expect(put.ok).toBe(true);
 
-      const raw = await rawIdbRead(session, "app", "kv", "ks-fidelity-obj");
+      const raw = await rawIdbRead(session, "app", "kv", key);
 
-      // THIS is the regression gate. If page-side `var value = ...`
-      // double-stringifies, this will be `string` and the value will be
-      // the JSON-encoded text. The bug-fix asserts type:"object".
-      expect(raw.type).toBe("object");
-      expect(raw.value).toEqual(payload);
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "writes a primitive (number, then string), reads it back as the same primitive",
-    async () => {
-      const session = "ks-idbput-prim";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-      await waitForSeed(session);
-
-      await callJson("idb_put", {
-        session,
-        dbName: "app",
-        storeName: "kv",
-        key: "num",
-        value: 42,
-      });
-      const rNum = await rawIdbRead(session, "app", "kv", "num");
-      expect(rNum.type).toBe("number");
-      expect(rNum.value).toBe(42);
-
-      await callJson("idb_put", {
-        session,
-        dbName: "app",
-        storeName: "kv",
-        key: "str",
-        value: "hello",
-      });
-      const rStr = await rawIdbRead(session, "app", "kv", "str");
-      // A real string stays a string — preserving the platform shape.
-      expect(rStr.type).toBe("string");
-      expect(rStr.value).toBe("hello");
+      // Regression gate: if the page-side `var value = ...` double-stringifies,
+      // an object comes back as `string` holding the JSON-encoded text.
+      expect(raw.type).toBe(type);
+      expect(raw.value).toEqual(value);
 
       await callJson("close_session", { session });
     },
     KEYSTONE_TIMEOUT,
   );
 
-  it(
-    "surfaces a warnings[] entry when `value` arrives as a JSON-shaped STRING (MCP client double-encoding gotcha)",
-    async () => {
-      const session = "ks-idbput-warn";
+  it.each([
+    {
+      name: "surfaces a warnings[] entry when `value` arrives as a JSON-shaped STRING (MCP client double-encoding gotcha)",
+      key: "ks-warn",
+      value: '{"hello":"world","n":42}',
+      warns: true,
+    },
+    {
+      name: "does NOT surface the warning when `value` is a plain (non-JSON-shaped) string",
+      key: "plain",
+      value: "hello world",
+      warns: false,
+    },
+  ])(
+    "idb_put $name",
+    async ({ key, value, warns }) => {
+      const session = `ks-idbput-warn-${key}`;
       await callJson("open_session", { session, mode: "incognito" });
       await callJson("navigate", { session, url: `${fixture.url}/` });
       await waitForSeed(session);
 
-      // Simulate the adopter's failure shape: client double-encoded the
-      // complex object as a JSON string before the wire. Handler should
-      // detect this and surface a structured warning while still storing
-      // the value verbatim (some apps legitimately want a JSON string).
       const r = await callJson<{ ok: boolean; warnings?: string[] }>("idb_put", {
         session,
         dbName: "app",
         storeName: "kv",
-        key: "ks-warn",
-        value: '{"hello":"world","n":42}',
+        key,
+        value,
       });
       expect(r.ok).toBe(true);
-      expect(r.warnings).toBeDefined();
-      expect(r.warnings!.some((w) => w.toLowerCase().includes("json-encoded string"))).toBe(true);
-
-      // Confirm the value WAS stored — verbatim, as a string — so apps
-      // that genuinely meant to store a JSON string aren't broken.
-      const raw = await rawIdbRead(session, "app", "kv", "ks-warn");
+      // The warning fires only for {/[ -shaped strings that JSON-parse to an
+      // object or array. Either way the string is stored verbatim.
+      if (warns) {
+        expect(r.warnings!.some((w) => w.toLowerCase().includes("json-encoded string"))).toBe(true);
+      } else {
+        expect(r.warnings).toBeUndefined();
+      }
+      const raw = await rawIdbRead(session, "app", "kv", key);
       expect(raw.type).toBe("string");
-      expect(raw.value).toBe('{"hello":"world","n":42}');
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "does NOT surface the warning when `value` is a plain (non-JSON-shaped) string",
-    async () => {
-      const session = "ks-idbput-warn-neg";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-      await waitForSeed(session);
-
-      const r = await callJson<{ ok: boolean; warnings?: string[] }>("idb_put", {
-        session,
-        dbName: "app",
-        storeName: "kv",
-        key: "plain",
-        value: "hello world",
-      });
-      expect(r.ok).toBe(true);
-      // The warning should fire ONLY for {/[ -shaped strings that JSON-parse
-      // to an object/array. Plain strings stay quiet.
-      expect(r.warnings).toBeUndefined();
+      expect(raw.value).toBe(value);
 
       await callJson("close_session", { session });
     },

@@ -281,7 +281,7 @@ describeSim("ios-app keystone — the tool surface over a faked WebDriverAgent",
   }, KEYSTONE_TIMEOUT);
 
   it(
-    "opens a session the registry tags engine:ios-app, with an app:// target",
+    "opens a session tagged engine:ios-app with an app:// target, and snapshot renders the XCUITest hierarchy as role/name/[ref=eN]",
     async () => {
       const opened = await callJson<{ ok: boolean }>("open_session", { session: SESSION });
       expect(opened.ok, JSON.stringify(opened)).toBe(true);
@@ -293,13 +293,7 @@ describeSim("ios-app keystone — the tool surface over a faked WebDriverAgent",
       // The TargetSubstrate's `app://` scope, which is also what the secret-scope
       // containment check reads.
       expect(row?.url).toContain(`app://${SYSTEM_APP}`);
-    },
-    KEYSTONE_TIMEOUT,
-  );
 
-  it(
-    "snapshot renders the XCUITest hierarchy as role/name/[ref=eN]",
-    async () => {
       const res = await handlers.snapshot({ session: SESSION });
       const text = (res.content[0] as { text: string }).text;
       expect(text).toMatch(/button/);

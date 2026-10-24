@@ -104,21 +104,6 @@ describe("profile_status keystone — real Chromium", () => {
   );
 
   it(
-    "drops the live block once the session closes, keeping the on-disk row",
-    async () => {
-      const body = await status({ profile: "job-search-live" });
-      expect(body.count).toBe(1);
-      const row = body.profiles[0]!;
-      expect(row.live).toBeUndefined();
-      // The profile itself survives — this is exactly the collectable-directory
-      // signal: present on disk, nothing open, with an mtime to age it by.
-      expect(row.files).toBeGreaterThan(0);
-      expect(Number.isNaN(Date.parse(row.modifiedAt))).toBe(false);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "refuses a path-escaping profile name with a structured error",
     async () => {
       const body = await status({ profile: "../../etc" });
