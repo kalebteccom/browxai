@@ -1,6 +1,6 @@
 // What process a PID names, for `browxai chrome stop`. The PID comes from
 // `<workspace>/chrome.pid`, a plain file, so `stop` confirms the process is
-// Chrome before it sends any signal.
+// Chrome on this workspace's profile before it sends any signal.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -49,15 +49,38 @@ export function processCommandLine(
 const CHROME_EXECUTABLE =
   /^(?:[^\s]*[/\\]|.*\.app\/Contents\/MacOS\/)?(?:google chrome|google-chrome(?:-stable)?|chrome|chrome\.exe|chromium(?:-browser)?|chromium\.exe)(?:\s|$)/i;
 
+/** True when `commandLine` carries `--user-data-dir=<profileDir>` as its own
+ *  argument: the value must end at the end of the line or at whitespace, so
+ *  `/w/profile-other` does not satisfy `/w/profile`. */
+export function hasUserDataDir(commandLine: string, profileDir: string): boolean {
+  const flag = `--user-data-dir=${profileDir}`;
+  let from = 0;
+  // cap: each pass moves `from` past one match, so the loop ends at the end of the line.
+  for (;;) {
+    const at = commandLine.indexOf(flag, from);
+    if (at < 0) return false;
+    const end = at + flag.length;
+    const startsArg = at === 0 || /\s/.test(commandLine.charAt(at - 1));
+    const endsArg = end === commandLine.length || /\s/.test(commandLine.charAt(end));
+    if (startsArg && endsArg) return true;
+    from = at + 1;
+  }
+}
+
 /**
  * True when `commandLine` reads as the Chrome `browxai chrome start` launches:
  * a Chrome executable, and on platforms that report arguments, a
- * `--user-data-dir=` flag.
+ * `--user-data-dir=` flag. With `profileDir`, that flag must name exactly that
+ * directory. Windows reports the image name only, so the flag is not checked
+ * there.
  */
 export function looksLikeChrome(
   commandLine: string,
   platform: NodeJS.Platform = process.platform,
+  profileDir?: string,
 ): boolean {
   if (!CHROME_EXECUTABLE.test(commandLine)) return false;
-  return platform === "win32" || commandLine.includes("--user-data-dir=");
+  if (platform === "win32") return true;
+  if (profileDir !== undefined) return hasUserDataDir(commandLine, profileDir);
+  return commandLine.includes("--user-data-dir=");
 }

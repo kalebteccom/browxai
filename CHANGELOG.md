@@ -73,7 +73,11 @@ surface" covers.
   It reads the command line of the PID in `chrome.pid` (`/proc` on Linux, `ps`
   on macOS, `tasklist` on Windows) and exits 1 without sending a signal when the
   command line cannot be read or is not a Chrome launched with
-  `--user-data-dir`.
+  `--user-data-dir`. `start` records its profile directory in `chrome.profile`
+  next to `chrome.pid`, and `stop` requires `--user-data-dir=` to name that
+  directory (the workspace default profile for a `chrome.pid` written by an
+  older release). It reads the command line again before the SIGKILL that
+  follows an ignored SIGTERM.
 - **`asset_export` never replaces an existing file.** Files are created
   exclusively, and a name already on disk in `intoDir`, from an earlier export
   or anything else, moves to the next free `-N` name. Re-exporting into the same

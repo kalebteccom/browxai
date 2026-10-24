@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { looksLikeChrome, processCommandLine } from "./chrome-process.js";
+import { hasUserDataDir, looksLikeChrome, processCommandLine } from "./chrome-process.js";
 
 describe("looksLikeChrome", () => {
   it.each([
@@ -22,6 +22,41 @@ describe("looksLikeChrome", () => {
     ["win32", "notepad.exe"],
   ] as const)("refuses on %s: %s", (platform, cmd) => {
     expect(looksLikeChrome(cmd, platform)).toBe(false);
+  });
+});
+
+describe("hasUserDataDir", () => {
+  it("matches the exact directory as its own argument", () => {
+    expect(hasUserDataDir("chrome --user-data-dir=/w/profile --no-first-run", "/w/profile")).toBe(
+      true,
+    );
+    expect(hasUserDataDir("chrome --user-data-dir=/w/profile", "/w/profile")).toBe(true);
+    expect(hasUserDataDir("chrome --user-data-dir=/w/my profile --x", "/w/my profile")).toBe(true);
+  });
+
+  it("refuses a longer directory, a different one and another flag's value", () => {
+    expect(hasUserDataDir("chrome --user-data-dir=/w/profile-other", "/w/profile")).toBe(false);
+    expect(hasUserDataDir("chrome --user-data-dir=/w/profile/sub", "/w/profile")).toBe(false);
+    expect(hasUserDataDir("chrome --user-data-dir=/x", "/w/profile")).toBe(false);
+    expect(hasUserDataDir("chrome --x--user-data-dir=/w/profile", "/w/profile")).toBe(false);
+  });
+
+  it("finds a later match after an earlier near-miss", () => {
+    const line = "chrome --user-data-dir=/w/profile-x --user-data-dir=/w/profile";
+    expect(hasUserDataDir(line, "/w/profile")).toBe(true);
+  });
+});
+
+describe("looksLikeChrome with a profile directory", () => {
+  it("requires that directory on platforms that report arguments", () => {
+    const cmd = "/opt/google/chrome/chrome --user-data-dir=/w/profile";
+    expect(looksLikeChrome(cmd, "linux", "/w/profile")).toBe(true);
+    expect(looksLikeChrome(cmd, "linux", "/w/profiles/work")).toBe(false);
+    expect(looksLikeChrome("/opt/google/chrome/chrome", "linux", "/w/profile")).toBe(false);
+  });
+
+  it("does not check the flag on Windows, where only the image name is reported", () => {
+    expect(looksLikeChrome("chrome.exe", "win32", "C:\\w\\profile")).toBe(true);
   });
 });
 
