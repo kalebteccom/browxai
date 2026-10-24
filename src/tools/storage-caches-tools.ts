@@ -12,6 +12,29 @@ import type {
   ServerServicesHost,
 } from "./host.js";
 
+/** What `caches_get` returns for one entry. The body (`text` or
+ *  `contentBase64`) is response content, so it rides `network-body`; without
+ *  that capability the headers and metadata come back and the body is left
+ *  out, with the capability named the way `network_body` names it. A text
+ *  body's `byteLength` is filled in either way, as a binary body has one. */
+export function cacheEntryForCaps(entryIn: object, bodyAllowed: boolean): Record<string, unknown> {
+  const raw = entryIn as Record<string, unknown>;
+  if (raw.found !== true) return raw;
+  const entry =
+    typeof raw.text === "string" && raw.byteLength === undefined
+      ? { ...raw, byteLength: Buffer.byteLength(raw.text, "utf8") }
+      : raw;
+  if (bodyAllowed) return entry;
+  const { text, contentBase64, ...meta } = entry;
+  if (text === undefined && contentBase64 === undefined) return entry;
+  return {
+    ...meta,
+    bodyOmitted: true,
+    requiredCapability: "network-body",
+    hint: "The response body is left out: it needs the off-by-default `network-body` capability, like `network_body`. Add it to BROWX_CAPABILITIES and restart the server to read bodies.",
+  };
+}
+
 /**
  * Cache API tools: `caches_*` (list_storages / list / get / put / delete / clear /
  * delete_storage). Split out of `storage-tools` by cohesive family (RFC 0004 P3 /
@@ -115,7 +138,7 @@ export function registerStorageCachesTools(
     {
       capability: "read",
       description:
-        'Read the response body of a single cache entry. Text-like content types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, or anything with a `charset=`) arrive as `{kind:"text", text}`. Everything else arrives as `{kind:"binary", contentBase64, byteLength}`. `{found:false}` if no entry matches the URL. Origin-scoped — navigate first. Read-only.',
+        'Read a single cache entry: `{found, kind, contentType, status, headers, byteLength, cacheName, url, origin}`. The response body needs the off-by-default `network-body` capability, like `network_body`: with it, text-like content types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, or anything with a `charset=`) add `text` and everything else adds `contentBase64`. Without it the body is left out and the result carries `bodyOmitted:true` and `requiredCapability:"network-body"`. `{found:false}` if no entry matches the URL. Origin-scoped — navigate first. Read-only.',
       inputSchema: {
         cacheName: z.string().describe("Cache storage name."),
         url: z.string().describe("Entry URL key."),
@@ -134,7 +157,10 @@ export function registerStorageCachesTools(
           cfgActionTimeout(),
           "caches_get",
         );
-        return okText({ ok: true, ...r });
+        // The body rides `network-body`: the compound gate answers whether it
+        // is on, and the entry's metadata is returned either way.
+        const bodyAllowed = gateCheck("caches_get", ["network-body"]) === null;
+        return okText({ ok: true, ...cacheEntryForCaps(r, bodyAllowed) });
       } catch (err) {
         return errText("caches_get", err);
       }

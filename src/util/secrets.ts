@@ -212,6 +212,47 @@ export class SecretRegistry {
     return out;
   }
 
+  /** Egress-side, for one whole tool-result text item, which is usually a
+   *  JSON document. Masking JSON text as a plain string would miss a value
+   *  that JSON escaped (a `"` or `\` in it) and could break the document, so
+   *  JSON is parsed, its string leaves, object keys and any number whose
+   *  digits carry a value are masked, and it is serialised again in the same
+   *  layout (two-space indent or compact). Non-JSON text gets
+   *  `applyMaskInText`.
+   *
+   *  Fast path: text that contains no registered value, raw or JSON-escaped,
+   *  comes back untouched with no parse, which is the case for every result a
+   *  sink already masked. That also makes the method idempotent. */
+  applyMaskInResultText(text: string): string {
+    if (this.byName.size === 0 || !text) return text;
+    const entries = this.entriesByValueLenDesc();
+    if (!entries.some((e) => text.includes(e.value) || text.includes(jsonEscaped(e.value)))) {
+      return text;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text, (_key, v: unknown) => this.maskJsonNode(v));
+    } catch {
+      return this.applyMaskInText(text);
+    }
+    return JSON.stringify(parsed, null, /^[[{]\r?\n/.test(text) ? 2 : undefined);
+  }
+
+  /** One `JSON.parse` reviver step. Children are already masked when their
+   *  parent is visited, so each node only handles its own strings. */
+  private maskJsonNode(v: unknown): unknown {
+    if (typeof v === "string") return this.applyMaskInText(v);
+    if (typeof v === "number") {
+      const digits = String(v);
+      return this.containsAnySecret(digits).hit ? this.applyMaskInText(digits) : v;
+    }
+    if (!v || typeof v !== "object" || Array.isArray(v)) return v;
+    const obj = v as Record<string, unknown>;
+    const keys = Object.keys(obj);
+    if (!keys.some((k) => this.containsAnySecret(k).hit)) return v;
+    return Object.fromEntries(keys.map((k) => [this.applyMaskInText(k), obj[k]]));
+  }
+
   /** Convenience: mask the string fields of an object/array, at any depth.
    *  Non-string leaves pass through. Returns a new object — the input is not
    *  mutated.
@@ -317,6 +358,11 @@ export class SecretRegistry {
     arr.sort((a, b) => b.value.length - a.value.length);
     return arr;
   }
+}
+
+/** A value as it appears inside a JSON string literal. */
+function jsonEscaped(value: string): string {
+  return JSON.stringify(value).slice(1, -1);
 }
 
 export interface MaterialiseResult {

@@ -26,6 +26,13 @@ surface" covers.
   with a letter or digit and use only letters, digits, space and
   `. _ @ + : / -`, at most 128 characters. The `op`, `bw` and `lpass` calls pass
   the account after `--`.
+- **Tool output masks registered secrets.** With `secrets` on, every tool
+  result's text is masked for registered values on the way out, including
+  `extract`, `shadow_trees`, `cookies_get`, `idb_get` and `caches_get`. JSON
+  results keep their layout and stay valid.
+- **`caches_get` returns the body only with `network-body`.** Without it the
+  result carries the headers and metadata, `byteLength`, `bodyOmitted: true`
+  and `requiredCapability: "network-body"`.
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.

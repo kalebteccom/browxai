@@ -1723,7 +1723,7 @@ synthetic IDs; each entry is keyed by its `(cacheName, url)` pair.
 
 - `caches_list_storages({ session? })` → `{count, names:[…], origin}` (`caches.keys()`).
 - `caches_list({ cacheName, urlPattern?, session? })` → `{count, entries:[{url, method}], origin, cacheName}`. `urlPattern` is a case-sensitive substring filter on each entry's request URL (no regex; post-filter the result for richer matching).
-- `caches_get({ cacheName, url, session? })` → text-like content-types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, anything with `charset=`) arrive as `{found:true, kind:"text", text, contentType, status, headers}`; everything else as `{found:true, kind:"binary", contentBase64, byteLength, …}`. `{found:false}` when no entry matches the URL.
+- `caches_get({ cacheName, url, session? })` → `{found:true, kind, contentType, status, headers, byteLength, cacheName, url, origin}`. The response body rides the off-by-default `network-body` capability, as `network_body` does. With it, text-like content-types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, anything with `charset=`) add `text` (`kind:"text"`) and everything else adds `contentBase64` (`kind:"binary"`). Without it the body is left out and the result carries `bodyOmitted:true`, `requiredCapability:"network-body"` and a `hint`. `{found:false}` when no entry matches the URL.
 - `caches_put({ cacheName, url, response:{ status?, headers?, body? | contentBase64? }, session? })`: auto-opens (= creates) the named cache storage. `response.body` is a UTF-8 string; for binary content pass `response.contentBase64` instead. The two are mutually exclusive. Default `status` 200.
 - `caches_delete({ cacheName, url, session? })` → `{ok, existed}` (idempotent).
 - `caches_clear({ cacheName, session? })` → `{ok, cleared:N}` (cache storage itself remains).
@@ -2690,7 +2690,20 @@ scanned on the way out:
 | `verify_count` / `verify_visible` / `verify_predicate`, `failure.actual`      | masked (deep-walk)                                                                       |
 | `act_and_diff().diff` (classDelta / styleDelta / attrDelta values)            | masked (deep-walk); covers `aria-*` / `data-*` attribute values + inline-style values    |
 | `watch()` regions / network / WS over the watch window                        | masked (NetworkTap takes the secrets registry; result deep-walked)                       |
+| `extract`, `shadow_trees`, `cookies_get`, `idb_get`, `caches_get` page data   | masked (every tool result, see below)                                                    |
+| any other tool's text result                                                  | masked (every tool result, see below)                                                    |
 | `screenshot()` (image bytes)                                                  | **partial, warning only**, see below                                                     |
+
+**Every tool result.** On top of the per-sink masking above, every
+registered tool's result goes through one more pass on the way out: each
+text item has registered values replaced with `<NAME>`. A JSON result is
+parsed and its string values, object keys and any number whose digits hold
+a value are masked, then it is written back in the same layout, so a value
+that JSON escaped is caught and the document stays valid. A result with no
+registered value in it is returned untouched without being parsed, so
+already-masked sinks cost one substring scan. Image items are not touched.
+This pass covers every session's registered values, and it runs only when
+the `secrets` capability is on.
 
 **Masking guarantees.** The egress layer composes with the existing
 URL sanitiser at the same boundary: URL sanitiser runs first (regex on URL
