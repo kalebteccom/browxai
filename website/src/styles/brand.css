@@ -1169,6 +1169,19 @@ main:has(.browx-404) > .content-panel {
     radial-gradient(farthest-side at 100% 50%, var(--browx-edge-glow), transparent) right center /
       0.75rem 100% no-repeat scroll;
 }
+/* Phone widths: a table with few columns and short code (marked by
+   docs-enhance.ts) fills the column and wraps its cells, so it needs no sideways
+   scroll. Wide or code-heavy tables keep the scroll box above. */
+@media (max-width: 40rem) {
+  .sl-markdown-content table[data-browx-wrap] {
+    display: table;
+    width: 100%;
+    background: none;
+  }
+  .sl-markdown-content table[data-browx-wrap] :is(th, td) {
+    overflow-wrap: anywhere;
+  }
+}
 .sl-markdown-content table:focus-visible {
   outline: 2px solid var(--sl-color-text-accent);
   outline-offset: 2px;

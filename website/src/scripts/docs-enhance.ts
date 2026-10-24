@@ -2,6 +2,7 @@
 // 1. Inline code that holds a command or a BROWX_* name copies on click, Enter or
 //    Space. The "Copied" bubble is a ::after (see brand.css), so nothing reflows.
 // 2. A table that scrolls sideways becomes focusable, so a keyboard can scroll it.
+//    A table of short cells wraps on phone widths instead (see brand.css).
 // BROWX_NAME and BROWX_NAME=value both copy. A value with a placeholder or an
 // ellipsis is not a command, so it stays plain.
 const COMMAND = /^(?:(?:browxai|npx|pnpm|npm) \S|BROWX_[A-Z0-9_]+(?:=[^\s<…]+)?$)/;
@@ -66,7 +67,19 @@ document.querySelectorAll<HTMLElement>(".sl-markdown-content code").forEach((el)
   });
 });
 
+// A table wraps its cells on a phone when it has few columns and no long code
+// token. Anything wider or code-heavy keeps the sideways scroll.
+const wraps = (table: HTMLElement) => {
+  const cols = table.querySelectorAll("tr:first-child > :is(th, td)").length;
+  let longest = 0;
+  table.querySelectorAll("td code, th code").forEach((c) => {
+    longest = Math.max(longest, c.textContent?.length ?? 0);
+  });
+  return cols <= 3 ? longest <= 40 : cols === 4 && longest <= 24;
+};
+
 document.querySelectorAll<HTMLElement>(".sl-markdown-content table").forEach((table) => {
+  if (wraps(table)) table.dataset.browxWrap = "";
   new ResizeObserver(() => {
     const scrolls = table.scrollWidth > table.clientWidth + 1;
     // No role override: the table keeps its table semantics.
