@@ -70,7 +70,13 @@ const TAP_MIN = 44;
 const TOL = 1;
 
 function parseArgs(argv) {
-  const o = { base: null, json: null, allow: DEFAULT_ALLOW, pages: PAGES, workers: Math.min(8, availableParallelism()) };
+  const o = {
+    base: null,
+    json: null,
+    allow: DEFAULT_ALLOW,
+    pages: PAGES,
+    workers: Math.min(8, availableParallelism()),
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--json") o.json = argv[++i];
@@ -85,7 +91,9 @@ function parseArgs(argv) {
     }
   }
   if (!o.base) {
-    console.error("usage: check-layout.mjs <baseUrl> [--pages a,b] [--json file] [--allow file|--no-allow]");
+    console.error(
+      "usage: check-layout.mjs <baseUrl> [--pages a,b] [--json file] [--allow file|--no-allow]",
+    );
     process.exit(2);
   }
   return o;
@@ -172,7 +180,9 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
         continue;
       }
       off.add(el);
-      add("offscreen", el, `left=${n1(r.left)} right=${n1(r.right)} viewport=${cw}`, { lv: "blocker" });
+      add("offscreen", el, `left=${n1(r.left)} right=${n1(r.right)} viewport=${cw}`, {
+        lv: "blocker",
+      });
     }
   }
 
@@ -182,12 +192,18 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
     if (s.display === "inline") continue;
     const ox = el.scrollWidth - el.clientWidth;
     if (ox > tol && s.overflowX === "visible" && hasText(el))
-      add("text-overflow", el, `scrollWidth=${el.scrollWidth} clientWidth=${el.clientWidth}`, { lv: "should" });
+      add("text-overflow", el, `scrollWidth=${el.scrollWidth} clientWidth=${el.clientWidth}`, {
+        lv: "should",
+      });
     else if (ox > tol && (s.overflowX === "hidden" || s.overflowX === "clip"))
-      add("clipped", el, `scrollWidth=${el.scrollWidth} clientWidth=${el.clientWidth}`, { lv: "should" });
+      add("clipped", el, `scrollWidth=${el.scrollWidth} clientWidth=${el.clientWidth}`, {
+        lv: "should",
+      });
     const oy = el.scrollHeight - el.clientHeight;
     if (oy > tol && (s.overflowY === "hidden" || s.overflowY === "clip"))
-      add("clipped", el, `scrollHeight=${el.scrollHeight} clientHeight=${el.clientHeight}`, { lv: "should" });
+      add("clipped", el, `scrollHeight=${el.scrollHeight} clientHeight=${el.clientHeight}`, {
+        lv: "should",
+      });
   }
 
   // ---- overflow: key elements covered at their corners ----
@@ -209,7 +225,12 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
       const top = document.elementFromPoint(x, y);
       // A control inside the same component (clear button in a search field) or the open nav overlay is not a defect.
       if (scenario === "nav" && el.matches("h1")) break;
-      if (top && !el.contains(top) && !top.contains(el) && top.closest("form") !== el.closest("form")) {
+      if (
+        top &&
+        !el.contains(top) &&
+        !top.contains(el) &&
+        top.closest("form") !== el.closest("form")
+      ) {
         add("covered", el, `point=${n1(x)},${n1(y)} covered by ${sel(top)}`, { lv: "blocker" });
         break;
       }
@@ -221,7 +242,8 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
     const interactive =
       'a[href],button,input:not([type="hidden"]),select,textarea,summary,[role="button"],[role="link"],[tabindex]:not([tabindex="-1"])';
     for (const el of all) {
-      if (!el.matches(interactive) || el.closest(".sr-only,.sl-skip-link,.sl-anchor-link")) continue;
+      if (!el.matches(interactive) || el.closest(".sr-only,.sl-skip-link,.sl-anchor-link"))
+        continue;
       const s = cs(el);
       let inlineInProse = false;
       if (s.display === "inline") {
@@ -281,7 +303,8 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
       const as = cs(k).alignSelf;
       if (as !== "auto" && as !== "center") return;
       const dy = rects[idx].top + rects[idx].height / 2 - pcy;
-      if (Math.abs(dy) > tol) add("center-row", k, `parent=${sel(el)} dy=${n1(dy)}`, { lv: "should" });
+      if (Math.abs(dy) > tol)
+        add("center-row", k, `parent=${sel(el)} dy=${n1(dy)}`, { lv: "should" });
     });
   }
 
@@ -302,7 +325,9 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
     if (cr - cl < 5) continue;
     const d = (ul + ur) / 2 - (cl + cr) / 2;
     if (Math.abs(d) > tol)
-      add("center-text", el, `dx=${n1(d)} text=${n1(ul)}..${n1(ur)} box=${n1(cl)}..${n1(cr)}`, { lv: "should" });
+      add("center-text", el, `dx=${n1(d)} text=${n1(ul)}..${n1(ur)} box=${n1(cl)}..${n1(cr)}`, {
+        lv: "should",
+      });
   }
 
   // ---- centering on the landing page (no sidebar) ----
@@ -314,7 +339,8 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
       const r = rect(el);
       const l = r.left;
       const rt = cw - r.right;
-      if (Math.abs(l - rt) > tol) add("center-box", el, `left=${n1(l)} right=${n1(rt)}`, { lv: "should" });
+      if (Math.abs(l - rt) > tol)
+        add("center-box", el, `left=${n1(l)} right=${n1(rt)}`, { lv: "should" });
     }
   }
 
@@ -326,7 +352,8 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
     const s = cs(el);
     const pl = parseFloat(s.paddingLeft);
     const pr2 = parseFloat(s.paddingRight);
-    if (Math.abs(pl - pr2) > tol) add("inset-pad", el, `padLeft=${n1(pl)} padRight=${n1(pr2)}`, { lv: "should" });
+    if (Math.abs(pl - pr2) > tol)
+      add("inset-pad", el, `padLeft=${n1(pl)} padRight=${n1(pr2)}`, { lv: "should" });
   }
   const header = document.querySelector("header.header");
   if (header && scenario !== "search") {
@@ -334,7 +361,8 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
     if (kids.length) {
       const l = Math.min(...kids.map((k) => rect(k).left));
       const rt = cw - Math.max(...kids.map((k) => rect(k).right));
-      if (Math.abs(l - rt) > tol) add("inset-gap", header, `left=${n1(l)} right=${n1(rt)}`, { lv: "should" });
+      if (Math.abs(l - rt) > tol)
+        add("inset-gap", header, `left=${n1(l)} right=${n1(rt)}`, { lv: "should" });
     }
   }
 
@@ -361,7 +389,9 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
       h.scrollIntoView({ block: "start" });
       const t = rect(h).top;
       if (t < topInset - tol && window.scrollY + ch < de.scrollHeight - 2)
-        add("anchor-covered", h, `headingTop=${n1(t)} stickyBottom=${n1(topInset)}`, { lv: "should" });
+        add("anchor-covered", h, `headingTop=${n1(t)} stickyBottom=${n1(topInset)}`, {
+          lv: "should",
+        });
     }
     window.scrollTo(0, 0);
     de.style.scrollBehavior = prevBehavior;
@@ -369,7 +399,8 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
     let usesEnv = false;
     for (const sh of document.styleSheets) {
       try {
-        for (const rule of sh.cssRules) if (rule.cssText.includes("safe-area-inset")) usesEnv = true;
+        for (const rule of sh.cssRules)
+          if (rule.cssText.includes("safe-area-inset")) usesEnv = true;
       } catch {
         // cross-origin sheet
       }
@@ -395,7 +426,12 @@ async function runJob(browser, base, path, kind) {
   const touch = kind === "touch";
   const ctx = await browser.newContext(
     touch
-      ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }
+      ? {
+          viewport: { width: 390, height: 844 },
+          isMobile: true,
+          hasTouch: true,
+          deviceScaleFactor: 2,
+        }
       : { viewport: { width: 1280, height: 800 } },
   );
   const page = await ctx.newPage();
@@ -434,7 +470,12 @@ async function runJob(browser, base, path, kind) {
         document.querySelectorAll(css).forEach((el, i) => {
           const r = el.getBoundingClientRect();
           if (name === "theme-control" && (r.width <= 1 || !el.checkVisibility())) return;
-          out.push({ id: `${name}#${i}`, top: Math.round((name === "status-line" ? r.top + scrollY : r.top) * 10) / 10, height: Math.round(r.height * 10) / 10, st });
+          out.push({
+            id: `${name}#${i}`,
+            top: Math.round((name === "status-line" ? r.top + scrollY : r.top) * 10) / 10,
+            height: Math.round(r.height * 10) / 10,
+            st,
+          });
         });
       return out;
     }, state);
@@ -482,7 +523,9 @@ async function runJob(browser, base, path, kind) {
       states.push([
         "after copy click",
         async () => {
-          await page.click(".browx-copy button, button.browx-copy", { timeout: 2000 }).catch(() => {});
+          await page
+            .click(".browx-copy button, button.browx-copy", { timeout: 2000 })
+            .catch(() => {});
           await page.waitForTimeout(150);
         },
       ]);
@@ -503,7 +546,9 @@ async function runJob(browser, base, path, kind) {
       await page.setViewportSize({ width: v.w, height: v.h });
       await load();
       await page.click("site-search button[data-open-modal]", { timeout: 3000 }).catch(() => {});
-      await page.waitForSelector("dialog[open] input", { state: "visible", timeout: 3000 }).catch(() => {});
+      await page
+        .waitForSelector("dialog[open] input", { state: "visible", timeout: 3000 })
+        .catch(() => {});
       await page.fill("dialog[open] input", "agent").catch(() => {});
       await page.waitForTimeout(500);
       for (const t of THEMES) await measure(v, t, "base", "search");
@@ -550,7 +595,9 @@ async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const t0 = Date.now();
   const browser = await chromium.launch().catch((e) => {
-    console.error(`could not launch Chromium (${e.message.split("\n")[0]}). Run: pnpm install-browser`);
+    console.error(
+      `could not launch Chromium (${e.message.split("\n")[0]}). Run: pnpm install-browser`,
+    );
     process.exit(2);
   });
   const jobs = opts.pages.flatMap((p) => [
@@ -590,11 +637,14 @@ async function main() {
   for (const h of failing) {
     const k = `${h.check}|${h.page}|${h.sel}`;
     if (!groups.has(k)) groups.set(k, { ...h, cfgs: [] });
-    groups.get(k).cfgs.push(`${h.vp} ${h.orient[0]} ${h.theme} ${h.variant}/${h.scenario}: ${h.detail}`);
+    groups
+      .get(k)
+      .cfgs.push(`${h.vp} ${h.orient[0]} ${h.theme} ${h.variant}/${h.scenario}: ${h.detail}`);
   }
   const order = { blocker: 0, should: 1, nit: 2 };
   const list = [...groups.values()].sort(
-    (a, b) => order[a.lv] - order[b.lv] || a.check.localeCompare(b.check) || a.page.localeCompare(b.page),
+    (a, b) =>
+      order[a.lv] - order[b.lv] || a.check.localeCompare(b.check) || a.page.localeCompare(b.page),
   );
   for (const g of list) {
     console.log(`FAIL [${g.lv}] ${g.check} ${g.page} ${g.sel}`);
@@ -602,7 +652,10 @@ async function main() {
     if (g.cfgs.length > 3) console.log(`       (+${g.cfgs.length - 3} more)`);
   }
   if (opts.json)
-    writeFileSync(opts.json, JSON.stringify({ hits: failing, allowedCount: all.length - failing.length }, null, 1));
+    writeFileSync(
+      opts.json,
+      JSON.stringify({ hits: failing, allowedCount: all.length - failing.length }, null, 1),
+    );
   const counts = { blocker: 0, should: 0, nit: 0 };
   for (const g of list) counts[g.lv]++;
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
