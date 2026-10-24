@@ -7,7 +7,7 @@
 // `$BROWX_WORKSPACE/chrome.pid`. `login` launches the same Chrome on the same
 // profile with NO debug port, so a person can clear a bot-protection challenge
 // and sign in with nothing attached; the cookies stay in the profile. `stop`
-// reads the PID file and SIGTERMs the process; cleans up. Stdout is fine — this
+// reads the PID file, confirms the process is Chrome, SIGTERMs it and cleans up. Stdout is fine — this
 // is a CLI subcommand.
 //
 // The `start` Chrome is the *BYOB target* an adopter would `BROWX_ATTACH_CDP=…`
@@ -28,6 +28,7 @@ import {
   findInstalledChrome,
   parseHttpUrl,
 } from "./chrome-launch.js";
+import { looksLikeChrome, processCommandLine } from "./chrome-process.js";
 import { isValidProfileName, PROFILE_NAME_RULE } from "../util/profile-name.js";
 
 const DEFAULT_PORT = 9222;
@@ -161,6 +162,20 @@ async function stopChrome(): Promise<number> {
     unlinkSync(pidFile);
     process.stdout.write(`browxai chrome (pid ${pid}) no longer running; cleaned up pid file\n`);
     return 0;
+  }
+  // chrome.pid is a plain file in the workspace. Signal the PID only when the
+  // process behind it is Chrome.
+  const commandLine = processCommandLine(pid);
+  if (commandLine === undefined || !looksLikeChrome(commandLine)) {
+    const seen =
+      commandLine === undefined
+        ? "its command line could not be read"
+        : "its command line does not look like the Chrome `browxai chrome start` launches";
+    process.stderr.write(
+      `not stopping pid ${pid} from ${pidFile}: ${seen}.\n` +
+        `If browxai's Chrome is still open, quit it by hand. Then delete ${pidFile}.\n`,
+    );
+    return 1;
   }
   try {
     process.kill(pid, "SIGTERM");

@@ -700,7 +700,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
   Native application control on an **iOS Simulator** and on an **Android emulator** (RFC 0008). **This capability broadens posture more than any browser capability does, and the gate sits at SESSION CREATION as well as per-tool** — every native tool needs a native session first, so one check closes the whole surface and there is no second door. Opening a session boots or leases a device, optionally installs an application bundle, launches an application, attaches an OS-level input pipeline and photographs the screen, all before a single tool call. A per-tool gate alone would have to be repeated on every tool the engines serve and would still leave session creation ungated.
 
-  What it grants: **installing and launching applications** (`app_install` takes an operator-supplied `.apk` or `.app`, which is arbitrary code that then runs on the device with whatever permissions it declares); **an OS-level input pipeline** (`adb shell input tap/swipe/text/keyevent`, WebDriverAgent's XCUITest dispatch — which every app on the device receives, not just the app under test); **reading the installed application list**; **clearing an app's data and granted runtime permissions** (`app_reset`, Android only); and **booting and shutting down emulators**.
+  What it grants: **installing and launching applications** (`app_install` takes a `.apk` or `.app` staged under `$BROWX_WORKSPACE`, checked on its real path like every file-reading tool, which is arbitrary code that then runs on the device with whatever permissions it declares); **an OS-level input pipeline** (`adb shell input tap/swipe/text/keyevent`, WebDriverAgent's XCUITest dispatch — which every app on the device receives, not just the app under test); **reading the installed application list**; **clearing an app's data and granted runtime permissions** (`app_reset`, Android only); and **booting and shutting down emulators**.
 
   **It reaches the operator's phone on the same code path.** On a simulator or an emulator that reach ends at a sandbox. Against a physical device it reaches the operator's photos, keychain and logged-in accounts. Real devices are out of scope by policy, not by mechanism, because an `adb devices` entry is an `adb devices` entry; `device_shutdown` is the one place that checks and refuses a non-emulator serial. Treat granting this as granting device control, not browser control.
 
@@ -813,12 +813,15 @@ the next `open_session`), so an agent could widen its own posture.
 path (`pdf_save`, `dom_export`, `element_export`, `page_archive`, `asset_export`,
 `screenshot`, heap snapshots, traces, HAR, video, replay, `dump_storage_state`,
 `export_playwright_script`, the file-picker write target) refuse
-`<workspace>/config.json`, `plugins.json`, `plugins-lock.json`, the snapshot key,
+`<workspace>/config.json`, `plugins.json`, `plugins-lock.json`, `chrome.pid`, the snapshot key,
 the `plugins/`, `profile/`, `profiles/` and `profile-snapshots/` trees, the
 `BROWX_DEFAULT_PROFILE` directory and the `chrome-profile/` directory that
 releases before 0.13.0 used for `chrome start`, case-insensitively and after
 resolving symlinks. `chrome start` and `chrome login` now run Chrome on
-`profile/`, or `profiles/<name>` with `--profile`. `profile_restore` copies a snapshot over a profile, so it also
+`profile/`, or `profiles/<name>` with `--profile`. `browxai chrome stop` reads
+the PID from `chrome.pid` and confirms the process is Chrome, by its command
+line, before sending any signal; `asset_export` creates files exclusively and
+never replaces an existing one. `profile_restore` copies a snapshot over a profile, so it also
 checks provenance: each snapshot carries a manifest with a digest of its files,
 MACed with a key kept in the workspace, and a snapshot without a valid manifest,
 or whose files changed since, is refused. Restore copies into a fresh sibling
@@ -832,7 +835,12 @@ path, `inject_storage_state` from a path, HAR replay, replay-artifact
 reads, heap and trace reads, `extensions_install`) refuse the same operator files,
 including the snapshot key, and every browser-profile tree (`profile/`,
 `profiles/`, `profile-snapshots/`, `BROWX_DEFAULT_PROFILE`, and the old
-`chrome-profile/`).
+`chrome-profile/`). They also check containment on the real path: the deepest
+existing part of the path is resolved through symlinks and must stay inside the
+real workspace root, so a link inside the workspace (a `file:` plugin install
+under `plugins/node_modules`, for one) does not open a file outside it. A path
+that does not exist yet is checked through its parent, and a dangling link
+through its target.
 Otherwise `upload_file` could hand a cookie store or the key to the page, and so
 to the agent. `plugins/` stays readable. `set_config` also refuses an origin or confirm hook
 the next start could not parse. A `config.json` browxai cannot

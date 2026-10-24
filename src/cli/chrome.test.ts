@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,6 +13,14 @@ const installed: { path: string | undefined } = vi.hoisted(() => ({
 vi.mock("./chrome-launch.js", async (orig) => ({
   ...(await orig<typeof import("./chrome-launch.js")>()),
   findInstalledChrome: () => installed.path,
+}));
+
+// The process lookup `chrome stop` makes before signalling: the test sets the
+// command line the PID reports.
+const proc = vi.hoisted(() => ({ commandLine: undefined as string | undefined }));
+vi.mock("./chrome-process.js", async (orig) => ({
+  ...(await orig<typeof import("./chrome-process.js")>()),
+  processCommandLine: () => proc.commandLine,
 }));
 
 import { runChrome } from "./chrome.js";
@@ -115,5 +123,52 @@ describe("browxai chrome login", () => {
     expect(await runChrome(["login", "--profile", "work"])).toBe(1);
     expect(await runChrome(["login", "--url", "file:///etc/passwd"])).toBe(2);
     expect(spawnMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("browxai chrome stop", () => {
+  const PID = 4242;
+  const CHROME_CMD =
+    "/opt/google/chrome/chrome --remote-debugging-port=9222 --user-data-dir=/w/profile";
+  let alive: boolean;
+  let signals: Array<string | number | undefined>;
+  const pidFile = (): string => join(root, "chrome.pid");
+
+  beforeEach(() => {
+    writeFileSync(pidFile(), String(PID));
+    alive = true;
+    signals = [];
+    const gone = (): never => {
+      throw Object.assign(new Error("kill ESRCH"), { code: "ESRCH" });
+    };
+    vi.spyOn(process, "kill").mockImplementation((pid: number, sig?: string | number) => {
+      if (pid !== PID) return gone();
+      signals.push(sig);
+      if (sig === 0) return alive ? true : gone();
+      alive = false;
+      return true;
+    });
+  });
+
+  it("stops the process when its command line is Chrome", async () => {
+    proc.commandLine = CHROME_CMD;
+    expect(await runChrome(["stop"])).toBe(0);
+    expect(signals).toContain("SIGTERM");
+    expect(existsSync(pidFile())).toBe(false);
+  });
+
+  it("sends no signal to a process that is not Chrome", async () => {
+    proc.commandLine = "/usr/bin/vim notes.txt";
+    expect(await runChrome(["stop"])).toBe(1);
+    expect(signals.every((s) => s === 0)).toBe(true);
+    expect(existsSync(pidFile())).toBe(true);
+    expect(err).toMatch(/not stopping pid 4242/);
+  });
+
+  it("sends no signal when the command line cannot be read", async () => {
+    proc.commandLine = undefined;
+    expect(await runChrome(["stop"])).toBe(1);
+    expect(signals.every((s) => s === 0)).toBe(true);
+    expect(err).toMatch(/could not be read/);
   });
 });

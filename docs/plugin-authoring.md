@@ -61,8 +61,11 @@ Every field:
   `core`, `system`, `plugins`. Two plugins claiming the same
   namespace BOTH fail with a clear error. Pick something
   project-unique.
-- **`register`** (required): relative path to the JS entry module.
-  The module must export a `register(api)` function (named OR
+- **`register`** (required): relative path to the JS entry module,
+  inside the package directory. An absolute path, a `../` path or a
+  symlink that leads out of the package is refused at load with a
+  reason, because the lock's content hash covers only the package's
+  own files. The module must export a `register(api)` function (named OR
   default). The runtime imports the module once at server start and
   calls `register(api)` exactly once.
 - **`capabilities`** (default `[]`): capabilities the plugin's tools
@@ -70,8 +73,10 @@ Every field:
   → plugin disabled (`status: "disabled-by-capability-mismatch"`),
   server still starts.
 - **`trust`** (optional): `kalebtec | community | local`. Set
-  explicitly on Kalebtec-maintained plugins. The CLI overrides on
-  community / local installs based on the install source.
+  explicitly on Kalebtec-maintained plugins. A `kalebtec` claim holds
+  only for a registry install of the exact `@browxai/*` name with an
+  integrity hash in `plugins-lock.json`; see
+  [plugin governance](./plugin-governance.md).
 - **`dependsOn`** (default `[]`): other browxai plugins this one
   calls into. Each entry is `{plugin: <npm-name>, version: <semver-range>}`.
 
@@ -199,7 +204,9 @@ declarations may come in a future minor version.
 
 ## Trust tiers
 
-- `kalebtec`: published by Kalebtec under `@browxai/plugin-*`.
+- `kalebtec`: published by Kalebtec under `@browxai/plugin-*` and
+  installed from the registry under that exact name (no alias, git or
+  tarball spec), with an integrity hash in `plugins-lock.json`.
   Reference plugins; same release/CI hygiene as browxai itself.
 - `community`: third-party npm packages
   (`browxai-plugin-*` or `@<org>/browxai-plugin-*`).
@@ -222,7 +229,9 @@ $ browxai plugin install file:./my-plugin/
 This shells out to `pnpm add file:./my-plugin/` in the workspace's
 plugin install dir, writes the entry to `plugins.json`, pins the
 content hash in `plugins-lock.json`, and tags the plugin's trust
-tier as `local`. **Restart the browxai server** for the change to
+tier as `local`. The package manager runs with `--ignore-scripts`, so
+no `prepare` or `postinstall` script builds the plugin for you: build
+it first, and point `register` at the built file. **Restart the browxai server** for the change to
 take effect: plugin lifecycle is resolved-once-at-server-start.
 
 Local mode is the right shape for fast iteration: edit the plugin's

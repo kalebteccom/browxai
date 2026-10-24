@@ -54,7 +54,24 @@ export function detectPackageManager(
   return null;
 }
 
-/** Translate an operation (+ optional target spec) into manager argv. */
+/** Operations that get `--ignore-scripts` on the command line. Every operation
+ *  also runs with `npm_config_ignore_scripts=true` in its environment (see
+ *  `runPm`). Lifecycle scripts stay off because a plugin ships built code
+ *  (`browxai.register` points at it): nothing in the plugin contract needs an
+ *  install-time script, and the first-party plugins publish their `dist/`. */
+const SCRIPT_FREE_FLAG_OPS: ReadonlySet<PmOperation> = new Set(["add", "install"]);
+
+/** Refuse a spec or package name that the manager would read as an option. */
+export function checkPmTarget(target: string): void {
+  if (target.length === 0 || target.startsWith("-")) {
+    throw new Error(
+      `browxai plugin: "${target}" is not a package spec. A spec names a package (\`@browxai/plugin-figma\`, \`name@1.2.3\`) or a \`file:\` path and never starts with "-".`,
+    );
+  }
+}
+
+/** Translate an operation (+ optional target spec) into manager argv. The
+ *  target always follows `--`, so the manager reads it as a package spec. */
 export function pmArgs(
   pm: PackageManager,
   op: PmOperation,
@@ -64,10 +81,21 @@ export function pmArgs(
   if (!adapter)
     throw new Error(`browxai plugin: no adapter registered for package manager "${pm}"`);
   const verb = adapter.verbs[op];
-  return target === undefined ? [verb] : [verb, target];
+  const flags = SCRIPT_FREE_FLAG_OPS.has(op) ? ["--ignore-scripts"] : [];
+  if (target === undefined) return [verb, ...flags];
+  checkPmTarget(target);
+  return [verb, ...flags, "--", target];
 }
 
 export async function runPm(paths: PluginPaths, op: PmOperation, target?: string): Promise<number> {
+  if (target !== undefined) {
+    try {
+      checkPmTarget(target);
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      return 2;
+    }
+  }
   const pm = detectPackageManager();
   if (pm === null) {
     process.stderr.write(`${NO_PACKAGE_MANAGER_ERROR}\n`);
@@ -90,6 +118,9 @@ export async function runPm(paths: PluginPaths, op: PmOperation, target?: string
     const child = spawn(pm, [...args], {
       cwd: paths.installDir,
       stdio: "inherit",
+      // Lifecycle scripts stay off for every operation. `update` and `remove`
+      // get it from the environment, which both managers read.
+      env: { ...process.env, npm_config_ignore_scripts: "true" },
     });
     child.on("exit", (code) => resolve(code ?? 1));
     child.on("error", (err) => {

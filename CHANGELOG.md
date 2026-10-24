@@ -41,6 +41,45 @@ surface" covers.
   closes, the HAR is rewritten with `Cookie`, `Set-Cookie` and `Authorization`
   values emptied (names kept) and registered secrets masked in headers, URLs and
   text bodies.
+- **`browxai plugin` passes the spec to the package manager as a spec.** The
+  spec follows `--`, a spec or name that starts with `-` exits 2 before the
+  package manager runs, and `install`, `upgrade` and `sync` run with lifecycle
+  scripts off (`--ignore-scripts`). Build a `file:` plugin before installing it.
+- **The plugin entry resolves inside the package.** `browxai.register` must name
+  a file inside the package directory, checked on the real path. An absolute
+  path, a `../` path or a symlink out of the package marks the plugin
+  `load-error` with the reason. `plugins-lock.json` hashes only files inside the
+  package.
+- **The `kalebtec` trust tier follows the recorded install.** A plugin is
+  `kalebtec` only when `plugins-lock.json` records a plain registry spec of its
+  exact `@browxai/*` name and the registry integrity hash, and the installed
+  package.json carries that name. An `npm:` alias, a git or tarball install, or
+  a lock entry without the hash is `community`, and a `kalebtec` claim in the
+  manifest or `plugins.json` is dropped with a warning. The lock now stores
+  `integrity`. Existing installs read as `community` until
+  `browxai plugin sync` or `upgrade` re-pins them.
+- **File-reading tools check containment on the real path.** `upload_file`,
+  `drop_files`, `inject_storage_state` from a path, HAR replay, replay-artifact
+  reads, heap reads and `extensions_install` resolve symlinks before deciding
+  whether a path is inside `$BROWX_WORKSPACE`. A link inside the workspace that
+  leads out of it, such as a `file:` plugin install under `plugins/node_modules`,
+  is refused with "resolves through a link to a path outside $BROWX_WORKSPACE".
+- **`app_install` reads its bundle from the workspace.** `apkPath` is now
+  workspace-relative and must resolve inside `$BROWX_WORKSPACE`, on its real
+  path, like `upload_file`. An absolute path elsewhere on the host, a `../` path
+  or a path starting with `-` is refused, with the same message whether or not
+  the path exists. Copy the `.apk` or `.app` into the workspace first.
+- **`browxai chrome stop` confirms the process is Chrome before stopping it.**
+  It reads the command line of the PID in `chrome.pid` (`/proc` on Linux, `ps`
+  on macOS, `tasklist` on Windows) and exits 1 without sending a signal when the
+  command line cannot be read or is not a Chrome launched with
+  `--user-data-dir`.
+- **`asset_export` never replaces an existing file.** Files are created
+  exclusively, and a name already on disk in `intoDir`, from an earlier export
+  or anything else, moves to the next free `-N` name. Re-exporting into the same
+  directory now adds `logo-1.png` next to the earlier `logo.png`.
+  `chrome.pid` joins the workspace files that path-taking tools neither write
+  nor read.
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.

@@ -17,6 +17,7 @@ import {
   assertWritableWorkspacePath,
   resolveDefaultProfileDir,
   resolveWorkspace,
+  resolveWorkspaceReadPath,
   resolveWorkspaceWritePath,
 } from "./workspace.js";
 
@@ -177,5 +178,56 @@ describe("read-protected workspace paths", () => {
     expect(() =>
       assertReadableWorkspacePath(root, join(root, "uploads", "a.png"), "t"),
     ).not.toThrow();
+  });
+});
+
+describe("read paths stay inside the real workspace", () => {
+  let root: string;
+  let outside: string;
+  beforeEach(() => {
+    root = join(tmp, "wsl");
+    outside = join(tmp, "outside");
+    mkdirSync(root);
+    mkdirSync(outside);
+    writeFileSync(join(outside, "secret.txt"), "s");
+  });
+
+  it("refuses a file reached through a directory symlink that leads out", () => {
+    mkdirSync(join(root, "plugins", "node_modules"), { recursive: true });
+    symlinkSync(outside, join(root, "plugins", "node_modules", "p"));
+    expect(() =>
+      resolveWorkspaceReadPath(root, "plugins/node_modules/p/secret.txt", "upload_file"),
+    ).toThrow(/outside \$BROWX_WORKSPACE/);
+    expect(() =>
+      assertReadableWorkspacePath(root, join(root, "plugins/node_modules/p/secret.txt"), "t"),
+    ).toThrow(/outside \$BROWX_WORKSPACE/);
+  });
+
+  it("refuses a file symlink that leads out, and a dangling one", () => {
+    symlinkSync(join(outside, "secret.txt"), join(root, "s.txt"));
+    symlinkSync(join(outside, "not-yet.txt"), join(root, "later.txt"));
+    expect(() => assertReadableWorkspacePath(root, join(root, "s.txt"), "drop_files")).toThrow(
+      /outside \$BROWX_WORKSPACE/,
+    );
+    expect(() => assertReadableWorkspacePath(root, join(root, "later.txt"), "t")).toThrow(
+      /outside \$BROWX_WORKSPACE/,
+    );
+  });
+
+  it("allows a symlink that stays inside, and a new file under an existing parent", () => {
+    mkdirSync(join(root, "uploads"));
+    writeFileSync(join(root, "uploads", "a.png"), "x");
+    symlinkSync(join(root, "uploads"), join(root, "alias"));
+    expect(resolveWorkspaceReadPath(root, "alias/a.png", "t")).toBe(join(root, "alias", "a.png"));
+    expect(resolveWorkspaceReadPath(root, "uploads/new/b.png", "t")).toBe(
+      join(root, "uploads", "new", "b.png"),
+    );
+  });
+
+  it("follows a workspace root that is itself a symlink", () => {
+    const linkedRoot = join(tmp, "ws-link");
+    symlinkSync(root, linkedRoot);
+    writeFileSync(join(root, "a.txt"), "x");
+    expect(resolveWorkspaceReadPath(linkedRoot, "a.txt", "t")).toBe(join(linkedRoot, "a.txt"));
   });
 });
