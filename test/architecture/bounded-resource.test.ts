@@ -16,7 +16,21 @@
 // The network ring (already capped at 500) is pinned too, so a refactor that
 // dropped its eviction is caught here.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import type { Socket } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { BrowserContext, Request, Response } from "playwright-core";
+import { PlaywrightNetworkBuffer } from "../../src/page/network-playwright.js";
+import { ConsoleBuffer, MAX_CONSOLE_MESSAGE_CHARS } from "../../src/page/console.js";
+import {
+  DownloadsRegistry,
+  MAX_DOWNLOAD_GET_BYTES,
+  readCapturedBytes,
+} from "../../src/page/downloads.js";
+import { SocketTransport } from "../../src/transport/socket-transport.js";
 import {
   composeReport,
   enforceSummaryBudget,
@@ -236,5 +250,124 @@ describe("L7 — the service-worker id index is capped on every path that mints 
     );
     expect(swIndexSize(ch)).toBe(64);
     expect(ch.swMessages).toHaveLength(64);
+  });
+});
+
+// ── page-controlled sizes: bodies, console text, downloads, socket lines ─────
+
+type EventHandler = (arg: unknown) => void;
+
+describe("L7 — Firefox/WebKit response bodies are not read past the cap", () => {
+  function respondWith(
+    handlers: Map<string, EventHandler>,
+    headers: Record<string, string>,
+  ): () => Promise<Buffer> {
+    const bodyFn = vi.fn(() => Promise.resolve(Buffer.from("payload")));
+    const request = {
+      method: () => "GET",
+      url: () => "https://site.test/data",
+      resourceType: () => "fetch",
+    } as unknown as Request;
+    const response = {
+      request: () => request,
+      status: () => 200,
+      headers: () => headers,
+      body: bodyFn,
+    } as unknown as Response;
+    handlers.get("request")?.(request);
+    handlers.get("response")?.(response);
+    return bodyFn;
+  }
+
+  async function setup(maxBodyBytes: number) {
+    const handlers = new Map<string, EventHandler>();
+    const context = {
+      on: (event: string, cb: EventHandler) => handlers.set(event, cb),
+    } as unknown as BrowserContext;
+    const buffer = new PlaywrightNetworkBuffer(context, 500, 50, maxBodyBytes);
+    await buffer.attach();
+    return { buffer, handlers };
+  }
+
+  it("reads nothing while no one asks for a body", async () => {
+    const { handlers } = await setup(1_000);
+    const bodyFn = respondWith(handlers, { "content-length": "7" });
+    expect(bodyFn).not.toHaveBeenCalled();
+  });
+
+  it("skips a body whose declared size is over the cap", async () => {
+    const { buffer, handlers } = await setup(1_000);
+    const bodyFn = respondWith(handlers, { "content-length": "1001" });
+    const r = await buffer.fetchBody(buffer.iter().at(-1)!.requestId!, null);
+    expect(r.ok).toBe(false);
+    expect(r.truncated).toBe(true);
+    expect(bodyFn).not.toHaveBeenCalled();
+  });
+});
+
+describe("L7 — a console message is capped in size as well as in count", () => {
+  it("stores no more than MAX_CONSOLE_MESSAGE_CHARS of a megabyte message", () => {
+    const buf = new ConsoleBuffer();
+    buf.ingest("log", "x".repeat(1024 * 1024));
+    const stored = (buf as unknown as { msgs: Array<{ text: string }> }).msgs[0]!.text;
+    expect(stored.length).toBeLessThan(MAX_CONSOLE_MESSAGE_CHARS + 64);
+    expect(stored).toContain("[truncated");
+  });
+});
+
+describe("L7 — downloads are bounded on read and in the pending list", () => {
+  it("download_get refuses a file over the cap and names the saved path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "brx-bound-"));
+    try {
+      const reg = new DownloadsRegistry(dir);
+      const path = join(dir, "big.bin");
+      writeFileSync(path, Buffer.alloc(64, 1));
+      reg.record({ suggestedFilename: "big.bin", sizeBytes: 64, path, capturedAt: Date.now() });
+      expect(() => readCapturedBytes(reg, "d1", { maxBytes: 32 })).toThrow(path);
+      expect(MAX_DOWNLOAD_GET_BYTES).toBe(16 * 1024 * 1024);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("the pending list drains when captures go unclaimed", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000_000);
+      const reg = new DownloadsRegistry("/tmp/x");
+      for (let i = 0; i < 300; i++) {
+        reg.record({
+          suggestedFilename: `f${i}`,
+          sizeBytes: 1,
+          path: `/tmp/x/f${i}`,
+          capturedAt: Date.now(),
+        });
+      }
+      // Eviction at 100 entries removes the evicted ones from the pending list too.
+      expect(reg.pendingCount()).toBeLessThanOrEqual(100);
+      vi.setSystemTime(1_000_000 + DownloadsRegistry.PENDING_TTL_MS + 1);
+      expect(reg.pendingCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("L7 — the socket transport read buffer is capped", () => {
+  it("closes the connection on a line that never ends", async () => {
+    const socket = Object.assign(new EventEmitter(), {
+      destroyed: false,
+      destroy() {
+        this.destroyed = true;
+      },
+    });
+    const transport = new SocketTransport(socket as unknown as Socket, { maxMessageBytes: 256 });
+    const errors: Error[] = [];
+    transport.onerror = (e) => errors.push(e);
+    await transport.start();
+    for (let i = 0; i < 10; i++) socket.emit("data", Buffer.alloc(100, 0x61));
+    expect(socket.destroyed).toBe(true);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.message).toContain("256-byte limit");
   });
 });

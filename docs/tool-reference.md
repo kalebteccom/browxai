@@ -745,7 +745,7 @@ Recent console messages (ring buffer). For per-action attribution, use `ActionRe
 
 **Inputs:** `{ limit?: number (default 50, max 500) }`
 
-**Output:** JSON array of `{ ts, type, text }`.
+**Output:** JSON array of `{ ts, type, text }`. A message longer than 8,192 characters is stored cut to that length and ends in `… [truncated N chars]`.
 
 **Example.**
 
@@ -818,7 +818,7 @@ watch({ durationMs: 5000 })
 
 ### `network_body` _(gated)_
 
-Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default**: requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast, so fetch right after the request; not retained across navigations.
+Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default**: requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast, so fetch right after the request; not retained across navigations. On Firefox and WebKit the body is read when you ask for it, and only if its size is known and within the cap: a response whose `content-length` (or finished transfer size) is over 256 KB, or unknown, comes back as `{ ok:false, truncated:true, error }` and is not read. A compressed response must be under 32 KB on the wire.
 
 Why gated: full bodies routinely carry PII / auth tokens. The `responseShape` (top-level keys only) is the safe default for "did the mutation write back the right shape"; `network_body` is the higher-risk debugging escape hatch for "assert this exact field value" (e.g. a realtime broadcast payload, paired with `ws_read`).
 
@@ -1548,8 +1548,9 @@ on-disk trace, preserving the no-trace contract.
 #### `download_get({ id, pathOnly?, session? })`
 
 - `id: string`: download id from `ActionResult.downloads[].id`.
-- `pathOnly?: boolean`: omit the base64 payload, return only path + metadata.
+- `pathOnly?: boolean`: omit the base64 payload, return only path + metadata. The file is not read.
 - → `{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`.
+- A file over 16 MiB is not returned inline. The call fails with an error that names the limit and the saved path, and `pathOnly:true` still returns the path.
 
 **Example (the whole pipeline).**
 

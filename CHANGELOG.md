@@ -80,6 +80,15 @@ surface" covers.
   goes through the same origin policy and confirm hook as the requested one. The
   warning logged when no confirm hook is set names the `BROWX_BLOCKED_ORIGINS`
   entry that matched.
+- **Page-sized data is capped.** A console message is stored cut to 8,192
+  characters and ends in a `[truncated N chars]` marker. `download_get` returns
+  at most 16 MiB inline: a larger file fails with an error naming the limit and
+  the saved path, and `pathOnly:true` returns the path without reading the file.
+  The socket transport closes a connection whose message line passes 32 MiB.
+- **`network_body` on Firefox and WebKit reads a body when asked.** It no longer
+  reads every response as it arrives. A body whose `content-length` is over
+  256 KB, or unknown while the request is still running, is not read and the
+  result says so. A compressed body must be under 32 KB on the wire.
 
 ### Fixed
 
