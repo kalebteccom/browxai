@@ -69,7 +69,7 @@ describe("scrubHarFile", () => {
         harWith({ content: { mimeType: "application/json", text: '{"echo":"hunter2"}' } }),
       ),
     );
-    expect(scrubHarFile(ws, path, registry())).toEqual({ scrubbed: true });
+    expect(scrubHarFile(ws, path, registry(), true)).toEqual({ scrubbed: true });
     const text = readFileSync(path, "utf8");
     for (const v of ["hunter2", "abc123", "def456", "tok-999"]) expect(text).not.toContain(v);
     const entry = JSON.parse(text).log.entries[0];
@@ -83,6 +83,32 @@ describe("scrubHarFile", () => {
     expect(entry.request.postData.text).toBe("user=alice&password=<PASSWORD>");
     expect(entry.response.headers[0]).toEqual({ name: "set-cookie", value: "" });
     expect(entry.response.content.text).toBe('{"echo":"<PASSWORD>"}');
+  });
+
+  it("empties request body text and params unless network-body is on", () => {
+    const path = join(ws, "form.har");
+    writeFileSync(
+      path,
+      JSON.stringify(harWith({ content: { mimeType: "text/plain", text: "x" } })),
+    );
+    scrubHarFile(ws, path, null);
+    const post = JSON.parse(readFileSync(path, "utf8")).log.entries[0].request.postData;
+    expect(post.params).toEqual([]);
+    expect(post).not.toHaveProperty("text");
+    expect(post.mimeType).toBe("application/x-www-form-urlencoded");
+    expect(readFileSync(path, "utf8")).not.toContain("alice");
+  });
+
+  it("keeps request body params, masked, when network-body is on", () => {
+    const path = join(ws, "form-kept.har");
+    writeFileSync(
+      path,
+      JSON.stringify(harWith({ content: { mimeType: "text/plain", text: "x" } })),
+    );
+    scrubHarFile(ws, path, registry(), true);
+    const post = JSON.parse(readFileSync(path, "utf8")).log.entries[0].request.postData;
+    expect(post.params).toEqual([{ name: "password", value: "<PASSWORD>" }]);
+    expect(post.text).toBe("user=alice&password=<PASSWORD>");
   });
 
   it("drops credential headers even with the secrets capability off", () => {

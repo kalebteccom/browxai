@@ -10,7 +10,10 @@
 //     response body is run through the session's secrets masker, so a
 //     registered value becomes `<NAME>`.
 // A text body stored as a sidecar file (`content: "attach"` on a `.har` path)
-// is masked in its file. A `.zip` archive is left as Playwright wrote it.
+// is masked in its file. Recording to a `.zip` path is refused up front, so no
+// archive reaches this module. Without the `network-body` capability the
+// request body (`postData.text` and `postData.params`) is emptied too, since
+// Playwright writes urlencoded form values there even with `content: "omit"`.
 // Base64 bodies are not decoded, the same limit `network_body` documents.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -37,7 +40,7 @@ function scrubNameValues(list: unknown, mask: Mask, dropAll: boolean): void {
   }
 }
 
-function scrubMessage(msg: unknown, mask: Mask): void {
+function scrubMessage(msg: unknown, mask: Mask, keepBodies: boolean): void {
   if (!isRec(msg)) return;
   scrubNameValues(msg.headers, mask, false);
   scrubNameValues(msg.cookies, mask, true);
@@ -46,8 +49,13 @@ function scrubMessage(msg: unknown, mask: Mask): void {
   if (typeof msg.redirectURL === "string") msg.redirectURL = mask(msg.redirectURL);
   const post = msg.postData;
   if (isRec(post)) {
-    if (typeof post.text === "string") post.text = mask(post.text);
-    scrubNameValues(post.params, mask, false);
+    if (keepBodies) {
+      if (typeof post.text === "string") post.text = mask(post.text);
+      scrubNameValues(post.params, mask, false);
+    } else {
+      delete post.text;
+      post.params = [];
+    }
   }
   const content = msg.content;
   if (isRec(content) && typeof content.text === "string" && content.encoding !== "base64") {
@@ -57,12 +65,12 @@ function scrubMessage(msg: unknown, mask: Mask): void {
 
 /** Scrub a parsed HAR document in place. Returns the sidecar file names its
  *  text bodies live in (`content._file`), for the caller to mask. */
-export function scrubHarDocument(doc: unknown, mask: Mask): string[] {
+export function scrubHarDocument(doc: unknown, mask: Mask, keepBodies = false): string[] {
   const sidecars: string[] = [];
   const log = isRec(doc) ? doc.log : undefined;
   for (const entry of recs(isRec(log) ? log.entries : undefined)) {
-    scrubMessage(entry.request, mask);
-    scrubMessage(entry.response, mask);
+    scrubMessage(entry.request, mask, keepBodies);
+    scrubMessage(entry.response, mask, keepBodies);
     const content = isRec(entry.response) ? entry.response.content : undefined;
     if (
       isRec(content) &&
@@ -78,12 +86,15 @@ export function scrubHarDocument(doc: unknown, mask: Mask): string[] {
 }
 
 /** Scrub the HAR at `harPath` (already resolved under `workspaceRoot`) and its
- *  text sidecar files. Best-effort: a missing file (nothing was recorded) or
- *  a `.zip` archive is reported, never thrown. */
+ *  text sidecar files. `keepBodies` is true when the `network-body` capability
+ *  is on: request bodies are then kept (masked) as the recorder wrote them.
+ *  Best-effort: a missing file (nothing was recorded) or a `.zip` archive is
+ *  reported, never thrown. */
 export function scrubHarFile(
   workspaceRoot: string,
   harPath: string,
   secrets: SecretRegistry | null,
+  keepBodies = false,
 ): { scrubbed: boolean; reason?: "missing" | "zip" | "unparseable" } {
   if (harPath.toLowerCase().endsWith(".zip")) return { scrubbed: false, reason: "zip" };
   // Re-resolve through the workspace chokepoint before any read or write; the
@@ -97,7 +108,7 @@ export function scrubHarFile(
     return { scrubbed: false, reason: "unparseable" };
   }
   const mask: Mask = secrets ? (s) => secrets.applyMaskInText(s) : (s) => s;
-  const sidecars = scrubHarDocument(doc, mask);
+  const sidecars = scrubHarDocument(doc, mask, keepBodies);
   writeFileSync(target, JSON.stringify(doc, null, 2));
   if (secrets && secrets.size() > 0) {
     for (const name of sidecars) maskSidecar(workspaceRoot, dirname(target), name, mask);

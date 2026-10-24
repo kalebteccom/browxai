@@ -183,13 +183,13 @@ export function registerStorageArtifactHarVideoTools(
       capability: "action",
       batchable: true,
       description:
-        'Begin HAR recording on the current session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is captured into a HAR archive. **The file on disk is finalized when the session closes** (`close_session`) — Playwright provides no mid-session flush. Re-calling `start_har` while a recorder is already active transparently stops the prior one and swaps targets. For up-front recording across the whole session prefer the additive `open_session({har:{...}})` schema (Playwright\'s blessed native primitive — same finalize-on-close caveat). Bodies are left out by default (`content:"omit"`); `embed` and `attach` write request and response bodies to disk and need the off-by-default `network-body` capability. When the session closes, the file is rewritten with the `Cookie`, `Set-Cookie` and `Authorization` header values dropped (names kept) and registered secrets masked in headers, URLs and text bodies. Capability `action`. Workspace-rooted paths only; a path outside the workspace is rejected.',
+        'Begin HAR recording on the current session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is captured into a HAR archive. **The file on disk is finalized when the session closes** (`close_session`) — Playwright provides no mid-session flush. Re-calling `start_har` while a recorder is already active transparently stops the prior one and swaps targets. For up-front recording across the whole session prefer the additive `open_session({har:{...}})` schema (Playwright\'s blessed native primitive — same finalize-on-close caveat). Bodies are left out by default (`content:"omit"`); `embed` and `attach` write request and response bodies to disk and need the off-by-default `network-body` capability. When the session closes, the file is rewritten with the `Cookie`, `Set-Cookie` and `Authorization` header values dropped (names kept) and registered secrets masked in headers, URLs and text bodies, and without `network-body` the request bodies emptied. Capability `action`. Workspace-rooted `.har` paths only; a path outside the workspace is rejected.',
       inputSchema: {
         path: z
           .string()
           .optional()
           .describe(
-            "Workspace-rooted .har file path. Default: `<workspace>/har/<session-id>-<ISO>.har`. Rejected if it escapes `$BROWX_WORKSPACE`.",
+            "Workspace-rooted .har file path. Default: `<workspace>/har/<session-id>-<ISO>.har`. Rejected if it escapes `$BROWX_WORKSPACE`; a .zip path is refused (use .har).",
           ),
         mode: z
           .enum(["full", "minimal"])
@@ -201,7 +201,7 @@ export function registerStorageArtifactHarVideoTools(
           .enum(["embed", "attach", "omit"])
           .optional()
           .describe(
-            "Body persistence: `omit` (default, no bodies), `embed` (inline), `attach` (sidecar files / .zip entries). `embed` and `attach` need the `network-body` capability.",
+            "Body persistence: `omit` (default, no bodies), `embed` (inline), `attach` (sidecar files). `embed` and `attach` need the `network-body` capability.",
           ),
         urlFilter: z
           .string()
