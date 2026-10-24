@@ -8,6 +8,9 @@ surface" covers.
 
 ## Unreleased
 
+- **`snapshot` shows container text.** A paragraph, list item, blockquote or unnamed container carries its own words on its row, up to 120 characters a row and 4000 a snapshot. Past the budget rows come bare and a closing line says how many. Text under a button, link, heading or form field is not repeated, so a password field's value stays off container rows.
+- **`extract` warns on a selector that matches nothing.** The result gains `warnings`, one line per selector with no match, so an empty `data` with `ok:true` says which selector to fix.
+
 ## [0.14.0] - 2026-10-24
 
 This release tightens how browxai handles secrets, plugins, workspace paths and
