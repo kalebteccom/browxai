@@ -93,14 +93,38 @@ const wraps = (table: HTMLElement) => {
   return cols <= 3 ? longest <= 40 : cols === 4 && longest <= 24;
 };
 
-document.querySelectorAll<HTMLElement>(".sl-markdown-content table").forEach((table) => {
+// The accessible name of a scrollable table is its nearest preceding heading, so
+// a screen reader lists "Environment variables table" and not N identical stops.
+// A second table under the same heading gets "(2 of 2)" style numbering.
+const headings = [
+  ...document.querySelectorAll<HTMLElement>(".sl-markdown-content :is(h1, h2, h3, h4, h5, h6)"),
+];
+const tables = [...document.querySelectorAll<HTMLElement>(".sl-markdown-content table")];
+const headingOf = (table: HTMLElement) =>
+  headings.filter((h) => h.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+const labels = new Map<HTMLElement, string>();
+const byHeading = new Map<HTMLElement | undefined, HTMLElement[]>();
+for (const table of tables) {
+  const h = headingOf(table);
+  byHeading.set(h, [...(byHeading.get(h) ?? []), table]);
+}
+byHeading.forEach((group, h) => {
+  const base = h?.textContent?.trim();
+  group.forEach((table, i) => {
+    if (!base) return labels.set(table, "Scrollable table");
+    const n = group.length > 1 ? ` (${i + 1} of ${group.length})` : "";
+    labels.set(table, `${base} table${n}`);
+  });
+});
+
+tables.forEach((table) => {
   if (wraps(table)) table.dataset.browxWrap = "";
   new ResizeObserver(() => {
     const scrolls = table.scrollWidth > table.clientWidth + 1;
     // No role override: the table keeps its table semantics.
     for (const [name, value] of [
       ["tabindex", "0"],
-      ["aria-label", "Scrollable table"],
+      ["aria-label", labels.get(table) ?? "Scrollable table"],
     ]) {
       if (scrolls) table.setAttribute(name, value);
       else table.removeAttribute(name);
