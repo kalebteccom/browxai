@@ -148,7 +148,7 @@ guardrails apply:
 - **Engines are pluggable.** A new engine is a new adapter + a `CAPABILITIES` row +
   one registry registration — **never** an edit to `src/session/{managed,incognito,byob}.ts`
   or a `engine === "<literal>"` branch in a handler. The `no-engine-literal-branches`
-  lint rule and the `engine-adapter-contract` keystone enforce it.
+  lint rule and the `ocp-engine-contract` fitness test enforce it.
 - **Metadata is declared once.** Capability / batchable / deep live at
   `host.register`, not in a hand-edited central list. The completeness fitness tests
   enforce it.
