@@ -916,8 +916,9 @@ confirmation hook point.
    `await_human` before dispatch.
 5. Server startup log lists the active capabilities + allowlist + confirm-required set,
    so the operator sees the posture.
-6. `browxai doctor` extends its checks: warn when `eval`/`byob-attach` are on,
-   when no allowlist is set.
+6. `browxai doctor` reports the active capabilities and flags `eval` and `byob-attach`
+   when they are on. It warns when `BROWX_ATTACH_CDP` is set without `byob-attach`,
+   and says when no allowlist is set.
 
 ## Out of scope
 

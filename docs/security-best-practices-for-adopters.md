@@ -12,7 +12,7 @@ Operational practices for teams integrating browxai. Each practice carries its r
 
 - After install: `npm audit signatures` verifies the published provenance.
 - Watch GitHub Security Advisories on `kalebteccom/browxai`.
-- The `browxai doctor` subcommand verifies the local `dist/` matches the attested build (lands in v1.0).
+- `browxai doctor` checks the machine and your settings: Node version, browser, workspace, capabilities, origin policy and plugins. It does not check the install against the published provenance. `npm audit signatures` does that.
 
 ## Capability posture
 
