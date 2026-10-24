@@ -2,7 +2,6 @@
 // page/* and helper/*. stdout is the MCP channel — all logging goes via util/logging.ts.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { type EngineKind } from "./engine/index.js";
 import { engineIsAttachOnly } from "./engine/registry.js";
 import { type SessionMode } from "./session/registry.js";
@@ -74,6 +73,7 @@ import { SESSION_ARG, TIMEOUT_ARG, ACTION_OPTS, REF_OR_SELECTOR } from "./tools/
 // pure composition/wiring; `buildHost` threads them onto the shared ToolHost.
 import { describeTarget, asTarget } from "./tools/target-resolve.js";
 import { docsUrl } from "./util/docs-links.js";
+import { ListingTrimStdioTransport } from "./transport/listing-trim.js";
 
 export const NAME = "browxai";
 // Derived from package.json — see src/util/version.ts. Never hand-bump.
@@ -341,7 +341,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   return {
     start: async () => {
-      const transport = new StdioServerTransport();
+      const transport = new ListingTrimStdioTransport();
       await server.connect(transport);
       log.info("MCP server up on stdio");
     },
