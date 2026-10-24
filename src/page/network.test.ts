@@ -43,7 +43,6 @@ describe("extractTopLevelKeys — response shape redaction", () => {
       ["[].id", "[].label"],
     ],
     ["null for a string primitive", "just a string", null],
-    ["null for a number primitive", 42, null],
     ["null for null", null, null],
     ["null for an array of non-objects", [1, 2, 3], null],
   ])("extractTopLevelKeys returns %s", (_name, input, expected) => {

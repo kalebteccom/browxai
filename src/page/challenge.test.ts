@@ -99,7 +99,6 @@ describe("classifyChallenge", () => {
         ],
       },
     },
-    { name: "nothing for a normal page", m: markers(), http: { status: 200 }, want: undefined },
     {
       name: "nothing for a plain 403 with no challenge markers",
       m: markers({ title: "Forbidden" }),

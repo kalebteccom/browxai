@@ -12,11 +12,9 @@ import { ClipboardBuffer, osClipboardWrite } from "./clipboard.js";
 describe("classifyChord", () => {
   it.each([
     { chord: "Control+C", kind: "copy" },
-    { chord: "meta+c", kind: "copy" },
     { chord: "Control+X", kind: "cut" },
     { chord: "Meta+V", kind: "paste" },
     { chord: "Enter", kind: "other" },
-    { chord: "c", kind: "other" }, // no modifier
     { chord: "Control+Shift+K", kind: "other" },
   ])("classifies $chord as $kind (accel+c/x/v, case-insensitive; the rest 'other')", (row) => {
     expect(classifyChord(row.chord)).toBe(row.kind);

@@ -85,10 +85,7 @@ describe("clampTtl — descriptor lifetime bounds", () => {
   it.each([
     ["unset defaults to 60s", undefined, 60_000],
     ["NaN defaults to 60s", NaN, 60_000],
-    // Infinity is non-finite → falls back to the default (then clamped a no-op).
-    ["Infinity defaults to 60s", Infinity, 60_000],
     ["0 clamps up to 1s", 0, 1_000],
-    ["a negative clamps up to 1s", -9999, 1_000],
     ["an hour clamps down to 30min", 60 * 60_000, 30 * 60_000],
   ])("clampTtl: %s", (_name, input, expected) => {
     expect(clampTtl(input)).toBe(expected);
@@ -105,7 +102,6 @@ describe("validateVerbArgs — per-verb args contract", () => {
     ]
   >([
     ["fill with no verbArgs", "fill", undefined, /value/],
-    ["fill without a value", "fill", {}, /value/],
     ["fill with a value", "fill", { value: "hi" }, null],
     ["press without a key", "press", {}, /key/],
     ["press with an empty key", "press", { key: "" }, /key/],

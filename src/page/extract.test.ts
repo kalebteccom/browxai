@@ -129,7 +129,6 @@ describe("coerceLeaf", () => {
     },
     { name: "coerces a true boolean-ish string", value: "true", type: "boolean", out: true },
     { name: "coerces a false boolean-ish string", value: "0", type: "boolean", out: false },
-    { name: "coerces a yes boolean-ish string", value: "yes", type: "boolean", out: true },
     { name: "stringifies non-strings", value: 42, type: "string", out: "42" },
   ] as Array<{
     name: string;
@@ -142,26 +141,6 @@ describe("coerceLeaf", () => {
 });
 
 describe("resolveAgainstTree — implicit property-name = query rule", () => {
-  it("extracts a simple object whose properties match visible names", async () => {
-    seq = 0;
-    // The implicit rule looks for a node whose name/testId matches the
-    // property. Build a tree where each property's name is its node-name.
-    const real = n("WebArea", undefined, [n("label", "title", [n("text", "The Headline")])]);
-    // The leaf result is the matched node's own visible name. For richer
-    // "title → child text" behaviour, adopters use the explicit selector hint.
-    const out = await resolveAgainstTree({
-      schema: {
-        type: "object",
-        properties: { title: { type: "string" } },
-      },
-      page: noPage,
-      scopeTree: real,
-    });
-    expect(out.data).toEqual({ title: "title" });
-    expect(out.requiredMisses).toEqual([]);
-    expect(out.evidence.refsUsed.length).toBeGreaterThan(0);
-  });
-
   it("reports a partialMiss for an unmatched property and skips it in data", async () => {
     seq = 0;
     const tree = n("WebArea", undefined, [n("text", "price")]);

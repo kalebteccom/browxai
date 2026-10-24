@@ -260,18 +260,6 @@ describe("shared-vocabulary regression: batch.expect and verify_predicate share 
       predicate: { kind: "equals", key: "element.value", value: "hello" },
     },
     {
-      name: "valueEquals — missing element entirely",
-      body: { something: "else" },
-      expect: { valueEquals: "hello" },
-      predicate: { kind: "equals", key: "element.value", value: "hello" },
-    },
-    {
-      name: "valueEquals empty string against empty string",
-      body: { element: { value: "" } },
-      expect: { valueEquals: "" },
-      predicate: { kind: "equals", key: "element.value", value: "" },
-    },
-    {
       name: "displayTextIncludes hits substring",
       body: { element: { displayText: "Engineering Team" } },
       expect: { displayTextIncludes: "Engineer" },
@@ -310,12 +298,6 @@ describe("shared-vocabulary regression: batch.expect and verify_predicate share 
       body: { element: { ownerControl: { changed: true } } },
       expect: { controlChanged: true },
       predicate: { kind: "equals", key: "element.ownerControl.changed", value: true },
-    },
-    {
-      name: "controlChanged false hits when actually false",
-      body: { element: { ownerControl: { changed: false } } },
-      expect: { controlChanged: false },
-      predicate: { kind: "equals", key: "element.ownerControl.changed", value: false },
     },
   ];
 

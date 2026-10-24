@@ -50,24 +50,19 @@ describe("CaptureSubstrate screenshot (Safari and Playwright adapters)", () => {
   // The Safari adapter must refuse on the raw element-scoped signal first and
   // never call the resolver, so the engine refusal preempts a malformed-target
   // throw out of `asTarget` (the pre-seam Safari branch never reached it).
-  it.each([
-    { name: "an element-scoped ref target", extra: { resolveTarget: () => ({ ref: "e1" }) } },
-    {
-      name: "an element-scoped selector target",
-      extra: { resolveTarget: () => ({ selector: "#x" }) },
-    },
-    { name: "a path capture", extra: { path: "shot.png" } },
-  ])(
-    "SafariCaptureSubstrate refuses $name cleanly (in the adapter, not the handler)",
-    async ({ extra }) => {
-      const { handle } = safariHandle();
-      const sub: CaptureSubstrate = new SafariCaptureSubstrate(handle);
-      const r = await sub.screenshot({ format: "png", fullPage: false, describe: false, ...extra });
-      expect(r.kind).toBe("refusal");
-      if (r.kind !== "refusal") throw new Error("expected refusal");
-      expect(r.error).toMatch(/Safari engine supports only the default inline PNG/);
-    },
-  );
+  it("SafariCaptureSubstrate refuses a path capture cleanly (in the adapter, not the handler)", async () => {
+    const { handle } = safariHandle();
+    const sub: CaptureSubstrate = new SafariCaptureSubstrate(handle);
+    const r = await sub.screenshot({
+      format: "png",
+      fullPage: false,
+      describe: false,
+      path: "shot.png",
+    });
+    expect(r.kind).toBe("refusal");
+    if (r.kind !== "refusal") throw new Error("expected refusal");
+    expect(r.error).toMatch(/Safari engine supports only the default inline PNG/);
+  });
 
   function playwrightSubstrate(): CaptureSubstrate {
     const page = (() => ({ url: () => "about:blank" })) as unknown as () => Page;

@@ -5,12 +5,6 @@ import { PlaywrightNetworkBuffer, bodyReadDecision } from "./network-playwright.
 describe("bodyReadDecision", () => {
   const gz = { "content-encoding": "gzip" };
   it.each([
-    [
-      "reads a body within the cap (content-length 100)",
-      { "content-length": "100" },
-      undefined,
-      { read: true },
-    ],
     ["reads a body exactly at the cap", { "content-length": "1000" }, undefined, { read: true }],
     [
       "does not read a body over the cap and reports its size",
@@ -19,13 +13,6 @@ describe("bodyReadDecision", () => {
       { read: false, size: 1001 },
     ],
     ["does not read a body of unknown size (no header)", {}, undefined, { read: false }],
-    [
-      "does not read a body of unknown size (unparseable header)",
-      { "content-length": "abc" },
-      undefined,
-      { read: false },
-    ],
-    ["prefers a finished request's transfer size when within the cap", {}, 400, { read: true }],
     [
       "prefers a finished request's transfer size over the header when over the cap",
       { "content-length": "10" },

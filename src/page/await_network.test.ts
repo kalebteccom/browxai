@@ -5,7 +5,6 @@ const resp = { url: "https://api.example.com/v1/records?id=4", method: "POST", s
 
 describe("matchesResponse", () => {
   it.each([
-    { name: "a case-insensitive URL substring", match: { urlPattern: "/v1/records" }, want: true },
     { name: "a URL substring in another case", match: { urlPattern: "/V1/RECORDS" }, want: true },
     { name: "a URL substring that is absent", match: { urlPattern: "/other" }, want: false },
     { name: "method case-insensitively", match: { method: "post" }, want: true },

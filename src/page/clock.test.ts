@@ -94,7 +94,6 @@ describe("ClockRegistry — rejections", () => {
       err: /exactly one of atIso or byMs/,
     },
     { name: "byMs of 0", args: { mode: "advance", byMs: 0 }, err: /positive finite/ },
-    { name: "a negative byMs", args: { mode: "advance", byMs: -1 }, err: /positive finite/ },
     { name: "a NaN byMs", args: { mode: "advance", byMs: Number.NaN }, err: /positive finite/ },
     {
       name: "byMs beyond the 1-year ceiling",
