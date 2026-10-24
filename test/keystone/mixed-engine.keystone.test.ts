@@ -144,4 +144,26 @@ describeMixed("mixed-engine keystone — one server, chromium + firefox sessions
     },
     KEYSTONE_TIMEOUT,
   );
+
+  it(
+    "the CDP-deep engine gate is PER-SESSION: perf_start refuses on firefox, not on chromium",
+    async () => {
+      // firefox has no `deep` capability → perf_start structured-refuses with the
+      // ENGINE gate (carries engine:"firefox").
+      const ff = await callJson<{ ok: boolean; engine?: string; error?: string }>("perf_start", {
+        session: "firefox-b",
+      });
+      expect(ff.ok, "perf_start refuses on the firefox session").toBe(false);
+      expect(ff.engine, "the refusal is the per-session ENGINE gate").toBe("firefox");
+
+      // chromium has `deep` → the engine gate does NOT fire on the chromium session
+      // in the SAME server (no engine:"chromium" refusal). Proves the gate keys on
+      // the per-session engine, not a process-global.
+      const cr = await callJson<{ ok: boolean; engine?: string }>("perf_start", {
+        session: "chromium-a",
+      });
+      expect(cr.engine, "chromium session is not engine-refused for a deep tool").toBeUndefined();
+    },
+    KEYSTONE_TIMEOUT,
+  );
 });

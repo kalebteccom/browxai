@@ -181,6 +181,46 @@ describeWk("webkit keystone — the third engine is real (adapter + seam)", () =
   );
 
   it(
+    "structured-refuses the CDP-deep tools on WebKit with engine:webkit + a hint",
+    async () => {
+      const session = "wk-refuse";
+      await callJson("open_session", { session, mode: "incognito" });
+
+      // A representative sample across the audit class-B families + the three
+      // reclassified deep-CDP tools. Each must refuse with the ENGINE gate (carries
+      // `engine:"webkit"` + a hint), NOT crash and NOT a capability denial. This
+      // is the proof the CAPABILITY-based gate auto-gates webkit (deep:false)
+      // with no per-engine tool-gate.ts edit.
+      const deepSample = [
+        "perf_start",
+        "coverage_start",
+        "heap_snapshot",
+        "cpu_emulate",
+        "pdf_save",
+        "set_user_agent",
+        "network_emulate",
+        "shadow_trees",
+      ];
+      for (const tool of deepSample) {
+        const res = await callJson<{
+          ok: boolean;
+          engine?: string;
+          error?: string;
+          hint?: string;
+          requiredCapability?: unknown;
+        }>(tool, { session });
+        expect(res.ok, `${tool} should refuse on webkit`).toBe(false);
+        // The engine gate, not the capability gate (no requiredCapability key).
+        expect(res.engine, `${tool} refusal carries engine`).toBe("webkit");
+        expect(res.requiredCapability, `${tool} is NOT a capability denial`).toBeUndefined();
+        expect(res.error).toContain(tool);
+        expect(res.hint).toContain("chromium");
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
     "snapshot substrate — snapshot/find/navigate/click/fill run on real WebKit via the walker",
     async () => {
       // The page-side snapshot/a11y walker behind the SnapshotSubstrate interface
