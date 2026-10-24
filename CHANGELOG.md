@@ -8,6 +8,15 @@ surface" covers.
 
 ## Unreleased
 
+### Changed
+
+- **`tools/list` is about 18 percent smaller.** It dropped from 328,777 to 268,332 characters
+  (about 82,000 to 67,000 tokens) for the same 209 tools. The shared `session`, `timeoutMs`,
+  `mode`, `contextRef`, `ref` and `coords` descriptions are shorter, and the stdio listing no
+  longer carries `execution.taskSupport: "forbidden"` or the draft-07 `$schema` marker on every
+  tool, which clients already treat as the defaults. Tool names, enums, defaults, limits and
+  required fields are unchanged, and `open_session` still holds the session id rules.
+
 ## [0.14.0] - 2026-10-24
 
 This release tightens how browxai handles secrets, plugins, workspace paths and
