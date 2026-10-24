@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global document, window, getComputedStyle, requestAnimationFrame, NodeFilter, CSS, scrollY -- these run inside page.evaluate, in the browser. */
 // Layout check for the built browxai.com site. Loads each page at a matrix of
 // viewport sizes, themes and states in headless Chromium and prints every
 // failing selector with the measured numbers. Exits 1 on any failure that is
