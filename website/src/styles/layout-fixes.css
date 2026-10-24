@@ -8,6 +8,14 @@
   }
 }
 
+/* Menu button: centre the icon in its box. */
+nav.sidebar > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
 /* At large text a card column or capability chip keeps to the viewport. */
 .browx-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
