@@ -378,7 +378,7 @@ export async function authSave(
 }> {
   // `dest` + `dir` below are rooted at `workspaceRoot` ($BROWX_WORKSPACE) by
   // construction — `authStatePath` validates the name through `assertSafeName`
-  // (no separators / no traversal) before joining under workspaceRoot.
+  // (no separators, no ".."), before joining under workspaceRoot.
   const dest = authStatePath(workspaceRoot, name);
   const dir = join(workspaceRoot, AUTH_STATES_DIR);
   assertWriteStaysInside(workspaceRoot, dest, "auth_save");
