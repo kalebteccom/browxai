@@ -154,8 +154,8 @@ For verification use `text_search`, `inspect`, and the read tools; for
 flaky or transient UI use `wait_for`, `sample`, and `act_and_sample`.
 
 Try it with a prompt such as "open https://example.com, snapshot it and tell me
-what the page says". The agent calls `navigate` and `snapshot`, and the heading
-and link come back as refs it can `click`. A Chrome window opens on a machine
+what the page says". The agent calls `navigate` and `snapshot`. The paragraph text
+comes back on its row, and the heading and link come back as refs it can `click`. A Chrome window opens on a machine
 with a display. Headless runs show no window.
 
 ## When something does not work

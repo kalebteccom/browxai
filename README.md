@@ -118,6 +118,8 @@ const { data } = await browxai.extract({
     },
   },
 });
+// data.title is "Example Domain". A selector that matches nothing adds a
+// line to `warnings` on the result.
 await browxai.close();
 ```
 
