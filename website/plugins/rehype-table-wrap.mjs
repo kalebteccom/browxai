@@ -21,16 +21,16 @@ function walk(node) {
 
 const isEl = (n, ...names) => n?.type === "element" && names.includes(n.tagName);
 
-function firstRow(table) {
-  const find = (n) => {
-    for (const c of n.children ?? []) {
-      if (isEl(c, "tr")) return c;
-      const r = isEl(c, "thead", "tbody", "tfoot") ? find(c) : undefined;
-      if (r) return r;
-    }
-    return undefined;
-  };
-  return find(table);
+// Counts the cells of every row that is the first child of its section (the
+// header row and the first body row), which is what the runtime check this
+// replaced counted. Keeping the count keeps the same set of tables wrapped.
+function cellCount(node, acc = { n: 0 }) {
+  const kids = (node.children ?? []).filter((c) => c.type === "element");
+  kids.forEach((c, i) => {
+    if (isEl(c, "tr") && i === 0) acc.n += c.children.filter((x) => isEl(x, "th", "td")).length;
+    if (isEl(c, "thead", "tbody", "tfoot")) cellCount(c, acc);
+  });
+  return acc.n;
 }
 
 function text(node) {
@@ -49,8 +49,7 @@ function longestCode(node, acc = { max: 0 }, inCell = false) {
 }
 
 function wraps(table) {
-  const row = firstRow(table);
-  const cols = (row?.children ?? []).filter((c) => isEl(c, "th", "td")).length;
+  const cols = cellCount(table);
   const longest = longestCode(table);
   return cols <= 3 ? longest <= 40 : cols === 4 && longest <= 24;
 }
