@@ -926,6 +926,13 @@ main:has(.browx-404) > .content-panel {
   color: inherit;
   max-width: inherit;
 }
+
+/* The .not-content wrapper drops Starlight's link colour, so prose links in the
+   cards would render browser-default blue. */
+.browx-card-text a {
+  color: var(--sl-color-text-accent);
+  text-underline-offset: 0.18em;
+}
 .browx-card .browx-card-mark {
   font-family: var(--browx-font-mono);
   color: var(--sl-color-text-accent);
