@@ -1,4 +1,5 @@
 import { requireCdp, requirePage } from "../engine/index.js";
+import { capabilityMissing } from "../util/capabilities.js";
 import { withDeadline } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { REF_OR_SELECTOR, SESSION_ARG } from "./schemas.js";
@@ -232,31 +233,14 @@ export function registerReadObserveCaptureTools(
       },
     },
     async (args) => {
-      const g = gateCheck("screenshot");
+      // `path` mode writes to disk, so it needs `file-io` on top of the tool's own
+      // `read` gate. Default (no path) mode is unchanged.
+      const g = gateCheck(
+        "screenshot",
+        args.path !== undefined ? ["file-io"] : undefined,
+        "screenshot: `path` mode writes to disk and needs the `file-io` capability. Drop the `path` arg to get the screenshot inline as base64, which needs no extra capability.",
+      );
       if (g) return g;
-      // `path` mode writes to disk → requires `file-io` in addition to the
-      // tool's own `read` gate. Default (no path) mode is unchanged.
-      if (args.path !== undefined && !caps.enabled.has("file-io")) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error:
-                    "screenshot: `path` mode writes to disk and requires the `file-io` capability — it is not in the server's ACTIVE set",
-                  requiredCapability: "file-io",
-                  activeCapabilities: [...caps.enabled],
-                  hint: "Add `file-io` to BROWX_CAPABILITIES (or set_config({capabilities})) and RESTART the server. Default (no `path`) screenshot mode returns inline base64 and needs no extra capability — drop the `path` arg if you don't actually need a disk file.",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
       const e = await entryFor(args.session);
       const sg = subInterfaceGate("screenshot", "capture", e);
       if (sg) return sg;
@@ -280,7 +264,7 @@ export function registerReadObserveCaptureTools(
         resolveTarget,
         path: args.path,
       });
-      return formatScreenshotResult(cap, caps.enabled.has("secrets") ? e.secrets : null);
+      return formatScreenshotResult(cap, capabilityMissing("secrets", caps) ? null : e.secrets);
     },
   );
 
