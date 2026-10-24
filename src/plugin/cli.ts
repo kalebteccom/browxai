@@ -151,7 +151,7 @@ function findActualPackageName(paths: PluginPaths, hint: string): string {
   return hint;
 }
 
-async function cmdInstall(requested: string): Promise<number> {
+async function cmdInstall(requested: string, cwd?: string): Promise<number> {
   const ws = resolveWorkspace();
   const paths = pluginPaths(ws.root);
   try {
@@ -163,7 +163,7 @@ async function cmdInstall(requested: string): Promise<number> {
   // A `file:` spec resolves against the current directory and is made absolute
   // here: the package manager runs inside the install dir and would resolve a
   // relative path from there.
-  const file = parseFileSpec(requested);
+  const file = parseFileSpec(requested, cwd);
   if (file && !file.ok) {
     process.stderr.write(`browxai plugin: cannot install "${requested}": ${file.error}\n`);
     return 1;
@@ -353,12 +353,12 @@ function help(): number {
 // checks the old `case` performed) and returns the SAME exit code, so the
 // dispatch in `runPlugin` is a pure registry lookup. Adding a verb is one
 // `registerPluginCommand(...)` line here, not a new `switch` arm.
-registerPluginCommand("install", (rest) => {
+registerPluginCommand("install", (rest, cwd) => {
   if (!rest[0]) {
     process.stderr.write("browxai plugin install: missing <pkg> argument\n");
     return 1;
   }
-  return cmdInstall(rest[0]);
+  return cmdInstall(rest[0], cwd);
 });
 registerPluginCommand("remove", (rest) => {
   if (!rest[0]) {
@@ -382,14 +382,17 @@ registerPluginCommand("sync", () => cmdSync());
  *  help branch (no verb / `help` / `--help` / `-h`) and the unknown-verb
  *  diagnostic stay inline — they are the subcommand's fixed contract; the
  *  extensibility verbs resolve through the add-only registry above. */
-export async function runPlugin(args: ReadonlyArray<string>): Promise<number> {
+export async function runPlugin(
+  args: ReadonlyArray<string>,
+  cwd?: string,
+): Promise<number> {
   const [sub, ...rest] = args;
   if (sub === undefined || sub === "help" || sub === "--help" || sub === "-h") {
     return help();
   }
   const handler = pluginCommandFor(sub);
   if (handler) {
-    return handler(rest);
+    return handler(rest, cwd);
   }
   process.stderr.write(`browxai plugin: unknown subcommand "${sub}"\n`);
   help();

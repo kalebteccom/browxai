@@ -21,12 +21,12 @@ export type FileSpec =
   | { readonly ok: false; readonly error: string };
 
 /** Parse a `file:` install spec. Returns `undefined` for any other spec. A
- *  relative path resolves against `cwd`. */
-export function parseFileSpec(spec: string, cwd: string = process.cwd()): FileSpec | undefined {
+ *  relative path resolves against `cwd`, which the CLI entry passes in. */
+export function parseFileSpec(spec: string, cwd?: string): FileSpec | undefined {
   if (!spec.startsWith("file:")) return undefined;
   const raw = spec.slice("file:".length);
   if (raw.length === 0) return { ok: false, error: `"${spec}" has no path after "file:"` };
-  const dir = resolve(cwd, raw);
+  const dir = cwd === undefined ? resolve(raw) : resolve(cwd, raw);
   const pkgJson = join(dir, "package.json");
   if (!existsSync(pkgJson)) return { ok: false, error: `no package.json in ${dir}` };
   let name: unknown;

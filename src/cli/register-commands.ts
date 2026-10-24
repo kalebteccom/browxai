@@ -21,4 +21,4 @@ registerCommand("doctor", () => runDoctor());
 registerCommand("chrome", (rest) => runChrome(rest));
 registerCommand("init", (rest) => runInit(rest));
 registerCommand("serve", (rest) => runServe(rest));
-registerCommand("plugin", (rest) => runPlugin(rest));
+registerCommand("plugin", (rest) => runPlugin(rest, process.cwd()));

@@ -11,9 +11,9 @@
 // (the `install`/`remove`/`info` missing-arg checks moved into their handlers),
 // so the dispatch resolves the SAME handler the old `case` did.
 
-/** A plugin subcommand handler: receives the argv after the verb token, returns
- *  the process exit code. */
-export type PluginCommandHandler = (rest: string[]) => Promise<number> | number;
+/** A plugin subcommand handler: receives the argv after the verb token and the
+ *  caller's working directory, returns the process exit code. */
+export type PluginCommandHandler = (rest: string[], cwd?: string) => Promise<number> | number;
 
 const PLUGIN_COMMANDS = new Map<string, PluginCommandHandler>();
 
