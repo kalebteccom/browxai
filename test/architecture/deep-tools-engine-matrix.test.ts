@@ -76,11 +76,11 @@ describe("L2 — DEEP_TOOLS is derived from the registrations", () => {
     expect(onlyFlagged, "flagged deep but missing from DEEP_TOOLS").toEqual([]);
   });
 
-  it("the derived set equals the current snapshot size (31 at P0, 26 after RFC 0009 P3)", () => {
-    // 31 → 26. RFC 0009 P3 retired the flag on the five touch/gesture
-    // registrations named in RETIRED_BY_SUBSTRATE below. Lowering this number is
-    // only ever legitimate alongside the assertions in the next block, which show
-    // the tools are still refused on the same engines for the same reason.
+  it("the derived set has 26 entries", () => {
+    // The set once held 31. The five touch/gesture registrations named in
+    // RETIRED_BY_SUBSTRATE below no longer carry the flag. Change this number
+    // only together with the assertions in the next block, which show those
+    // tools are still refused on the same engines for the same reason.
     expect(DEEP_TOOLS.size).toBe(26);
   });
 });

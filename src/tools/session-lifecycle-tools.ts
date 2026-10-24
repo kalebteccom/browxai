@@ -9,7 +9,8 @@ import {
 import { askHumanProfileRefusal } from "./ask-human-gate.js";
 import { byobAttachRefusal } from "./byob-attach-gate.js";
 import { resolveOpenSessionPolicies } from "./open-session-policies.js";
-import { invalidNameRefusal, isValidProfileName, PROFILE_NAME_RULE } from "../util/profile-name.js";
+import { isValidProfileName, PROFILE_NAME_RULE } from "../util/profile-name.js";
+import { openSessionPrecheck } from "./open-session-precheck.js";
 import type {
   GateHost,
   RegisterHost,
@@ -29,30 +30,6 @@ function lifecycleJson(body: object): ToolResponse {
  *  lifted from an Error or stringified. */
 function lifecycleError(err: unknown): ToolResponse {
   return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
-}
-
-/** The refusal `open_session` returns before launching anything, or null: a
- *  session id or profile that is not one plain name (checked here as well as in
- *  the schema, because in-process SDK callers skip the MCP schema parse), or a
- *  session id that is already open. */
-function openSessionPrecheck(
-  isOpen: boolean,
-  session: string,
-  profile: string | undefined,
-): ToolResponse | null {
-  const badName = !isValidProfileName(session)
-    ? invalidNameRefusal("session id", session)
-    : profile !== undefined && !isValidProfileName(profile)
-      ? invalidNameRefusal("profile", profile)
-      : null;
-  if (badName) return lifecycleJson({ ok: false, code: "invalid-name", error: badName });
-  if (isOpen) {
-    return lifecycleJson({
-      ok: false,
-      error: `session "${session}" already open; close_session first`,
-    });
-  }
-  return null;
 }
 
 /** Build the optional `har` / `harsReplay` / `video` fields of the open_session
@@ -264,7 +241,7 @@ export function registerSessionLifecycleTools(
               .string()
               .optional()
               .describe(
-                "Workspace-rooted HAR file path. Default: `<workspace>/har/<session-id>-<ISO>.har`. Path traversal outside `$BROWX_WORKSPACE` is rejected.",
+                "Workspace-rooted HAR file path. Default: `<workspace>/har/<session-id>-<ISO>.har`. Path traversal outside `$BROWX_WORKSPACE` is rejected, and a .zip path is refused (use .har).",
               ),
             mode: z
               .enum(["full", "minimal"])
@@ -334,7 +311,7 @@ export function registerSessionLifecycleTools(
       recordVideo,
     }) => {
       const early = openSessionPrecheck(registry.has(session), session, profile);
-      if (early) return early;
+      if (early) return lifecycleJson(early);
       const engineResult = resolveOpenSessionEngine(engine);
       if (!engineResult.ok) return engineResult.response;
       const resolved = resolveOpenSessionPolicies(

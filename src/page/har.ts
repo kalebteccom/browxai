@@ -35,11 +35,7 @@
 import { existsSync, mkdirSync, statSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { BrowserContext } from "playwright-core";
-import {
-  resolveWorkspacePath,
-  resolveWorkspaceReadPath,
-  resolveWorkspaceWritePath,
-} from "../session/storage.js";
+import { resolveWorkspaceReadPath, resolveWorkspaceWritePath } from "../session/storage.js";
 
 /** Maximum size (in bytes) at which a finalized HAR is returned inline rather
  *  than only by path. Mirrors the same cap used by `network_body` / storage
@@ -62,6 +58,9 @@ export interface HarRecorderState {
   active: boolean;
   /** Workspace-absolute path the HAR is being written to. Reserved at start. */
   path?: string;
+  /** Every path this session recorded to, oldest first. A second `start_har`
+   *  adds to the list, and the close-time scrub walks all of it. */
+  paths: string[];
   /** epoch ms the recorder was started. */
   startedAt?: number;
   /** Capture mode (full vs minimal). Same semantics as Playwright. */
@@ -77,7 +76,7 @@ export interface HarRecorderState {
 }
 
 export function newHarRecorderState(): HarRecorderState {
-  return { active: false };
+  return { active: false, paths: [] };
 }
 
 /** Configuration accepted by `start_har` AND `open_session({har})`. */
@@ -109,9 +108,14 @@ export function resolveHarPath(
   userPath: string | undefined,
   tool: string,
 ): string {
+  if (userPath && userPath.toLowerCase().endsWith(".zip")) {
+    throw new Error(
+      `${tool}: a .zip HAR path is not supported, because the archive cannot be scrubbed on close. Use a .har path.`,
+    );
+  }
   const resolved = userPath
     ? resolveWorkspaceWritePath(workspaceRoot, userPath, tool)
-    : resolveWorkspacePath(workspaceRoot, `har/${defaultHarFilename(sessionId)}`, tool);
+    : resolveWorkspaceWritePath(workspaceRoot, `har/${defaultHarFilename(sessionId)}`, tool);
   // `resolved` is workspace-rooted by construction (resolveWorkspacePath rejects
   // any escape from `workspaceRoot`); so `dirname(resolved)` is workspace-rooted
   // too — the mkdirSync below never touches cwd. BROWX_WORKSPACE-derived.
@@ -190,6 +194,7 @@ export async function startHar(
   await context.routeFromHAR(path, options);
   state.active = true;
   state.path = path;
+  if (!state.paths.includes(path)) state.paths.push(path);
   state.startedAt = Date.now();
   state.mode = mode;
   state.content = content;

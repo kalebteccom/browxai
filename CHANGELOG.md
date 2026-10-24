@@ -30,6 +30,14 @@ surface" covers.
   origins. An account with no entry is refused before the vault is asked, with
   a message naming the setting. The setting is read at start, so restart after
   changing it. The result carries `origins`.
+  registration. The result carries the normalised `origins`. A `blob:` or
+  `filesystem:` frame URL counts as the origin it wraps, the same rule
+  `BROWX_ALLOWED_ORIGINS` uses.
+- **`get_credential` values are bound to the page they were fetched for.** The
+  registered password is scoped to the origin of the page the session is on at
+  call time, or to the account's list in the new `BROWX_CREDENTIAL_ORIGINS`
+  setting. With neither (for example on `about:blank`) the call refuses before
+  the vault is asked. The result carries `origins`.
 - **`get_totp` and `get_credential` check the account name.** It must start
   with a letter or digit and use only letters, digits, space and
   `. _ @ + : / -`, at most 128 characters. The `op`, `bw` and `lpass` calls pass
@@ -86,7 +94,20 @@ surface" covers.
   It reads the command line of the PID in `chrome.pid` (`/proc` on Linux, `ps`
   on macOS, `tasklist` on Windows) and exits 1 without sending a signal when the
   command line cannot be read or is not a Chrome launched with
-  `--user-data-dir`.
+  `--user-data-dir`. `start` records its profile directory in `chrome.profile`
+  next to `chrome.pid`, and `stop` requires `--user-data-dir=` to name that
+  directory (the workspace default profile for a `chrome.pid` written by an
+  older release). It reads the command line again before the SIGKILL that
+  follows an ignored SIGTERM.
+- **Writes stay inside the workspace on the real path.** `pdf_save`,
+  `screenshot({path})`, the page and element exports, `asset_export`, HAR and
+  video files, heap and trace files, `dump_storage_state`, `auth_save`,
+  `artifact_save`, download capture, `profile_snapshot` and the diagnostics log
+  resolve symlinks before they write. A link inside `$BROWX_WORKSPACE` that
+  leads out of it is refused with "resolves through a link to a path outside
+  $BROWX_WORKSPACE". A file that does not exist yet is checked through its
+  parent directory. The protected operator files and directories are unchanged,
+  and `chrome.profile` joins them.
 - **`asset_export` never replaces an existing file.** Files are created
   exclusively, and a name already on disk in `intoDir`, from an earlier export
   or anything else, moves to the next free `-N` name. Re-exporting into the same

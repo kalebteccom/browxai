@@ -98,6 +98,7 @@ export class SocketTransport implements Transport {
   private _overLimit(chunk: Buffer): boolean {
     let pending = this._pendingBytes;
     let start = 0;
+    // cap: one pass per newline in `chunk`; `start` moves past each, so it ends at the last one.
     for (;;) {
       const newline = chunk.indexOf(NEWLINE, start);
       if (newline === -1) {

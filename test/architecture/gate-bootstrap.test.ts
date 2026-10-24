@@ -85,12 +85,16 @@ describe("L1 — the capability/engine gate fails SAFE on an unbootstrapped map 
     // The OLD fail-open code returned true / null here; the fail-safe throws.
     expect(result.capability).not.toBe("FAIL_OPEN_TRUE");
     expect(result.capability.startsWith("FAIL_SAFE_THROW:")).toBe(true);
-    // The throw must name the hazard so the misconfiguration is actionable.
-    expect(result.capability).toContain("bootstrap");
-    expect(result.capability).toMatch(/fail OPEN|eval_js/i);
+    // Each throw names what was read and why it refused, so the misconfiguration
+    // is actionable.
+    expect(result.capability).toContain(
+      "capability gate read before the tool-metadata bootstrap ran",
+    );
+    expect(result.capability).toContain("TOOL_CAPABILITY map is empty");
 
     expect(result.engine).not.toBe("FAIL_OPEN_NULL");
     expect(result.engine.startsWith("FAIL_SAFE_THROW:")).toBe(true);
-    expect(result.engine).toContain("bootstrap");
+    expect(result.engine).toContain("engine gate read before the tool-metadata bootstrap ran");
+    expect(result.engine).toContain("DEEP_TOOLS set is empty");
   });
 });

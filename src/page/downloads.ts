@@ -23,6 +23,7 @@ import { mkdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import type { BrowserContext, Download } from "playwright-core";
 import { log } from "../util/logging.js";
+import { assertWriteStaysInside } from "../util/workspace.js";
 
 /** What lands on `ActionResult.downloads[]` and `download_get`. Workspace-rooted
  *  paths only; never absolute outside `$BROWX_WORKSPACE`. */
@@ -67,6 +68,9 @@ export class DownloadsRegistry {
   constructor(
     /** Per-session storage dir: `$BROWX_WORKSPACE/.downloads/<sessionId>/`. */
     readonly storageDir: string,
+    /** The workspace root, when known. A capture then checks the real path of
+     *  the file stays inside it. */
+    readonly workspaceRoot?: string,
   ) {}
 
   /** List all captured downloads for this session (most-recent first). */
@@ -225,6 +229,9 @@ async function handleDownload(download: Download, registry: DownloadsRegistry): 
   // Ensure storage dir exists (created lazily; sessions that never opt in
   // never create it). The dir is workspace-rooted (BROWX_WORKSPACE/.downloads
   // via the SessionEntry factory in server.ts — never cwd).
+  if (registry.workspaceRoot) {
+    assertWriteStaysInside(registry.workspaceRoot, registry.storageDir, "downloads_capture");
+  }
   mkdirSync(registry.storageDir, { recursive: true });
   // Compose final on-disk path. We can't know the id yet (registry assigns
   // it on `record`); use a millisecond+random prefix to disambiguate
@@ -242,6 +249,9 @@ async function handleDownload(download: Download, registry: DownloadsRegistry): 
     return;
   }
   try {
+    if (registry.workspaceRoot) {
+      assertWriteStaysInside(registry.workspaceRoot, resolved, "downloads_capture");
+    }
     await download.saveAs(resolved);
   } catch (err) {
     log.warn("downloads: saveAs failed", {

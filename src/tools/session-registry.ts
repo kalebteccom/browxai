@@ -355,6 +355,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         harState.active = true;
         harState.nativeRecord = true;
         harState.path = creationRecordHarResolved.path;
+        harState.paths.push(creationRecordHarResolved.path);
         harState.mode = creationRecordHarResolved.mode;
         harState.content = creationRecordHarResolved.content;
         harState.startedAt = Date.now();
@@ -422,13 +423,13 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // registry is off by default; the `downloads_capture` MCP tool toggles
       // it. The context listener attach lives in the engine's `postWire`.
       const downloadsDir = workspace.sub(`.downloads/${id}`);
-      const downloadsReg = new DownloadsRegistry(downloadsDir);
+      const downloadsReg = new DownloadsRegistry(downloadsDir, workspace.root);
       // Per-session artifact KV. Storage dir is workspace-rooted +
       // per-session; the dir itself is created lazily on first save, and
       // wiped on session teardown (see `teardown` below). Capacity-bounded
       // — 200 entries / 50 MiB, oldest-write evicted.
       const artifactsDir = workspace.sub(`.artifacts/${id}`);
-      const artifactsReg = new ArtifactsRegistry(artifactsDir);
+      const artifactsReg = new ArtifactsRegistry(artifactsDir, workspace.root);
       // Fresh per-primitive device-emulation state (locale, timezone,
       // geolocation, colour scheme, reduced motion, user-agent, permissions).
       // Re-applied on every new page in this context so a mid-session-opened
@@ -565,12 +566,15 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       if (flushVideo) await flushVideo().catch(() => undefined);
       // The HAR is on disk now. Drop the Cookie / Set-Cookie / Authorization
       // values and mask registered values in headers and bodies.
-      if (e.har.path) {
+      if (e.har.paths.length > 0) {
         const secrets = capabilityMissing("secrets", caps) ? null : e.secrets;
-        try {
-          scrubHarFile(workspace.root, e.har.path, secrets);
-        } catch (err) {
-          log.warn(`close_session: HAR scrub failed for "${e.har.path}": ${String(err)}`);
+        const keepBodies = !capabilityMissing("network-body", caps);
+        for (const harPath of e.har.paths) {
+          try {
+            scrubHarFile(workspace.root, harPath, secrets, keepBodies);
+          } catch (err) {
+            log.warn(`close_session: HAR scrub failed for "${harPath}": ${String(err)}`);
+          }
         }
       }
       // Clear session-scoped artifacts on teardown. Best-effort: a stuck

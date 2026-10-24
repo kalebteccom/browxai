@@ -18,11 +18,11 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BrowserContext, Request, Response } from "playwright-core";
+import type { BrowserContext, CDPSession, Frame, Page, Request, Response } from "playwright-core";
 import { PlaywrightNetworkBuffer } from "../../src/page/network-playwright.js";
 import { ConsoleBuffer, MAX_CONSOLE_MESSAGE_CHARS } from "../../src/page/console.js";
 import {
@@ -42,6 +42,12 @@ import { estimateTokens } from "../../src/util/tokens.js";
 import { walk, MAX_WALK_DEPTH, type A11yNode } from "../../src/page/a11y.js";
 import { NetworkBuffer } from "../../src/page/network.js";
 import { WorkersSwChannel } from "../../src/page/workers-sw.js";
+import { materialiseValue } from "../../src/page/actions-secrets.js";
+import type { ActionContext } from "../../src/page/actionresult.js";
+import { assetExport } from "../../src/page/asset-export.js";
+import { submitToProvider, type CaptchaProviderConfig } from "../../src/page/solve-captcha.js";
+import { MAX_UNWRAP_DEPTH, safeUrl, unwrapOrigin } from "../../src/util/origin-unwrap.js";
+import { isOriginAllowed, resolveOriginPolicy } from "../../src/policy/origin.js";
 
 // ── perf-audit token budget — termination + the ≤ 2.5× ceiling ───────────────
 
@@ -369,5 +375,123 @@ describe("L7 — the socket transport read buffer is capped", () => {
     expect(socket.destroyed).toBe(true);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.message).toContain("256-byte limit");
+  });
+});
+
+// ── the loops added with the hardening pass: each stops at its bound ─────────
+
+describe("L7 — the focused-frame walk stops at MAX_FRAME_DEPTH (16)", () => {
+  it("descends 16 frames, not endlessly, when every frame holds a focused iframe", async () => {
+    let descents = 0;
+    const frameAt = (i: number): Frame =>
+      ({
+        url: () => `https://frame.test/${i}`,
+        locator: () => ({
+          count: async () => 1,
+          first: () => ({
+            elementHandle: async () => ({
+              contentFrame: async () => {
+                descents += 1;
+                return frameAt(i + 1);
+              },
+              dispose: async () => undefined,
+            }),
+          }),
+        }),
+      }) as unknown as Frame;
+    const page = { url: () => "https://top.test/", mainFrame: () => frameAt(0) } as unknown as Page;
+    let seen = "";
+    const secrets = {
+      needsScopeCheck: () => true,
+      materialize: (_raw: string, url: string) => {
+        seen = url;
+        return { ok: true, value: "v" };
+      },
+    };
+    await materialiseValue({ page, secrets } as unknown as ActionContext, "<S>", "focused");
+    expect(descents).toBe(16);
+    expect(seen).toBe("https://frame.test/16");
+  });
+});
+
+describe("L7 — asset_export gives up on a name after MAX_NAME_ATTEMPTS (1000)", () => {
+  it("drops the asset when 1000 names are taken, and never tries the 1001st", async () => {
+    const root = mkdtempSync(join(tmpdir(), "brx-names-"));
+    try {
+      mkdirSync(join(root, "out"));
+      writeFileSync(join(root, "out", "a.png"), "x");
+      for (let i = 1; i < 1000; i++) writeFileSync(join(root, "out", `a-${i}.png`), "x");
+      const cdp = { send: vi.fn(), on: vi.fn(), off: vi.fn() } as unknown as CDPSession;
+      const buffer = new NetworkBuffer(cdp);
+      (buffer as unknown as { ring: unknown[] }).ring = [
+        {
+          method: "GET",
+          url: "https://x.test/a.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 1,
+          requestId: "r1",
+        },
+      ];
+      const failingCdp = {
+        send: vi.fn(async () => {
+          throw new Error("No data found for resource");
+        }),
+        on: vi.fn(),
+        off: vi.fn(),
+      } as unknown as CDPSession;
+      const page = {
+        evaluate: vi.fn(async () => ({ ok: true, base64: Buffer.from("n").toString("base64") })),
+      } as unknown as Page;
+      const r = await assetExport(
+        { cdp: failingCdp, page, buffer, workspaceRoot: root, sessionId: "s" },
+        { filter: {}, intoDir: "out" },
+      );
+      expect(r.persistedCount).toBe(0);
+      expect(r.warnings.join("\n")).toMatch(/after 1000 tries/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("L7 — origin unwrapping stops at MAX_UNWRAP_DEPTH (2)", () => {
+  it("returns null for a wrapper nested past the bound, however long the nesting", () => {
+    expect(MAX_UNWRAP_DEPTH).toBe(2);
+    const nested = "blob:".repeat(500) + "https://a.example/x";
+    const parsed = safeUrl(nested);
+    expect(parsed).not.toBeNull();
+    expect(unwrapOrigin(parsed!)).toBeNull();
+    expect(isOriginAllowed(nested, resolveOriginPolicy({}))).toBe(false);
+  });
+});
+
+describe("L7 — the captcha error-cause walk stops at 4 levels", () => {
+  const config = {
+    provider: "2captcha",
+    apiKey: "k",
+    apiBase: "https://captcha.test",
+    timeoutMs: 1000,
+    pollMs: 1,
+  } as unknown as CaptchaProviderConfig;
+
+  it("ends on a cause chain that loops, and on one far deeper than the bound", async () => {
+    const loop = new Error("loop");
+    loop.cause = loop;
+    let deep = new Error("unexpected redirect");
+    for (let i = 0; i < 1000; i++) deep = new Error("wrapper", { cause: deep });
+    for (const err of [loop, deep]) {
+      const r = await submitToProvider(
+        { type: "recaptcha2", pageUrl: "https://app.example", siteKey: "sk" },
+        config,
+        vi.fn(async () => {
+          throw err;
+        }),
+        () => 0,
+      );
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toContain("network error submitting");
+    }
   });
 });

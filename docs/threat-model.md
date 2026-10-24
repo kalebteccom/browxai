@@ -813,14 +813,19 @@ the next `open_session`), so an agent could widen its own posture.
 path (`pdf_save`, `dom_export`, `element_export`, `page_archive`, `asset_export`,
 `screenshot`, heap snapshots, traces, HAR, video, replay, `dump_storage_state`,
 `export_playwright_script`, the file-picker write target) refuse
-`<workspace>/config.json`, `plugins.json`, `plugins-lock.json`, `chrome.pid`, the snapshot key,
+`<workspace>/config.json`, `plugins.json`, `plugins-lock.json`, `chrome.pid`, `chrome.profile`, the snapshot key,
 the `plugins/`, `profile/`, `profiles/` and `profile-snapshots/` trees, the
 `BROWX_DEFAULT_PROFILE` directory and the `chrome-profile/` directory that
 releases before 0.13.0 used for `chrome start`, case-insensitively and after
-resolving symlinks. `chrome start` and `chrome login` now run Chrome on
+resolving symlinks. A write whose real path leaves `$BROWX_WORKSPACE` is refused
+too, whether the link is in the path, at the file, or in the directory of a file
+that does not exist yet; the per-session `.artifacts/` and `.downloads/` dirs,
+`.auth-states/`, `profile-snapshots/`, `har/`, `videos/` and `diagnostics/`
+get the same check. `chrome start` and `chrome login` now run Chrome on
 `profile/`, or `profiles/<name>` with `--profile`. `browxai chrome stop` reads
-the PID from `chrome.pid` and confirms the process is Chrome, by its command
-line, before sending any signal; `asset_export` creates files exclusively and
+the PID from `chrome.pid` and confirms the process is Chrome on the profile
+directory `start` recorded in `chrome.profile`, by its command line, before
+sending any signal, and again before a SIGKILL; `asset_export` creates files exclusively and
 never replaces an existing one. `profile_restore` copies a snapshot over a profile, so it also
 checks provenance: each snapshot carries a manifest with a digest of its files,
 MACed with a key kept in the workspace, and a snapshot without a valid manifest,

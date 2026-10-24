@@ -10,13 +10,16 @@
 //     response body is run through the session's secrets masker, so a
 //     registered value becomes `<NAME>`.
 // A text body stored as a sidecar file (`content: "attach"` on a `.har` path)
-// is masked in its file. A `.zip` archive is left as Playwright wrote it.
+// is masked in its file. Recording to a `.zip` path is refused up front, so no
+// archive reaches this module. Without the `network-body` capability the
+// request body (`postData.text` and `postData.params`) is emptied too, since
+// Playwright writes urlencoded form values there even with `content: "omit"`.
 // Base64 bodies are not decoded, the same limit `network_body` documents.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { DEFAULT_DROPPED_HEADERS } from "../replay/redact.js";
-import { resolveWorkspacePath } from "../session/storage.js";
+import { resolveWorkspaceWritePath } from "../session/storage.js";
 import type { SecretRegistry } from "../util/secrets.js";
 
 const DROPPED = new Set(DEFAULT_DROPPED_HEADERS);
@@ -37,7 +40,7 @@ function scrubNameValues(list: unknown, mask: Mask, dropAll: boolean): void {
   }
 }
 
-function scrubMessage(msg: unknown, mask: Mask): void {
+function scrubMessage(msg: unknown, mask: Mask, keepBodies: boolean): void {
   if (!isRec(msg)) return;
   scrubNameValues(msg.headers, mask, false);
   scrubNameValues(msg.cookies, mask, true);
@@ -46,8 +49,13 @@ function scrubMessage(msg: unknown, mask: Mask): void {
   if (typeof msg.redirectURL === "string") msg.redirectURL = mask(msg.redirectURL);
   const post = msg.postData;
   if (isRec(post)) {
-    if (typeof post.text === "string") post.text = mask(post.text);
-    scrubNameValues(post.params, mask, false);
+    if (keepBodies) {
+      if (typeof post.text === "string") post.text = mask(post.text);
+      scrubNameValues(post.params, mask, false);
+    } else {
+      delete post.text;
+      post.params = [];
+    }
   }
   const content = msg.content;
   if (isRec(content) && typeof content.text === "string" && content.encoding !== "base64") {
@@ -57,12 +65,12 @@ function scrubMessage(msg: unknown, mask: Mask): void {
 
 /** Scrub a parsed HAR document in place. Returns the sidecar file names its
  *  text bodies live in (`content._file`), for the caller to mask. */
-export function scrubHarDocument(doc: unknown, mask: Mask): string[] {
+export function scrubHarDocument(doc: unknown, mask: Mask, keepBodies = false): string[] {
   const sidecars: string[] = [];
   const log = isRec(doc) ? doc.log : undefined;
   for (const entry of recs(isRec(log) ? log.entries : undefined)) {
-    scrubMessage(entry.request, mask);
-    scrubMessage(entry.response, mask);
+    scrubMessage(entry.request, mask, keepBodies);
+    scrubMessage(entry.response, mask, keepBodies);
     const content = isRec(entry.response) ? entry.response.content : undefined;
     if (
       isRec(content) &&
@@ -78,17 +86,20 @@ export function scrubHarDocument(doc: unknown, mask: Mask): string[] {
 }
 
 /** Scrub the HAR at `harPath` (already resolved under `workspaceRoot`) and its
- *  text sidecar files. Best-effort: a missing file (nothing was recorded) or
- *  a `.zip` archive is reported, never thrown. */
+ *  text sidecar files. `keepBodies` is true when the `network-body` capability
+ *  is on: request bodies are then kept (masked) as the recorder wrote them.
+ *  Best-effort: a missing file (nothing was recorded) or a `.zip` archive is
+ *  reported, never thrown. */
 export function scrubHarFile(
   workspaceRoot: string,
   harPath: string,
   secrets: SecretRegistry | null,
+  keepBodies = false,
 ): { scrubbed: boolean; reason?: "missing" | "zip" | "unparseable" } {
   if (harPath.toLowerCase().endsWith(".zip")) return { scrubbed: false, reason: "zip" };
   // Re-resolve through the workspace chokepoint before any read or write; the
   // file stays under BROWX_WORKSPACE.
-  const target = resolveWorkspacePath(workspaceRoot, relative(workspaceRoot, harPath), "har");
+  const target = resolveWorkspaceWritePath(workspaceRoot, relative(workspaceRoot, harPath), "har");
   if (!existsSync(target)) return { scrubbed: false, reason: "missing" };
   let doc: unknown;
   try {
@@ -97,7 +108,7 @@ export function scrubHarFile(
     return { scrubbed: false, reason: "unparseable" };
   }
   const mask: Mask = secrets ? (s) => secrets.applyMaskInText(s) : (s) => s;
-  const sidecars = scrubHarDocument(doc, mask);
+  const sidecars = scrubHarDocument(doc, mask, keepBodies);
   writeFileSync(target, JSON.stringify(doc, null, 2));
   if (secrets && secrets.size() > 0) {
     for (const name of sidecars) maskSidecar(workspaceRoot, dirname(target), name, mask);
@@ -110,7 +121,11 @@ export function scrubHarFile(
 function maskSidecar(workspaceRoot: string, dir: string, name: string, mask: Mask): void {
   if (basename(name) !== name || name === "." || name === "..") return;
   // Resolved under BROWX_WORKSPACE like the HAR itself.
-  const file = resolveWorkspacePath(workspaceRoot, relative(workspaceRoot, join(dir, name)), "har");
+  const file = resolveWorkspaceWritePath(
+    workspaceRoot,
+    relative(workspaceRoot, join(dir, name)),
+    "har",
+  );
   if (!existsSync(file)) return;
   const text = readFileSync(file, "utf8");
   const masked = mask(text);
