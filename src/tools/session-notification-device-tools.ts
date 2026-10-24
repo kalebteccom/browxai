@@ -165,12 +165,7 @@ export function registerSessionNotificationDeviceTools(
     {
       capability: "device-emulation",
       description:
-        'Read-side companion to `emulate_bluetooth` / `emulate_usb` / `emulate_hid`. Returns the buffer of `requestDevice()` calls the page has made on this session — one entry per page-side call, each with `{api, handledAs, returned, filters?, ts}`. Useful for diagnosing "did the page even ask?" when a flow gated on hardware appears stuck. `handledAs`:\n' +
-        '  - `"resolved"`  — catalog non-empty; picker resolved with the synthetic device (Bluetooth/USB) or device list (HID).\n' +
-        '  - `"rejected"` — catalog empty for Bluetooth/USB; picker rejected with `NotFoundError` (user-dismissed shape).\n' +
-        '  - `"empty"`    — catalog empty for HID; picker resolved with `[]` (HID\'s user-dismissed shape).\n' +
-        '  - `"refused"`  — capability `device-emulation` was OFF at the time of the call; the wrapper short-circuited. Recorded so the read surfaces "the page asked for hardware and you didn\'t have the capability on".\n' +
-        "**Gated behind the off-by-default `device-emulation` capability** — a server without the capability can't even read whether the page tried to ask (same posture class as `eval` / `network-body` / `secrets`). Read-only — does not mutate state.",
+        'Read what the page asked for: the buffer of `requestDevice()` calls it made on this session (Bluetooth, USB, HID), each `{api, handledAs, returned, filters?, ts}`. Use it to check whether the page asked at all when a hardware-gated flow looks stuck. Requires the `device-emulation` capability (off by default); without it you cannot read whether the page asked. `handledAs`:\n  - `"resolved"`: catalog non-empty; the picker resolved with the synthetic device (Bluetooth, USB) or device list (HID).\n  - `"rejected"`: catalog empty for Bluetooth or USB; rejected with `NotFoundError`.\n  - `"empty"`: catalog empty for HID; resolved with `[]`.\n  - `"refused"`: `device-emulation` was off at the time of the call, so the wrapper stepped aside; recorded so you can see the page asked for hardware.\nUse `emulate_bluetooth`, `emulate_usb` or `emulate_hid` to stage devices.',
       inputSchema: {
         since: z
           .number()
@@ -178,7 +173,7 @@ export function registerSessionNotificationDeviceTools(
           .nonnegative()
           .optional()
           .describe(
-            "epoch ms — return only records with `ts >= since`. Default 0 (return everything in the buffer).",
+            "Epoch ms: return only records with `ts >= since`. Default 0 (everything in the buffer).",
           ),
         ...SESSION_ARG,
       },

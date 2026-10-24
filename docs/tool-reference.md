@@ -3582,7 +3582,7 @@ browxai to daemon:
 
 ## Native app control (`ios-app`, `android-app`) _(gated)_
 
-**Requires the off-by-default `native-device` capability.** `open_session({ browserType: "ios-app" })` and `open_session({ browserType: "android-app" })` both refuse without it, so the gate sits at session creation and no native tool can be reached around it. See [`docs/threat-model.md`](./threat-model.md) for what the capability grants.
+**Requires the off-by-default `native-device` capability.** `open_session({ engine: "ios-app" })` and `open_session({ engine: "android-app" })` both refuse without it, so the gate sits at session creation and no native tool can be reached around it. See [`docs/threat-model.md`](./threat-model.md) for what the capability grants.
 
 browxai drives two native engines. `ios-app` drives a native application on the **iOS Simulator** through its XCUITest accessibility hierarchy. `android-app` drives an app on an **Android emulator** over `adb` — UiAutomator for the view hierarchy, the OS input pipeline for taps, swipes and keys, `screencap` for frames. Neither is a browser: there is no `Page`, no DOM, no URL and no `Locator`. What each has instead is a view hierarchy that composes into the **same `A11yNode` tree** `snapshot` already returns, with the same `[ref=eN]` refs, so an agent skill written for web transfers and one CI verifier reads every kind of session.
 
