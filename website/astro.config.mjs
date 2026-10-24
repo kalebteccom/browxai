@@ -145,7 +145,10 @@ export default defineConfig({
       sidebar: [
         {
           label: "Start here",
-          items: [{ label: "Getting started", slug: "getting-started" }],
+          items: [
+            { label: "Getting started", slug: "getting-started" },
+            { label: "Troubleshooting", slug: "guides/troubleshooting" },
+          ],
         },
         {
           label: "Concepts",
