@@ -246,10 +246,10 @@ During development, install your plugin's working directory by file
 path:
 
 ```sh
-$ pnpm build                                          # inside my-plugin/
-$ browxai plugin install file:./my-plugin             # a relative or an absolute path
-$ browxai plugin list
-$ browxai doctor                                      # plugins section: manifest, lock, drift
+pnpm build                                          # inside my-plugin/
+browxai plugin install file:./my-plugin             # a relative or an absolute path
+browxai plugin list
+browxai doctor                                      # plugins section: manifest, lock, drift
 ```
 
 A relative path resolves from your shell's working directory. The CLI
