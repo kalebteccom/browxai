@@ -183,7 +183,10 @@ function shellCommands(block) {
   const commands = [];
   for (const j of joined) {
     if (prompted && !j.text.startsWith("$ ")) continue;
-    const clean = j.text.replace(/^\$ /, "").replace(/\s+#.*$/, "").trim();
+    const clean = j.text
+      .replace(/^\$ /, "")
+      .replace(/\s+#.*$/, "")
+      .trim();
     if (clean !== "" && !clean.startsWith("#")) commands.push({ text: clean, line: j.line });
   }
   return commands;
