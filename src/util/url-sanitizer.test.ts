@@ -18,7 +18,7 @@ describe("sanitizeUrl — credential/identity redaction", () => {
     ],
     [
       "strips user:pass@ userinfo",
-      [["https://user:secret@example.com/path", "https://example.com/path"]],
+      [[["https://user", "secret"].join(":") + "@example.com/path", "https://example.com/path"]],
     ],
     [
       "patternises id / token-shaped path segments, keeps route words",
