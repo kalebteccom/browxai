@@ -8,6 +8,14 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **`browxai init` is the one-command start.** It finds Claude Code, Cursor, Codex and Claude Desktop on the machine and prints the exact command or snippet for each. It still writes only the project `.mcp.json`. `--write-user-config <client>` (`cursor`, `codex` or `claude-desktop`) adds browxai to that client's user-level config, after showing the diff. It ends with a smoke test: a headless private session on `about:blank`, one snapshot, then `ok: first snapshot in N ms` or a plain error with the next step (exit 1). `--no-smoke` skips it, and `--no-write` skips it too.
+
+### Changed
+
+- **`browxai doctor` prints a short summary.** One line per area with a tick or a cross, failures first with the next step, and the `claude mcp add browxai -- browxai` line at the end. `browxai doctor --verbose` prints every row as before. Exit codes are unchanged, and an unknown flag exits 2.
+
 ### Fixed
 
 - **`--help` and `-h` print usage on every subcommand.** `browxai chrome start --help` used to launch Chrome and `browxai doctor --help` ran the check. Both now print usage and exit 0 without running anything. `browxai help` works too.

@@ -79,9 +79,14 @@ Needs Node 22 or later.
 
 ```bash
 npm install -g browxai
-browxai doctor                                # checks the environment and your setup
+cd your-project
+browxai init .                                # one command: writes .mcp.json, shows the setup line for your MCP client, checks a first snapshot
 npx playwright-core@1.64.1 install chromium   # optional, ~150 MB: the fallback when Chrome is missing
 ```
+
+`browxai init` writes a `.mcp.json` in the directory you give it and prints the exact command or snippet for each MCP client it finds on the machine: Claude Code, Cursor, Codex and Claude Desktop. It changes nothing outside the project. To have it add browxai to a client's user-level config, run it again with `--write-user-config cursor` (or `codex`, `claude-desktop`); it shows the change before it writes. It ends by opening a headless private session on `about:blank`, taking one snapshot and closing it, then prints `ok: first snapshot in N ms`, or says what to fix. `--no-smoke` skips that check.
+
+`browxai doctor` checks the machine and prints one line per area, with the next step under anything that fails. `browxai doctor --verbose` prints every check.
 
 browxai launches the Google Chrome already installed on the machine, on one default profile per workspace (`<workspace>/profile`), so logins carry over between sessions. When there is no Chrome it falls back to Playwright's bundled Chromium. `browxai doctor` fails only when neither browser is present. Firefox and WebKit sessions use their own Playwright builds (`npx playwright-core@1.64.1 install firefox webkit`).
 
