@@ -22,7 +22,7 @@ Eight engines sit behind that one tool surface, in three families. They are not 
 
 WebDriverAgent, Xcode and the Android SDK are yours to install and run. browxai bundles none of them, creates no AVD and no simulator, and a missing WebDriverAgent refuses session creation instead of answering `snapshot` with an empty tree.
 
-**One desktop-app engine.** `electron` attaches to a running Electron application over the `--remote-debugging-port` it was launched with, so VS Code or Slack is in reach. It works because an Electron app is Chromium: the engine reuses the same substrate bundle the Chromium engine uses and adds no new capture code. It differs from an ordinary BYOB attach in three ways the keystone measures. It is attach-only, and `electron-launch-not-supported` says so; browxai will not start a desktop application. `navigate` refuses, because loading a URL into an Electron renderer would run that page inside the application's own privileged renderer. A single-window app exposes one page target and cannot mint another, so a second session refuses with `attach-target-creation-unavailable`. The gate is `byob-attach`, the same one a BYOB Chrome needs, and the debugging port is unauthenticated for the app's lifetime: read [`docs/threat-model.md`](docs/threat-model.md) before pointing it at an app that holds your data.
+**One desktop-app engine.** `electron` attaches to a running Electron application over the `--remote-debugging-port` it was launched with, so VS Code or Slack is in reach. It works because an Electron app is Chromium: the engine reuses the same substrate bundle the Chromium engine uses and adds no new capture code. It differs from an ordinary BYOB attach in three ways the keystone measures. It is attach-only, and `electron-launch-not-supported` says so; browxai will not start a desktop application. `navigate` refuses, because loading a URL into an Electron renderer would run that page inside the application's own privileged renderer. A single-window app exposes one page target and cannot mint another, so a second session refuses with `attach-target-creation-unavailable`. The gate is `byob-attach`, the same one a BYOB Chrome needs, and the debugging port is unauthenticated for the app's lifetime: read [`docs/threat-model.md`](https://browxai.com/security/threat-model/) before pointing it at an app that holds your data.
 
 The Electron evidence is one app, on one machine, in one run: VS Code 1.122.1 on Electron 39.8.8, where `snapshot` returned a 132-line tree in 36 ms, `find` ranked three real candidates with bounding boxes, and a `click` by ref landed. Attachability is a property of the app and the version, and browxai cannot promise it. Figma's desktop client calls `app.commandLine.removeSwitch("remote-debugging-port")` at startup, read out of the shipped `app.asar` of 126.8.18 on macOS, so it never opens a port and there is nothing to attach to. Check the app you actually have.
 
@@ -43,7 +43,7 @@ That is the whole of the host reach: three capabilities and adb. browxai has no 
 - **Work inside an authenticated session.** Open a `persistent` or `attached` (bring-your-own-browser) session so the agent operates inside a real, logged-in profile and can automate multi-step flows that need the existing cookies.
 - **Extract structured data from a script.** From one autonomous TypeScript file: `createBrowxai()` → `navigate()` → `extract({ schema })` → `close()`, with the same safety gates as the MCP path.
 - **Log in without seeing the password.** With `credentials` and `secrets` on, the agent asks for an account by name, browxai fetches the username from your vault, and `fill` submits a password the agent only ever knows by alias. Each account needs a `BROWX_CREDENTIAL_ORIGINS` entry naming the origins its password may be typed into.
-- **Run cross-engine checks.** Drive the same tool surface on Chromium, Firefox, WebKit, real Chrome-on-Android, or real Safari. Pick the engine per session and validate a flow beyond just Chromium. Chromium is the full surface; the non-CDP engines run a curated subset and **structurally refuse** the CDP-deep tools with a named reason (see the per-engine table in the [tool reference](docs/tool-reference.md)).
+- **Run cross-engine checks.** Drive the same tool surface on Chromium, Firefox, WebKit, real Chrome-on-Android, or real Safari. Pick the engine per session and validate a flow beyond just Chromium. Chromium is the full surface; the non-CDP engines run a curated subset and **structurally refuse** the CDP-deep tools with a named reason (see the per-engine table in the [tool reference](https://browxai.com/reference/tool-reference/)).
 - **Drive a native app on an emulator.** With `native-device` on, open an `android-app` or `ios-app` session and the agent taps, types and swipes through the same `find` / `click` / `fill` it uses on a page. Ten `device_*` and `app_*` tools cover boot, install, launch and reset. A verb the platform has no primitive for refuses and names what is missing, so `gesture_pinch` works on iOS and refuses on Android.
 - **Drive the desktop app you already have open.** Start VS Code or Slack with `--remote-debugging-port`, point `BROWX_ATTACH_CDP` at it, grant `byob-attach`, and `snapshot` / `find` / `click` read and drive the app's own UI. browxai names the engine `electron` off `Browser.getVersion` without being told, so an agent is never told it is driving a plain Chromium tab.
 - **Run in CI without wedging.** Stand the server up headless in a pipeline; every call has a hard anti-wedge deadline, so a stuck page never hangs the run.
@@ -68,10 +68,10 @@ The capability gate, origin allow/blocklist and confirmation hooks are **policy*
 
 Two consequences worth knowing before you deploy:
 
-- **Plugins run in-process with full Node access.** The trust tier tells you where a plugin came from; the loader treats every tier identically at runtime, and nothing intercepts a plugin's calls. Adopting a plugin is exactly as consequential as adding an npm dependency, transitive deps included. See [plugin governance](docs/plugin-governance.md).
-- **The containment that contains is infrastructure.** For anything beyond driving your own machine against sites you own, run browxai in a container or VM as a non-root user with no route to your local network. [`deploy/Dockerfile`](deploy/Dockerfile) is a working starting point, and the [deployment checklist](docs/security-best-practices-for-adopters.md) is short.
+- **Plugins run in-process with full Node access.** The trust tier tells you where a plugin came from; the loader treats every tier identically at runtime, and nothing intercepts a plugin's calls. Adopting a plugin is exactly as consequential as adding an npm dependency, transitive deps included. See [plugin governance](https://browxai.com/plugins/governance/).
+- **The containment that contains is infrastructure.** For anything beyond driving your own machine against sites you own, run browxai in a container or VM as a non-root user with no route to your local network. [`deploy/Dockerfile`](https://github.com/kalebteccom/browxai/blob/main/deploy/Dockerfile) is a working starting point, and the [deployment checklist](https://browxai.com/security/best-practices/) is short.
 
-Chromium's own sandbox still isolates _page_ content the whole time, which is the boundary the [threat model](docs/threat-model.md) is mostly about. The gap is between the browxai process and your host.
+Chromium's own sandbox still isolates _page_ content the whole time, which is the boundary the [threat model](https://browxai.com/security/threat-model/) is mostly about. The gap is between the browxai process and your host.
 
 ## Install
 
@@ -133,7 +133,7 @@ The same safety gates apply as on the MCP path. Tools that broaden the security 
 
 ## Harness setup
 
-**[`harness/`](harness/)** holds ready-to-use setup for the common agent harnesses: MCP-server registration plus a portable "driving browxai well" Agent Skill. One adapter each for [Claude Code](harness/adapters/claude-code/), [Codex](harness/adapters/codex/) and [Pi](harness/adapters/pi/).
+**[`harness/`](https://github.com/kalebteccom/browxai/tree/main/harness/)** holds ready-to-use setup for the common agent harnesses: MCP-server registration plus a portable "driving browxai well" Agent Skill. One adapter each for [Claude Code](https://github.com/kalebteccom/browxai/tree/main/harness/adapters/claude-code/), [Codex](https://github.com/kalebteccom/browxai/tree/main/harness/adapters/codex/) and [Pi](https://github.com/kalebteccom/browxai/tree/main/harness/adapters/pi/).
 
 ## The surface
 
@@ -176,19 +176,19 @@ serialization error in `drop_files`, and `set_locale` never moving
 
 Project docs:
 
-- [CONTRIBUTING.md](CONTRIBUTING.md): contributor workflow + DCO.
-- [AGENTS.md](AGENTS.md): operating rules for AI-harness contributors.
-- [SECURITY.md](SECURITY.md): vulnerability reporting + disclosure policy.
-- [MAINTAINERS.md](MAINTAINERS.md): maintainer roster + responsibilities.
-- [RELEASING.md](RELEASING.md): release ritual + OIDC publish flow.
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md): Contributor Covenant adoption.
+- [CONTRIBUTING.md](https://github.com/kalebteccom/browxai/blob/main/CONTRIBUTING.md): contributor workflow + DCO.
+- [AGENTS.md](https://github.com/kalebteccom/browxai/blob/main/AGENTS.md): operating rules for AI-harness contributors.
+- [SECURITY.md](https://github.com/kalebteccom/browxai/blob/main/SECURITY.md): how to report a security issue, and the disclosure policy.
+- [MAINTAINERS.md](https://github.com/kalebteccom/browxai/blob/main/MAINTAINERS.md): maintainer roster + responsibilities.
+- [RELEASING.md](https://github.com/kalebteccom/browxai/blob/main/RELEASING.md): release ritual + OIDC publish flow.
+- [CODE_OF_CONDUCT.md](https://github.com/kalebteccom/browxai/blob/main/CODE_OF_CONDUCT.md): Contributor Covenant adoption.
 
 ## License
 
-Code is MIT. See [LICENSE](LICENSE).
+Code is MIT. See [LICENSE](https://github.com/kalebteccom/browxai/blob/main/LICENSE).
 
 The **browxai name and logo are trademarks of Kalebtec** and are not
-covered by the MIT License. The brand assets under [`brand/`](brand/)
-are all-rights-reserved (see [`brand/LICENSE`](brand/LICENSE)). See
-[TRADEMARKS.md](TRADEMARKS.md) for the full brand policy and what
+covered by the MIT License. The brand assets under [`brand/`](https://github.com/kalebteccom/browxai/tree/main/brand/)
+are all-rights-reserved (see [`brand/LICENSE`](https://github.com/kalebteccom/browxai/blob/main/brand/LICENSE)). See
+[TRADEMARKS.md](https://github.com/kalebteccom/browxai/blob/main/TRADEMARKS.md) for the full brand policy and what
 nominative use is allowed.
