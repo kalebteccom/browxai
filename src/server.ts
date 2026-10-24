@@ -73,7 +73,7 @@ import { SESSION_ARG, TIMEOUT_ARG, ACTION_OPTS, REF_OR_SELECTOR } from "./tools/
 // pure composition/wiring; `buildHost` threads them onto the shared ToolHost.
 import { describeTarget, asTarget } from "./tools/target-resolve.js";
 import { docsUrl } from "./util/docs-links.js";
-import { ListingTrimStdioTransport } from "./transport/listing-trim.js";
+import { createListingTrimStdioTransport } from "./transport/listing-trim.js";
 
 export const NAME = "browxai";
 // Derived from package.json — see src/util/version.ts. Never hand-bump.
@@ -341,7 +341,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   return {
     start: async () => {
-      const transport = new ListingTrimStdioTransport();
+      const transport = createListingTrimStdioTransport();
       await server.connect(transport);
       log.info("MCP server up on stdio");
     },
