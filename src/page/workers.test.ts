@@ -295,27 +295,42 @@ describe("WorkersRegistry.readMessages", () => {
     const listed = await reg.list(f.page, CHROMIUM, "service");
     expect(listed).toEqual([
       { workerId: "sw-2", type: "service", url: "https://x/sw.js", state: "running" },
-      { workerId: "sw-1", type: "service", url: "https://x/other.js", state: "stopped" },
     ]);
   });
 
-  it("lists every sw-* id a read returned, as stopped when its worker is gone", async () => {
+  it("lists a service worker the session saw live as stopped once it is gone", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.enqueueResponse(() => undefined);
+    f.enqueueResponse(() => []); // drain (Web Workers)
+    f.enqueueResponse(() => [{ url: "https://x/gone.js", data: "g", at: 1 }]);
+    const gone = fakeSw("https://x/gone.js");
+    f.serviceWorkers.push(gone);
+    expect((await reg.list(f.page, CHROMIUM, "service")).map((w) => w.state)).toEqual(["running"]);
+    f.serviceWorkers.length = 0;
+    const read = await reg.readMessages(f.page, {});
+    const listed = await reg.list(f.page, CHROMIUM, "service");
+    for (const m of read) expect(listed.map((w) => w.workerId)).toContain(m.workerId);
+    expect(listed.map((w) => [w.workerId, w.state])).toEqual([["sw-1", "stopped"]]);
+  });
+
+  it("does not list a service worker URL that only the page's message ring named", async () => {
     const reg = new WorkersRegistry();
     const f = fakePage();
     f.enqueueResponse(() => undefined);
     f.enqueueResponse(() => []); // drain (Web Workers)
     f.enqueueResponse(() => [
-      { url: "https://x/gone.js", data: "g", at: 1 },
-      { url: "https://x/live.js", data: "l", at: 2 },
+      { url: "https://planted.example/a.js", data: "a", at: 1 },
+      { url: "https://planted.example/b.js", data: "b", at: 2 },
+      { data: "no url", at: 3 },
     ]);
-    f.serviceWorkers.push(fakeSw("https://x/live.js"));
     const read = await reg.readMessages(f.page, {});
+    expect(read).toHaveLength(3);
+    expect(await reg.list(f.page, CHROMIUM, "service")).toEqual([]);
+    // A real worker is listed as running, and the planted ids still are not.
+    f.serviceWorkers.push(fakeSw("https://x/real.js"));
     const listed = await reg.list(f.page, CHROMIUM, "service");
-    for (const m of read) expect(listed.map((w) => w.workerId)).toContain(m.workerId);
-    expect(listed.map((w) => [w.workerId, w.state])).toEqual([
-      ["sw-2", "running"],
-      ["sw-1", "stopped"],
-    ]);
+    expect(listed.map((w) => [w.url, w.state])).toEqual([["https://x/real.js", "running"]]);
   });
 
   it("keeps a stopped service worker's id once it is listed, and does not message it", async () => {
@@ -467,8 +482,19 @@ describe("service workers and the origin policy", () => {
     ]);
     const out = await reg.readMessages(f.page, {}, blocked);
     expect(out.map((m) => m.data)).toEqual(["yes"]);
+    // Neither URL was seen running, so a ring message alone lists nothing.
+    expect(await reg.list(f.page, blocked, "service")).toEqual([]);
+    // Once both workers have run and stopped, the blocked origin stays out.
+    f.serviceWorkers.push(
+      fakeSw("https://blocked.example/sw.js"),
+      fakeSw("https://ok.example/sw.js"),
+    );
+    expect((await reg.list(f.page, blocked, "service")).map((w) => w.url)).toEqual([
+      "https://ok.example/sw.js",
+    ]);
+    f.serviceWorkers.length = 0;
     const listed = await reg.list(f.page, blocked, "service");
-    expect(listed.map((w) => w.url)).toEqual(["https://ok.example/sw.js"]);
+    expect(listed.map((w) => [w.url, w.state])).toEqual([["https://ok.example/sw.js", "stopped"]]);
   });
 
   it("refuses a send to a service worker on a blocked origin", async () => {

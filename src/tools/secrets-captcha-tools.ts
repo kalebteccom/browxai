@@ -7,6 +7,7 @@ import {
 import {
   accountError,
   applyCredentialToRegistry,
+  SECRETS_REQUIRED_ERROR,
   type ProviderCredentialInternal,
 } from "../util/credentials.js";
 import { capabilityMissing } from "../util/capabilities.js";
@@ -389,6 +390,10 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       const provider = credentialsResolved.config.provider;
       // oathtool keeps TOTP seeds only, so a password lookup can never succeed.
       if (provider === "oathtool") return accountRefusal(provider, oathtoolCredentialError());
+      // Without `secrets` the password could not be masked, so the lookup refuses
+      // here, before the vault is asked.
+      if (capabilityMissing("secrets", caps))
+        return accountRefusal(provider, SECRETS_REQUIRED_ERROR);
       const bad = accountError(account);
       if (bad) return accountRefusal(provider, bad);
       // The password is bound to the origins the operator listed for this
@@ -399,11 +404,9 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       const raw = (await credentialsResolved.provider.getCredential(
         account,
       )) as ProviderCredentialInternal;
-      // `applyCredentialToRegistry` enforces the `secrets`-capability
-      // pairing rule and strips `_password` before the result leaves this
-      // module — so the response we serialise never contains cleartext.
-      const registry = capabilityMissing("secrets", caps) ? null : e.secrets;
-      const result = applyCredentialToRegistry(raw, registry, account, origins);
+      // `applyCredentialToRegistry` strips `_password` before the result leaves
+      // this module — so the response we serialise never contains cleartext.
+      const result = applyCredentialToRegistry(raw, e.secrets, account, origins);
       const body = {
         ...result,
         tokensEstimate: estimateTokens(JSON.stringify(result)),

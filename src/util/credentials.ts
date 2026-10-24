@@ -39,6 +39,12 @@ export * from "./credentials-providers.js";
 // SecretRegistry integration
 // ---------------------------------------------------------------------------
 
+/** The refusal for a password lookup while the `secrets` capability is off. */
+export const SECRETS_REQUIRED_ERROR =
+  "credentials lookup refused: the `secrets` capability is not enabled. " +
+  "Returning a password without secrets-masking would leak it into transcripts. " +
+  "Add `secrets` to BROWX_CAPABILITIES alongside `credentials`, then restart.";
+
 /**
  * Apply a credential lookup to the per-session secrets registry:
  * registers the password under an account-derived alias, scoped to `origins`,
@@ -73,10 +79,7 @@ export function applyCredentialToRegistry(
     return {
       ok: false,
       provider: result.provider,
-      error:
-        "credentials lookup refused: the `secrets` capability is not enabled. " +
-        "Returning a password without secrets-masking would leak it into transcripts. " +
-        "Add `secrets` to BROWX_CAPABILITIES alongside `credentials`, then restart.",
+      error: SECRETS_REQUIRED_ERROR,
     };
   }
   if (origins.length === 0) {

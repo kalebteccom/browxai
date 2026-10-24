@@ -73,6 +73,10 @@ export class WorkersSwChannel {
    *  URL reuses the id, so `worker_messages_read` and `workers_list` agree on
    *  which SW is `sw-N`, and the id survives the SW stopping and restarting. */
   private swIdByUrl = new Map<string, string>();
+  /** The ids `liveWorkers` has handed out, so a worker this session saw live.
+   *  `list` shows a stopped row only for these: a URL the page's own message
+   *  ring named has an id too, but no worker was ever seen behind it. */
+  private seenLive = new Set<string>();
   private nextSwId = 1;
   /** Active fetch interceptors. Re-add of the same pattern replaces. */
   private fetchInterceptors = new Map<string, ActiveFetchIntercept>();
@@ -269,6 +273,7 @@ export class WorkersSwChannel {
       if (policy && !isOriginAllowed(url, policy)) continue;
       const id = this.idForUrl(url);
       if (!id) continue;
+      this.seenLive.add(id);
       byId.delete(id);
       byId.set(id, { id, url, worker });
     }
@@ -276,11 +281,11 @@ export class WorkersSwChannel {
   }
 
   /** Listings for the `sw-*` family: the SWs Playwright currently holds for the
-   *  context (`running`), then every other id this session has handed out whose
-   *  origin `policy` allows (`stopped`). Playwright drops a SW when its target
-   *  goes away, so a stopped SW is no longer live, but a message it posted still
-   *  carries its id. Listing the id keeps every `workerId` a read returns
-   *  visible here. */
+   *  context (`running`), then every other id this session saw live whose origin
+   *  `policy` allows (`stopped`). Playwright drops a SW when its target goes
+   *  away, so a stopped SW is no longer live, but a message it posted still
+   *  carries its id. An id minted only from the page's message ring is not
+   *  listed, because the page can name any URL it likes. */
   list(context: BrowserContext, policy?: OriginPolicy): WorkerListing[] {
     const live = this.liveWorkers(context, policy);
     const liveIds = new Set(live.map((w) => w.id));
@@ -291,7 +296,7 @@ export class WorkersSwChannel {
       state: "running",
     }));
     for (const [url, id] of this.swIdByUrl) {
-      if (liveIds.has(id)) continue;
+      if (liveIds.has(id) || !this.seenLive.has(id)) continue;
       if (policy && !isOriginAllowed(url, policy)) continue;
       out.push({ workerId: id, type: "service", url, state: "stopped" });
     }

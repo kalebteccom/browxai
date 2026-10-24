@@ -22,7 +22,9 @@ surface" covers.
 ### Fixed
 
 - **`screenshot_marks` paints a bare `{ref}` candidate.** A ref from `snapshot` or `find` came back with `bbox: null` and nothing painted when the DOM walk had found it, and ten of them in a row ran past the 5 s limit because each waited out its own 1 s probe in turn. A bare ref now resolves through the ref table the way `click` does, all of them at once, and a ref the table has never seen is named in `warnings`.
-- **`workers_list` shows every Service Worker that `worker_messages_read` returns messages for.** A Service Worker that has stopped keeps its `sw-N` id and is listed with `state: "stopped"`, and messages from a worker on an origin the origin rules do not allow are no longer returned.
+- **`workers_list` keeps a stopped Service Worker in the list.** A Service Worker that has stopped keeps its `sw-N` id and is listed with `state: "stopped"`, so the id `worker_messages_read` returned still resolves, and messages from a worker on an origin the origin rules do not allow are no longer returned.
+- **`get_credential` refuses before contacting the credential provider when `secrets` is off.** With `credentials` on and `secrets` off it used to ask the vault first, which could show an unlock prompt from `op`, `bw` or `lpass` and load the password into server memory before it refused. It now refuses first, with the same message.
+- **`workers_list` only lists service workers the session actually saw.** A page could report script URLs of its own through the message ring and have them listed as `stopped`. A service worker now appears as `stopped` only after the session has seen it running.
 - **`doctor` shows the `build` row only in a source checkout.** An installed
   package printed `build  dist/cli.js exists (0d old)`, which says nothing
   there. A missing `dist/cli.js` still fails the check.
