@@ -28,12 +28,12 @@ describe("buildSafariSession", () => {
     const { handle } = fakeHandle();
     const sess = buildSafariSession(handle);
     // The replacement message is strictly better than the one it replaced: it
-    // names the engine, says the engine declares no `page` sub-interface, and
-    // points at the capability substrates. `replay/session.ts` catches it to fall
+    // names the engine, says it has no browser page, and
+    // lists the engines that have one. `replay/session.ts` catches it to fall
     // back to an action-only archive, the same as before.
     expect(() => requirePage(sess)).toThrow(/engine "safari" has no browser page/);
-    expect(() => requirePage(sess)).toThrow(/declares no `page` sub-interface/);
-    expect(() => requirePage(sess)).toThrow(/capability substrate/);
+    expect(() => requirePage(sess)).toThrow(/has no browser page/);
+    expect(() => requirePage(sess)).toThrow(/Use a chromium, firefox, webkit or android session/);
   });
 
   it("close() tears the handle down once (idempotent)", async () => {
