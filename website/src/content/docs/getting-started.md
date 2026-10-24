@@ -38,6 +38,17 @@ stdio transport. Run by hand in a terminal it just waits for a client, so use
 `browxai doctor` to check the machine instead: it reports the Node version, the
 browser, the workspace and your configuration.
 
+On Linux and macOS, `npm install -g` can fail with `EACCES` when npm's global
+prefix sits in a root-owned directory. Don't reach for `sudo`. Either skip the
+global install and use `npx -y browxai` as the client's command ([how to wire it into a
+client](#wire-it-into-an-mcp-client)), or give npm a prefix in your home directory:
+
+```bash
+npm config set prefix ~/.npm-global
+```
+
+Then add `~/.npm-global/bin` to your `PATH` and run the install again.
+
 browxai launches the Google Chrome already installed on the machine, on one
 default profile per workspace (`<workspace>/profile`), so logins carry over
 between sessions. It looks for Google Chrome at its default install path on each
