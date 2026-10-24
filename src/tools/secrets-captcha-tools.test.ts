@@ -124,6 +124,7 @@ describe("get_credential — origin binding and account names", () => {
     pageUrl: string;
     origins?: Record<string, string[]>;
     providerName?: ProviderName;
+    capabilities?: string[];
   }): {
     handler: CapturedHandler;
     secrets: SecretRegistry;
@@ -154,7 +155,7 @@ describe("get_credential — origin binding and account names", () => {
       },
       gateCheck: () => undefined,
       entryFor: () => ({ secrets }),
-      caps: { enabled: new Set<string>(["secrets", "credentials"]) },
+      caps: { enabled: new Set<string>(opts.capabilities ?? ["secrets", "credentials"]) },
       credentialsResolved: {
         provider,
         config: {
@@ -196,6 +197,21 @@ describe("get_credential — origin binding and account names", () => {
     expect(String(body.error)).toContain("TOTP seeds only");
     expect(String(body.error)).toContain("BROWX_CREDENTIALS_PROVIDER");
     expect(lookups).toEqual([]);
+  });
+
+  it("refuses before asking the vault when the secrets capability is off", async () => {
+    const { handler, secrets, lookups } = captureGetCredential({
+      pageUrl: "https://app.example.com/login",
+      origins: { acme: ["https://app.example.com"] },
+      capabilities: ["credentials"],
+    });
+    const body = bodyOf(await handler({ account: "acme" }));
+    expect(body.ok).toBe(false);
+    expect(body.provider).toBe("1password");
+    expect(String(body.error)).toContain("`secrets` capability is not enabled");
+    expect(String(body.error)).toContain("BROWX_CAPABILITIES");
+    expect(lookups).toEqual([]);
+    expect(secrets.size()).toBe(0);
   });
 
   it("refuses an unlisted account even with no origins configured at all", async () => {
