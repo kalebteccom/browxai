@@ -79,11 +79,14 @@ import Shot from "../../components/Shot.astro";
   <Shot
     name="snapshot"
     alt={{
-      wide: "A GitHub repository page with named regions and element refs such as e333 for the search button and e345 for Pull requests, as browxai's snapshot returns them.",
+      wide: "A sample projects app at desktop width, run through browxai, annotated with element refs from the snapshot: e4 for the Projects link, e7 for the Account button, e10 for the search input and e13 for the first Open button.",
       narrow:
-        "A GitHub repository page at phone width with named regions and element refs such as e649 for the navigation toggle and e345 for Pull requests, as browxai's snapshot returns them.",
+        "The same sample projects app at 390 px wide in its mobile layout, run through browxai, annotated with refs from the snapshot: e10 for the search input and e13 for the first Open button.",
     }}
-    caption={{ wide: "A page as the agent reads it: refs it can act on, regions it can name." }}
+    caption={{
+      wide: "A sample app run through browxai: the refs the agent can act on.",
+      narrow: "The same sample app at 390 px, in its mobile layout.",
+    }}
   />
 </div>
 
@@ -138,24 +141,25 @@ import Shot from "../../components/Shot.astro";
     <Shot
       name="marks"
       alt={{
-        wide: "The same page with numbered boxes over eight elements, each number mapped to a ref, for example 8 is e363, the Code button.",
-        narrow:
-          "The same page at phone width with numbered boxes over seven elements, each number mapped to a ref, for example 5 is e653, the More button.",
+        wide: "The sample projects app at desktop width, run through browxai, with numbered boxes over eight elements, each number mapped to a ref. Mark 3 is e7, the Account button, and mark 8 is e13, the first Open button.",
+        narrow: "The sample projects app at 390 px wide in its mobile layout, run through browxai, with numbered boxes over six elements, each number mapped to a ref. Mark 6 is e13, the first Open button.",
       }}
       caption={{
-        wide: "Number the candidates, then say click 8.",
-        narrow: "Number the candidates, then say click 5.",
+        wide: "Sample app run through browxai: number the candidates, then say click 3.",
+        narrow: "Sample app at 390 px, mobile layout: number the candidates, then say click 6.",
       }}
     />
     <span class="browx-shot-step">// act</span>
     <Shot
       name="act-diff"
       alt={{
-        wide: "The Code menu open on the repository page, with the diff browxai returned: aria-expanded false to true and 64 nodes added.",
-        narrow:
-          "The More menu open on the repository page at phone width, with the diff browxai returned: aria-expanded false to true and 34 nodes added.",
+        wide: "The sample projects app at desktop width, run through browxai, with the Account menu open after one click and the diff browxai returned: aria-expanded false to true and 6 nodes added.",
+        narrow: "The sample projects app at 390 px wide in its mobile layout, run through browxai, with the Account menu open after one click and the diff browxai returned: aria-expanded false to true and 6 nodes added.",
       }}
-      caption={{ wide: "One click, one diff: what changed, and nothing else." }}
+      caption={{
+        wide: "Sample app run through browxai: one click, one diff.",
+        narrow: "Sample app at 390 px, mobile layout: one click, one diff.",
+      }}
     />
   </div>
 </div>

@@ -1,66 +1,66 @@
 {
   "snapshot": {
     "light.1280": {
-      "stem": "snapshot.light.1280.6687adf1",
+      "stem": "snapshot.light.1280.6cf90829",
       "width": 1280,
       "height": 800
     },
     "light.390": {
-      "stem": "snapshot.light.390.3e476c1d",
+      "stem": "snapshot.light.390.8cbe6c0c",
       "width": 390,
       "height": 844
     },
     "dark.1280": {
-      "stem": "snapshot.dark.1280.420392d7",
+      "stem": "snapshot.dark.1280.91745d99",
       "width": 1280,
       "height": 800
     },
     "dark.390": {
-      "stem": "snapshot.dark.390.119d9681",
+      "stem": "snapshot.dark.390.fc061748",
       "width": 390,
       "height": 844
     }
   },
   "marks": {
     "light.1280": {
-      "stem": "marks.light.1280.99e70a46",
+      "stem": "marks.light.1280.318c8fac",
       "width": 1280,
       "height": 800
     },
     "light.390": {
-      "stem": "marks.light.390.b957952e",
+      "stem": "marks.light.390.53b84266",
       "width": 390,
       "height": 844
     },
     "dark.1280": {
-      "stem": "marks.dark.1280.06b276aa",
+      "stem": "marks.dark.1280.ac6d80ab",
       "width": 1280,
       "height": 800
     },
     "dark.390": {
-      "stem": "marks.dark.390.ebde5dfb",
+      "stem": "marks.dark.390.38e9b879",
       "width": 390,
       "height": 844
     }
   },
   "act-diff": {
     "light.1280": {
-      "stem": "act-diff.light.1280.2399b903",
+      "stem": "act-diff.light.1280.05bb02cd",
       "width": 1280,
       "height": 800
     },
     "light.390": {
-      "stem": "act-diff.light.390.dfea9b1d",
+      "stem": "act-diff.light.390.6ce72c23",
       "width": 390,
       "height": 844
     },
     "dark.1280": {
-      "stem": "act-diff.dark.1280.860e0f40",
+      "stem": "act-diff.dark.1280.63c43593",
       "width": 1280,
       "height": 800
     },
     "dark.390": {
-      "stem": "act-diff.dark.390.eec7e1dd",
+      "stem": "act-diff.dark.390.fccebce3",
       "width": 390,
       "height": 844
     }
