@@ -108,6 +108,8 @@ surface" covers.
 - Docs: install steps now state Node 22 and that Chrome is the default browser;
   the `BROWX_CHANNEL` row said the bundled build; the BYOB recipe used a stale
   profile directory; the harness READMEs said Node 20.
+- Lazily created sessions refuse a missing `byob-attach` capability with the same
+  structured refusal as `open_session`.
 
 ## [0.13.0] - 2026-10-22
 

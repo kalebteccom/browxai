@@ -671,7 +671,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
   Arbitrary page-side JS execution. `poll_eval` re-runs an expression until it is truthy and is gated by `eval` alone. Off by default; loud warning when enabled.
 
-- `byob-attach`, default **off**. Tools: none; it gates every `attached` session: `open_session({mode:"attached"})`, the default session of a server started with `BROWX_ATTACH_CDP`, and the attach-only `android` and `electron` engines. Without it, session creation refuses with `capability-required` before any connection is made, and `open_session` returns the standard refusal with `requiredCapability: "byob-attach"`.
+- `byob-attach`, default **off**. Tools: none; it gates every `attached` session: `open_session({mode:"attached"})`, the default session of a server started with `BROWX_ATTACH_CDP`, and the attach-only `android` and `electron` engines. Without it, session creation refuses before any connection is made. `open_session` and any tool that creates the default session lazily return the standard refusal with `requiredCapability: "byob-attach"`.
 
   Lowered-security CDP-attach against the operator's Chrome. Loud one-time warning when enabled, and a start-time warning when `BROWX_ATTACH_CDP` is set without it. The check reads the start-time capability set, so a saved config or `set_config` cannot add it. `browxai chrome start` only launches Chrome and attaches nothing, so it needs no capability; the `browxai-attached` entry that `browxai init` writes sets `byob-attach` in its env.
 
