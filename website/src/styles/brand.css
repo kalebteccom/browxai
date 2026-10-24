@@ -1396,3 +1396,70 @@ mobile-starlight-toc nav {
     padding-block: 0.7rem;
   }
 }
+
+/* ---- Product shots (landing) ---------------------------------------------- */
+/* Shot.astro renders a <picture> per theme and width. Show the one that matches
+   html[data-theme] (dark when unset) and the viewport: the 1280 capture above
+   52rem, the 390 capture at or below it. The captures are burned for display at
+   1100 px and 350 px, so the frame caps at those widths to keep captions
+   readable. */
+.browx-shots {
+  max-width: 1140px;
+  margin-inline: auto;
+  margin-top: clamp(2.5rem, 6vw, 4rem);
+}
+.browx-shot-step {
+  display: block;
+  max-width: 1100px;
+  margin: clamp(2rem, 5vw, 3rem) auto 0.75rem;
+  font-family: var(--browx-font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--sl-color-text-accent);
+}
+.browx-shot {
+  margin: 0 auto;
+  max-width: 1100px;
+}
+.browx-shot .bs,
+.browx-shot .bs-cap {
+  display: none;
+}
+.browx-shot .bs img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--sl-color-hairline-shade);
+  border-radius: 0.85rem;
+  box-shadow: 0 30px 70px -34px rgba(0, 0, 0, 0.7);
+}
+.browx-shot figcaption {
+  margin-top: 0.75rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--sl-color-gray-3);
+}
+@media (min-width: 52.0625rem) {
+  :root:not([data-theme="light"]) .browx-shot .bs[data-t="dark"][data-w="wide"],
+  :root[data-theme="light"] .browx-shot .bs[data-t="light"][data-w="wide"] {
+    display: block;
+  }
+  .browx-shot .bs-cap[data-w="wide"] {
+    display: inline;
+  }
+}
+@media (max-width: 52rem) {
+  .browx-shot {
+    max-width: 350px;
+  }
+  :root:not([data-theme="light"]) .browx-shot .bs[data-t="dark"][data-w="narrow"],
+  :root[data-theme="light"] .browx-shot .bs[data-t="light"][data-w="narrow"] {
+    display: block;
+  }
+  .browx-shot .bs-cap[data-w="narrow"] {
+    display: inline;
+  }
+  .browx-shot-step {
+    max-width: 350px;
+  }
+}
