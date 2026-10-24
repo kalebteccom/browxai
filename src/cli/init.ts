@@ -12,6 +12,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { capabilitiesAssignment, capabilitiesWith } from "../util/capabilities.js";
+import {
+  clientsReport,
+  detectClients,
+  realSystem,
+  shellWord,
+  type ClientSystem,
+  type ServerEntry,
+} from "./init-clients.js";
 
 interface InitOpts {
   workspace: string;
@@ -19,7 +27,12 @@ interface InitOpts {
   noWrite?: boolean;
 }
 
-export function runInit(args: string[]): Promise<number> {
+/** Seams a test can replace. */
+export interface InitDeps {
+  system?: ClientSystem;
+}
+
+export function runInit(args: string[], deps: InitDeps = {}): Promise<number> {
   const opts = parseArgs(args);
   if (!opts) {
     process.stderr.write(
@@ -106,6 +119,17 @@ export function runInit(args: string[]): Promise<number> {
     );
   }
   const ws = shellWord(browxDir);
+  // The entry a user-level client config gets. Same server as the project file,
+  // minus the attach entry, and never a path inside the npx cache.
+  const inNpxCache = /[\\/]_npx[\\/]/.test(distCli);
+  const userEntry: ServerEntry = {
+    ...(inNpxCache
+      ? { command: "npx", args: ["-y", "browxai"] }
+      : { command: "node", args: [distCli] }),
+    env: { BROWX_WORKSPACE: browxDir, BROWX_TEST_ATTRIBUTES: testAttrs },
+  };
+  const system = deps.system ?? realSystem();
+  process.stdout.write(clientsReport(detectClients(system), userEntry, system) + "\n");
   process.stdout.write(
     `next steps:\n  1) open Claude Code with cwd=${workspace} so this .mcp.json is picked up\n` +
       `  2) use the \`browxai\` MCP server for managed mode. It needs no more setup: it launches your installed Chrome, or the bundled Chromium without one\n` +
@@ -116,11 +140,6 @@ export function runInit(args: string[]): Promise<number> {
       `Keep BROWX_WORKSPACE=${ws} on every \`browxai chrome\` command. The entries above use it, and a Chrome started without it uses ~/.browxai/profile, which is a different profile.\n`,
   );
   return Promise.resolve(0);
-}
-
-/** The path as one shell word: bare when it is plain, single-quoted otherwise. */
-function shellWord(path: string): string {
-  return /^[\w@%+=:,./-]+$/.test(path) ? path : `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
 function parseArgs(args: string[]): InitOpts | null {
