@@ -23,7 +23,7 @@ export const SESSION_ARG = {
     .string()
     .optional()
     .describe(
-      'Session id (default "default"). Each id is an isolated browser context (own cookie jar, own refs). Open non-default sessions with open_session; list with list_sessions.',
+      'Session id (default "default"), a plain name: letters, digits, `.`, `_`, `-`. Each id is an isolated browser context (own cookie jar, own refs) and is created on first use; `open_session` sets options up front and `list_sessions` lists them.',
     ),
 };
 
