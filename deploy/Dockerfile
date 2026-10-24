@@ -10,8 +10,11 @@
 # package.json — a mismatch means the bundled browser and the driver disagree.
 FROM mcr.microsoft.com/playwright:v1.64.1-noble
 
+# BROWX_HEADLESS=1: the container has no display, and browxai launches headed
+# unless told otherwise.
 ENV NODE_ENV=production \
-    BROWX_WORKSPACE=/workspace
+    BROWX_WORKSPACE=/workspace \
+    BROWX_HEADLESS=1
 
 # All browxai file IO is workspace-rooted. Mount a volume here to keep profiles,
 # screenshots and downloads outside the container's writable layer.
