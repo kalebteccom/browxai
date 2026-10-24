@@ -128,20 +128,19 @@ describe("chromium engine — automation switch", () => {
 });
 
 describe("chromium engine — background-throttling flags", () => {
-  it('emits the three flags on the persistent launch for "disabled"', async () => {
-    const options = await capturePersistentOptions({ backgroundThrottling: "disabled" });
-    expect(options.args).toEqual([
-      "--disable-background-timer-throttling",
-      "--disable-backgrounding-occluded-windows",
-      "--disable-renderer-backgrounding",
-    ]);
-  });
-
-  it('emits the three flags on the ephemeral launch for "disabled"', async () => {
-    const launchOptions = await captureEphemeralLaunchOptions({
-      backgroundThrottling: "disabled",
-    });
-    expect(launchOptions.args).toEqual([
+  it.each([
+    {
+      label: "persistent",
+      capture: (opts: Parameters<typeof capturePersistentOptions>[0]) =>
+        capturePersistentOptions(opts).then((o) => o.args),
+    },
+    {
+      label: "ephemeral",
+      capture: (opts: Parameters<typeof capturePersistentOptions>[0]) =>
+        captureEphemeralLaunchOptions(opts).then((o) => o.args),
+    },
+  ])('emits the three flags on the $label launch for "disabled"', async ({ capture }) => {
+    expect(await capture({ backgroundThrottling: "disabled" })).toEqual([
       "--disable-background-timer-throttling",
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",

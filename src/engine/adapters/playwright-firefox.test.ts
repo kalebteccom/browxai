@@ -21,15 +21,16 @@ describe("PlaywrightFirefoxAdapter — declarative surface", () => {
 });
 
 describe("firefoxChannelFromEnv — the moz-firefox BiDi flag (Juggler vs BiDi two-track)", () => {
-  it("returns undefined for the default Juggler lane (flag unset)", () => {
-    expect(firefoxChannelFromEnv({})).toBeUndefined();
-    expect(firefoxChannelFromEnv({ BROWX_FIREFOX_CHANNEL: "" })).toBeUndefined();
-  });
-
-  it("selects the moz-firefox channel when the flag is set to it", () => {
-    expect(firefoxChannelFromEnv({ BROWX_FIREFOX_CHANNEL: MOZ_FIREFOX_CHANNEL })).toBe(
-      MOZ_FIREFOX_CHANNEL,
-    );
+  it.each([
+    { label: "unset flag", env: {}, expected: undefined },
+    { label: "empty flag", env: { BROWX_FIREFOX_CHANNEL: "" }, expected: undefined },
+    {
+      label: "the moz-firefox value",
+      env: { BROWX_FIREFOX_CHANNEL: MOZ_FIREFOX_CHANNEL },
+      expected: MOZ_FIREFOX_CHANNEL,
+    },
+  ])("resolves $label to the Juggler default or the moz-firefox channel", ({ env, expected }) => {
+    expect(firefoxChannelFromEnv(env)).toBe(expected);
   });
 
   it("rejects an unknown channel value loudly (no silent fallback)", () => {

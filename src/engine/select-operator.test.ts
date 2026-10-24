@@ -26,43 +26,73 @@ describe("validateEngine — operator string → EngineKind", () => {
 });
 
 describe("resolveEngineSelection — precedence flag > env > default", () => {
-  it("returns undefined when neither flag nor env is set (server applies chromium)", () => {
-    expect(resolveEngineSelection([], {})).toBeUndefined();
+  it.each([
+    {
+      label: "returns undefined when neither flag nor env is set (server applies chromium)",
+      argv: [] as string[],
+      env: {},
+      expected: undefined,
+    },
+    {
+      label: "reads --engine <kind> from argv",
+      argv: ["--engine", "webkit"],
+      env: {},
+      expected: "webkit",
+    },
+    {
+      label: "reads --engine=<kind> (equals form) from argv",
+      argv: ["--engine=android"],
+      env: {},
+      expected: "android",
+    },
+    {
+      label: "BROWX_ENGINE wins over the default",
+      argv: [],
+      env: { BROWX_ENGINE: "android" },
+      expected: "android",
+    },
+    {
+      label: "the flag wins over BROWX_ENGINE",
+      argv: ["--engine=chromium"],
+      env: { BROWX_ENGINE: "android" },
+      expected: "chromium",
+    },
+    {
+      label: "trims a whitespace-only BROWX_ENGINE and falls back to the default",
+      argv: [],
+      env: { BROWX_ENGINE: "   " },
+      expected: undefined,
+    },
+    {
+      label: "ignores an empty BROWX_ENGINE and falls back to the default",
+      argv: [],
+      env: { BROWX_ENGINE: "" },
+      expected: undefined,
+    },
+  ])("$label", ({ argv, env, expected }) => {
+    expect(resolveEngineSelection(argv, env)).toBe(expected);
   });
 
-  it("reads --engine <kind> from argv", () => {
-    expect(resolveEngineSelection(["--engine", "webkit"], {})).toBe("webkit");
-  });
-
-  it("reads --engine=<kind> (equals form) from argv", () => {
-    expect(resolveEngineSelection(["--engine=android"], {})).toBe("android");
-  });
-
-  it("BROWX_ENGINE wins over the default but loses to the flag (full precedence chain)", () => {
-    // env beats default
-    expect(resolveEngineSelection([], { BROWX_ENGINE: "android" })).toBe("android");
-    // flag beats env
-    expect(resolveEngineSelection(["--engine=chromium"], { BROWX_ENGINE: "android" })).toBe(
-      "chromium",
-    );
-  });
-
-  it("trims + ignores an empty BROWX_ENGINE (falls back to default)", () => {
-    expect(resolveEngineSelection([], { BROWX_ENGINE: "   " })).toBeUndefined();
-    expect(resolveEngineSelection([], { BROWX_ENGINE: "" })).toBeUndefined();
-  });
-
-  it("validates the env value — an unknown BROWX_ENGINE errors with the list", () => {
-    expect(() => resolveEngineSelection([], { BROWX_ENGINE: "opera" })).toThrow(UnknownEngineError);
-  });
-
-  it("a bare trailing --engine (no value) is a loud mistake, not a silent no-op", () => {
-    expect(() => resolveEngineSelection(["--engine"], {})).toThrowError(
-      /--engine requires a value/,
-    );
-    // a following flag is not swallowed as the value
-    expect(() => resolveEngineSelection(["--engine", "--headless"], {})).toThrowError(
-      /--engine requires a value/,
-    );
+  it.each([
+    {
+      label: "an unknown BROWX_ENGINE errors with the list",
+      argv: [] as string[],
+      env: { BROWX_ENGINE: "opera" },
+      error: UnknownEngineError as typeof UnknownEngineError | RegExp,
+    },
+    {
+      label: "a bare trailing --engine (no value) is a loud mistake, not a silent no-op",
+      argv: ["--engine"],
+      env: {},
+      error: /--engine requires a value/,
+    },
+    {
+      label: "a following flag is not swallowed as the --engine value",
+      argv: ["--engine", "--headless"],
+      env: {},
+      error: /--engine requires a value/,
+    },
+  ])("rejects: $label", ({ argv, env, error }) => {
+    expect(() => resolveEngineSelection(argv, env)).toThrow(error);
   });
 });

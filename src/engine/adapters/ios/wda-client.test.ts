@@ -77,41 +77,51 @@ describe("WdaClient session lifecycle", () => {
 });
 
 describe("WdaClient endpoints", () => {
-  it("asks for the hierarchy as JSON, not XML", async () => {
-    const { client, calls } = await openedClient({ "/source": {} });
-    await client.source();
-    expect(calls[0]!.url).toBe("http://127.0.0.1:8100/session/S1/source?format=json");
-  });
-
-  it("sets a value element-scoped, never as a shell string", async () => {
-    // RFC 0008 §6: the materialised secret exists only inside the driver
-    // dispatch. A per-character array is WebDriverAgent's own value form.
-    const { client, calls } = await openedClient({ "/value": null });
-    await client.setValue("E42", "hunter2");
-    expect(calls[0]!.url).toBe("http://127.0.0.1:8100/session/S1/element/E42/value");
-    expect(JSON.parse(calls[0]!.body!)).toEqual({ value: ["h", "u", "n", "t", "e", "r", "2"] });
-  });
-
-  it("drags with the XCUITest duration primitive, in seconds", async () => {
-    const { client, calls } = await openedClient({ dragfromto: null });
-    await client.drag({ x: 10, y: 20 }, { x: 10, y: 400 }, 0.25);
-    expect(calls[0]!.url).toContain("/wda/dragfromtoforduration");
-    expect(JSON.parse(calls[0]!.body!)).toEqual({
-      fromX: 10,
-      fromY: 20,
-      toX: 10,
-      toY: 400,
-      duration: 0.25,
-    });
-  });
-
-  it("queries the accessibility identifier strategy, which is what a testID compiles to", async () => {
-    const { client, calls } = await openedClient({ "/element": { "element-6066-e4a": "E7" } });
-    expect(await client.findByAccessibilityId("checkout-submit")).toBe("E7");
-    expect(JSON.parse(calls[0]!.body!)).toEqual({
-      using: "accessibility id",
-      value: "checkout-submit",
-    });
+  it.each([
+    {
+      label: "asks for the hierarchy as JSON, not XML",
+      answers: { "/source": {} },
+      run: (c: WdaClient) => c.source(),
+      url: "http://127.0.0.1:8100/session/S1/source?format=json",
+    },
+    {
+      // The materialised secret exists only inside the driver dispatch. A
+      // per-character array is WebDriverAgent's own value form.
+      label: "sets a value element-scoped, never as a shell string",
+      answers: { "/value": null },
+      run: (c: WdaClient) => c.setValue("E42", "hunter2"),
+      url: "http://127.0.0.1:8100/session/S1/element/E42/value",
+      body: { value: ["h", "u", "n", "t", "e", "r", "2"] },
+    },
+    {
+      label: "drags with the XCUITest duration primitive, in seconds",
+      answers: { dragfromto: null },
+      run: (c: WdaClient) => c.drag({ x: 10, y: 20 }, { x: 10, y: 400 }, 0.25),
+      urlContains: "/wda/dragfromtoforduration",
+      body: { fromX: 10, fromY: 20, toX: 10, toY: 400, duration: 0.25 },
+    },
+    {
+      label: "queries the accessibility identifier strategy, which is what a testID compiles to",
+      answers: { "/element": { "element-6066-e4a": "E7" } },
+      run: (c: WdaClient) => c.findByAccessibilityId("checkout-submit"),
+      result: "E7",
+      body: { using: "accessibility id", value: "checkout-submit" },
+    },
+  ] as Array<{
+    label: string;
+    answers: Record<string, unknown>;
+    run: (c: WdaClient) => Promise<unknown>;
+    url?: string;
+    urlContains?: string;
+    body?: unknown;
+    result?: unknown;
+  }>)("endpoint: $label", async ({ answers, run, url, urlContains, body, result }) => {
+    const { client, calls } = await openedClient(answers);
+    const got = await run(client);
+    if (url !== undefined) expect(calls[0]!.url).toBe(url);
+    if (urlContains !== undefined) expect(calls[0]!.url).toContain(urlContains);
+    if (body !== undefined) expect(JSON.parse(calls[0]!.body!)).toEqual(body);
+    if (result !== undefined) expect(got).toBe(result);
   });
 });
 

@@ -67,17 +67,19 @@ describe("SafaridriverHybridAdapter — session creation", () => {
     expect(s.capabilities.deep).toBe(false);
   });
 
-  it("falls back to Classic-only when no ws:// URL is granted (boolean placeholder)", async () => {
-    const adapter = adapterWith({ wsUrl: undefined });
-    const s = await adapter.launchManaged();
+  it.each([
+    {
+      label: "no ws:// URL is granted (boolean placeholder)",
+      opts: { wsUrl: undefined },
+    },
+    {
+      label: "BiDi connect fails (BiDi is strictly optional)",
+      opts: { wsUrl: "ws://x", bidiConnectThrows: true },
+    },
+  ])("falls back to Classic-only when $label", async ({ opts }) => {
+    const s = await adapterWith(opts).launchManaged();
     expect(s.hasBidi).toBe(false);
     expect(s.bidi).toBeUndefined();
-  });
-
-  it("degrades to Classic-only when BiDi connect fails (BiDi is strictly optional)", async () => {
-    const adapter = adapterWith({ wsUrl: "ws://x", bidiConnectThrows: true });
-    const s = await adapter.launchManaged();
-    expect(s.hasBidi).toBe(false);
   });
 });
 

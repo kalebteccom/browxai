@@ -59,17 +59,28 @@ describe("profileAttachedBrowser — which app is on the other end", () => {
     expect(profile.warning).toContain("EXTERNAL Chrome over CDP");
   });
 
-  it("falls back to chromium when the browser-level CDP session cannot open", async () => {
-    // The direction to be wrong in. A probe that cannot answer must leave an
-    // ordinary Chromium attach exactly as it was, never guess electron.
-    const profile = await profileAttachedBrowser(fakeBrowser({ fail: "session" }));
+  it.each([
+    {
+      // The direction to be wrong in. A probe that cannot answer must leave an
+      // ordinary Chromium attach exactly as it was, never guess electron.
+      label: "the browser-level CDP session cannot open",
+      browser: () => fakeBrowser({ fail: "session" }),
+      canCreateTargets: true,
+    },
+    {
+      label: "the endpoint answers with no user agent",
+      browser: () => fakeBrowser({}),
+      canCreateTargets: undefined,
+    },
+    {
+      label: "the UA only carries the bare word Electron in a non-version position",
+      browser: () => fakeBrowser({ userAgent: `${CHROME_UA} ElectronCompatible/1.0` }),
+      canCreateTargets: undefined,
+    },
+  ])("falls back to chromium when $label", async ({ browser, canCreateTargets }) => {
+    const profile = await profileAttachedBrowser(browser());
     expect(profile.engine).toBe("chromium");
-    expect(profile.canCreateTargets).toBe(true);
-  });
-
-  it("falls back to chromium when the endpoint answers with no user agent", async () => {
-    const profile = await profileAttachedBrowser(fakeBrowser({}));
-    expect(profile.engine).toBe("chromium");
+    if (canCreateTargets !== undefined) expect(profile.canCreateTargets).toBe(canCreateTargets);
   });
 
   it("still detects Electron when the app token is missing from the UA", async () => {
@@ -80,11 +91,6 @@ describe("profileAttachedBrowser — which app is on the other end", () => {
     expect(profile.engine).toBe("electron");
     expect(profile.detail.electron).toBe("30.0.1");
     expect(profile.detail.app).toBe("an Electron app");
-  });
-
-  it("does not match the bare word Electron in a non-version position", async () => {
-    const ua = `${CHROME_UA} ElectronCompatible/1.0`;
-    expect((await profileAttachedBrowser(fakeBrowser({ userAgent: ua }))).engine).toBe("chromium");
   });
 
   it("detaches the probe session so it never leaks onto the attached app", async () => {

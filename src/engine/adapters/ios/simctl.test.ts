@@ -102,91 +102,105 @@ describe("simctl argv construction", () => {
   });
 });
 
-describe("runtimeLabel", () => {
-  it("reads the runtime identifier into an OS and a version", () => {
-    expect(runtimeLabel("com.apple.CoreSimulator.SimRuntime.iOS-26-5")).toBe("iOS 26.5");
-  });
-
-  it("returns an unrecognised identifier verbatim instead of mangling it", () => {
-    expect(runtimeLabel("something-else-entirely")).toBe("something-else-entirely");
-  });
-});
-
-describe("parseDevices", () => {
+describe("pure parsers and device selection", () => {
   const devices = parseDevices(LIST_JSON);
+  const shutdown: NativeDeviceInfo[] = [
+    { id: "a", name: "old", state: "shutdown", runtime: "iOS 9.3", platform: "ios" },
+    { id: "b", name: "new", state: "shutdown", runtime: "iOS 26.5", platform: "ios" },
+  ];
 
-  it("reports the available iOS devices with their state and runtime, and drops the rest", () => {
-    // The exact list excludes the unavailable-runtime row and the tvOS device.
-    // simctl keeps rows for runtimes that are no longer installed, and offering
-    // one as a boot target fails opaquely tens of seconds later.
-    expect(devices.map((d) => `${d.name} ${d.runtime} ${d.state}`)).toEqual([
-      "iPhone 15 Pro iOS 17.2 shutdown",
-      "iPhone 17 iOS 26.5 booted",
-    ]);
-    expect(devices.every((d) => d.platform === "ios")).toBe(true);
+  it.each([
+    {
+      label: "runtimeLabel reads the runtime identifier into an OS and a version",
+      actual: runtimeLabel("com.apple.CoreSimulator.SimRuntime.iOS-26-5"),
+      expected: "iOS 26.5",
+    },
+    {
+      label: "runtimeLabel returns an unrecognised identifier verbatim instead of mangling it",
+      actual: runtimeLabel("something-else-entirely"),
+      expected: "something-else-entirely",
+    },
+    {
+      // The exact list excludes the unavailable-runtime row and the tvOS device.
+      // simctl keeps rows for runtimes that are no longer installed, and offering
+      // one as a boot target fails opaquely tens of seconds later.
+      label:
+        "parseDevices reports the available iOS devices with state and runtime, drops the rest",
+      actual: devices.map((d) => `${d.name} ${d.runtime} ${d.state} ${d.platform}`),
+      expected: ["iPhone 15 Pro iOS 17.2 shutdown ios", "iPhone 17 iOS 26.5 booted ios"],
+    },
+    {
+      label: "parseDevices returns an empty list rather than throwing on unparseable output",
+      actual: parseDevices("not json at all"),
+      expected: [],
+    },
+    {
+      label: "selectDevice matches a requested udid",
+      actual: selectDevice(devices, "5B31F7E3-0372-431C-89F1-7CE1A3DC28FD").name,
+      expected: "iPhone 15 Pro",
+    },
+    {
+      label: "selectDevice matches an exact device name",
+      actual: selectDevice(devices, "iPhone 17").id,
+      expected: "EFFE589F-6328-47F3-B0BE-44075216B709",
+    },
+    {
+      label: "selectDevice prefers a booted device when none was requested",
+      actual: selectDevice(devices).name,
+      expected: "iPhone 17",
+    },
+    {
+      // A string compare puts "iOS 9.3" above "iOS 26.5".
+      label: "selectDevice picks the newest runtime numerically, not lexically",
+      actual: selectDevice(shutdown).name,
+      expected: "new",
+    },
+    {
+      label: "parseInstalledApps reads bundle ids and display names out of the OpenStep plist",
+      actual: parseInstalledApps(LISTAPPS),
+      expected: [
+        { bundleId: "com.apple.Bridge", name: "Watch" },
+        { bundleId: "com.acme.checkout", name: "Acme Checkout" },
+      ],
+    },
+    {
+      // Fewer rows, never invented ones. The caller treats empty as "could not
+      // enumerate" rather than "no apps installed".
+      label: "parseInstalledApps yields no rows for a shape it does not recognise",
+      actual: parseInstalledApps("{}"),
+      expected: [],
+    },
+    {
+      label: "parseLaunchPid reads the pid out of simctl launch's one-line report",
+      actual: parseLaunchPid("com.acme.checkout: 51234\n"),
+      expected: 51234,
+    },
+    {
+      label: "parseLaunchPid reports undefined rather than a wrong number when the format differs",
+      actual: parseLaunchPid("launched"),
+      expected: undefined,
+    },
+  ])("$label", ({ actual, expected }) => {
+    expect(actual).toEqual(expected);
   });
 
-  it("returns an empty list rather than throwing on unparseable output", () => {
-    expect(parseDevices("not json at all")).toEqual([]);
-  });
-});
-
-describe("selectDevice", () => {
-  const devices = parseDevices(LIST_JSON);
-
-  it("matches a requested udid or an exact device name", () => {
-    expect(selectDevice(devices, "5B31F7E3-0372-431C-89F1-7CE1A3DC28FD").name).toBe(
-      "iPhone 15 Pro",
-    );
-    expect(selectDevice(devices, "iPhone 17").id).toBe("EFFE589F-6328-47F3-B0BE-44075216B709");
-  });
-
-  it("refuses a requested device that does not exist instead of picking another", () => {
-    // Silently falling back would run a QA session against the wrong OS and
-    // report it as the requested one.
-    expect(() => selectDevice(devices, "iPhone 4")).toThrow(NoSimulatorError);
-    expect(() => selectDevice(devices, "iPhone 4")).toThrow(/no iOS simulator matches "iPhone 4"/);
-  });
-
-  it("prefers a booted device when none was requested", () => {
-    expect(selectDevice(devices).name).toBe("iPhone 17");
-  });
-
-  it("picks the newest runtime numerically, not lexically", () => {
-    const shutdown: NativeDeviceInfo[] = [
-      { id: "a", name: "old", state: "shutdown", runtime: "iOS 9.3", platform: "ios" },
-      { id: "b", name: "new", state: "shutdown", runtime: "iOS 26.5", platform: "ios" },
-    ];
-    // A string compare puts "iOS 9.3" above "iOS 26.5".
-    expect(selectDevice(shutdown).name).toBe("new");
-  });
-
-  it("refuses when there is nothing to pick", () => {
-    expect(() => selectDevice([])).toThrow(NoSimulatorError);
-  });
-});
-
-describe("parseInstalledApps", () => {
-  it("reads bundle ids and display names out of the OpenStep plist simctl emits", () => {
-    expect(parseInstalledApps(LISTAPPS)).toEqual([
-      { bundleId: "com.apple.Bridge", name: "Watch" },
-      { bundleId: "com.acme.checkout", name: "Acme Checkout" },
-    ]);
-  });
-
-  it("yields no rows for a shape it does not recognise", () => {
-    // Fewer rows, never invented ones. The caller treats empty as "could not
-    // enumerate" rather than "no apps installed".
-    expect(parseInstalledApps("{}")).toEqual([]);
-  });
-});
-
-describe("parseLaunchPid", () => {
-  it("reads the pid out of simctl launch's one-line report", () => {
-    expect(parseLaunchPid("com.acme.checkout: 51234\n")).toBe(51234);
-  });
-
-  it("reports undefined rather than a wrong number when the format differs", () => {
-    expect(parseLaunchPid("launched")).toBeUndefined();
-  });
+  it.each([
+    {
+      // Silently falling back would run a QA session against the wrong OS and
+      // report it as the requested one.
+      label: "refuses a requested device that does not exist instead of picking another",
+      select: () => selectDevice(devices, "iPhone 4"),
+      message: /no iOS simulator matches "iPhone 4"/,
+    },
+    {
+      label: "refuses when there is nothing to pick",
+      select: () => selectDevice([]),
+    },
+  ] as Array<{ label: string; select: () => unknown; message?: RegExp }>)(
+    "selectDevice $label",
+    ({ select, message }) => {
+      expect(select).toThrow(NoSimulatorError);
+      if (message) expect(select).toThrow(message);
+    },
+  );
 });
