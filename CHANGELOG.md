@@ -38,7 +38,7 @@ surface" covers.
   result's text is masked for registered values on the way out, including
   `extract`, `shadow_trees`, `cookies_get`, `idb_get` and `caches_get`. JSON
   results keep their layout and stay valid. The error text of a tool that
-  fails is masked the same way.
+  fails is masked the same way, and so are plugin tool results and errors.
 - **`caches_get` returns the body only with `network-body`.** Without it the
   result carries the headers and metadata, `byteLength`, `bodyOmitted: true`
   and `requiredCapability: "network-body"`.
