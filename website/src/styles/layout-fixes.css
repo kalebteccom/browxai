@@ -91,3 +91,11 @@ nav.sidebar > button {
       1fr auto;
   }
 }
+
+/* 404 kicker: a dot after the label mirrors the dot before it, so the label
+   sits on the page centre. */
+.browx-404 .browx-kicker::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+}
