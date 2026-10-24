@@ -84,7 +84,7 @@ This is the audit the engine layer needs before any of the above is worth planni
 | `BrowserSession.page()`          | `src/session/types.ts:120`                             | Mandatory, returns `Page`. Safari's implementation throws `safari-no-playwright-page`. A native engine would be the second engine lying about a method it cannot honour. This is the port's live LSP leak.                         |
 | `SubstrateCapableSession.page()` | `src/page/snapshot-substrate-select.ts:29`             | Same mandatory `page(): Page`, and line 44 dispatches on `session.engine === "safari"` to avoid calling it. A second no-Page engine makes that a literal chain.                                                                    |
 | `ActionContext.page`             | `src/page/actionresult-types.ts:279`, `:300`           | `page: Page` and `pages: () => Page[]` are required fields of the Playwright action window. Native never builds one, which is fine, and it means the native action envelope is assembled by a different path.                      |
-| Secret scoping                   | `src/page/actions-secrets.ts:29`                       | `ctx.secrets.materialize(raw, ctx.page.url())`. Scope is a URL substring check. A native screen has no URL.                                                                                                                        |
+| Secret scoping                   | `src/page/actions-secrets.ts:29`                       | `ctx.secrets.materialize(raw, ctx.page.url())`. Scope is an exact origin match (scheme, host, port). A native screen has no web URL, so its `app://` target url is the origin.                                                     |
 | Locator resolution               | `src/page/locator.ts:131`                              | `locatorFor(page, refs, target): Locator`. Every element-scoped tool that has not moved behind a substrate goes through it.                                                                                                        |
 | Element-scoped verification      | `src/page/verify-element.ts:13`                        | Imports `Locator` and `Page` directly. `verify_visible` / `verify_text` / `verify_value` / `verify_attribute` resolve through it.                                                                                                  |
 | Element capture                  | `src/page/capture-substrate.ts:97-104`, `:110-129`     | The Playwright capture substrate takes `page: () => Page` and resolves targets to a `Locator`. Safari has its own; native needs a third.                                                                                           |
@@ -124,7 +124,7 @@ Five type changes, each one line or close to it.
 
 4. **A native session handle, mirroring `safari?()`**: `native?(): NativeSessionHandle` on `BrowserSession` (`src/session/types.ts:136`). The handle carries a driver client, a device id, an app id, and the platform. Its substrate bundle reads it, exactly as the Safari bundle reads `e.session.safari!()`.
 
-5. **`SecretRegistry.materialize(value, pageUrl)` renames its second parameter to a scope context** (`src/util/secrets.ts:126`). The check is already a case-insensitive substring containment, so passing `app://com.acme.app/CheckoutScreen` works without touching the logic. §6 says why this matters.
+5. **`SecretRegistry.materialize(value, pageUrl)` renames its second parameter to a scope context** (`src/util/secrets.ts:126`). The check is an exact origin match, so passing `app://com.acme.app/CheckoutScreen` matches a scope of `app://com.acme.app`: the path is dropped when the origin is read, and the host compares case-insensitively. §6 says why this matters.
 
 `ActionContext` (`src/page/actionresult-types.ts:278`) does **not** change. It is the Playwright action window's own context, and a native substrate builds its envelope from native pre and post state, the way `SafariActionSubstrate` does.
 
@@ -219,7 +219,7 @@ A native text field reports its typed contents as an attribute of the view, so t
 
 The video is the sink with no clean fix. A password field renders dots, but the iOS keyboard shows a character preview bubble above the pressed key, and a 30fps recording catches it. Setting the field value directly without synthesised key events avoids it where the driver supports that, and the driver does not support it everywhere. This is a residual risk on any recorded native session, the tool description says so, and the threat-model row names it.
 
-Scope binding works through the renamed second parameter (§1.5): a secret registered with `scope: "com.acme.app"` refuses to materialise into a different app's session, using the same substring containment check the URL path uses.
+Scope binding works through the renamed second parameter (§1.5): a secret registered with `scope: "app://com.acme.app"` refuses to materialise into a different app's session, using the same origin match the URL path uses. A bare `com.acme.app` would mean `https://com.acme.app`, which no app screen matches.
 
 ## 7. CI
 

@@ -16,7 +16,9 @@ surface" covers.
   materialise a scoped value only when the origin of the frame that receives it
   (the target's frame, or the focused frame for a targetless `press`) has the
   same scheme, host and port. A scope with a path, query or `*` is refused at
-  registration. The result carries the normalised `origins`.
+  registration. The result carries the normalised `origins`. A `blob:` or
+  `filesystem:` frame URL counts as the origin it wraps, the same rule
+  `BROWX_ALLOWED_ORIGINS` uses.
 - **Scoped secrets fill through the checked element.** `fill`, `fill_form` and
   `press` type a scoped value into the same element whose frame passed the
   scope check, and read that frame's URL again right before typing. If the
@@ -29,15 +31,8 @@ surface" covers.
   password is scoped to that list and typed only into a frame on one of those
   origins. An account with no entry is refused before the vault is asked, with
   a message naming the setting. The setting is read at start, so restart after
-  changing it. The result carries `origins`.
-  registration. The result carries the normalised `origins`. A `blob:` or
-  `filesystem:` frame URL counts as the origin it wraps, the same rule
-  `BROWX_ALLOWED_ORIGINS` uses.
-- **`get_credential` values are bound to the page they were fetched for.** The
-  registered password is scoped to the origin of the page the session is on at
-  call time, or to the account's list in the new `BROWX_CREDENTIAL_ORIGINS`
-  setting. With neither (for example on `about:blank`) the call refuses before
-  the vault is asked. The result carries `origins`.
+  changing it. The result carries `origins`. An account named like an object
+  member (`constructor`, `toString`) counts as not listed.
 - **`get_totp` and `get_credential` check the account name.** It must start
   with a letter or digit and use only letters, digits, space and
   `. _ @ + : / -`, at most 128 characters. The `op`, `bw` and `lpass` calls pass
@@ -56,6 +51,8 @@ surface" covers.
   and `requiredCapability: "network-body"`.
 - **`start_har` defaults to no bodies; `embed` needs `network-body`.** The
   default `content` for `start_har` and `open_session({har})` is now `omit`.
+  Replaying a HAR recorded with `omit` serves empty bodies; record with `embed`
+  (needs `network-body`) when the replay needs them.
   `embed` and `attach` are refused without `network-body`. `omit` now really
   omits bodies; it used to fall through to Playwright's `attach` default.
 - **HAR files drop credential headers on close.** When a recording session
@@ -93,8 +90,9 @@ surface" covers.
 - **`browxai chrome stop` confirms the process is Chrome before stopping it.**
   It reads the command line of the PID in `chrome.pid` (`/proc` on Linux, `ps`
   on macOS, `tasklist` on Windows) and exits 1 without sending a signal when the
-  command line cannot be read or is not a Chrome launched with
-  `--user-data-dir`. `start` records its profile directory in `chrome.profile`
+  command line cannot be read or is not a Chrome (on Linux and macOS, one
+  started for this workspace's profile; on Windows the flag is not checked).
+  `start` records its profile directory in `chrome.profile`
   next to `chrome.pid`, and `stop` requires `--user-data-dir=` to name that
   directory (the workspace default profile for a `chrome.pid` written by an
   older release). It reads the command line again before the SIGKILL that
@@ -107,7 +105,9 @@ surface" covers.
   leads out of it is refused with "resolves through a link to a path outside
   $BROWX_WORKSPACE". A file that does not exist yet is checked through its
   parent directory. The protected operator files and directories are unchanged,
-  and `chrome.profile` joins them.
+  and `chrome.profile` joins them. A link that points nowhere is followed to
+  where it points, so a write through a dangling link out of the workspace is
+  refused, and the containment check ignores case on macOS and Windows.
 - **`asset_export` never replaces an existing file.** Files are created
   exclusively, and a name already on disk in `intoDir`, from an earlier export
   or anything else, moves to the next free `-N` name. Re-exporting into the same
@@ -181,18 +181,23 @@ surface" covers.
   `https://app.example.com:8443`, and an entry with a port matches that port
   only. A `blob:` or `filesystem:` URL matches by the origin it wraps.
 - **`navigate` checks the URL it landed on.** After a redirect, the final URL
-  goes through the same origin policy and confirm hook as the requested one. The
-  warning logged when no confirm hook is set names the `BROWX_BLOCKED_ORIGINS`
-  entry that matched.
+  goes through the same origin policy and confirm hook as the requested one. A
+  redirect to a blocked or unlisted origin asks for confirmation (with
+  `navigate_off_allowlist` in `BROWX_CONFIRM_REQUIRED`, the default). If the
+  answer is no, `navigate` returns a deny and the page stays on the landed URL.
+  With the hook off it only logs a warning, which names the
+  `BROWX_BLOCKED_ORIGINS` entry that matched.
 - **Page-sized data is capped.** A console message is stored cut to 8,192
   characters and ends in a `[truncated N chars]` marker. `download_get` returns
   at most 16 MiB inline: a larger file fails with an error naming the limit and
   the saved path, and `pathOnly:true` returns the path without reading the file.
   The socket transport closes a connection whose message line passes 32 MiB.
 - **`network_body` on Firefox and WebKit reads a body when asked.** It no longer
-  reads every response as it arrives. A body whose `content-length` is over
-  256 KB, or unknown while the request is still running, is not read and the
-  result says so. A compressed body must be under 32 KB on the wire.
+  reads every response as it arrives. A body over 256,000 bytes (the finished
+  transfer size, else `content-length`), or of unknown size, is not read and the
+  result says so. A compressed body must be under 32,000 bytes on the wire.
+  A mutation's `responseShape` is left out on Firefox and WebKit when the
+  response size is unknown or over 256,000 bytes.
 - **`browxai serve` creates its socket owner-only and handles the path with
   care.** The permissions are set before the socket is created, a relative
   `--socket` path is resolved to an absolute one, and a leftover file at the path
