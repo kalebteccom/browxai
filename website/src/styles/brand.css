@@ -606,7 +606,6 @@ main:has(.browx-404) > .content-panel {
   border: 1px solid var(--browx-glass-border);
   background: var(--browx-glass);
   backdrop-filter: blur(12px) saturate(130%);
-  -webkit-backdrop-filter: blur(12px) saturate(130%);
   box-shadow: 0 10px 28px -16px var(--browx-glow);
   transition:
     border-color 0.15s ease,
@@ -841,7 +840,6 @@ main:has(.browx-404) > .content-panel {
   border: 1px solid var(--browx-glass-border);
   background: var(--browx-glass);
   backdrop-filter: blur(12px) saturate(130%);
-  -webkit-backdrop-filter: blur(12px) saturate(130%);
 }
 .browx-iso-id {
   font-family: var(--browx-font-mono);
@@ -1286,7 +1284,6 @@ body::before {
 /* Frosted top nav. */
 .header {
   backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
 }
 
 /* Frosted-glass surfaces: cards, the product window, and the sidebar affordance
@@ -1297,7 +1294,6 @@ body::before {
   background: var(--browx-glass);
   border-color: var(--browx-glass-border);
   backdrop-filter: blur(16px) saturate(135%);
-  -webkit-backdrop-filter: blur(16px) saturate(135%);
 }
 .browx-card:hover {
   background: color-mix(in srgb, var(--browx-violet-500) 9%, var(--browx-glass));
@@ -1364,7 +1360,6 @@ body::before {
    colour. Blur it like the header so text does not show through. */
 mobile-starlight-toc nav {
   backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
 }
 
 /* Small screens (Starlight switches layout at 50rem). Tap targets reach 44px. */
