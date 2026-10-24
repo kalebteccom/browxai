@@ -423,13 +423,13 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // registry is off by default; the `downloads_capture` MCP tool toggles
       // it. The context listener attach lives in the engine's `postWire`.
       const downloadsDir = workspace.sub(`.downloads/${id}`);
-      const downloadsReg = new DownloadsRegistry(downloadsDir);
+      const downloadsReg = new DownloadsRegistry(downloadsDir, workspace.root);
       // Per-session artifact KV. Storage dir is workspace-rooted +
       // per-session; the dir itself is created lazily on first save, and
       // wiped on session teardown (see `teardown` below). Capacity-bounded
       // — 200 entries / 50 MiB, oldest-write evicted.
       const artifactsDir = workspace.sub(`.artifacts/${id}`);
-      const artifactsReg = new ArtifactsRegistry(artifactsDir);
+      const artifactsReg = new ArtifactsRegistry(artifactsDir, workspace.root);
       // Fresh per-primitive device-emulation state (locale, timezone,
       // geolocation, colour scheme, reduced motion, user-agent, permissions).
       // Re-applied on every new page in this context so a mid-session-opened

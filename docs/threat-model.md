@@ -817,7 +817,11 @@ path (`pdf_save`, `dom_export`, `element_export`, `page_archive`, `asset_export`
 the `plugins/`, `profile/`, `profiles/` and `profile-snapshots/` trees, the
 `BROWX_DEFAULT_PROFILE` directory and the `chrome-profile/` directory that
 releases before 0.13.0 used for `chrome start`, case-insensitively and after
-resolving symlinks. `chrome start` and `chrome login` now run Chrome on
+resolving symlinks. A write whose real path leaves `$BROWX_WORKSPACE` is refused
+too, whether the link is in the path, at the file, or in the directory of a file
+that does not exist yet; the per-session `.artifacts/` and `.downloads/` dirs,
+`.auth-states/`, `profile-snapshots/`, `har/`, `videos/` and `diagnostics/`
+get the same check. `chrome start` and `chrome login` now run Chrome on
 `profile/`, or `profiles/<name>` with `--profile`. `browxai chrome stop` reads
 the PID from `chrome.pid` and confirms the process is Chrome on the profile
 directory `start` recorded in `chrome.profile`, by its command line, before

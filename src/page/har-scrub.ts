@@ -19,7 +19,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { DEFAULT_DROPPED_HEADERS } from "../replay/redact.js";
-import { resolveWorkspacePath } from "../session/storage.js";
+import { resolveWorkspaceWritePath } from "../session/storage.js";
 import type { SecretRegistry } from "../util/secrets.js";
 
 const DROPPED = new Set(DEFAULT_DROPPED_HEADERS);
@@ -99,7 +99,7 @@ export function scrubHarFile(
   if (harPath.toLowerCase().endsWith(".zip")) return { scrubbed: false, reason: "zip" };
   // Re-resolve through the workspace chokepoint before any read or write; the
   // file stays under BROWX_WORKSPACE.
-  const target = resolveWorkspacePath(workspaceRoot, relative(workspaceRoot, harPath), "har");
+  const target = resolveWorkspaceWritePath(workspaceRoot, relative(workspaceRoot, harPath), "har");
   if (!existsSync(target)) return { scrubbed: false, reason: "missing" };
   let doc: unknown;
   try {
@@ -121,7 +121,11 @@ export function scrubHarFile(
 function maskSidecar(workspaceRoot: string, dir: string, name: string, mask: Mask): void {
   if (basename(name) !== name || name === "." || name === "..") return;
   // Resolved under BROWX_WORKSPACE like the HAR itself.
-  const file = resolveWorkspacePath(workspaceRoot, relative(workspaceRoot, join(dir, name)), "har");
+  const file = resolveWorkspaceWritePath(
+    workspaceRoot,
+    relative(workspaceRoot, join(dir, name)),
+    "har",
+  );
   if (!existsSync(file)) return;
   const text = readFileSync(file, "utf8");
   const masked = mask(text);

@@ -43,6 +43,7 @@ import {
 import type { BrowserContext, Page } from "playwright-core";
 import {
   assertSafeName,
+  assertWriteStaysInside,
   isSafeName,
   resolveWorkspacePath,
   resolveWorkspaceReadPath,
@@ -380,6 +381,7 @@ export async function authSave(
   // (no separators / no traversal) before joining under workspaceRoot.
   const dest = authStatePath(workspaceRoot, name);
   const dir = join(workspaceRoot, AUTH_STATES_DIR);
+  assertWriteStaysInside(workspaceRoot, dest, "auth_save");
   // workspace.root-rooted by construction (see comment above).
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const state = await context.storageState();

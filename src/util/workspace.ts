@@ -243,13 +243,28 @@ function protectedHit(
   return null;
 }
 
-/** Throws when `abs` is, or is inside, a protected operator path. */
+/** Throws when the real path of `abs` leaves the workspace. The real path is
+ *  the deepest existing ancestor's, so a link inside the workspace that points
+ *  elsewhere is refused, and a file that does not exist yet is checked through
+ *  its parent. For writers whose target is already fixed by the server (a
+ *  per-session storage dir) and so have no protected-path rule to apply. */
+export function assertWriteStaysInside(workspaceRoot: string, abs: string, tool: string): void {
+  if (!staysInsideRealRoot(workspaceRoot, abs))
+    throw new Error(
+      `${tool}: refusing to write "${abs}" — it resolves through a link to a path outside ` +
+        "$BROWX_WORKSPACE. Pick a path that stays inside the workspace.",
+    );
+}
+
+/** Throws when `abs` is, or is inside, a protected operator path, or when its
+ *  real path leaves the workspace (see `assertWriteStaysInside`). */
 export function assertWritableWorkspacePath(
   workspaceRoot: string,
   abs: string,
   tool: string,
   env: NodeJS.ProcessEnv = process.env,
 ): void {
+  assertWriteStaysInside(workspaceRoot, abs, tool);
   const hit = protectedHit(workspaceRoot, abs, PROTECTED_DIRS, env);
   if (hit)
     throw new Error(

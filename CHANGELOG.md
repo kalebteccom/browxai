@@ -78,6 +78,15 @@ surface" covers.
   directory (the workspace default profile for a `chrome.pid` written by an
   older release). It reads the command line again before the SIGKILL that
   follows an ignored SIGTERM.
+- **Writes stay inside the workspace on the real path.** `pdf_save`,
+  `screenshot({path})`, the page and element exports, `asset_export`, HAR and
+  video files, heap and trace files, `dump_storage_state`, `auth_save`,
+  `artifact_save`, download capture, `profile_snapshot` and the diagnostics log
+  resolve symlinks before they write. A link inside `$BROWX_WORKSPACE` that
+  leads out of it is refused with "resolves through a link to a path outside
+  $BROWX_WORKSPACE". A file that does not exist yet is checked through its
+  parent directory. The protected operator files and directories are unchanged,
+  and `chrome.profile` joins them.
 - **`asset_export` never replaces an existing file.** Files are created
   exclusively, and a name already on disk in `intoDir`, from an earlier export
   or anything else, moves to the next free `-N` name. Re-exporting into the same

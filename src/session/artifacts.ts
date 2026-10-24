@@ -37,6 +37,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve, sep } from "node:path";
+import { assertWriteStaysInside } from "../util/workspace.js";
 import { assertSafeName } from "./storage.js";
 
 /** Max number of artifacts kept per session. Oldest-write evicted past this. */
@@ -60,6 +61,9 @@ export class ArtifactsRegistry {
   constructor(
     /** Per-session storage dir: `$BROWX_WORKSPACE/.artifacts/<sessionId>/`. */
     readonly storageDir: string,
+    /** The workspace root, when known. A save then checks the real path of the
+     *  file stays inside it. */
+    readonly workspaceRoot?: string,
   ) {}
 
   /** Resolve + workspace-escape-check the on-disk path for a name. The name
@@ -92,6 +96,7 @@ export class ArtifactsRegistry {
     // factory sets it via `workspace.sub('.artifacts/<id>')` (see server.ts).
     // `dest` is the asserted-safe-name joined to that storageDir, with the
     // workspace-escape re-check in `pathFor`.
+    if (this.workspaceRoot) assertWriteStaysInside(this.workspaceRoot, dest, "artifact_save");
     if (!existsSync(this.storageDir)) mkdirSync(this.storageDir, { recursive: true });
     const buf =
       encoding === "base64" ? Buffer.from(content, "base64") : Buffer.from(content, "utf8");
