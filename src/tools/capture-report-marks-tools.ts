@@ -36,7 +36,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
     {
       capability: "read",
       description:
-        "PNG screenshot of an arbitrary viewport rectangle (not an element) — for virtualised timelines / canvas / unlabelled positioned regions where an element-cropped shot doesn't apply.",
+        "Take a PNG screenshot of a viewport rectangle `box`, for canvas, virtualised timelines and unlabelled positioned regions where an element crop does not apply. Use `screenshot` for the whole viewport or one element.",
       inputSchema: {
         box: BOX_SCHEMA.describe("Viewport rect {x,y,width,height} in CSS px."),
         ...SESSION_ARG,
@@ -84,7 +84,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        'Composed PNG with numbered bounding boxes painted over caller-supplied candidates — the set-of-marks primitive multimodal agents reach for when they want to ground a vision read against a small palette of stable refs ("click 2" instead of estimating a coordinate). Each candidate is either a bare `{ref}` (looked up against the current snapshot for its bbox) OR a full `find()` candidate row passed through (`{ref, role, name, testId, bbox}` — fast path, no extra tree walk). `label:"index"` (default) paints 1..N positions paired with an `{index→ref}` mapping; `label:"ref"` paints the existing `eN` directly; `label:"role"` paints the role for visual grounding. The numbering scheme SHARES the existing `name_ref` / `eN` namespace — no parallel ID space — so `mapping["2"] === "e7"` and the agent can address either way. Pure compose on top of `find()` / `snapshot()` (no new browser interaction beyond a transient in-page overlay removed before return). Candidates with `bbox:null` (clipped / off-screen) are kept in `marks` with `painted:false` so the mapping stays complete. Read-only (`read`).',
+        'Take a PNG with numbered boxes painted over candidate elements, so a vision read can point at refs ("click 2") instead of estimating coordinates. Each candidate is a bare `{ref}` (its bbox comes from the current snapshot) or a full `find` candidate row passed through. `label:"index"` (default) paints 1..N and returns an `{index→ref}` mapping, `"ref"` paints the `eN` ref, `"role"` paints the role. The numbers share the `eN` ref namespace, so `mapping["2"] === "e7"`. A candidate with `bbox:null` (clipped or off-screen) stays in `marks` with `painted:false`. A temporary in-page overlay is removed before return. Use `screenshot` when you do not need marks.',
       inputSchema: {
         candidates: z
           .array(z.union([z.object({ ref: z.string() }).passthrough(), z.object({}).passthrough()]))

@@ -99,7 +99,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        'Assertive sibling of `wait_for`: fail-emitting (`ok:false` + `failure:{source,kind,expected,actual}`) instead of permissive (`wait_for` returns ok:false on deadline expiry as a normal outcome). Use to terminate retry loops deterministically: "this element MUST be visible right now, else fail loudly." Read-only. `source:"app"` when the element isn\'t visible (the assertion failed against the page); `source:"browxai"` when verify itself couldn\'t run (ref no longer in the snapshot, etc).',
+        'Assert that the targeted element is visible right now, failing the step if it is not. Use `wait_for` to wait for it, and `verify_text`, `verify_value`, `verify_count` or `verify_attribute` for other assertions. Failure returns `ok:false` with `failure:{source,kind,expected,actual}`: `source:"app"` means the element is not visible, `source:"browxai"` means the check could not run (a stale ref: call `snapshot` or `find` again).',
       inputSchema: VERIFY_TARGET,
     },
     async (args) => {
@@ -153,7 +153,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        "Assert the targeted element's visible text matches. Fail-emitting (`ok:false` + structured `failure`) — distinct from `text_search` (which counts matches over the whole page) and `wait_for` (permissive). Default substring + case-insensitive; pass `exact:true` for case-sensitive equality on the trimmed text. Read-only.",
+        "Assert that the targeted element's visible text matches, failing the step if it does not. Use `text_search` to count matches across the whole page instead. The default is a case-insensitive substring; `exact:true` compares the trimmed text case-sensitively. Failure returns `ok:false` with a structured `failure` (`source` `app` or `browxai`, as in `verify_visible`).",
       inputSchema: {
         ...VERIFY_TARGET,
         text: z.string().describe("Text to assert against the element's visible text."),
@@ -216,7 +216,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        "Assert the targeted form-control's current value (input/textarea/select/contenteditable). Fail-emitting (`ok:false` + structured `failure`). Use to confirm a controlled-component fill landed without an extra round-trip — pairs with `ActionResult.element.value` from `fill`. Read-only.",
+        "Assert the current value of the targeted form control (input, textarea, select, contenteditable), failing the step if it differs. Use it after `fill` to confirm a controlled component kept the value (the `fill` ActionResult also carries `element.value`). Failure returns `ok:false` with a structured `failure`.",
       inputSchema: {
         ...VERIFY_TARGET,
         value: z

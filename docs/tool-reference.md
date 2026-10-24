@@ -524,7 +524,7 @@ Periodic screenshot capture at a fixed interval into a workspace-rooted director
 - Exactly one of:
   - `count: integer 1..1000`: stop after N captures.
   - `durationMs: integer > 0`: stop after this wall-clock window. Must be `>= everyMs`.
-- `intoDir`: workspace-rooted output directory. Defaults to `screenshots/<sessionId>-<isoTs>/`. Path-traversal rejected.
+- `intoDir`: workspace-rooted output directory. Defaults to `screenshots/<sessionId>-<isoTs>/`. A path outside the workspace is rejected.
 - `format`: `"png"` (default) or `"jpeg"`. JPEGs are written with `.jpg`.
 
 Files are named `<seq>-<offsetMs>.<png|jpg>` so the dir-listing alone reproduces the timeline. A belt-and-braces ceiling of **1000 captures per call** applies on top of the count/duration bound, surfaced as a `warnings[]` entry if hit. A single failed snap is logged as a warning and the schedule continues (does not poison the window). The outer action-timeout wraps the whole call: an unbounded `screenshot_schedule` is refused at validation time, so the deadline is "expected window + slack".
@@ -556,7 +556,7 @@ Event-driven screenshot capture. Arms a `trigger` for `durationMs`; every time t
 
 - `trigger`: one of the four above.
 - `durationMs`: observation window length, range `[1, 600000]` ms (10 min ceiling).
-- `intoDir`: workspace-rooted output directory. Defaults to `screenshots/<sessionId>-<isoTs>/`. Path-traversal rejected.
+- `intoDir`: workspace-rooted output directory. Defaults to `screenshots/<sessionId>-<isoTs>/`. A path outside the workspace is rejected.
 - `format`: `"png"` (default) or `"jpeg"`.
 
 A per-window cap of **50 captures** prevents event-storm runaway (e.g. a console-error fired every animation frame), surfaced as a `warnings[]` entry if reached, and the window closes early. Trigger fires that land while a previous capture is still in flight are dropped (single screenshot per visible state is the useful unit). A snap that errors is logged as a warning; the window keeps observing. The outer action-timeout is at least the observation window plus 1s of slack so the call can run a multi-minute window without aborting.
@@ -631,6 +631,8 @@ Two paths, deliberately layered:
    - `value`: alias for `prop:"value"`.
 
 The per-field `query` key is **RETIRED as of v0.3.3**. The NL tree-scan ranker is unreliable for explicit prose queries (uniform null/0 across rows with no partialMiss surfaced; see [CHANGELOG v0.3.3](../CHANGELOG.md)). Use `selector` for per-field targeting; the implicit property-name lowering still works on testid-rich pages. Setting `x-browx-source.query` at runtime is tolerated for back-compat: the resolver emits a one-shot `console.warn` and records a `partialMisses` entry naming the field, then proceeds with the tree-scan. New schemas should drop the `query` key.
+
+Set `BROWX_EXTRACT_STRICT=1` at server start to turn unknown `x-browx-source` keys into `ok:false` `invalid-schema` failures instead of `partialMisses` entries. The integer-to-number coercion and the array `selector` alias stay soft in strict mode.
 
 The implicit rule covers the headline case (testid-friendly pages) without ceremony; the explicit hint covers the cases where the property name carries no signal or the value isn't innerText.
 
