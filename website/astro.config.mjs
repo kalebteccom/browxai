@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { unified } from "@astrojs/markdown-remark";
 import starlightLinksValidator from "starlight-links-validator";
 import rehypeStripAgentAsides from "./plugins/rehype-strip-agent-asides.mjs";
+import rehypeTableWrap from "./plugins/rehype-table-wrap.mjs";
 
 // The published version comes from the repo root package.json, so the
 // structured data never drifts from a release.
@@ -23,7 +24,7 @@ export default defineConfig({
   // endpoint, so the human site stays end-user-focused while agents still get
   // it via llms.txt.
   markdown: {
-    processor: unified({ rehypePlugins: [rehypeStripAgentAsides] }),
+    processor: unified({ rehypePlugins: [rehypeStripAgentAsides, rehypeTableWrap] }),
   },
   integrations: [
     starlight({
