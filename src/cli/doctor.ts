@@ -9,12 +9,7 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  resolveCapabilities,
-  resolveConfirmHooks,
-  DEFAULT_CAPABILITIES,
-  type Capability,
-} from "../util/capabilities.js";
+import { resolveConfirmHooks, type Capability } from "../util/capabilities.js";
 import { resolveConfig } from "../util/config.js";
 import { resolveOriginPolicy, describePolicy } from "../policy/origin.js";
 import { resolveWorkspace } from "../util/workspace.js";
@@ -23,6 +18,7 @@ import { ConfigStore } from "../util/config-store.js";
 import { pluginChecks } from "./doctor-plugins.js";
 import { probeCdp } from "./doctor-cdp.js";
 import { attachCapabilityCheck } from "./doctor-attach.js";
+import { capabilitiesRow } from "./doctor-capabilities.js";
 import {
   chromeCheck,
   chromiumCheck,
@@ -161,35 +157,12 @@ export async function runDoctor(): Promise<number> {
   }
 
   // 5. Capabilities ( security model).
-  let enabledCapabilities: ReadonlySet<Capability> = new Set(DEFAULT_CAPABILITIES);
-  try {
-    const c = resolveCapabilities();
-    enabledCapabilities = c.enabled;
-    const explicit = !!process.env.BROWX_CAPABILITIES;
-    const dangerous = [...c.enabled].filter((x) => x === "eval" || x === "byob-attach");
-    const detail = `enabled=[${[...c.enabled].join(", ")}]${explicit ? "" : " (default)"}${dangerous.length ? "  ⚠ dangerous: " + dangerous.join(", ") : ""}`;
-    checks.push({
-      name: "capabilities",
-      ok: true,
-      detail,
-      fix: dangerous.length
-        ? `${dangerous.join(",")} on — page text remains untrusted; review ${docsUrl.threatModel}`
-        : explicit
-          ? undefined
-          : "see " +
-            docsUrl.threatModel +
-            " for the full set; default is " +
-            DEFAULT_CAPABILITIES.join(","),
-    });
-    const attachWarn = attachCapabilityCheck(cdpEnv, c.enabled);
+  const capabilities = capabilitiesRow();
+  const enabledCapabilities: ReadonlySet<Capability> = capabilities.enabled;
+  checks.push(capabilities.row);
+  if (capabilities.row.ok) {
+    const attachWarn = attachCapabilityCheck(cdpEnv, enabledCapabilities);
     if (attachWarn) checks.push(attachWarn);
-  } catch (e) {
-    checks.push({
-      name: "capabilities",
-      ok: false,
-      detail: e instanceof Error ? e.message : String(e),
-      fix: "fix BROWX_CAPABILITIES (comma-separated, see " + docsUrl.threatModel + ")",
-    });
   }
 
   // 6. Confirm-required hooks.

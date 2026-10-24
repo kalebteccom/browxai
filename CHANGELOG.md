@@ -11,6 +11,8 @@ surface" covers.
 ### Fixed
 
 - **`--help` and `-h` print usage on every subcommand.** `browxai chrome start --help` used to launch Chrome and `browxai doctor --help` ran the check. Both now print usage and exit 0 without running anything. `browxai help` works too.
+- **A mistyped capability name no longer prints a stack trace.** `browxai doctor` (and every other subcommand) used to crash on a name such as `evall` in `BROWX_CAPABILITIES`. `doctor` now shows a failing `capabilities` row that names the bad value and lists the valid names, and exits 1.
+- **`doctor` warns when `BROWX_CAPABILITIES` drops the defaults.** A list such as `eval` replaces `read,navigation,action,human`. The `capabilities` row shows a warning, not a green tick, and prints the list with the defaults added back.
 
 ## [0.14.0] - 2026-10-24
 
