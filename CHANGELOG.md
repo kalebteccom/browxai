@@ -94,6 +94,9 @@ surface" covers.
   `--socket` path is resolved to an absolute one, and a leftover file at the path
   is removed only when it is a socket. Anything else there stops the start with a
   message naming the path.
+- **`solve_captcha` does not follow redirects from the provider.** A redirect on
+  the submit or the poll call ends the solve with an error that says so and
+  names `BROWX_CAPTCHA_API_BASE`.
 
 ### Fixed
 

@@ -255,6 +255,70 @@ describe("submitToProvider", () => {
     expect(fakeFetch).not.toHaveBeenCalled();
   });
 
+  it("sends both the submit and the poll with redirects refused", async () => {
+    const inits: Array<{ url: string; redirect?: string }> = [];
+    const fakeFetch = vi.fn(async (url: string, init?: { redirect?: string }) => {
+      inits.push({ url, redirect: init?.redirect });
+      if (url.endsWith("/in.php")) {
+        return new Response(JSON.stringify({ status: 1, request: "tid-7" }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ status: 1, request: "TOKEN" }), { status: 200 });
+    });
+    const r = await submitToProvider(
+      { type: "hcaptcha", pageUrl: "https://app.example", siteKey: "sk" },
+      config,
+      fakeFetch as unknown as typeof fetch,
+      () => 0,
+      async () => undefined,
+    );
+    expect(r.ok).toBe(true);
+    expect(inits.map((i) => i.url.split("/").pop())).toEqual(["in.php", "res.php"]);
+    for (const i of inits) expect(i.redirect).toBe("error");
+  });
+
+  const redirectRejection = () =>
+    new TypeError("fetch failed", { cause: new Error("unexpected redirect") });
+
+  it("maps a redirect on submit to a failure with a clear message", async () => {
+    const fakeFetch = vi.fn(async () => {
+      throw redirectRejection();
+    });
+    const r = await submitToProvider(
+      { type: "recaptcha2", pageUrl: "https://app.example", siteKey: "sk" },
+      config,
+      fakeFetch,
+      () => 0,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toContain("redirect");
+      expect(r.error).toContain("not followed");
+      expect(r.hint).toContain("BROWX_CAPTCHA_API_BASE");
+    }
+    expect(fakeFetch).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(r)).not.toContain("secret-key");
+  });
+
+  it("ends the wait on a redirect during the poll instead of retrying until the deadline", async () => {
+    const fakeFetch = vi.fn(async (url: string) => {
+      if (url.endsWith("/in.php")) {
+        return new Response(JSON.stringify({ status: 1, request: "tid-9" }), { status: 200 });
+      }
+      throw redirectRejection();
+    });
+    const r = await submitToProvider(
+      { type: "hcaptcha", pageUrl: "https://app.example", siteKey: "sk" },
+      config,
+      fakeFetch as unknown as typeof fetch,
+      () => 0,
+      async () => undefined,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("redirect");
+    // one submit, one poll, then it stopped
+    expect(fakeFetch).toHaveBeenCalledTimes(2);
+  });
+
   it("never echoes the api key in the failure body", async () => {
     const fakeFetch = vi.fn(async () => {
       throw new Error("network down");
