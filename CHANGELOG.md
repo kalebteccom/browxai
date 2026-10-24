@@ -89,6 +89,11 @@ surface" covers.
   reads every response as it arrives. A body whose `content-length` is over
   256 KB, or unknown while the request is still running, is not read and the
   result says so. A compressed body must be under 32 KB on the wire.
+- **`browxai serve` creates its socket owner-only and handles the path with
+  care.** The permissions are set before the socket is created, a relative
+  `--socket` path is resolved to an absolute one, and a leftover file at the path
+  is removed only when it is a socket. Anything else there stops the start with a
+  message naming the path.
 
 ### Fixed
 
