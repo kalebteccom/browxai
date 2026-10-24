@@ -58,14 +58,37 @@ neither browser is present.
 
 ## Wire it into an MCP client
 
-Add browxai to your client's MCP server config. In Claude Code, one command does it:
+Add browxai to your client's MCP config. In Claude Code, one command does it:
 
 ```bash
 claude mcp add browxai -- browxai
 ```
 
-In Codex, `codex mcp add browxai -- browxai`. Any other client takes the same
-command in its MCP config, for example an `.mcp.json`:
+Restart the client after any config change, then check that `browxai` shows as
+connected (in Claude Code, run `/mcp`).
+
+Every client below runs the same command, `browxai`. Without a global install,
+use `npx -y browxai` instead (`claude mcp add browxai -- npx -y browxai`).
+
+### Codex
+
+Add this to `~/.codex/config.toml`, or to `.codex/config.toml` in a project.
+Or run `codex mcp add browxai -- browxai`.
+
+```toml
+[mcp_servers.browxai]
+command = "browxai"
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+```
+
+The longer startup timeout helps when the client launches browxai through
+`npx -y`, which can take a while on first run. Options go in an `env` table:
+`env = { BROWX_HEADLESS = "1" }`.
+
+### Cursor
+
+Add this to `~/.cursor/mcp.json` for all projects, or `.cursor/mcp.json` for one:
 
 ```json
 {
@@ -77,23 +100,20 @@ command in its MCP config, for example an `.mcp.json`:
 }
 ```
 
-Prefer not to install globally? Use `{ "command": "npx", "args": ["-y", "browxai"] }`
-as the entry (`claude mcp add browxai -- npx -y browxai`). Restart the client
-after editing its config, then check that `browxai` shows as connected (in
-Claude Code, run `/mcp`).
+### Other clients
 
-Other clients keep the same entry in their own file:
+Each client keeps its list of servers under its own key in its own file.
 
-| Client         | Config file                                                                                                                        | Entry key         |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| Claude Desktop | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`<br>Windows: `%APPDATA%\Claude\claude_desktop_config.json` | `mcpServers`      |
-| Cursor         | all users: `~/.cursor/mcp.json`<br>one project: `.cursor/mcp.json`                                                                 | `mcpServers`      |
-| VS Code        | one workspace: `.vscode/mcp.json`                                                                                                  | `servers`         |
-| Windsurf       | `~/.codeium/windsurf/mcp_config.json`                                                                                              | `mcpServers`      |
-| Zed            | `settings.json` (run `zed: open settings`)                                                                                         | `context_servers` |
+- **Claude Desktop**: key `mcpServers`.
+  macOS `~/Library/Application Support/Claude/claude_desktop_config.json`,
+  Windows `%APPDATA%\Claude\claude_desktop_config.json`.
+- **VS Code**: key `servers`, in `.vscode/mcp.json`.
+- **Windsurf**: key `mcpServers`, in `~/.codeium/windsurf/mcp_config.json`.
+- **Zed**: key `context_servers`, in `settings.json`. Its entry has a different
+  shape, so copy it from Zed's MCP docs.
 
-The entry under that key is `"browxai": { "command": "browxai" }`, as in the
-`.mcp.json` example above. Restart the client after saving.
+For the three JSON clients, the entry is `"browxai": { "command": "browxai" }`
+under that key, as in the Cursor example.
 
 By default the server launches a **managed** Chrome on the workspace's default
 profile, headed, with the default capability set (`read`, `navigation`,
@@ -103,7 +123,7 @@ opt-in.
 
 A headed browser needs a display. On a machine without one, such as a Linux
 server or a container, the first session fails to open until you set
-`BROWX_HEADLESS=1` in the server's environment. In the MCP config that is an
+`BROWX_HEADLESS=1` in the server's environment. In a JSON config that is an
 `env` entry next to `command`: `"env": { "BROWX_HEADLESS": "1" }`. With
 Claude Code, add `--env BROWX_HEADLESS=1` to `claude mcp add`.
 
@@ -140,19 +160,7 @@ with a display. Headless runs show no window.
 
 ## When something does not work
 
-- **A session will not open and the error mentions a browser.** Run
-  `browxai doctor`. It names whether Chrome and the bundled Chromium are present.
-- **`profile-in-use`.** A browser profile is open in one browser at a time. A
-  second session on the workspace default profile, or a Chrome opened by
-  `browxai chrome start` or `chrome login`, holds it. Quit that Chrome, pass
-  `profile: "name"` to `open_session`, or use `mode: "incognito"`.
-- **A tool answers that it is disabled.** Its capability is off. Add it to
-  `BROWX_CAPABILITIES` together with the default four and restart the server, as
-  capabilities are read once at start.
-- **A site shows a challenge page.** browxai does not defeat or spoof bot
-  detection, so it cannot clear the challenge for you. `browxai chrome login`
-  opens the same Chrome profile with nothing attached so you can clear it by
-  hand. See [Sites behind bot protection](/guides/sites-behind-bot-protection/).
+Run `browxai doctor`. For an error string, see [Troubleshooting](/guides/troubleshooting/).
 
 ## Where to go next
 

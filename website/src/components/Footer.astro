@@ -8,7 +8,7 @@ const version = packageVersion();
 
 <Default><slot /></Default>
 
-<div class="browx-credit">
+<nav class="browx-credit" aria-label="Footer">
   browxai{version && ` v${version}`}
   <span class="sep" aria-hidden="true">·</span>
   <a href={LICENSE_URL}>MIT licensed</a>
@@ -18,7 +18,7 @@ const version = packageVersion();
   <a href={NPM_URL}>npm</a>
   <span class="sep" aria-hidden="true">·</span>
   Made by <a href="https://kalebtec.com">Kalebtec</a>
-</div>
+</nav>
 
 <script>
   // The footer renders on every page, so this is the one place that loads the
