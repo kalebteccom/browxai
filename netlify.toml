@@ -27,6 +27,12 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
+# Shot filenames carry a content hash, so they are safe to cache the same way.
+[[headers]]
+  for = "/shots/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
 # Baseline security headers for every response.
 [[headers]]
   for = "/*"
