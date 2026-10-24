@@ -2749,9 +2749,10 @@ are short enough to turn up by chance.
    `text_search()` (all fully masked) over a screenshot.
 2. **Base64 response bodies pass through `network_body` mostly unchanged.**
    The body is masked only where the value's own base64 appears at an
-   encoding boundary. A value inside a larger encoded string is not found:
-   base64 of `user:password` (`Authorization: Basic …`), a binary body, or a
-   value at an offset that shifts its encoding. Decode + re-mask on the agent
+   encoding boundary. A value inside a larger encoded string is usually not
+   found: base64 of `user:password` (`Authorization: Basic …`), a binary body,
+   or a value at an offset that shifts its encoding. A prefix whose length is
+   a multiple of 3 bytes (`alice:`) keeps the boundary, so that tail is masked. Decode + re-mask on the agent
    side if you fetch base64 bodies that may carry a secret. The common case
    (JSON / text) is fully masked.
 3. **Cap is 32 secrets per session.** Bounded so the per-sink scan stays

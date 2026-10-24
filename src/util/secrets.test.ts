@@ -226,10 +226,17 @@ describe("SecretRegistry.applyMaskInText — encoded forms", () => {
   });
 
   it("does not reach a base64 of a larger string such as Basic credentials", () => {
-    const basic = Buffer.from(`alice:${VALUE}`, "utf8").toString("base64");
+    // `bob:` is 4 bytes, so the value's base64 starts off a 3-byte boundary.
+    const basic = Buffer.from(`bob:${VALUE}`, "utf8").toString("base64");
     expect(reg().applyMaskInText(`Authorization: Basic ${basic}`)).toBe(
       `Authorization: Basic ${basic}`,
     );
+  });
+
+  it("masks the tail of a larger base64 when the prefix is a multiple of 3 bytes", () => {
+    // `alice:` is 6 bytes, so the value's base64 lands on the same boundary.
+    const basic = Buffer.from(`alice:${VALUE}`, "utf8").toString("base64");
+    expect(reg().applyMaskInText(`Authorization: Basic ${basic}`)).toContain("<PW>");
   });
 
   it("matches only the value itself for values shorter than six characters", () => {
