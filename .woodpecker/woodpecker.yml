@@ -1,0 +1,12 @@
+# ci-optimised: v1
+# The one required status check of the branch rule is `ci/woodpecker/push/woodpecker`, which is the status of this file. It runs after both other workflows and only when both passed, so a merge waits for the whole suite: `gate` (static checks, unit tests, package build) and `browser` (real-browser keystones on the browser runner). Push events only; main has no keystone workflow, so this one skips main too.
+depends_on: [gate, browser]
+when:
+  - event: push
+    branch:
+      exclude: [main]
+steps:
+  - name: verdict
+    image: node:22-bookworm
+    commands:
+      - echo "gate and browser workflows passed"
