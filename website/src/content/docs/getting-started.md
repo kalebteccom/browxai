@@ -71,6 +71,19 @@ as the entry (`claude mcp add browxai -- npx -y browxai`). Restart the client
 after editing its config, then check that `browxai` shows as connected (in
 Claude Code, run `/mcp`).
 
+Other clients keep the same entry in their own file:
+
+| Client         | Config file                                                                                                                        | Entry key         |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| Claude Desktop | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`<br>Windows: `%APPDATA%\Claude\claude_desktop_config.json` | `mcpServers`      |
+| Cursor         | all users: `~/.cursor/mcp.json`<br>one project: `.cursor/mcp.json`                                                                 | `mcpServers`      |
+| VS Code        | one workspace: `.vscode/mcp.json`                                                                                                  | `servers`         |
+| Windsurf       | `~/.codeium/windsurf/mcp_config.json`                                                                                              | `mcpServers`      |
+| Zed            | `settings.json` (run `zed: open settings`)                                                                                         | `context_servers` |
+
+The entry under that key is `"browxai": { "command": "browxai" }`, as in the
+`.mcp.json` example above. Restart the client after saving.
+
 By default the server launches a **managed** Chrome on the workspace's default
 profile, headed, with the default capability set (`read`, `navigation`,
 `action`, `human`). That is the installed Google Chrome, or the bundled
