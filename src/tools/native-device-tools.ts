@@ -40,7 +40,9 @@ import { SESSION_ARG } from "./schemas.js";
 import { AndroidEmulatorAdapter } from "../engine/adapters/android-app/emulator.js";
 import { listSimulators } from "../engine/adapters/ios/simulator.js";
 import { requireNative } from "../engine/session-native.js";
+import { resolveWorkspaceReadPath } from "../util/workspace.js";
 import type {
+  ConfigHost,
   GateHost,
   RegisterHost,
   ServerServicesHost,
@@ -60,6 +62,27 @@ function failure(err: unknown): ToolResponse {
 }
 
 /**
+ * The absolute path of the bundle `app_install` hands to adb / simctl. It must
+ * sit under $BROWX_WORKSPACE, like every other file a tool reads, and its real
+ * path must too. Every refusal reads the same, so the answer does not say
+ * whether a path outside the workspace exists.
+ */
+export function resolveAppBundlePath(workspaceRoot: string, apkPath: string): string {
+  const refuse = (): never => {
+    throw new Error(
+      `app_install: \`apkPath\` must name a bundle inside $BROWX_WORKSPACE (got "${apkPath}"). ` +
+        "Copy the .apk or .app into the workspace and pass its workspace-relative path.",
+    );
+  };
+  if (apkPath.length === 0 || apkPath.startsWith("-")) return refuse();
+  try {
+    return resolveWorkspaceReadPath(workspaceRoot, apkPath, "app_install");
+  } catch {
+    return refuse();
+  }
+}
+
+/**
  * The ten device / app lifecycle tools. Named for what they do to the DEVICE and
  * to the APP, matching the vocabulary a mobile-QA agent already has
  * (`agent-device`'s `boot` / `shutdown` / `devices` / `install` / `reinstall` /
@@ -67,7 +90,7 @@ function failure(err: unknown): ToolResponse {
  * convention so they sort beside the tools they compose with.
  */
 export function registerNativeDeviceTools(
-  host: RegisterHost & GateHost & SessionHost & TargetHost & ServerServicesHost,
+  host: RegisterHost & GateHost & SessionHost & TargetHost & ServerServicesHost & ConfigHost,
 ): void {
   const { z, register, gateCheck, entryFor, targetFor } = host;
   const emulator = (): AndroidEmulatorAdapter => new AndroidEmulatorAdapter();
@@ -196,12 +219,12 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Install an application bundle from a host path onto the session's device — an `.apk` on `android-app`, a `.app` on `ios-app`. `reinstall` keeps the app's existing data (`adb install -r`); without it, installing over an existing app fails. INSTALLING AN APPLICATION IS THE BROADEST THING THIS ENGINE DOES — the APK is arbitrary code that then runs on the device with whatever permissions it declares, so the operator chooses the file and the `native-device` capability is what says they meant to. Reports adb's own failure reason (a wrong ABI, insufficient storage, an unsigned build) rather than a bare non-zero exit. Requires `native-device` and a native session.",
+        "Install an application bundle from a path under $BROWX_WORKSPACE onto the session's device — an `.apk` on `android-app`, a `.app` on `ios-app`. `reinstall` keeps the app's existing data (`adb install -r`); without it, installing over an existing app fails. INSTALLING AN APPLICATION IS THE BROADEST THING THIS ENGINE DOES — the APK is arbitrary code that then runs on the device with whatever permissions it declares, so the operator chooses the file and the `native-device` capability is what says they meant to. Reports adb's own failure reason (a wrong ABI, insufficient storage, an unsigned build) rather than a bare non-zero exit. Requires `native-device` and a native session.",
       inputSchema: {
         apkPath: z
           .string()
           .describe(
-            "Path to the bundle on the HOST machine (not the device) — a `.apk` on `android-app`, a `.app` directory on `ios-app`. Passed to adb / simctl as its own argv entry, so it is never shell-interpreted.",
+            "Workspace-relative path to the bundle on the HOST machine (not the device) — a `.apk` on `android-app`, a `.app` directory on `ios-app`. It must resolve inside $BROWX_WORKSPACE, symlinks included, like every file-reading tool. Passed to adb / simctl as its own argv entry, so it is never shell-interpreted.",
           ),
         reinstall: z
           .boolean()
@@ -216,8 +239,9 @@ export function registerNativeDeviceTools(
       const g = gateCheck("app_install");
       if (g) return g;
       try {
+        const bundle = resolveAppBundlePath(host.workspace.root, apkPath);
         const handle = requireNative((await entryFor(session)).session);
-        await handle.lifecycle.install(apkPath, reinstall === true);
+        await handle.lifecycle.install(bundle, reinstall === true);
         return json({ ok: true, apkPath, reinstalled: reinstall === true });
       } catch (err) {
         return failure(err);

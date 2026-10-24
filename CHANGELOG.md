@@ -33,6 +33,11 @@ surface" covers.
   whether a path is inside `$BROWX_WORKSPACE`. A link inside the workspace that
   leads out of it, such as a `file:` plugin install under `plugins/node_modules`,
   is refused with "resolves through a link to a path outside $BROWX_WORKSPACE".
+- **`app_install` reads its bundle from the workspace.** `apkPath` is now
+  workspace-relative and must resolve inside `$BROWX_WORKSPACE`, on its real
+  path, like `upload_file`. An absolute path elsewhere on the host, a `../` path
+  or a path starting with `-` is refused, with the same message whether or not
+  the path exists. Copy the `.apk` or `.app` into the workspace first.
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.
