@@ -77,7 +77,7 @@ export function registerStorageCachesTools(
     {
       capability: "read",
       description:
-        "List every cache storage visible to the current page's origin (`caches.keys()`). Cache API is ORIGIN-SCOPED — the session must be navigated to the target origin first; about:blank rejects with a navigation hint. Returns `{names:[...], origin}`. Read-only.",
+        "List the Cache API storages visible to the current page's origin (`caches.keys()`): `{names:[...], origin}`. Origin-scoped: `navigate` to the target origin first, or the call is rejected with a navigation hint.",
       inputSchema: { ...SESSION_ARG },
     },
     async ({ session }) => {
@@ -104,7 +104,7 @@ export function registerStorageCachesTools(
     {
       capability: "read",
       description:
-        "List entries in one cache. Returns `{entries:[{url, method}], origin, cacheName}`. Optional `urlPattern` is a case-sensitive substring filter on each entry's URL (no regex — adopters wanting richer filtering can post-filter the result). Origin-scoped — navigate first. Read-only.",
+        "List the entries in one cache: `{entries:[{url, method}], origin, cacheName}`. `urlPattern` is a case-sensitive substring filter on each URL (no regex). Origin-scoped: navigate first.",
       inputSchema: {
         cacheName: z.string().describe("Cache storage name."),
         urlPattern: z
@@ -138,7 +138,7 @@ export function registerStorageCachesTools(
     {
       capability: "read",
       description:
-        'Read a single cache entry: `{found, kind, contentType, status, headers, byteLength, cacheName, url, origin}`. The response body needs the off-by-default `network-body` capability, like `network_body`: with it, text-like content types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, or anything with a `charset=`) add `text` and everything else adds `contentBase64`. Without it the body is left out and the result carries `bodyOmitted:true` and `requiredCapability:"network-body"`. `{found:false}` if no entry matches the URL. Origin-scoped — navigate first. Read-only.',
+        'Read one Cache API entry: `{found, kind, contentType, status, headers, byteLength, cacheName, url, origin}`. The body needs the `network-body` capability (off by default): with it, text-like content types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, or any `charset=`) add `text` and everything else adds `contentBase64`; without it the result carries `bodyOmitted:true` and `requiredCapability:"network-body"`. `{found:false}` when no entry matches the URL. Origin-scoped: navigate first.',
       inputSchema: {
         cacheName: z.string().describe("Cache storage name."),
         url: z.string().describe("Entry URL key."),
@@ -172,7 +172,7 @@ export function registerStorageCachesTools(
     {
       capability: "action",
       description:
-        "Put one entry in a cache. `response.body` is a UTF-8 string (default); for binary content pass `response.contentBase64` instead — exactly one of the two. Optional `response.status` (default 200) and `response.headers` build the `Response`. Auto-opens (= creates) the named cache storage if it doesn't exist. Origin-scoped — navigate first.",
+        "Put one entry in a cache, opening (creating) the named storage if needed. `response.body` is a UTF-8 string; for binary pass `response.contentBase64` instead, exactly one of the two. `response.status` defaults to 200; `response.headers` is optional. Origin-scoped: navigate first.",
       inputSchema: {
         cacheName: z.string().describe("Cache storage name (auto-created)."),
         url: z.string().describe("Entry URL key."),
@@ -219,7 +219,7 @@ export function registerStorageCachesTools(
     {
       capability: "action",
       description:
-        "Delete one entry from a cache. Returns `existed:true` when a record was present (idempotent — repeat calls return `existed:false`). Origin-scoped — navigate first.",
+        "Delete one entry from a cache. Returns `existed:true` when a record was present and `existed:false` on a repeat call. Origin-scoped: navigate first.",
       inputSchema: {
         cacheName: z.string().describe("Cache storage name."),
         url: z.string().describe("Entry URL key."),
@@ -252,7 +252,7 @@ export function registerStorageCachesTools(
     {
       capability: "action",
       description:
-        "Clear every entry in a cache (the cache storage itself remains — use `caches_delete_storage` to drop the whole storage). Returns `cleared:N` (the count removed). Origin-scoped — navigate first.",
+        "Remove every entry in a cache; the storage itself stays (`caches_delete_storage` drops it). Returns `cleared:N`. Origin-scoped: navigate first.",
       inputSchema: {
         cacheName: z.string().describe("Cache storage name."),
         ...SESSION_ARG,
@@ -284,7 +284,7 @@ export function registerStorageCachesTools(
     {
       capability: "action",
       description:
-        "Delete a cache storage entirely (`caches.delete(name)`). Returns `existed:true` when the storage was present (idempotent). To clear entries while keeping the storage, use `caches_clear`. Origin-scoped — navigate first.",
+        "Delete a whole cache storage (`caches.delete(name)`). Returns `existed:true` when it was present. Use `caches_clear` to empty it and keep the storage. Origin-scoped: navigate first.",
       inputSchema: {
         cacheName: z.string().describe("Cache storage name to delete."),
         ...SESSION_ARG,

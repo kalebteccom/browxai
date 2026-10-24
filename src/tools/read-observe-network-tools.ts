@@ -33,8 +33,17 @@ export function registerReadObserveNetworkTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        "Session-wide ring buffer of recent network requests (500 most recent; oldest evicted on overflow). For per-action attribution use `ActionResult.network` from any action tool — that's the primary surface. This is the 'what happened across the session' view; useful when an XHR isn't tied to a specific action you just ran. Noise types (Image/Font/Stylesheet/Media/beacons) folded into `summary.byType.other`.",
-      inputSchema: { limit: z.number().int().positive().max(500).optional(), ...SESSION_ARG },
+        "Read the session's recent network requests from a ring buffer (the 500 most recent; older ones drop off). Use `ActionResult.network` for what one action caused, and this for requests not tied to an action you just ran. Image, font, stylesheet, media and beacon traffic is folded into `summary.byType.other`. Bodies need `network_body`.",
+      inputSchema: {
+        limit: z
+          .number()
+          .int()
+          .positive()
+          .max(500)
+          .optional()
+          .describe("Most recent N requests to return (default 50, max 500)."),
+        ...SESSION_ARG,
+      },
     },
     async ({ limit, session }) => {
       const g = gateCheck("network_read");
@@ -53,12 +62,12 @@ export function registerReadObserveNetworkTools(host: ToolHost): void {
       capability: "network-body",
       batchable: true,
       description:
-        "fetch a full response body by `requestId` (from `network_read` / `ActionResult.network.requests[].requestId`). **Gated behind the off-by-default `network-body` capability** — full bodies can carry PII / auth tokens; 's `responseShape` (keys only) is the safe default. Bounded (256 KB, `truncated:true` past that). Best-effort: the renderer discards bodies fast — fetch right after the request, not retained across navigations. Pairs with for realtime payload assertions.",
+        "Fetch one response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). Requires the `network-body` capability (off by default): bodies can hold personal data and tokens, and `ActionResult.network.mutations[].responseShape` (top-level keys only) is the safe default. Capped at 256 KB: Chromium returns `truncated:true` past that, Firefox and WebKit return `ok:false`. Fetch right after the request, because the renderer drops bodies quickly and they do not survive navigation. For realtime payloads use `ws_read`.",
       inputSchema: {
         requestId: z
           .string()
           .describe(
-            "CDP request id from network_read / ActionResult.network.requests[].requestId.",
+            "Request id from `network_read` or `ActionResult.network.requests[].requestId`.",
           ),
         ...SESSION_ARG,
       },
@@ -91,7 +100,7 @@ export function registerReadObserveNetworkTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        "session-wide ring of recent WebSocket / Server-Sent-Events frames (HTTP is `network_read`; this is the realtime channel). Each frame: `{ url, dir: sent|recv, kind: ws|sse, opcode?, event?, payload, truncated?, ts }`. Payloads are truncated. Use to verify realtime correctness — chat/multiplayer/collaborative/live-dashboard broadcasts. Per-action frames also land in `ActionResult.network.wsFrames`; this is the across-session view.",
+        "Read recent WebSocket and Server-Sent-Events frames from a ring buffer, each `{ url, dir: sent|recv, kind: ws|sse, opcode?, event?, payload, truncated?, ts }` with payloads truncated. Use it to check realtime behaviour (chat, multiplayer, live dashboards); `network_read` covers HTTP. `ActionResult.network.wsFrames` holds the frames from one action.",
       inputSchema: {
         limit: z
           .number()
@@ -99,7 +108,7 @@ export function registerReadObserveNetworkTools(host: ToolHost): void {
           .positive()
           .max(500)
           .optional()
-          .describe("Most-recent N frames (default 50)."),
+          .describe("Most recent N frames to return (default 50, max 500)."),
         urlPattern: z.string().optional().describe("Substring filter on the frame's endpoint URL."),
         ...SESSION_ARG,
       },

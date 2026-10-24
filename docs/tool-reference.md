@@ -313,7 +313,7 @@ region "Records" [ref=e12]
 
 ### `find`
 
-Find candidate elements by natural-language description.
+Find candidate elements by natural-language description and return them ranked, each with a stable `ref`. Use it to locate one element to act on; use `snapshot` to see the whole page and `text_search` to check that text is present or gone.
 
 **Inputs:** `{ query: string, maxCandidates?: number (default 5, max 20), confidenceFloor?: number, contextRef?: string, visibleOnly?: boolean }`
 
@@ -524,7 +524,7 @@ Periodic screenshot capture at a fixed interval into a workspace-rooted director
 - Exactly one of:
   - `count: integer 1..1000`: stop after N captures.
   - `durationMs: integer > 0`: stop after this wall-clock window. Must be `>= everyMs`.
-- `intoDir`: workspace-rooted output directory. Defaults to `screenshots/<sessionId>-<isoTs>/`. Path-traversal rejected.
+- `intoDir`: workspace-rooted output directory. Defaults to `screenshots/<sessionId>-<isoTs>/`. A path outside the workspace is rejected.
 - `format`: `"png"` (default) or `"jpeg"`. JPEGs are written with `.jpg`.
 
 Files are named `<seq>-<offsetMs>.<png|jpg>` so the dir-listing alone reproduces the timeline. A belt-and-braces ceiling of **1000 captures per call** applies on top of the count/duration bound, surfaced as a `warnings[]` entry if hit. A single failed snap is logged as a warning and the schedule continues (does not poison the window). The outer action-timeout wraps the whole call: an unbounded `screenshot_schedule` is refused at validation time, so the deadline is "expected window + slack".
@@ -556,7 +556,7 @@ Event-driven screenshot capture. Arms a `trigger` for `durationMs`; every time t
 
 - `trigger`: one of the four above.
 - `durationMs`: observation window length, range `[1, 600000]` ms (10 min ceiling).
-- `intoDir`: workspace-rooted output directory. Defaults to `screenshots/<sessionId>-<isoTs>/`. Path-traversal rejected.
+- `intoDir`: workspace-rooted output directory. Defaults to `screenshots/<sessionId>-<isoTs>/`. A path outside the workspace is rejected.
 - `format`: `"png"` (default) or `"jpeg"`.
 
 A per-window cap of **50 captures** prevents event-storm runaway (e.g. a console-error fired every animation frame), surfaced as a `warnings[]` entry if reached, and the window closes early. Trigger fires that land while a previous capture is still in flight are dropped (single screenshot per visible state is the useful unit). A snap that errors is logged as a warning; the window keeps observing. The outer action-timeout is at least the observation window plus 1s of slack so the call can run a multi-minute window without aborting.
@@ -631,6 +631,8 @@ Two paths, deliberately layered:
    - `value`: alias for `prop:"value"`.
 
 The per-field `query` key is **RETIRED as of v0.3.3**. The NL tree-scan ranker is unreliable for explicit prose queries (uniform null/0 across rows with no partialMiss surfaced; see [CHANGELOG v0.3.3](../CHANGELOG.md)). Use `selector` for per-field targeting; the implicit property-name lowering still works on testid-rich pages. Setting `x-browx-source.query` at runtime is tolerated for back-compat: the resolver emits a one-shot `console.warn` and records a `partialMisses` entry naming the field, then proceeds with the tree-scan. New schemas should drop the `query` key.
+
+Set `BROWX_EXTRACT_STRICT=1` at server start to turn unknown `x-browx-source` keys into `ok:false` `invalid-schema` failures instead of `partialMisses` entries. The integer-to-number coercion and the array `selector` alias stay soft in strict mode.
 
 The implicit rule covers the headline case (testid-friendly pages) without ceremony; the explicit hint covers the cases where the property name carries no signal or the value isn't innerText.
 
@@ -1210,7 +1212,7 @@ All action tools return an `ActionResult` (text content; JSON-encoded), the same
 - `ref`: preferred for semantic UIs. Stable across snapshots, carries role+name+testId so Playwright auto-waiting + strict-match Just Works.
 - `selector`: accepts the `selectorHint` strings `find()` emits plus arbitrary Playwright locator strings.
 - `named`: mnemonic previously bound via `name_ref`.
-- `coords`: page coordinates `{ x, y }` in CSS pixels, viewport-relative. First-class for canvas, WebGL / three.js, painted UIs, and any surface where the agent locates targets visually (their own multimodal vision or geometric reasoning). Honoured by `click` and `hover`; fill/press/select still require a resolved element. Coord-mode actions populate `ActionResult.element.hit` with `elementFromPoint` evidence before+after (see below) so the action stays inspectable; for the _full_ hit-stack + why a layer is/ isn't hittable, `point_probe({coords})` first.
+- `coords`: page coordinates `{ x, y }` in CSS pixels, viewport-relative. First-class for canvas, WebGL / three.js, painted UIs, and any surface where the agent locates targets visually (their own multimodal vision or geometric reasoning). Used by `click`, `hover`, `double_click`, `wait_for`, `scroll` and `drop_files`; `fill`, `select` and `choose_option` still require a resolved element. Coord-mode actions populate `ActionResult.element.hit` with `elementFromPoint` evidence before+after (see below) so the action stays inspectable; for the _full_ hit-stack + why a layer is/ isn't hittable, `point_probe({coords})` first.
 
 Optional `contextRef: string` scopes a `selector` to the subtree of a prior ref (row, card, panel). `click({ selector: '[data-testid="row-action"]', contextRef: rowRef })` says "the action _inside_ this row" without positional `:nth` chains. Mirrors `find()`'s `contextRef`; ignored when `ref` / `named` / `coords` is used.
 
@@ -1251,7 +1253,7 @@ navigate({ url: "https://app.example.com/records" })
 
 ### `click({ ref?|selector?|named?|coords?, button?, force?, dispatch?,...opts })`
 
-Click. Accepts all four target shapes. `button` is `"left" | "right" | "middle"` (default left). Returns an `ActionResult.element` probe (`stillAttached`, `focused`, `value`, `displayText`, `ownerControl`, `container`) for ref/selector/named targets; coord targets populate `element.hit` (with `before`/`after` from `elementFromPoint` and `focusChanged`) in place of the locator-based fields.
+Click. Accepts all four target shapes. Prefer `click` over `act_and_diff` unless the change you need to see is a class or attribute edit. A stale ref errors: call `snapshot` or `find` again. `button` is `"left" | "right" | "middle"` (default left). Returns an `ActionResult.element` probe (`stillAttached`, `focused`, `value`, `displayText`, `ownerControl`, `container`) for ref/selector/named targets; coord targets populate `element.hit` (with `before`/`after` from `elementFromPoint` and `focusChanged`) in place of the locator-based fields.
 
 **Example.**
 
@@ -1642,9 +1644,11 @@ implementations.
 `inject_storage_state`, `auth_save`, `auth_load`, `auth_delete`) under
 `action`. No new capability gate to enable.
 
-**Security note (gap)**: cookie _values_ may carry credentials. The
-future secrets-masking pass will mask them on egress; this cycle
-ships unmasked. Treat dumps + saved named-states as sensitive.
+**Sensitive data**: cookie _values_ may carry credentials. With the `secrets`
+capability on, registered values are masked in tool results (`cookies_get`,
+`cookies_list`, the `dump_storage_state` blob). A file written by
+`dump_storage_state({path})` or `auth_save` keeps the values as the browser
+holds them. Treat dumps and saved named states as sensitive.
 
 #### Layer 1: bulk
 
@@ -3578,7 +3582,7 @@ browxai to daemon:
 
 ## Native app control (`ios-app`, `android-app`) _(gated)_
 
-**Requires the off-by-default `native-device` capability.** `open_session({ browserType: "ios-app" })` and `open_session({ browserType: "android-app" })` both refuse without it, so the gate sits at session creation and no native tool can be reached around it. See [`docs/threat-model.md`](./threat-model.md) for what the capability grants.
+**Requires the off-by-default `native-device` capability.** `open_session({ engine: "ios-app" })` and `open_session({ engine: "android-app" })` both refuse without it, so the gate sits at session creation and no native tool can be reached around it. See [`docs/threat-model.md`](./threat-model.md) for what the capability grants.
 
 browxai drives two native engines. `ios-app` drives a native application on the **iOS Simulator** through its XCUITest accessibility hierarchy. `android-app` drives an app on an **Android emulator** over `adb` — UiAutomator for the view hierarchy, the OS input pipeline for taps, swipes and keys, `screencap` for frames. Neither is a browser: there is no `Page`, no DOM, no URL and no `Locator`. What each has instead is a view hierarchy that composes into the **same `A11yNode` tree** `snapshot` already returns, with the same `[ref=eN]` refs, so an agent skill written for web transfers and one CI verifier reads every kind of session.
 

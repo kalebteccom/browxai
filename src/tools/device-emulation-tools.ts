@@ -102,9 +102,8 @@ export function registerDeviceEmulationTools(host: ToolHost): void {
         // emulate_bluetooth / emulate_usb / emulate_hid — all device-emulation.
         capability: "device-emulation",
         description:
-          `Stage a synthetic ${api === "bluetooth" ? "Web Bluetooth" : api === "usb" ? "WebUSB" : "WebHID"} device catalog for this session. The page-side wrapper around \`navigator.${api}.requestDevice()\` resolves with the agent-supplied device(s) the next time the page calls it. ${hint} ` +
-          `Pass \`{devices: [...]}\` to install a non-empty catalog (the next requestDevice call ${api === "hid" ? "resolves with the matching device list" : "resolves with the first matching device"}); pass \`{devices: []}\` or omit \`devices\` to clear the catalog (the next call ${api === "hid" ? "resolves with `[]` — the user-dismissed shape for HID" : "rejects with `NotFoundError` — the user-dismissed shape for the picker"}). Persists across navigation: the init-script is re-injected on every new document within the session. Captured page-side calls surface on \`device_requests({session})\`. ` +
-          `**Gated behind the off-by-default \`device-emulation\` capability** — the wrappers tell the page it found physical devices that don't exist, a posture-broadening change distinct from the surrounding policies. v1 covers the picker-clear path only — ${api === "bluetooth" ? "GATT service exchange (`getPrimaryService()`) rejects" : api === "usb" ? "transfer endpoints (`transferIn`/`transferOut`) resolve with zero-byte results" : "input/output reports (`oninputreport`, `sendReport()`) are stubs"}. Same posture class as \`eval\` / \`network-body\` / \`secrets\` / \`extensions\` / \`stealth\` / \`captcha\` — see docs/threat-model.md. Returns \`{ok, session, api, catalog:{devices:[…]}, warnings?, tokensEstimate}\`.`,
+          `Stage a synthetic ${api === "bluetooth" ? "Web Bluetooth" : api === "usb" ? "WebUSB" : "WebHID"} device catalog for this session, so the page's \`navigator.${api}.requestDevice()\` resolves with the devices you supply. Requires the \`device-emulation\` capability (off by default): the page is told that physical devices exist that do not. ${hint} ` +
+          `\`{devices: [...]}\` installs a catalog (the next requestDevice call ${api === "hid" ? "resolves with the matching device list" : "resolves with the first matching device"}); \`{devices: []}\` or omitting \`devices\` clears it (the next call ${api === "hid" ? "resolves with `[]`, the dismissed-picker shape for HID" : "rejects with `NotFoundError`, the dismissed-picker shape"}). Persists across navigation. Read what the page asked for with \`device_requests\`. Returns \`{ok, session, api, catalog:{devices:[…]}, warnings?, tokensEstimate}\`.`,
         inputSchema: {
           devices: z
             .array(SYNTHETIC_DEVICE_SCHEMA)
@@ -154,16 +153,16 @@ export function registerDeviceEmulationTools(host: ToolHost): void {
   registerEmulateApi(
     "emulate_bluetooth",
     "bluetooth",
-    "The synthetic `BluetoothDevice` carries `{id, name, uuids, gatt}`; `gatt.connect()` resolves with a stub server whose `getPrimaryService()` rejects (no GATT emulation in v1) — enough for pages that gate flow on the picker-clear, not enough for pages that go on to exchange characteristic data.",
+    "The synthetic `BluetoothDevice` has `{id, name, uuids, gatt}`; `gatt.connect()` resolves with a stub server whose `getPrimaryService()` rejects, so pages that only need the picker to resolve work and pages that read characteristics do not.",
   );
   registerEmulateApi(
     "emulate_usb",
     "usb",
-    "The synthetic `USBDevice` carries vendor/product/class/manufacturer/serial fields; `open()` / `selectConfiguration()` / `claimInterface()` resolve; transfer endpoints (`transferIn` / `transferOut` / `controlTransferIn` / `controlTransferOut`) resolve with zero-byte payloads (no synthetic data flow).",
+    "The synthetic `USBDevice` has vendor, product, class, manufacturer and serial fields; `open()`, `selectConfiguration()` and `claimInterface()` resolve; transfers (`transferIn`, `transferOut`, `controlTransferIn`, `controlTransferOut`) resolve with zero-byte payloads, so no data flows.",
   );
   registerEmulateApi(
     "emulate_hid",
     "hid",
-    "The synthetic `HIDDevice` carries vendor/product/productName/collections; `open()` / `sendReport()` / `sendFeatureReport()` resolve; `receiveFeatureReport()` resolves with an empty DataView; `oninputreport` is never fired (no synthetic device traffic).",
+    "The synthetic `HIDDevice` has vendor, product, productName and collections; `open()`, `sendReport()` and `sendFeatureReport()` resolve; `receiveFeatureReport()` resolves with an empty DataView; `oninputreport` never fires.",
   );
 }

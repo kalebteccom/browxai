@@ -58,7 +58,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
     {
       capability: "read",
       description:
-        "Bundle a session's current QA evidence into one JSON object — url (redacted like `network_read`: no query string, fragment or userinfo), console errors, recent network summary, named regions, live sessions — so multi-agent QA results can be checked without normalising each agent's notes by hand. `note` records a free-text label/summary. Returns the bundle (not written to disk).",
+        "Bundle the session's current QA evidence into one JSON object: url (query string, fragment and userinfo removed, as in `network_read`), console errors, recent network summary, named regions and live sessions, so results from several agents can be compared without normalising notes. `note` adds a free-text label. Returns the bundle and writes no file. Use `session_metrics` for tool-call counts and `export_playwright_script` for a runnable spec.",
       inputSchema: {
         note: z.string().optional().describe("Free-text label / summary for this session's run."),
         ...SESSION_ARG,
@@ -119,7 +119,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        "Per-session cumulative tool-call metrics — counts, latency, `tokensEstimate` sum, capability denials, and per-tool error counts. Piggybacks on the existing per-call envelope data (no new instrumentation, no disk writes). Pairs with `export_session_report` (which bundles the session's QA EVIDENCE — url, console errors, recent network summary, named regions, live sessions); this one rolls up DISPATCH EVIDENCE so a consumer can audit which tools the agent leaned on, how token-expensive each got, and whether the agent kept hitting a capability gate that's off. Read-only (capability `read`). → `{ ok, session, callsByTool, durationMsByTool, errorsByTool, tokensEstimateSum, capabilityDenials, sessionStartedAt, sessionDurationMs, tokensEstimate }`.",
+        "Per-session cumulative tool-call metrics: calls, latency, `tokensEstimate` sum, capability denials and error counts per tool. It reads data the server already keeps (no new instrumentation, no disk writes). Use it to see which tools an agent leaned on, what they cost in tokens, and whether it kept hitting a capability that is off; `export_session_report` bundles the page's QA evidence instead. Returns `{ ok, session, callsByTool, durationMsByTool, errorsByTool, tokensEstimateSum, capabilityDenials, sessionStartedAt, sessionDurationMs, tokensEstimate }`.",
       inputSchema: { ...SESSION_ARG },
     },
     async ({ session }) => {
@@ -145,7 +145,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
     {
       capability: "diagnostics",
       description:
-        "Agent self-feedback. File a structured insight against the diagnostics JSONL store: a missing primitive, a workaround that worked, a perf concern, or an ergonomic friction the curated tool surface didn't cover. `ref` optionally points at a prior tool call (a record id or `tool:ts` shorthand). The recorder is engaged by the same `diagnostics` capability — registering a note while the capability is OFF returns a structured refusal (so a polling agent on a server with diagnostics off doesn't silently lose feedback). Default category `other`, default severity `info`. Capability: `diagnostics`.",
+        "File a structured note in the diagnostics store: a missing primitive, a workaround that worked, a performance concern, or an ergonomic problem the tool surface did not cover. `ref` optionally points at an earlier tool call (a record id or `tool:ts`). Requires the `diagnostics` capability (off by default); while it is off the call returns a structured refusal, so a note is not lost without notice. The other optional fields have defaults (see their descriptions).",
       inputSchema: {
         insight: z
           .string()
@@ -218,7 +218,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
     {
       capability: "read",
       description:
-        "Read-side query over the diagnostics JSONL store. Returns matching records — calls + notes — up to `limit` (default 100, max 1000). `since` filters by ts (ISO); `tool` filters by tool name (exact match); `category` filters notes only; `sessionId` filters by session. The recorder is gated on the `diagnostics` capability; this query reads whatever lives on disk, so a server with diagnostics OFF but a non-empty workspace history can still surface prior runs. Read-only (capability `read`). → `{ ok, records, count, truncated }`.",
+        "Query the diagnostics store (tool calls and notes), returning up to `limit` records (default 100, max 1000). Filters: `since` (ISO timestamp), `tool` (exact name), `category` (notes only) and `sessionId`. It reads whatever is on disk, so a server with diagnostics off still shows earlier runs. Use `diagnostics_report` for aggregates. Returns `{ ok, records, count, truncated }`.",
       inputSchema: {
         since: z
           .string()
@@ -289,7 +289,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
     {
       capability: "read",
       description:
-        "Analysis primitive over the diagnostics JSONL store. `summary` (default) returns per-tool counts + p50/p95 durations, the top 10 eval_js patterns by count + their taxonomy classification, capability-denial counts, note counts by category, and a `missingPrimitiveHypotheses` list — eval_js taxonomy buckets with high count flagged as candidates for a curated primitive (heuristic: non-`custom` taxonomy with count ≥ 3 OR `custom` pattern with count ≥ 5). `full` returns the same + a per-record stream capped at 500 records (`truncated:true` when exceeded). Optional `since` (ISO) windowing + `sessionId` filter. Read-only (capability `read`).",
+        "Aggregate the diagnostics store. `summary` (default) returns per-tool counts with p50 and p95 durations, the ten most common `eval_js` patterns with their taxonomy class, capability-denial counts, note counts by category, and `missingPrimitiveHypotheses` (taxonomy classes with a high `eval_js` count that point to a missing primitive: a non-`custom` class with count 3 or more, or a `custom` pattern with count 5 or more). `full` adds a per-record stream capped at 500 (`truncated:true` past that). `since` (ISO) and `sessionId` narrow the window. Use `diagnostics_search` for individual records.",
       inputSchema: {
         format: z
           .enum(["summary", "full"])
@@ -354,7 +354,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
     {
       capability: "read",
       description:
-        "Lower a session's recorded action trace into a runnable `@playwright/test` spec file. Adjacent to `export_session_report` (which bundles QA evidence) and to `end_recording` (which emits the site-docs flow-file YAML); this one emits a `.spec.ts` source a code-as-action consumer can run as the seed for a skill-compilation loop. Each recorded action lowers to ONE Playwright call using the BEST stable `selectorHint` captured at the time of the call (tier-1 attribute → `page.locator(...)`, tier-2 role+name → `getByRole({name})`, role-only / tier-5 → `getByRole()` with a `// TODO: fragile selector` comment). Coords-mode actions are not recorded so the export never has to lower a non-replayable target. Recorded READS lower too: `extract` → a live per-field re-read bound to a `const` (from the schema's `x-browx-source.selector`; fields that used the implicit name-as-query rule emit `null` + a TODO and count as unhandled), `find` → a named locator `const`, `eval_js` → `page.evaluate` of the recorded expression with the `eval`-capability provenance stated in the header, `snapshot` → a comment (nothing to run; counted unhandled). Declared values are logged at the end of the test body, so a read-shaped flow prints what it read. Requires an ACTIVE recording (call `start_recording` first); inspect-style — does NOT end the recording. With `path`, ALSO writes to a workspace-rooted `.spec.ts` file (path-traversal rejected — must resolve under $BROWX_WORKSPACE). Read-only (capability `read`). Returns `{ ok, name, source, path?, stats:{steps,handled,unhandled,fragile}, tokensEstimate }`.",
+        "Turn the session's recorded action trace into a runnable `@playwright/test` spec. It needs an active recording (`start_recording` first) and does not end it; `end_recording` returns the flow-file YAML instead and `export_session_report` bundles QA evidence. Each recorded action becomes one Playwright call using the best selectorHint captured (testid attribute, then role and name, then role only with a `// TODO: fragile selector` comment). Actions that used `coords` are not recorded. Recorded reads lower too: `extract` to a per-field re-read (fields using the property-name rule emit `null` and a TODO), `find` to a named locator, `eval_js` to `page.evaluate` of the recorded expression, `snapshot` to a comment. With `path` it also writes a workspace-rooted `.spec.ts`; a path outside $BROWX_WORKSPACE is rejected. Returns `{ ok, name, source, path?, stats:{steps,handled,unhandled,fragile}, tokensEstimate }`.",
       inputSchema: {
         path: z
           .string()

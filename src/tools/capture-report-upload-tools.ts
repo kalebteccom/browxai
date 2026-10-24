@@ -32,7 +32,7 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
     {
       capability: "file-io",
       description:
-        "Set a file on a file `<input>` (works on hidden inputs) via Playwright `setInputFiles` — the first-class alternative to injecting `File`/`DataTransfer` through `eval_js`. Target the input by `ref`/`selector`. File source is exactly one of: `content` (base64 inline — no filesystem read; pass `name`/`mimeType`) OR `path` (resolved **inside `$BROWX_WORKSPACE` only** — a path escaping the workspace is rejected; stage the file there). Gated by the off-by-default **`file-io`** capability.",
+        "Set a file on a file `<input>` (hidden inputs work) with Playwright `setInputFiles`. Use `drop_files` for drop zones that have no `<input type=file>`. Target the input with `ref`, `selector` or `named`. The file is exactly one of `content` (base64, with `name` and `mimeType`; no filesystem read) or `path` (inside `$BROWX_WORKSPACE` only, symlinks resolved; stage the file there first). Requires the `file-io` capability (off by default).",
       inputSchema: {
         ...REF_OR_SELECTOR,
         name: z
@@ -50,7 +50,9 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
         path: z
           .string()
           .optional()
-          .describe("Workspace-rooted file path. Mutually exclusive with `content`."),
+          .describe(
+            "Workspace-rooted file path, resolved through symlinks. A path that leaves $BROWX_WORKSPACE is rejected. Mutually exclusive with `content`.",
+          ),
         ...SESSION_ARG,
       },
     },
@@ -121,7 +123,7 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
     {
       capability: "file-io",
       description:
-        "Synthesize an HTML5 file drag-drop on a page element — the first-class alternative to driving DataTransfer through `eval_js` for drop-zone uploaders that don't expose an `<input type=file>` (modern SaaS file pickers). Target via the standard target shapes (`ref`/`selector`/`named`/`coords`). `files[]` carries one or more file entries; each entry is exactly one of: `{path, name?, mimeType?}` (workspace-rooted file — escape-rejected, same posture as `upload_file`'s `path`) OR `{contents, name, mimeType?}` (base64 inline — no filesystem read). Builds an in-page `DataTransfer` populated with `File` objects and dispatches `dragenter` → `dragover` → `drop` on the target with realistic `clientX`/`clientY` (element box centre for ref/selector; literal coords). Drops every file in a single sequence — passing multiple entries simulates the multi-file drop most uploaders support natively. → `{ ok, target, files: [{name, mode, bytes, mimeType}], totalBytes, fileCount, eventsFired, dropDispatched, tokensEstimate }`. Gated by the off-by-default **`file-io`** capability.",
+        "Simulate an HTML5 file drag-and-drop on a page element, for drop-zone uploaders that expose no `<input type=file>`. Use `upload_file` when an input exists. Target with `ref`, `selector`, `named` or `coords`. `files[]` holds one or more entries, each exactly one of `{path, name?, mimeType?}` (inside `$BROWX_WORKSPACE`, as for `upload_file`) or `{contents, name, mimeType?}` (base64, no filesystem read). It builds a `DataTransfer` of `File` objects and dispatches `dragenter`, `dragover` and `drop` once for all files, at the element's box centre (or the literal coords). Returns `{ ok, target, files: [{name, mode, bytes, mimeType}], totalBytes, fileCount, eventsFired, dropDispatched, tokensEstimate }`. Requires the `file-io` capability (off by default).",
       inputSchema: {
         ...REF_OR_SELECTOR,
         files: z
@@ -206,7 +208,7 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
     {
       capability: "file-io",
       description:
-        "Per-session download capture — toggle interception of Playwright `download` events. When `on:true`, every download fired during a subsequent action is persisted to `$BROWX_WORKSPACE/.downloads/<sessionId>/<prefix>-<sanitised-name>` and surfaced on `ActionResult.downloads[{id, suggestedFilename, mimeType, sizeBytes, path}]`. When `on:false` (the default) the artifact is silently discarded so a session that never opted in leaves no on-disk trace. The page-supplied filename is sanitised (no path separators / NULs / leading dots / control bytes; length-capped) before composing the on-disk name — workspace-escape rejected. Read captured bytes with `download_get({id})`. Gated by the off-by-default **`file-io`** capability — same posture as `upload_file`. → `{ ok, captureOn, storageDir, captured: [{id, suggestedFilename, sizeBytes, path, mimeType?}], tokensEstimate }`. Pass `clear:true` alongside `on:false` to ALSO delete every captured file on disk.",
+        "Turn download capture on or off for the session. With `on:true`, each download fired during a later action is saved to `$BROWX_WORKSPACE/.downloads/<sessionId>/<prefix>-<sanitised-name>` and listed on `ActionResult.downloads[{id, suggestedFilename, mimeType, sizeBytes, path}]`; read it with `download_get({id})`. With `on:false` (the default) downloads are discarded, so a session that never opted in leaves no file on disk. The page-supplied file name is sanitised (no path separators, NULs, leading dots or control bytes; length-capped). Pass `clear:true` with `on:false` to also delete every captured file. Returns `{ ok, captureOn, storageDir, captured: [{id, suggestedFilename, sizeBytes, path, mimeType?}], tokensEstimate }`. Requires the `file-io` capability (off by default).",
       inputSchema: {
         on: z.boolean().describe("Turn capture on (true) or off (false). Off by default."),
         clear: z
@@ -290,7 +292,7 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
     {
       capability: "file-io",
       description:
-        "Return the bytes (base64) of a previously-captured download. Pass the `id` from `ActionResult.downloads[]` (or `downloads_capture({on:true}).captured[]`). Set `pathOnly:true` to skip the base64 payload and return just the workspace-rooted path metadata (useful for very large artifacts an agent only needs to forward to another tool by path). A file over 16 MiB is not returned inline: the call fails with an error naming the limit and the saved path, and `pathOnly:true` still works. →`{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`. Gated by the off-by-default **`file-io`** capability.",
+        "Return the bytes (base64) of a captured download; pass the `id` from `ActionResult.downloads[]` or `downloads_capture({on:true}).captured[]`. Set `pathOnly:true` to skip the base64 and return only the path and metadata, which suits large files you hand on by path. A file over 16 MiB is never returned inline: the call fails with an error naming the limit and the saved path, and `pathOnly:true` still works. Returns `{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`. Requires the `file-io` capability (off by default).",
       inputSchema: {
         id: z.string().describe("Download id from ActionResult.downloads[].id."),
         pathOnly: z

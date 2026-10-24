@@ -16,8 +16,12 @@ import type { SessionArg, TimeoutArg } from "./tool-types-shared.js";
 // per-tool methods on `BrowxaiClient`.
 // =============================================================================
 
+/** `eval_js` needs the `eval` capability (off by default). Last resort: prefer
+ *  `inspect`, `find`, `extract` and the action tools. */
 export interface EvalJsArgs extends SessionArg, TimeoutArg {
+  /** JS expression for the page's main frame. Wrap statements in `(() => { … })()`. */
   expr: string;
+  /** `"json"` returns the value (JSON-serialisable); `"void"` discards it. */
   returnType?: "json" | "void";
 }
 export interface EvalJsOk {
@@ -34,7 +38,10 @@ export interface EvalJsFail {
 export type EvalJsResultData = EvalJsOk | EvalJsFail;
 export type EvalJsResult = BrowxaiResult<EvalJsResultData>;
 
+/** `network_body` needs the `network-body` capability (off by default). The body is
+ *  capped at 256 KB. */
 export interface NetworkBodyArgs extends SessionArg {
+  /** Request id from `network_read` or `ActionResult.network.requests[].requestId`. */
   requestId: string;
 }
 export interface NetworkBodyResultData {
@@ -46,6 +53,8 @@ export interface NetworkBodyResultData {
 }
 export type NetworkBodyResult = BrowxaiResult<NetworkBodyResultData>;
 
+/** `upload_file` needs the `file-io` capability (off by default). Pass exactly one
+ *  of `content` and `path`. */
 export interface UploadFileArgs extends SessionArg {
   ref?: string;
   selector?: string;
@@ -53,7 +62,9 @@ export interface UploadFileArgs extends SessionArg {
   contextRef?: string;
   name?: string;
   mimeType?: string;
+  /** Base64 file content. Mutually exclusive with `path`. */
   content?: string;
+  /** Workspace-rooted path, resolved through symlinks. Mutually exclusive with `content`. */
   path?: string;
 }
 export interface UploadFileResultData {
@@ -68,9 +79,15 @@ export interface UploadFileResultData {
 }
 export type UploadFileResult = BrowxaiResult<UploadFileResultData>;
 
+/** `register_secret` needs the `secrets` capability (off by default). */
 export interface RegisterSecretArgs extends SessionArg {
+  /** Uppercase identifier matching `/^[A-Z][A-Z0-9_]*$/`; the page-visible alias is `<NAME>`. */
   name: string;
+  /** The real value. Held in memory for this session only. */
   value: string;
+  /** Origin the value may be typed into, such as `https://app.example.com` or
+   *  `http://localhost:3000`; a bare host means https. Matches scheme, host and port
+   *  exactly. Omit for any origin. */
   scope?: string;
 }
 export interface RegisterSecretResultData {

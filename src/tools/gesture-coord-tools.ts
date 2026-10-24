@@ -36,11 +36,11 @@ export function registerGestureCoordTools(
       capability: "action",
       deep: true,
       description:
-        "Coordinate-space wheel event — dispatched via CDP at `coords` (viewport CSS px) regardless of the current pointer position. For canvas, virtualised lists, and map tiles that listen for `wheel` and ignore element-level scroll. `deltaX`/`deltaY` are CSS px (DOM `WheelEvent` convention: positive `deltaY` scrolls content up); at least one must be non-zero.",
+        "Fire a wheel event at viewport `coords` (CSS px) through CDP, whatever the pointer position. Use `scroll` for ordinary page or container scrolling, and this for canvas, virtualised lists and map tiles that listen for `wheel` and ignore element scroll. `deltaX` and `deltaY` are CSS px (DOM `WheelEvent` convention: positive `deltaY` scrolls down); at least one must be non-zero.",
       inputSchema: {
         coords: z
           .object({ x: z.number(), y: z.number() })
-          .describe("Viewport CSS px — where the wheel event fires."),
+          .describe("Viewport point in CSS px where the wheel event fires."),
         deltaX: z.number().optional().describe("Horizontal wheel delta in CSS px (default 0)."),
         deltaY: z.number().optional().describe("Vertical wheel delta in CSS px (default 0)."),
         ...SESSION_ARG,
@@ -81,7 +81,7 @@ export function registerGestureCoordTools(
     {
       capability: "action",
       description:
-        "Two-finger pinch in/out centred on `coords`. Two touch points start at `coords ± startOffset` (default 40 CSS px) and converge or diverge linearly so the final separation = `startOffset × scale`. `scale < 1` is pinch-in (zoom out); `scale > 1` is pinch-out (zoom in). Linear interpolation across `steps` (default 12, clamped 1–100) — pinch handlers read inter-frame deltas; a velocity-detecting curve can misfire fling heuristics, linear is the safe default. Dispatches via CDP touch pipeline; touch does not fire mouse events automatically.",
+        "Two-finger pinch centred on `coords`. Two touch points start at `coords ± startOffset` (default 40 CSS px) and move linearly so the final separation is `startOffset × scale`: `scale < 1` pinches in (zooms out), `scale > 1` pinches out (zooms in). `steps` (default 12, clamped 1-100) sets the intermediate touchMove count; linear motion is the safe default because velocity curves can trip fling heuristics. It uses the CDP touch pipeline, which does not fire mouse events. Use `gesture_swipe` for one finger.",
       inputSchema: {
         coords: z
           .object({ x: z.number(), y: z.number() })
@@ -130,7 +130,7 @@ export function registerGestureCoordTools(
     {
       capability: "action",
       description:
-        "Single-finger swipe from `from` to `to` via the touch pipeline. Distinct from `drag` (mouse pipeline) — mobile carousels, pull-to-refresh, swipeable list items wire touch handlers that ignore mouse events. `durationMs` (default 200 — fast flick; 500+ reads as deliberate scroll) is split across `steps` (default 16, clamped 1–200) touchMove dispatches. Smoothed via an ease-out curve (`1 - (1 - t)²`) — matches the natural deceleration most fling-detect heuristics are tuned for (Hammer.js, native scroll inertia, react-spring physics).",
+        "Single-finger swipe from `from` to `to` through the touch pipeline, for mobile carousels, pull-to-refresh and swipeable rows whose touch handlers ignore mouse events. Use `drag` for the mouse pipeline. `durationMs` (default 200, a fast flick; 500 or more reads as a deliberate scroll) is split across `steps` touchMove events (default 16, clamped 1-200) on an ease-out curve (`1 - (1 - t)²`) that matches the deceleration most fling detectors expect (Hammer.js, native inertia, react-spring).",
       inputSchema: {
         from: z.object({ x: z.number(), y: z.number() }).describe("Swipe start, viewport CSS px."),
         to: z.object({ x: z.number(), y: z.number() }).describe("Swipe end, viewport CSS px."),

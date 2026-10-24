@@ -44,24 +44,40 @@ export type SessionMode = "persistent" | "incognito" | "attached";
 export type EngineKind =
   "chromium" | "firefox" | "webkit" | "android" | "safari" | "ios-app" | "android-app" | "electron";
 export interface OpenSessionArgs {
+  /** Session id: a plain name (letters, digits, `.`, `_`, `-`; starts with a letter or
+   *  digit; at most 128 characters), else `invalid-name`. */
   session: string;
+  /** Default: the server's launch mode. `"attached"` needs the `byob-attach`
+   *  capability (off by default). */
   mode?: SessionMode;
   /** Browser engine for this session, overriding the server default. Omit to
    *  inherit it (unchanged legacy behaviour). See the `open_session` tool docs
    *  for the per-engine mode constraints. */
   engine?: EngineKind;
+  /** `persistent` mode only: a plain profile name. One live session per profile
+   *  (`profile-in-use` otherwise). */
   profile?: string;
+  /** Playwright device preset name, such as `"iPhone 14"`. */
   device?: string;
+  /** Viewport in CSS px. Overrides a device preset's viewport. */
   viewport?: { width: number; height: number };
   dialogPolicy?: string;
+  /** Inline blob from `dump_storage_state` or a workspace-rooted JSON path.
+   *  Mutually exclusive with `authState`. */
   storageState?: string | Record<string, unknown>;
+  /** Named slot saved with `auth_save`. Mutually exclusive with `storageState`. */
   authState?: string;
+  /** Record a HAR for the session; the file is written on `close_session`. */
   har?: {
+    /** Workspace-rooted `.har` path (a `.zip` path is refused). */
     path?: string;
     mode?: "full" | "minimal";
+    /** Default `"omit"` (no bodies). `"embed"` and `"attach"` need the `network-body`
+     *  capability (off by default). */
     content?: "embed" | "attach" | "omit";
     urlFilter?: string;
   };
+  /** Workspace-rooted HAR files to replay requests from. */
   hars?: ReadonlyArray<string>;
 }
 export interface OpenSessionResultData {
