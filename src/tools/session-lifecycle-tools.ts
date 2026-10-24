@@ -241,7 +241,7 @@ export function registerSessionLifecycleTools(
               .string()
               .optional()
               .describe(
-                "Workspace-rooted HAR file path. Default: `<workspace>/har/<session-id>-<ISO>.har`. Path traversal outside `$BROWX_WORKSPACE` is rejected, and a .zip path is refused (use .har).",
+                "Workspace-rooted HAR file path. Default: `<workspace>/har/<session-id>-<ISO>.har`. A path outside `$BROWX_WORKSPACE` is rejected, and a .zip path is refused (use .har).",
               ),
             mode: z
               .enum(["full", "minimal"])
