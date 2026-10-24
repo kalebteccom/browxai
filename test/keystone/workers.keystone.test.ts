@@ -227,6 +227,13 @@ describe("workers_list / worker_message_send / worker_messages_read keystone", (
       });
       expect(again.messages.find((m) => m.data === "pong:ping")).toBeUndefined();
 
+      // Every sw-N a read returned messages for is listed by workers_list.
+      const listed = await callJson<{ workers: Array<{ workerId: string }> }>("workers_list", {
+        session,
+        type: "service",
+      });
+      expect(listed.workers.map((w) => w.workerId)).toContain(pong!.workerId);
+
       await callJson("close_session", { session });
     },
     KEYSTONE_TIMEOUT,

@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Fixed
+
+- **`workers_list` shows every Service Worker that `worker_messages_read` returns messages for.** A Service Worker that has stopped keeps its `sw-N` id and is listed with `state: "stopped"`, and messages from a worker on an origin the origin rules do not allow are no longer returned.
+
 ## [0.14.0] - 2026-10-24
 
 This release tightens how browxai handles secrets, plugins, workspace paths and
