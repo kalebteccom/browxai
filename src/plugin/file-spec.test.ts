@@ -64,7 +64,7 @@ describe("parseFileSpec", () => {
   it("resolves a relative path against the given working directory", () => {
     const parsed = parseFileSpec("file:./packages/plugins/figma", root);
     expect(parsed).toMatchObject({ ok: true, dir: pluginDir, spec: `file:${pluginDir}` });
-    const up = parseFileSpec("file:../figma/", join(pluginDir, "sub"));
+    const up = parseFileSpec("file:../figma/", join(root, "packages", "plugins", "other"));
     expect(up).toMatchObject({ ok: true, dir: pluginDir });
   });
 
