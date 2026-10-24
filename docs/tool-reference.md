@@ -2644,8 +2644,12 @@ capability**, the same posture class as `eval` / `network-body` /
   `login.app.example.com`. The receiving frame is the one that owns the
   `fill` / `press` target element (so a field inside an iframe is checked
   against the iframe's origin), or the focused frame for a targetless
-  `press`. Frames with no origin to name (`about:blank`, `about:srcdoc`,
-  `data:`) never match. Egress masking is global regardless of scope.
+  `press`. The value is then typed into that same element, and its frame's
+  URL is read again right before typing: if the frame moved to another
+  origin in between, the action returns `ok:false` and nothing is typed. A
+  targetless `press` re-checks the focused frame the same way. Frames with no
+  origin to name (`about:blank`, `about:srcdoc`, `data:`) never match. Egress
+  masking is global regardless of scope.
 
 **Returns:** `{ ok, registered, scope, origins, names, tokensEstimate }`.
 `origins` lists the normalised origins the scope matches (`null` when
