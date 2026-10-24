@@ -482,8 +482,19 @@ describe("service workers and the origin policy", () => {
     ]);
     const out = await reg.readMessages(f.page, {}, blocked);
     expect(out.map((m) => m.data)).toEqual(["yes"]);
+    // Neither URL was seen running, so a ring message alone lists nothing.
+    expect(await reg.list(f.page, blocked, "service")).toEqual([]);
+    // Once both workers have run and stopped, the blocked origin stays out.
+    f.serviceWorkers.push(
+      fakeSw("https://blocked.example/sw.js"),
+      fakeSw("https://ok.example/sw.js"),
+    );
+    expect((await reg.list(f.page, blocked, "service")).map((w) => w.url)).toEqual([
+      "https://ok.example/sw.js",
+    ]);
+    f.serviceWorkers.length = 0;
     const listed = await reg.list(f.page, blocked, "service");
-    expect(listed.map((w) => w.url)).toEqual(["https://ok.example/sw.js"]);
+    expect(listed.map((w) => [w.url, w.state])).toEqual([["https://ok.example/sw.js", "stopped"]]);
   });
 
   it("refuses a send to a service worker on a blocked origin", async () => {
