@@ -20,10 +20,10 @@ describe("resolveOriginPolicy + isOriginAllowed", () => {
   it("blocklist overrides allowlist", () => {
     const p = resolveOriginPolicy({
       BROWX_ALLOWED_ORIGINS: "https://*.example.com",
-      BROWX_BLOCKED_ORIGINS: "https://evil.example.com",
+      BROWX_BLOCKED_ORIGINS: "https://blocked.example.com",
     });
     expect(isOriginAllowed("https://api.example.com/", p)).toBe(true);
-    expect(isOriginAllowed("https://evil.example.com/", p)).toBe(false);
+    expect(isOriginAllowed("https://blocked.example.com/", p)).toBe(false);
   });
 
   it("protocol mismatch fails", () => {
@@ -99,10 +99,10 @@ describe("resolveOriginPolicy + isOriginAllowed", () => {
   });
 
   it("blob: and filesystem: URLs take the origin they wrap", () => {
-    const p = resolveOriginPolicy({ BROWX_BLOCKED_ORIGINS: "https://evil.example" });
-    expect(isOriginAllowed("blob:https://evil.example/6f1c", p)).toBe(false);
-    expect(isOriginAllowed("blob:https://evil.example./6f1c", p)).toBe(false);
-    expect(isOriginAllowed("filesystem:https://evil.example/temporary/x.txt", p)).toBe(false);
+    const p = resolveOriginPolicy({ BROWX_BLOCKED_ORIGINS: "https://blocked.example" });
+    expect(isOriginAllowed("blob:https://blocked.example/6f1c", p)).toBe(false);
+    expect(isOriginAllowed("blob:https://blocked.example./6f1c", p)).toBe(false);
+    expect(isOriginAllowed("filesystem:https://blocked.example/temporary/x.txt", p)).toBe(false);
     expect(isOriginAllowed("blob:https://fine.example/6f1c", p)).toBe(true);
   });
 
