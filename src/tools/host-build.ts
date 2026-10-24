@@ -55,6 +55,7 @@ import { buildObservation } from "./host-observation.js";
 import { activeSecretRegistries, maskedToolError, maskToolResponse } from "./host-egress-mask.js";
 import { askHumanProfileRefusal } from "./ask-human-gate.js";
 import { byobAttachRefusal } from "./byob-attach-gate.js";
+import { docsUrl } from "../util/docs-links.js";
 
 /** The createServer locals the host's closures close over. Each field is the
  *  exact local `createServer` built before the host literal; the closures move
@@ -179,7 +180,9 @@ export function buildHost(deps: HostDeps): ToolHost {
             hint:
               "Add the capability to `BROWX_CAPABILITIES` and restart the browxai server. The variable replaces the default set, so keep the defaults in it, e.g. `" +
               capabilitiesWith("<capability>") +
-              '`. `set_config` cannot enable it: capabilities are read once at server start, and a saved list can only narrow them. If it stays off after a restart, run `reset_config` to clear a saved list that omits it, then check `get_config({scope:"resolved"}).capabilities`, which is the set this gate enforces. See docs/threat-model.md.',
+              '`. `set_config` cannot enable it: capabilities are read once at server start, and a saved list can only narrow them. If it stays off after a restart, run `reset_config` to clear a saved list that omits it, then check `get_config({scope:"resolved"}).capabilities`, which is the set this gate enforces. See ' +
+              docsUrl.threatModel +
+              ".",
           },
           null,
           2,

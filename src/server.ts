@@ -73,6 +73,7 @@ import { SESSION_ARG, TIMEOUT_ARG, ACTION_OPTS, REF_OR_SELECTOR } from "./tools/
 // Target-resolution domain helpers extracted to a leaf module so this file stays
 // pure composition/wiring; `buildHost` threads them onto the shared ToolHost.
 import { describeTarget, asTarget } from "./tools/target-resolve.js";
+import { docsUrl } from "./util/docs-links.js";
 
 export const NAME = "browxai";
 // Derived from package.json — see src/util/version.ts. Never hand-bump.
@@ -149,7 +150,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   if (loosened.length)
     log.warn(
       `the saved config asks for looser policy than the server's environment allows (${loosened.join(", ")}); ` +
-        "a saved layer can only tighten these keys, so the environment's values hold. See docs/threat-model.md.",
+        "a saved layer can only tighten these keys, so the environment's values hold. See " +
+        docsUrl.threatModel +
+        ".",
     );
   const droppedCaps = configStore.droppedCapabilities();
   if (droppedCaps.length)

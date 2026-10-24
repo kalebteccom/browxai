@@ -27,6 +27,7 @@ import {
   type AcquiredTarget,
 } from "./attach-pool.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
+import { docsUrl } from "../util/docs-links.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
@@ -99,7 +100,7 @@ const ANDROID_ATTACH_WARNING = [
   "  removes the adb forward, but never closes the browser or resets its",
   "  storage. The phone holds your real profile: every cookie, password,",
   "  and authed tab is in scope of any page the agent visits.",
-  "  Managed mode (the default) avoids all of the above. See docs/threat-model.md.",
+  "  Managed mode (the default) avoids all of the above. See " + docsUrl.threatModel + ".",
   "================================================================",
 ].join("\n");
 

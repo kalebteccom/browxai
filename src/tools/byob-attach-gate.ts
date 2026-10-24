@@ -18,6 +18,7 @@ import {
 } from "../util/capabilities.js";
 import type { GateCheck } from "./ask-human-gate.js";
 import type { ToolResponse } from "./host.js";
+import { docsUrl } from "../util/docs-links.js";
 
 /** Thrown at session creation when an `attached` session is asked for without
  *  `byob-attach`. `open_session` and the `register` wrapper (for a tool that
@@ -36,7 +37,9 @@ export function refuseAttachWithoutCapability(
       "browser browxai does not own, with the user's real profile, so it needs the `byob-attach` " +
       "capability, which is OFF by default. Add it to BROWX_CAPABILITIES and keep the defaults in " +
       `the list (${capabilitiesAssignment("byob-attach")}), then restart the ` +
-      "server. A saved config or set_config cannot add it. See docs/threat-model.md for what it grants.",
+      "server. A saved config or set_config cannot add it. See " +
+      docsUrl.threatModel +
+      " for what it grants.",
   );
 }
 

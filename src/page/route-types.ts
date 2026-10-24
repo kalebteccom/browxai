@@ -1,3 +1,4 @@
+import { docsUrl } from "../util/docs-links.js";
 // The request-interception vocabulary the NetworkSubstrate port declares.
 //
 // Split out of `routes.ts` for the reason `actions-types.ts` was split out of
@@ -82,6 +83,7 @@ export function routeInterceptionUnsupported(tool: string, engine: string): Rout
       `${ROUTE_ENGINE_REFUSAL}: request interception needs a protocol-level route surface, and ` +
       `the "${engine}" engine has none — it declares no \`network\` sub-interface. Re-run on a ` +
       "chromium, firefox or webkit session, or check the per-engine capability matrix in " +
-      "docs/ai-context/architecture/engine-adapters.md.",
+      docsUrl.engineAdapters +
+      ".",
   };
 }

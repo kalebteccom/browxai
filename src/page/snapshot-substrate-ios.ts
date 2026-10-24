@@ -20,6 +20,7 @@ import { countAddressable, toA11yTree } from "./ios-hierarchy.js";
 import type { RefRegistry } from "./refs.js";
 import type { SnapshotSubstrate } from "./snapshot-substrate-types.js";
 import { annotateStructuralContext } from "./structural.js";
+import { docsUrl } from "../util/docs-links.js";
 
 /** The fidelity note every ios-app snapshot carries. It names the SOURCE, not a
  *  deficiency: an XCUITest hierarchy is a richer accessibility tree than a DOM
@@ -30,7 +31,9 @@ const SOURCE_NOTE =
   "WebDriverAgent. `role` is mapped from the XCUITest element type and the raw type is kept on " +
   "`tag`; `name` is the accessibility label and `[accessibilityIdentifier=…]` is the testID a " +
   "React Native `testID` compiles to. Refs for identified elements survive a layout change; refs " +
-  "for unidentified ones are snapshot-local by construction (see docs/tool-reference.md).";
+  "for unidentified ones are snapshot-local by construction (see " +
+  docsUrl.toolReference +
+  ").";
 
 export class IosSnapshotSubstrate implements SnapshotSubstrate {
   readonly engine = "ios-app";

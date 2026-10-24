@@ -29,6 +29,7 @@ import {
   versionUrl,
   extractWsUrl,
 } from "../engine/index.js";
+import { docsUrl } from "../util/docs-links.js";
 
 // The installed Google Chrome, the browser a chromium session launches by
 // default. Informational: a missing Chrome is only a fault when the bundled
@@ -241,7 +242,9 @@ const ELECTRON_UA = /\bElectron\/([0-9][\w.]*)/;
 export async function electronCheck(): Promise<Check> {
   const name = "electron";
   const enable =
-    "start the app with `--remote-debugging-port=9333`, set BROWX_ATTACH_CDP to it, add `byob-attach` to BROWX_CAPABILITIES (that port is unauthenticated, read docs/threat-model.md)";
+    "start the app with `--remote-debugging-port=9333`, set BROWX_ATTACH_CDP to it, add `byob-attach` to BROWX_CAPABILITIES (that port is unauthenticated, read " +
+    docsUrl.threatModel +
+    ")";
   const endpoint = process.env.BROWX_ATTACH_CDP?.trim();
   if (!endpoint) {
     return {

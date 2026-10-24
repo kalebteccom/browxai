@@ -64,6 +64,7 @@ import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
 import { assertValidProfileName } from "../util/profile-name.js";
 import type { Workspace } from "../util/workspace.js";
 import type { StartOptions } from "../server.js";
+import { docsUrl } from "../util/docs-links.js";
 
 /** The createServer-owned locals the SessionRegistry factory + teardown close
  *  over. Bundled here so the construction expression moves verbatim — every
@@ -174,7 +175,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
             `\`${engineCapability}\` capability, which is OFF by default. It installs and ` +
             "launches applications and drives an OS-level input pipeline on a device, so it is " +
             `opt-in. Add it to BROWX_CAPABILITIES (e.g. BROWX_CAPABILITIES=read,navigation,` +
-            `action,human,${engineCapability}) and restart the server. See docs/threat-model.md ` +
+            `action,human,${engineCapability}) and restart the server. See ${docsUrl.threatModel} ` +
             "for what it grants.",
         );
       }

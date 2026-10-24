@@ -31,6 +31,7 @@ import {
 import { buildDepGraph, DepGraphCycleError } from "../plugin/depgraph.js";
 import { readLock, sha256OfPackage } from "../plugin/cli.js";
 import { installedPluginNames } from "./doctor-plugins-scan.js";
+import { docsUrl } from "../util/docs-links.js";
 
 const CHECK_NAME = "plugins";
 
@@ -131,7 +132,7 @@ export function pluginChecks(opts: PluginChecksOptions): Check[] {
     } else if (r.kind === "invalid-manifest") {
       note(decl.name, {
         detail: `${decl.name} invalid manifest: ${r.error}`,
-        fix: "fix the plugin's package.json#browxai field — see docs/plugin-authoring.md",
+        fix: "fix the plugin's package.json#browxai field — see " + docsUrl.pluginAuthoring,
       });
     } else {
       resolved.set(decl.name, r.manifest);
