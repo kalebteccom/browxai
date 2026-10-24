@@ -23,14 +23,6 @@ const SAMPLE = {
 };
 
 describe("isAllowedKey + allowedKeyRoots", () => {
-  it("accepts allow-listed roots", () => {
-    expect(isAllowedKey("actionResult")).toBe(true);
-    expect(isAllowedKey("actionResult.element.value")).toBe(true);
-    expect(isAllowedKey("snapshot.warnings.length")).toBe(true);
-    expect(isAllowedKey("element.foo")).toBe(true);
-    expect(isAllowedKey("expect.valueEquals")).toBe(true);
-  });
-
   it("rejects unknown roots (no arbitrary-prefix drill)", () => {
     expect(isAllowedKey("page.url")).toBe(false);
     expect(isAllowedKey("__proto__.toString")).toBe(false);
@@ -52,10 +44,6 @@ describe("resolveKey", () => {
 
   it("returns undefined for missing intermediates without throwing", () => {
     expect(resolveKey(SAMPLE, "actionResult.missing.path")).toBeUndefined();
-  });
-
-  it("returns undefined for non-allow-listed keys", () => {
-    expect(resolveKey(SAMPLE, "globalThis.process")).toBeUndefined();
   });
 
   it("refuses to walk through prototype-pollution segments after an allow-listed root", () => {

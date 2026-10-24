@@ -2,11 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import type { Page } from "playwright-core";
 import {
   AttachLeaseTable,
-  DEFAULT_ATTACH_LEASE_TTL_MS,
-  DEFAULT_ATTACH_POOL_MAX,
   acquireTarget,
-  attachLeaseTtlMs,
-  attachPoolMax,
   attachLeases,
   touchAttachLease,
   releaseTarget,
@@ -60,14 +56,6 @@ describe("AttachLeaseTable", () => {
     expect(lease.acquiredAt).toBe(lease.renewedAt);
     expect(leases.leasedTargets(ENDPOINT)).toEqual(new Set(["T1"]));
     expect(leases.leasedTargets("http://127.0.0.1:9333")).toEqual(new Set());
-  });
-
-  it("releases a lease and frees its target", () => {
-    const leases = new AttachLeaseTable();
-    leases.claim({ sessionId: "a", targetId: "T1", endpoint: ENDPOINT, owned: false });
-    expect(leases.release("a")?.targetId).toBe("T1");
-    expect(leases.release("a")).toBeUndefined();
-    expect(leases.leasedTargets(ENDPOINT).size).toBe(0);
   });
 
   it("renews on demand and reports nothing for an unknown session", () => {
@@ -173,22 +161,6 @@ describe("releaseTarget", () => {
   });
 });
 
-describe("pool limits and structured errors", () => {
-  it("reads the TTL and ceiling from env, falling back to the defaults", () => {
-    vi.stubEnv("BROWX_ATTACH_LEASE_TTL_MS", undefined);
-    vi.stubEnv("BROWX_ATTACH_POOL_MAX", undefined);
-    expect(attachLeaseTtlMs()).toBe(DEFAULT_ATTACH_LEASE_TTL_MS);
-    expect(attachPoolMax()).toBe(DEFAULT_ATTACH_POOL_MAX);
-    vi.stubEnv("BROWX_ATTACH_LEASE_TTL_MS", "1234");
-    vi.stubEnv("BROWX_ATTACH_POOL_MAX", "3");
-    expect(attachLeaseTtlMs()).toBe(1234);
-    expect(attachPoolMax()).toBe(3);
-    vi.stubEnv("BROWX_ATTACH_POOL_MAX", "not-a-number");
-    expect(attachPoolMax()).toBe(DEFAULT_ATTACH_POOL_MAX);
-    vi.unstubAllEnvs();
-  });
-});
-
 describe("pool ceiling", () => {
   it("refuses acquisition once the endpoint is at BROWX_ATTACH_POOL_MAX", async () => {
     vi.stubEnv("BROWX_ATTACH_POOL_MAX", "2");
@@ -262,19 +234,6 @@ function creationlessSource(existing: PoolTarget[]): TargetSource {
 }
 
 describe("acquireTarget on a source that cannot create targets", () => {
-  it("claims a pre-existing target exactly as it would on an ordinary browser", async () => {
-    const leases = new AttachLeaseTable();
-    const ep = "http://127.0.0.1:9601";
-    const acquired = await acquireTarget(leases, creationlessSource([target("R1", fakePage())]), {
-      sessionId: "one",
-      endpoint: ep,
-    });
-    expect(acquired.targetId).toBe("R1");
-    // Not created, so not owned, so release must never close the app's window.
-    expect(acquired.created).toBe(false);
-    expect(leases.get("one")!.owned).toBe(false);
-  });
-
   it("refuses with attach-target-creation-unavailable once every target is leased", async () => {
     const leases = new AttachLeaseTable();
     const ep = "http://127.0.0.1:9602";

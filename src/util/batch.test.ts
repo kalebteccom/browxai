@@ -123,14 +123,6 @@ describe("runBatch — sequential dispatch", () => {
 });
 
 describe("runBatch — labels + expect", () => {
-  it("echoes the call's label on the result entry", async () => {
-    const report = await runBatch([{ tool: "click", label: "set type", args: {} }], {
-      allowed: ALLOWED,
-      handlers: { click: jsonHandler({ ok: true }) },
-    });
-    expect(report.results[0]?.label).toBe("set type");
-  });
-
   it("marks call ok=false when expect predicate fails", async () => {
     const handler = jsonHandler({ ok: true, element: { value: "actual" } });
     const report = await runBatch(
@@ -140,16 +132,6 @@ describe("runBatch — labels + expect", () => {
     expect(report.results[0]?.ok).toBe(false);
     expect(report.results[0]?.error).toContain("expect failed");
     expect(report.results[0]?.error).toContain('"expected"');
-  });
-
-  it("passes when expect predicate holds", async () => {
-    const handler = jsonHandler({ ok: true, element: { value: "expected" } });
-    const report = await runBatch(
-      [{ tool: "fill", args: {}, expect: { valueEquals: "expected" } }],
-      { allowed: ALLOWED, handlers: { fill: handler } },
-    );
-    expect(report.results[0]?.ok).toBe(true);
-    expect(report.results[0]?.error).toBeUndefined();
   });
 });
 

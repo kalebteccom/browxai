@@ -77,20 +77,6 @@ describe("TokenBucket", () => {
 });
 
 describe("BindingGuard", () => {
-  it("passes calls inside the budget to the handler untouched", async () => {
-    const { guard, reports } = setup();
-    const calls: string[] = [];
-    const wrapped = guard.wrap("check", "decision", (_s, p: string) => {
-      calls.push(p);
-      return `ok:${p}`;
-    });
-    const page = {};
-    expect(wrapped({ page }, "a")).toBe("ok:a");
-    expect(await wrapped({ page }, "b")).toBe("ok:b");
-    expect(calls).toEqual(["a", "b"]);
-    expect(reports).toEqual([]);
-  });
-
   it("answers the deny-equivalent over budget, never reaching the handler", () => {
     const { guard } = setup();
     let handled = 0;

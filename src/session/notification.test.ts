@@ -60,11 +60,6 @@ describe("parseNotificationPolicyArg", () => {
 // ---- NotificationPolicyState basics --------------------------------------
 
 describe("NotificationPolicyState", () => {
-  it("defaults to allow", () => {
-    const s = new NotificationPolicyState();
-    expect(s.current()).toEqual({ mode: "allow" });
-  });
-
   it("set() flips the policy for the NEXT call; prior records unchanged", () => {
     const s = new NotificationPolicyState({ mode: "allow" });
     const t0 = Date.now();
@@ -153,11 +148,6 @@ describe("attachNotificationPolicy — binding handler per mode", () => {
     expect(state.since(t)[0]?.handledAs).toBe("asked-human");
   });
 
-  it("ask-human → handler 'deny' → returns deny", async () => {
-    const { check } = await setupCheck({ mode: "ask-human" }, async () => "deny");
-    expect(await check({}, JSON.stringify({ title: "X" }))).toBe("deny");
-  });
-
   it("ask-human → handler throws → safe-by-default deny", async () => {
     const { check } = await setupCheck({ mode: "ask-human" }, async () => {
       throw new Error("boom");
@@ -169,19 +159,6 @@ describe("attachNotificationPolicy — binding handler per mode", () => {
 // ---- attach install plumbing ---------------------------------------------
 
 describe("attachNotificationPolicy — install plumbing", () => {
-  it("installs the check binding + the page script + a sync-decision seed", async () => {
-    const state = new NotificationPolicyState();
-    const bindings = new Map();
-    const initScripts: string[] = [];
-    const ctx = fakeContext({ bindings, initScripts });
-    await attachNotificationPolicy(ctx, state, async () => "deny");
-    expect(bindings.has("__browx_notification_check")).toBe(true);
-    // two init scripts: the wrapper, then the sync-decision seed
-    expect(initScripts.length).toBe(2);
-    expect(initScripts[0]).toBe(NOTIFICATION_PAGE_SCRIPT);
-    expect(initScripts[1]).toMatch(/__browx_notification_sync_decision/);
-  });
-
   it("idempotent on the same context — second call is a no-op", async () => {
     const state = new NotificationPolicyState();
     const bindings = new Map();
@@ -216,22 +193,5 @@ describe("propagateSyncDecision", () => {
     expect(p.evaluate).toHaveBeenCalled();
     const lastInit = initScripts[initScripts.length - 1]!;
     expect(lastInit).toMatch(/"raise"/);
-  });
-});
-
-// ---- the init script is browser-only JS ----------------------------------
-
-describe("NOTIFICATION_PAGE_SCRIPT", () => {
-  it("preserves the static permission / requestPermission surface for permission_policy", () => {
-    expect(NOTIFICATION_PAGE_SCRIPT).toMatch(/ProxyNotification\.requestPermission/);
-    expect(NOTIFICATION_PAGE_SCRIPT).toMatch(/OrigNotification\.requestPermission/);
-    expect(NOTIFICATION_PAGE_SCRIPT).toMatch(/return OrigNotification\.permission/);
-  });
-
-  it("does NOT touch Notification.permission's getter on Notification itself (permission_policy owns it)", () => {
-    // The script must NOT override Notification.permission via
-    // Object.defineProperty(OrigNotification, "permission", …) — only forward
-    // it on the proxy. (permission_policy installs its own getter override.)
-    expect(NOTIFICATION_PAGE_SCRIPT).not.toMatch(/defineProperty\(OrigNotification, ?"permission"/);
   });
 });

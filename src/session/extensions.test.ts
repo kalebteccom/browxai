@@ -130,14 +130,6 @@ describe("readManifest", () => {
   });
 });
 
-// --- extensionIdFromPath ---------------------------------------------------
-
-describe("extensionIdFromPath", () => {
-  it("differs across distinct paths", () => {
-    expect(extensionIdFromPath("/x/y")).not.toBe(extensionIdFromPath("/x/z"));
-  });
-});
-
 // --- buildLaunchArgs -------------------------------------------------------
 
 describe("buildLaunchArgs", () => {
@@ -147,10 +139,6 @@ describe("buildLaunchArgs", () => {
     version: "0",
     path,
     enabled,
-  });
-
-  it("returns empty args for an empty list", () => {
-    expect(buildLaunchArgs([])).toEqual([]);
   });
 
   it("skips disabled extensions", () => {

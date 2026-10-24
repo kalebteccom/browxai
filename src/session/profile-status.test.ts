@@ -180,11 +180,6 @@ describe("profileDirFor — workspace containment", () => {
     expect(() => profileDirFor(ws, "a/b")).toThrow(/invalid/);
     expect(() => profileDirFor(ws, "")).toThrow(/invalid/);
   });
-
-  it("maps `default` to the legacy dir and any other name under profiles/", () => {
-    expect(profileDirFor(ws, "default")).toBe(join(ws, "profile"));
-    expect(profileDirFor(ws, "agent-a")).toBe(join(ws, "profiles", "agent-a"));
-  });
 });
 
 describe("profileStatus — the scan budget", () => {

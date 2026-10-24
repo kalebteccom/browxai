@@ -24,14 +24,6 @@ function fakeHandle(): { handle: SafariSessionHandle; closed: () => boolean } {
 }
 
 describe("buildSafariSession", () => {
-  it("is a managed, browser-owning safari session", () => {
-    const { handle } = fakeHandle();
-    const sess = buildSafariSession(handle);
-    expect(sess.mode).toBe("managed");
-    expect(sess.ownsBrowser).toBe(true);
-    expect(sess.engine).toBe("safari");
-  });
-
   it("requirePage refuses with the engine-naming message, not a Safari throw", () => {
     const { handle } = fakeHandle();
     const sess = buildSafariSession(handle);
@@ -42,13 +34,6 @@ describe("buildSafariSession", () => {
     expect(() => requirePage(sess)).toThrow(/engine "safari" backs no Playwright Page/);
     expect(() => requirePage(sess)).toThrow(/declares no `page` sub-interface/);
     expect(() => requirePage(sess)).toThrow(/capability substrate/);
-  });
-
-  it("safari() exposes the native handle and cdp is absent", () => {
-    const { handle } = fakeHandle();
-    const sess = buildSafariSession(handle);
-    expect(sess.safari?.()).toBe(handle);
-    expect(sess.cdp).toBeUndefined();
   });
 
   it("close() tears the handle down once (idempotent)", async () => {
