@@ -222,8 +222,9 @@ export const ANDROID_APP_CAPABILITIES: EngineCapabilities = {
  *  `go_back` / `go_forward` are NOT here: they operate within the renderer's own
  *  history and are exactly what the app's own keyboard shortcuts do. `go_back`
  *  is what recovered the window in the measurement above. There is no `reload`
- *  tool; an agent that needs one presses the app's own shortcut (Cmd-R on VS
- *  Code). */
+ *  tool; an agent that needs one uses the app's own reload command, the menu
+ *  item or shortcut the app defines (VS Code has the Developer: Reload Window
+ *  command, with no default shortcut). */
 const ELECTRON_REFUSED_TOOLS: ReadonlyMap<string, string> = new Map([
   [
     "navigate",

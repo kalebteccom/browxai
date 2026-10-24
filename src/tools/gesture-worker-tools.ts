@@ -59,7 +59,7 @@ export function registerGestureWorkerTools(
     {
       capability: "read",
       description:
-        'List the live workers in this session: `[{workerId, type, url, state?}]`. `workerId` is stable per session (`ww-N` for Web Workers, `sw-N` for Service Workers) and goes to `worker_message_send` and `worker_messages_read`. `type` filters: `"web"`, `"service"` or `"all"` (default). Web Workers are found only if the page-side wrapper was installed before the worker was constructed (done at session creation when `read` is on). Service Workers come from `context.serviceWorkers()` (Chromium-based engines only; only live ones appear, with `state` `running`); on another engine `type:"service"` returns an error naming the engine and `"all"` lists Web Workers only. A Service Worker on an origin the origin rules do not allow is left out.',
+        'List the workers in this session: `[{workerId, type, url, state?}]`. `workerId` is stable per session (`ww-N` for Web Workers, `sw-N` for Service Workers) and goes to `worker_message_send` and `worker_messages_read`. `type` filters: `"web"`, `"service"` or `"all"` (default). Web Workers are found only if the page-side wrapper was installed before the worker was constructed (done at session creation when `read` is on). Service Workers come from `context.serviceWorkers()` (Chromium-based engines only; a live one has `state` `running`, and a Service Worker that has stopped keeps its id with `state` `stopped`); on another engine `type:"service"` returns an error naming the engine and `"all"` lists Web Workers only. A Service Worker on an origin the origin rules do not allow is left out.',
       inputSchema: {
         type: z
           .enum(["web", "service", "all"])
@@ -162,6 +162,7 @@ export function registerGestureWorkerTools(
         const messages = await e.workers.readMessages(
           requirePage(e.session),
           workerId !== undefined ? { workerId } : {},
+          swAccessFor(e, host.confirmCtxFor(e).policy),
         );
         // Message data is whatever the worker posted, so it is masked like `ws_read` frames.
         const body = { ok: true, messages: egressFor(e).maskDeep(messages), tokensEstimate: 0 };

@@ -26,9 +26,10 @@ export interface WorkerListing {
   workerId: string;
   type: WorkerType;
   url: string;
-  /** Best-effort state. Web workers and service workers: always `"running"`
-   *  (the browser doesn't expose Web Worker lifecycle, and Playwright only holds
-   *  a service worker while its target is alive). */
+  /** Best-effort state. Web workers: always `"running"` (the browser doesn't
+   *  expose Web Worker lifecycle). Service workers: `"running"` while Playwright
+   *  holds the worker, `"stopped"` for an id this session handed out whose
+   *  worker is gone. */
   state?: string;
 }
 

@@ -295,7 +295,43 @@ describe("WorkersRegistry.readMessages", () => {
     const listed = await reg.list(f.page, CHROMIUM, "service");
     expect(listed).toEqual([
       { workerId: "sw-2", type: "service", url: "https://x/sw.js", state: "running" },
+      { workerId: "sw-1", type: "service", url: "https://x/other.js", state: "stopped" },
     ]);
+  });
+
+  it("lists every sw-* id a read returned, as stopped when its worker is gone", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.enqueueResponse(() => undefined);
+    f.enqueueResponse(() => []); // drain (Web Workers)
+    f.enqueueResponse(() => [
+      { url: "https://x/gone.js", data: "g", at: 1 },
+      { url: "https://x/live.js", data: "l", at: 2 },
+    ]);
+    f.serviceWorkers.push(fakeSw("https://x/live.js"));
+    const read = await reg.readMessages(f.page, {});
+    const listed = await reg.list(f.page, CHROMIUM, "service");
+    for (const m of read) expect(listed.map((w) => w.workerId)).toContain(m.workerId);
+    expect(listed.map((w) => [w.workerId, w.state])).toEqual([
+      ["sw-2", "running"],
+      ["sw-1", "stopped"],
+    ]);
+  });
+
+  it("keeps a stopped service worker's id once it is listed, and does not message it", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    const sw = fakeSw("https://x/sw.js");
+    f.serviceWorkers.push(sw);
+    expect((await reg.list(f.page, CHROMIUM, "service"))[0]!.state).toBe("running");
+    f.serviceWorkers.length = 0;
+    expect(await reg.list(f.page, CHROMIUM, "service")).toEqual([
+      { workerId: "sw-1", type: "service", url: "https://x/sw.js", state: "stopped" },
+    ]);
+    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "sw-1", message: "x" });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/no service worker/);
+    expect(sw.evaluate).not.toHaveBeenCalled();
   });
 
   it("lists at most 64 distinct service worker script URLs", async () => {
@@ -418,6 +454,21 @@ describe("service workers and the origin policy", () => {
     };
     const out = await reg.list(f.page, allowOnly, "service");
     expect(out.map((w) => w.url)).toEqual(["https://ok.example/sw.js"]);
+  });
+
+  it("returns no messages from a service worker the listing leaves out", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.enqueueResponse(() => undefined);
+    f.enqueueResponse(() => []); // drain (Web Workers)
+    f.enqueueResponse(() => [
+      { url: "https://blocked.example/sw.js", data: "no", at: 1 },
+      { url: "https://ok.example/sw.js", data: "yes", at: 2 },
+    ]);
+    const out = await reg.readMessages(f.page, {}, blocked);
+    expect(out.map((m) => m.data)).toEqual(["yes"]);
+    const listed = await reg.list(f.page, blocked, "service");
+    expect(listed.map((w) => w.url)).toEqual(["https://ok.example/sw.js"]);
   });
 
   it("refuses a send to a service worker on a blocked origin", async () => {
