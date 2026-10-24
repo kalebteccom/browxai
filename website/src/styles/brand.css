@@ -1183,7 +1183,7 @@ main:has(.browx-404) > .content-panel {
     width: 100%;
     background: none;
   }
-  .sl-markdown-content table[data-browx-wrap] :is(th, td) {
+  .sl-markdown-content table[data-browx-wrap] :is(th, td, code) {
     overflow-wrap: anywhere;
   }
 }
