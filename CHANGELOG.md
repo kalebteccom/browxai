@@ -267,6 +267,11 @@ data has limits. The four first-party plugins move to 0.1.2, and zod moves to
 - **`export_session_report` redacts the page URL.** The `url` field now drops
   the query string, fragment and userinfo, the same way `network_read` shows
   URLs.
+- **Tool descriptions are clearer.** 199 of the 209 tool descriptions and 157
+  parameter descriptions are reworded to say what the tool does, when to use it
+  over a neighbour, its defaults and units, and the next step to try. Tool
+  names, schemas, defaults, error codes and the capability refusal wording are
+  unchanged.
 
 ### Fixed
 
@@ -311,6 +316,14 @@ data has limits. The four first-party plugins move to 0.1.2, and zod moves to
   default browser, the `BROWX_CHANNEL` row says an unset channel uses the
   installed Chrome, the BYOB recipe uses the current profile directory, and the
   harness READMEs say Node 22 where they said Node 20.
+- **First-run docs and examples corrected.** The docs site fixes the install
+  block, MCP client wiring, headless setup and seven missing environment
+  variables, and says that attaching to an existing Chrome waits for a person to
+  answer each action in DevTools. The README SDK sample uses a valid `extract`
+  schema, pasted JSON configs have no trailing commas (a `plugins.json` that
+  failed to parse loaded no plugins and said nothing), and the origin allowlist
+  wording matches the code. `scripts/check-examples.mjs` (`pnpm check:examples`)
+  now checks the shell, JSON and `BROWX_*` examples in the docs in CI.
 - **First-party plugins no longer log an "untested combination" warning.** Their
   `browxaiVersion` range was `^0.7.0`, which excludes every later 0.x host. It is
   now `>=0.14.0` and reaches npm with the 0.1.2 plugin release. The plugin
