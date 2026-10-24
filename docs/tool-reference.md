@@ -313,7 +313,7 @@ region "Records" [ref=e12]
 
 ### `find`
 
-Find candidate elements by natural-language description.
+Find candidate elements by natural-language description and return them ranked, each with a stable `ref`. Use it to locate one element to act on; use `snapshot` to see the whole page and `text_search` to check that text is present or gone.
 
 **Inputs:** `{ query: string, maxCandidates?: number (default 5, max 20), confidenceFloor?: number, contextRef?: string, visibleOnly?: boolean }`
 
@@ -1253,7 +1253,7 @@ navigate({ url: "https://app.example.com/records" })
 
 ### `click({ ref?|selector?|named?|coords?, button?, force?, dispatch?,...opts })`
 
-Click. Accepts all four target shapes. `button` is `"left" | "right" | "middle"` (default left). Returns an `ActionResult.element` probe (`stillAttached`, `focused`, `value`, `displayText`, `ownerControl`, `container`) for ref/selector/named targets; coord targets populate `element.hit` (with `before`/`after` from `elementFromPoint` and `focusChanged`) in place of the locator-based fields.
+Click. Accepts all four target shapes. Prefer `click` over `act_and_diff` unless the change you need to see is a class or attribute edit. A stale ref errors: call `snapshot` or `find` again. `button` is `"left" | "right" | "middle"` (default left). Returns an `ActionResult.element` probe (`stillAttached`, `focused`, `value`, `displayText`, `ownerControl`, `container`) for ref/selector/named targets; coord targets populate `element.hit` (with `before`/`after` from `elementFromPoint` and `focusChanged`) in place of the locator-based fields.
 
 **Example.**
 
