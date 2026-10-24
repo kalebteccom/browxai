@@ -151,6 +151,13 @@ export default defineConfig({
           ],
         },
         {
+          label: "Security",
+          items: [
+            { label: "Threat model", slug: "security/threat-model" },
+            { label: "Best practices", slug: "security/best-practices" },
+          ],
+        },
+        {
           label: "Concepts",
           items: [
             { label: "What browxai is", slug: "concepts/overview" },
@@ -181,13 +188,6 @@ export default defineConfig({
             { label: "First-party plugins", slug: "plugins/first-party" },
             { label: "Authoring", slug: "plugins/authoring" },
             { label: "Governance", slug: "plugins/governance" },
-          ],
-        },
-        {
-          label: "Security",
-          items: [
-            { label: "Threat model", slug: "security/threat-model" },
-            { label: "Best practices", slug: "security/best-practices" },
           ],
         },
       ],
