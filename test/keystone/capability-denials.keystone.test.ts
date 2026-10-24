@@ -222,7 +222,7 @@ describe("capability denials with the default capability set", () => {
       const denied = await call<Denied>(tool, args);
       expect(denied.ok).toBe(false);
       expect(denied.requiredCapability).toBe(capability);
-      expect(denied.error).toMatch(/capability is not in the server's ACTIVE set/);
+      expect(denied.error).toContain(`capability "${capability}" is not enabled on this server`);
       expect([...denied.activeCapabilities].sort()).toEqual([...DEFAULT_SET].sort());
     },
     KEYSTONE_TIMEOUT,
@@ -260,7 +260,7 @@ describe("capability denials with the default capability set", () => {
         });
         expect(denied.ok).toBe(false);
         expect(denied.requiredCapability).toBe("file-io");
-        expect(denied.error).toMatch(/ACTIVE set/);
+        expect(denied.error).toContain('capability "file-io" is not enabled on this server');
         expect(denied.hint).toMatch(/BROWX_CAPABILITIES/);
         expect([...denied.activeCapabilities].sort()).toEqual([...DEFAULT_SET].sort());
         expect(existsSync(join(workspace, "ks-capability-denials"))).toBe(false);
