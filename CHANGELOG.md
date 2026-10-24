@@ -97,6 +97,9 @@ surface" covers.
 - **`solve_captcha` does not follow redirects from the provider.** A redirect on
   the submit or the poll call ends the solve with an error that says so and
   names `BROWX_CAPTCHA_API_BASE`.
+- **`export_session_report` redacts the page URL.** The `url` field now drops
+  the query string, fragment and userinfo, the same way `network_read` shows
+  URLs.
 
 ### Fixed
 
