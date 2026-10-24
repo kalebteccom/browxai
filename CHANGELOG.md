@@ -8,6 +8,99 @@ surface" covers.
 
 ## Unreleased
 
+## [0.14.0] - 2026-10-24
+
+Tighter handling of secrets, plugins, workspace paths and origin rules, plain
+names for profiles and sessions, and clearer error messages. Attaching to an
+existing Chrome now needs the `byob-attach` capability, secret scopes and
+origin entries match exact origins, file reads follow symlinks before the
+workspace check, HAR recordings leave out bodies and credential headers by
+default, and page-sized data has limits. The four first-party plugins move to
+0.1.2, and zod moves to 4.x.
+
+**Upgrade notes.** Each item below can need a change on your side.
+
+- **Attaching needs `byob-attach`.** `BROWX_ATTACH_CDP`, `open_session` with
+  mode `attached`, and the `android` and `electron` engines are refused without
+  `byob-attach` in `BROWX_CAPABILITIES`. The variable replaces the default set,
+  so keep the defaults: `BROWX_CAPABILITIES=read,navigation,action,human,byob-attach`.
+  Add it to your `browxai-attached` client entry and restart the server.
+- **Profile names and session ids are plain names.** Letters, digits, `.`, `_`
+  and `-`, starting with a letter or digit, at most 128 characters. Anything
+  else, such as `user@x` or `../x`, is refused with `invalid-name`.
+- **Origin entries without a port match only the default port.** In
+  `BROWX_ALLOWED_ORIGINS` and `BROWX_BLOCKED_ORIGINS`, `https://app.example.com`
+  no longer matches `https://app.example.com:8443`, and `http://localhost` no
+  longer matches `http://localhost:3000`. An entry with a port matches that port
+  only. List each port you use.
+- **`navigate` applies the origin rules to the page it lands on.** A redirect to
+  a blocked or unlisted origin asks for confirmation, or returns a deny with the
+  page left on the landed URL.
+- **Secret scopes are exact origins.** `app.example.com` means
+  `https://app.example.com` only, so `localhost:3000` must be written
+  `http://localhost:3000`. A scope with a path, query or `*` is refused. A value
+  typed into an iframe is checked against the iframe's origin.
+- **Call `get_credential` on the login page.** The password is tied to the
+  origin of the current page. On `about:blank`, or for a flow that fetches on one
+  origin and fills on another, list the origins in `BROWX_CREDENTIAL_ORIGINS`.
+  Account names with characters such as `'`, `(`, `&`, `,` or `#` are refused;
+  use the item id.
+- **With `secrets` on, every tool result is masked.** A JSON result that held a
+  registered value is written out again, and a number that contained one becomes
+  a string.
+- **Response bodies need `network-body`.** `caches_get` returns headers and
+  metadata only without it. `start_har` and `open_session({har})` now record no
+  bodies by default, and `embed` or `attach` needs `network-body`; a replay from
+  a body-less HAR serves empty bodies.
+- **Saved `.har` files have empty `Cookie`, `Set-Cookie` and `Authorization`
+  values.** A replay that relied on them behaves differently. `.zip` HARs are
+  unchanged.
+- **Reads through a symlink that leads out of the workspace are refused.** This
+  covers `upload_file`, `drop_files`, storage-state files, HAR replay and
+  `extensions_install`. Copy the files into `$BROWX_WORKSPACE`.
+- **`app_install` takes a path inside the workspace.** Copy the `.apk` or `.app`
+  into `$BROWX_WORKSPACE` and pass the relative path.
+- **First-party plugins 0.1.2 need browxai 0.14.0 or later.** Their tool
+  parameter declarations do not load on an older host. Upgrade browxai first.
+- **Existing plugin installs show as `community` until re-pinned.** Run
+  `browxai plugin sync` (or `upgrade`) once after upgrading. Until then the
+  first-party plugins log the non-first-party warning at start.
+- **Plugin installs run no lifecycle scripts.** Build a `file:` plugin before
+  installing it. A `browxai.register` path outside the package stops the plugin
+  loading, and a spec starting with `-` exits 2.
+- **zod 4 for plugin authors.** A plugin's `inputSchema` values are zod 4
+  schemas, and a plugin that imports zod needs zod 4.
+- **`browxai chrome stop` stops only a Chrome.** When the PID in `chrome.pid`
+  is not a Chrome, or its command line cannot be read (a container without
+  `ps`), it exits 1 and sends no signal. Quit Chrome by hand and delete
+  `chrome.pid`.
+- **`asset_export` keeps existing files.** A name already on disk gets the next
+  `-N` suffix, so a re-run writes `logo-1.png` next to `logo.png`.
+- **Size limits.** Console messages are cut at 8,192 characters. `download_get`
+  refuses files over 16 MiB inline; use `pathOnly: true`. `network_body` on
+  Firefox and WebKit returns `ok: false` for a body over 256 KB (it used to
+  return the first 256 KB). The socket transport closes a connection whose
+  message line passes 32 MiB.
+- **`browxai serve` keeps a non-socket file at the socket path.** It stops with
+  exit code 2 and names the path; remove the file yourself.
+- **`solve_captcha` needs an https provider base and no redirects.**
+  `BROWX_CAPTCHA_API_BASE` must be `https` except on `127.0.0.1`, `::1` and
+  `localhost`, and a provider that answers with a redirect fails the solve.
+- **`export_session_report` drops the query string and fragment from `url`.**
+- **Service-worker tools follow the origin rules.** `workers_list` leaves out a
+  worker on a blocked or unlisted origin and `worker_message_send` refuses it.
+- **Error messages are reworded.** Match on error codes and
+  `requiredCapability`, which are unchanged, and not on message text.
+- **`BROWX_HEADLESS=true` now runs headless** from `browxai` and
+  `browxai serve`, and `browxai chrome start --port` with a value that is not a
+  port exits 2.
+
+### Plugin packages
+
+- **`@browxai/plugin-{example,figma,tldraw,excalidraw}` 0.1.1 to 0.1.2.** They
+  declare their tool parameters, carry an `exports` map so `./schema` resolves
+  under NodeNext, and set `browxaiVersion` to `>=0.14.0`.
+
 ### Changed
 
 - **Secret scopes match the page origin exactly.** A `register_secret` scope is
@@ -252,7 +345,7 @@ surface" covers.
   structured refusal as `open_session`.
 - **First-party plugins no longer log an "untested combination" warning.** Their
   `browxaiVersion` range was `^0.7.0`, which excludes every later 0.x host. It is
-  now `>=0.13.0` and reaches npm with the next plugin release. The plugin
+  now `>=0.14.0` and reaches npm with the 0.1.2 plugin release. The plugin
   READMEs also gained the capabilities each needs, an enable example and an
   example prompt.
 - **Plugin tool parameters now reach the handler over MCP.** Every plugin tool
@@ -279,6 +372,11 @@ surface" covers.
   plugins' `schema.d.ts` files tell consumers to write
   `import type { BrowxaiClientWithPlugins } from "browxai"`, which failed
   because only the SDK module defined it.
+
+### Dependencies
+
+- `zod` `^3.23.0` to `^4.6.7`.
+- `body-parser` is held at 2.4.0 or later through a pnpm override.
 
 ### Maintenance
 

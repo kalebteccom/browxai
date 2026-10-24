@@ -179,7 +179,7 @@ $ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
 plugins_list()
 // → { "ok": true, "apiVersion": "1.0.0",
 //     "plugins": [{ "name": "@browxai/plugin-tldraw", "namespace": "tldraw",
-//       "version": "0.1.1", "trust": "kalebtec",
+//       "version": "0.1.2", "trust": "kalebtec",
 //       "capabilities": ["eval", "canvas"], "dependsOn": [],
 //       "status": "loaded",
 //       "tools": ["tldraw.get_selected_shapes", "tldraw.get_viewport",
@@ -228,10 +228,12 @@ transitive deps, registered tool schemas) call
 
 ## Trust note
 
-All four plugins are trust tier **`kalebtec`**: maintained in the
-browxai monorepo, released through the same OIDC-trusted-publishing
-pipeline as the host package, npm-provenance signed. But trust is
-**advisory, not a sandbox**: browxai plugins run **in-process** with
+All four plugins are trust tier **`kalebtec`** when installed from the
+registry: maintained in the browxai monorepo, released through the
+same OIDC-trusted-publishing pipeline as the host package,
+npm-provenance signed. A `file:` development install of one of them
+shows as `local`. But the trust tier is **a label, not a sandbox**:
+browxai plugins run **in-process** with
 full Node access, and the runtime gates every tier identically at
 capability + call-graph time. Treat installing any plugin, these four
 included, like adding an npm dependency: review what it declares
@@ -242,7 +244,7 @@ definitions.
 
 ## Versioning
 
-Each plugin's manifest carries a `browxaiVersion` range (`>=0.13.0`
+Each plugin's manifest carries a `browxaiVersion` range (`>=0.14.0`
 today: the oldest host version it was tested against; a mismatch only warns) and a binding `apiVersion` (the
 plugin-runtime contract major; see
 [`docs/plugin-authoring.md`](./plugin-authoring.md)). The canvas
