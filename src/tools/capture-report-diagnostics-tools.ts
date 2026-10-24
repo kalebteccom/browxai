@@ -145,7 +145,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
     {
       capability: "diagnostics",
       description:
-        "File a structured note in the diagnostics store: a missing primitive, a workaround that worked, a performance concern, or an ergonomic problem the tool surface did not cover. `ref` optionally points at an earlier tool call (a record id or `tool:ts`). Requires the `diagnostics` capability (off by default); while it is off the call returns a structured refusal, so a note is not lost without notice. Defaults: category `other`, severity `info`.",
+        "File a structured note in the diagnostics store: a missing primitive, a workaround that worked, a performance concern, or an ergonomic problem the tool surface did not cover. `ref` optionally points at an earlier tool call (a record id or `tool:ts`). Requires the `diagnostics` capability (off by default); while it is off the call returns a structured refusal, so a note is not lost without notice. The other optional fields have defaults (see their descriptions).",
       inputSchema: {
         insight: z
           .string()

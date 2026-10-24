@@ -64,15 +64,15 @@ export function registerStorageWebAuthTools(
     const human = kind === "localStorage" ? "localStorage" : "sessionStorage";
     const lifetimeNote =
       kind === "localStorage"
-        ? 'Persists across reloads + browser restarts (within the origin\'s persistent storage; cleared by `inject_storage_state({mode:"replace"})` or a profile wipe).'
-        : "Session-scoped: cleared automatically when the top-level browsing context ends (tab close). NOT included in `dump_storage_state`/`storageState()` — capture is intentionally a cookies+localStorage blob.";
-    const originScope = `${human} is ORIGIN-SCOPED and tied to the current page — the session MUST be navigated to the target origin before this tool works. On about:blank / a different origin the call rejects with a navigation hint.`;
+        ? 'It persists across reloads and browser restarts (until `inject_storage_state({mode:"replace"})` or a profile wipe).'
+        : "It is cleared when the tab's top-level browsing context ends, and is not included in `dump_storage_state`.";
+    const originScope = `${human} is origin-scoped: \`navigate\` to the target origin first, or the call is rejected with a navigation hint (about:blank, or another origin).`;
 
     register(
       `${prefix}_get`,
       {
         capability: "read",
-        description: `Read one key from ${human} of the current page's origin. Returns \`{value: string|null, origin}\`. ${originScope} Read-only.`,
+        description: `Read one key from ${human} of the current page's origin: \`{value: string|null, origin}\`. ${originScope}`,
         inputSchema: { key: z.string().describe(`${human} key.`), ...SESSION_ARG },
       },
       async ({ key, session }) => {
@@ -98,7 +98,7 @@ export function registerStorageWebAuthTools(
       `${prefix}_list`,
       {
         capability: "read",
-        description: `List every key/value pair in ${human} of the current page's origin. Returns \`{entries:[{key,value}...], origin}\`. ${originScope} Read-only.`,
+        description: `List every key and value in ${human} of the current page's origin: \`{entries:[{key,value}...], origin}\`. ${originScope}`,
         inputSchema: { ...SESSION_ARG },
       },
       async ({ session }) => {
@@ -124,7 +124,7 @@ export function registerStorageWebAuthTools(
       `${prefix}_set`,
       {
         capability: "action",
-        description: `Set a key/value in ${human} of the current page's origin. ${lifetimeNote} ${originScope}`,
+        description: `Set a key in ${human} of the current page's origin. ${lifetimeNote} ${originScope}`,
         inputSchema: {
           key: z.string().describe(`${human} key.`),
           value: z
@@ -188,7 +188,7 @@ export function registerStorageWebAuthTools(
       `${prefix}_clear`,
       {
         capability: "action",
-        description: `Wipe ALL keys in ${human} of the current page's origin. ${originScope}`,
+        description: `Remove every key from ${human} of the current page's origin. ${originScope}`,
         inputSchema: { ...SESSION_ARG },
       },
       async ({ session }) => {

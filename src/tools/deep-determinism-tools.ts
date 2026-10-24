@@ -41,7 +41,7 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        'Control the page\'s virtual clock via CDP `Emulation.setVirtualTimePolicy` — deterministic testing of date-sensitive flows (renewal dates, "today" filters, scheduling, expiry edges) without changing the OS clock. Three modes: `freeze` pauses virtual time at `atIso` (or wall-clock now if omitted); `advance` jumps the clock by `byMs` or to an absolute `atIso`, then re-pins; `release` resumes real time. Per-session; persists across navigation (re-applied on main-frame nav in case CDP drops it). Independent of `network_emulate` / `cpu_emulate` — compose freely. **BYOB:** the policy stays in effect on the attached Chrome until released, reloaded, or closed; a `warning` field surfaces this in `attached` mode.',
+        'Control the page\'s virtual clock through CDP `Emulation.setVirtualTimePolicy`, for deterministic tests of date-sensitive flows (renewals, "today" filters, expiry edges) without changing the OS clock. Modes: `freeze` pauses virtual time at `atIso` (or the current time if omitted); `advance` jumps by `byMs` or to an absolute `atIso`, then pins again; `release` resumes real time. Per session; persists across navigation. Independent of `network_emulate` and `cpu_emulate`. On `attached` sessions the policy stays on your Chrome until released, reloaded or closed (a `warning` says so).',
       inputSchema: {
         mode: z
           .enum(["freeze", "advance", "release"])
@@ -118,7 +118,7 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
       capability: "action",
       batchable: true,
       description:
-        "Override the page's `Math.random` with a deterministic Mulberry32 PRNG seeded from `seed`. For flake-repros where unseeded randomness drives id generation, dice / card / A-B picks, or jittered retry timing. Injected via Playwright `addInitScript`, so every new document in the session — including subsequent navigations — bootstraps the same override; the current page's main realm is re-seeded immediately so the effect is visible without navigating. Per-session; persists across navigation (re-applied on main-frame `framenavigated` for symmetry with `network_emulate` / `clock`). **MVP scope:** only `Math.random` is overridden — `crypto.randomUUID` / `crypto.getRandomValues` are NOT touched (web-crypto is a much bigger deterministic-stub surface; revisit later). Workers are out of scope (the init script runs in document realms, not worker realms). **BYOB:** the override is installed on the attached Chrome's context for as long as the context lives; surfaced as a `warning` in `attached` session mode.",
+        "Replace the page's `Math.random` with a deterministic Mulberry32 generator seeded from `seed`, to reproduce flakes caused by unseeded randomness (ids, dice, A/B picks, retry jitter). It is installed with `addInitScript`, so every new document in the session gets it, and the current page is re-seeded at once. Per session; persists across navigation. Only `Math.random` changes: `crypto.randomUUID` and `crypto.getRandomValues` are untouched, and workers are not covered. On `attached` sessions the override stays on your Chrome's context while it lives (a `warning` says so).",
       inputSchema: {
         seed: z
           .number()

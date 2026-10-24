@@ -150,8 +150,8 @@ export function registerInputTools(host: ToolHost): void {
         capability: "human",
         description:
           action === "profile_snapshot"
-            ? 'Copy a persistent session\'s profile directory into a named snapshot under `<workspace>/profile-snapshots/` — checkpoint a clean authenticated state before a destructive media-editor test. `profile` defaults to "default". ALL sessions must be closed first (copying a live profile dir corrupts it).'
-            : "Restore a named profile snapshot back over a session's profile directory — reset to a clean checkpoint between destructive test runs. ALL sessions must be closed first. Refuses a snapshot `profile_snapshot` did not write or whose files changed since (each snapshot carries a signed manifest).",
+            ? 'Copy a persistent profile directory into a named snapshot under `<workspace>/profile-snapshots/`, to checkpoint a clean authenticated state before a destructive test. Restore it with `profile_restore`. `profile` defaults to "default". Every session must be closed first (use `list_sessions` and `close_sessions`), because copying a live profile directory corrupts it.'
+            : "Restore a named profile snapshot over a profile directory, to reset to a clean checkpoint between destructive runs. Every session must be closed first (use `list_sessions` and `close_sessions`). A snapshot that `profile_snapshot` did not write, or whose files changed since, is refused: each snapshot carries a signed manifest.",
         inputSchema: {
           snapshot: z.string().describe("Snapshot name (letters/digits/._- only)."),
           profile: z

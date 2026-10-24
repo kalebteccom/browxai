@@ -208,7 +208,7 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
           .max(500)
           .optional()
           .describe(
-            "Cap on findings returned. Default 50, max 500. Findings past the cap are dropped + `truncated:true` is set.",
+            "Cap on reports returned. Default 50, max 500. Reports past the cap are dropped and `truncated:true` is set.",
           ),
         ...SESSION_ARG,
       },

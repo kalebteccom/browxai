@@ -275,7 +275,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        'Assert exactly `n` elements match. Pass one of `selector` (raw CSS / Playwright locator) or `text` (case-insensitive visible-text search over the composed a11y tree, same shape as `text_search`). Fail-emitting (`ok:false` + structured `failure`). Use for grid/list invariants — "there are 5 rows after the delete", "no \'Wrong Type\' values left in the table". Read-only.',
+        'Assert that exactly `n` elements match, failing the step if not. Pass `selector` (CSS or a Playwright locator) or `text` (case-insensitive visible-text search over the a11y tree, as in `text_search`). Failure returns `ok:false` with a structured `failure`. Use it for grid and list invariants ("5 rows after the delete", "no \'Wrong Type\' left in the table").',
       inputSchema: {
         selector: z
           .string()
@@ -433,7 +433,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        'Composed predicate check over a caller-supplied `data` bag — fixed vocabulary, NOT arbitrary JS. The predicate `kind` is a fixed enum (`equals`/`notEquals`/`contains`/`notContains`/`gt`/`lt`/`gte`/`lte`/`between`/`matches`/`exists`, plus `and`/`or`/`not` combinators). The accessor `key` must start with an allow-listed root: `actionResult`, `snapshot`, `element`, `value`, `expect`. The model supplies *data* (which key, which expected value); the *vocabulary* is server-owned. Use as a deterministic gate on an already-captured ActionResult / snapshot / metric (the screenshot-judge analogue when chained behind a `screenshot`). Fail-emitting: `source:"app"` when the predicate didn\'t hold; `source:"browxai"` when the predicate shape itself is malformed. `eval_js` (gated behind `eval`) remains the only arbitrary-JS path — verify_predicate does NOT add a second.',
+        'Evaluate a predicate over a `data` bag you supply: a fixed vocabulary, not JS. `kind` is `equals`, `notEquals`, `contains`, `notContains`, `gt`, `lt`, `gte`, `lte`, `between`, `matches` or `exists`, plus the `and`, `or` and `not` combinators. An accessor `key` must start with one of the roots `actionResult`, `snapshot`, `element`, `value` or `expect`. Use it as a deterministic gate on an ActionResult, snapshot or metric you already have (chained behind `screenshot` it plays the screenshot-judge role). Failure returns `source:"app"` when the predicate did not hold and `source:"browxai"` when its shape is malformed. `eval_js` (needs the `eval` capability) stays the only arbitrary-JS path.',
       inputSchema: {
         predicate: PREDICATE_SCHEMA.describe(
           "The predicate to evaluate. Recursive shape — and/or/not nest leaf predicates.",

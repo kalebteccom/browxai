@@ -86,7 +86,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
     {
       batchable: true,
       description:
-        "Inspect browxai configuration. Default returns the fully *resolved* view (precedence: built-in defaults < env [legacy BROWX_*] < user < project < session). Pass `scope` to see one raw pre-merge layer. Config is browxai-managed — change it with `set_config`, never by hand-editing files or env.",
+        "Show browxai configuration. By default it returns the fully resolved view (precedence: built-in defaults, then env `BROWX_*`, then the user, project and session layers). Pass `scope` to see one raw pre-merge layer. Change config with `set_config` and `reset_config`, not by editing files or env.",
       inputSchema: {
         scope: z
           .enum(["defaults", "env", "user", "project", "session", "resolved"])
@@ -286,7 +286,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
     {
       batchable: true,
       description:
-        "List live pre-approvals from `approve_actions` — scope, grantedAt, expiresAt, uses, remainingMs. Audit helper.",
+        "List live pre-approvals from `approve_actions`: scope, grantedAt, expiresAt, uses, remainingMs.",
       inputSchema: {},
     },
     async () => ({
