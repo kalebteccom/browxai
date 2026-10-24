@@ -24,6 +24,26 @@ interface ResolveCtx {
   scopeLocator?: Locator;
   evidence: ExtractEvidence;
   requiredMisses: string[];
+  /** Selectors that matched no element, each with the first field that used it. */
+  unmatched: Map<string, string>;
+}
+
+/** One short warning per selector that matched nothing, so an empty `data` with
+ *  `ok:true` says which selector to fix. Capped so a many-field schema stays small. */
+const MAX_UNMATCHED_WARNINGS = 10;
+
+function noteUnmatched(ctx: ResolveCtx, selector: string): void {
+  if (!ctx.unmatched.has(selector)) ctx.unmatched.set(selector, ctx.path || "(root)");
+}
+
+function unmatchedWarnings(unmatched: Map<string, string>): string[] {
+  const out = [...unmatched]
+    .slice(0, MAX_UNMATCHED_WARNINGS)
+    .map(([selector, path]) => `selector "${selector}" matched no element (field ${path})`);
+  if (unmatched.size > MAX_UNMATCHED_WARNINGS) {
+    out.push(`${unmatched.size - MAX_UNMATCHED_WARNINGS} more selectors matched no element`);
+  }
+  return out;
 }
 
 /** Pure-ish resolution entry point. Exported for unit testing — `extract()`
@@ -33,9 +53,15 @@ export async function resolveAgainstTree(args: {
   page: Page;
   scopeTree: A11yNode;
   scopeLocator?: Locator;
-}): Promise<{ data: unknown; evidence: ExtractEvidence; requiredMisses: string[] }> {
+}): Promise<{
+  data: unknown;
+  evidence: ExtractEvidence;
+  requiredMisses: string[];
+  warnings: string[];
+}> {
   const evidence: ExtractEvidence = { refsUsed: [], selectorsUsed: [], partialMisses: [] };
   const requiredMisses: string[] = [];
+  const unmatched = new Map<string, string>();
   // Surface unknown `x-browx-source` keys up-front so the agent sees the
   // typo before deciding whether the silently-wrong leaf value is "good
   // enough". Pure additive diagnostic — does not change `ok` outcome.
@@ -48,8 +74,9 @@ export async function resolveAgainstTree(args: {
     scopeLocator: args.scopeLocator,
     evidence,
     requiredMisses,
+    unmatched,
   });
-  return { data, evidence, requiredMisses };
+  return { data, evidence, requiredMisses, warnings: unmatchedWarnings(unmatched) };
 }
 
 async function resolveSchema(ctx: ResolveCtx): Promise<unknown> {
@@ -124,6 +151,7 @@ async function resolveArray(ctx: ResolveCtx): Promise<unknown[]> {
   );
   ctx.evidence.selectorsUsed.push(hint.collection);
   if (collectionLocators.length === 0) {
+    noteUnmatched(ctx, hint.collection);
     ctx.evidence.partialMisses.push(
       `${ctx.path}: collection "${hint.collection}" matched 0 elements`,
     );
@@ -214,7 +242,7 @@ async function resolveLeaf(ctx: ResolveCtx): Promise<unknown> {
     } catch {
       return missLeaf(ctx);
     }
-    return readLeafFromLocator(ctx, loc, hint);
+    return readLeafFromLocator(ctx, loc, hint, hint.selector);
   }
   // 2. query path: tree-scan within scopeTree.
   const query = hint.query ?? "";
@@ -298,10 +326,14 @@ async function readLeafFromLocator(
   ctx: ResolveCtx,
   loc: Locator,
   hint: ExtractSourceHint,
+  selector?: string,
 ): Promise<unknown> {
   try {
     const count = await loc.count();
-    if (count === 0) return missLeaf(ctx);
+    if (count === 0) {
+      if (selector) noteUnmatched(ctx, selector);
+      return missLeaf(ctx);
+    }
     if (hint.attr) {
       const v = await loc.getAttribute(hint.attr);
       if (v === null) return missLeaf(ctx);
