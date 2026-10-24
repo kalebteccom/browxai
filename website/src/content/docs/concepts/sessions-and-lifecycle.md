@@ -96,19 +96,37 @@ otherwise):
 browxai chrome start
 ```
 
-Then start the browxai server with the endpoint set, and `byob-attach` added to
-the capability list next to the defaults:
+Then point the browxai server at it. The server reads its environment once at
+start, so set these in the MCP config entry (`env`), not in your shell, and add
+`byob-attach` to the capability list next to the defaults:
 
-```bash
-BROWX_ATTACH_CDP=http://127.0.0.1:9222
-BROWX_CAPABILITIES=read,navigation,action,human,byob-attach
+```json
+{
+  "mcpServers": {
+    "browxai-attached": {
+      "command": "browxai",
+      "env": {
+        "BROWX_ATTACH_CDP": "http://127.0.0.1:9222",
+        "BROWX_CAPABILITIES": "read,navigation,action,human,byob-attach"
+      }
+    }
+  }
+}
 ```
 
 Without `byob-attach` every attached session is refused, naming the
 capability. `browxai init <workspace>` writes an MCP config with a
-`browxai-attached` entry that already sets both. A profile is open in one Chrome at a time, so
-quit any other Chrome on it first, or pass `--profile NAME`. Stop the Chrome
-with `browxai chrome stop`.
+`browxai-attached` entry that already sets both. A profile is open in one Chrome
+at a time, so quit any other Chrome on it first, or pass `--profile NAME`. Stop
+the Chrome with `browxai chrome stop`.
+
+With the default confirmation hooks, `byob_action` holds every action tool on an
+attached browser until a person answers: `__browx.confirm(true)` in the DevTools
+`browxai` console context of that Chrome. An unanswered prompt times out after
+five minutes and the action does not run. For an unattended run, the operator
+drops `byob_action` from `BROWX_CONFIRM_REQUIRED`, or enables `self-approval` and
+lets the agent call `approve_actions`. See
+[Capabilities and safety](/concepts/capabilities-and-safety/#confirmation-hooks).
 
 An attached Chrome is not owned by browxai: it is never closed on shutdown and
 it survives browxai restarts cleanly.
