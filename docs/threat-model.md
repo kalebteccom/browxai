@@ -884,10 +884,14 @@ BROWX_ALLOWED_ORIGINS=https://app.example.com,https://api.example.com
 BROWX_BLOCKED_ORIGINS=https://*.tracking.example.com
 ```
 
-Both optional. Empty allowlist = no restriction. When `BROWX_ALLOWED_ORIGINS`
-is set, navigation off-allowlist requires confirmation (or, if `navigate_off_allowlist`
-is in `BROWX_CONFIRM_REQUIRED`, hard-fails unless confirmed). Wildcards (`*.example.com`)
-are supported.
+Both optional. Empty allowlist = no restriction. Each entry is a full origin with its
+scheme (`https://app.example.com`, `http://localhost:3000`); a bare host such as
+`example.com` does not parse and stops the server at start. A leading `*.` in the host
+(`https://*.example.com`) matches subdomains of any depth, and does not match
+`https://example.com` itself. When `navigate_off_allowlist` is in
+`BROWX_CONFIRM_REQUIRED` (it is by default), a navigation to an origin off the allowlist
+asks a human to confirm and is refused only when the human declines. Without that hook
+the navigation proceeds with a warning.
 
 Matching rules: scheme and host must match, case-insensitively, and a trailing dot on the
 host is ignored (`https://ads.example.com.` matches an `https://ads.example.com` entry).

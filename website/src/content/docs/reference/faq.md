@@ -20,9 +20,10 @@ A wrapper inherits whatever the wrapped tool exposes; browxai does not.
 ## Does it run headless, and in CI?
 
 Yes. A managed Chrome (or Chromium) runs headed or headless (`BROWX_HEADLESS=1`, or the
-`headless` config key), and the surface is built to run unattended. State that
-must survive an MCP-server restart should attach to a separately launched
-Chrome; see [Sessions and lifecycle](/concepts/sessions-and-lifecycle/).
+`headless` config key), and the surface is built to run unattended. A machine
+with no display needs headless: the default launch is headed and fails without
+one. State that must survive an MCP-server restart should attach to a separately
+launched Chrome; see [Sessions and lifecycle](/concepts/sessions-and-lifecycle/).
 
 ## What is BYOB?
 
@@ -33,15 +34,20 @@ closed on shutdown and it survives browxai restarts cleanly. Attaching requires
 the `byob-attach` capability: set
 `BROWX_CAPABILITIES=read,navigation,action,human,byob-attach`, keeping the four
 defaults, or every attach is refused. The `browxai-attached` entry that
-`browxai init` writes already sets it.
+`browxai init` writes already sets it. With the default confirmation hooks, an
+action on an attached browser also waits for a person to confirm it, so read
+[Sessions and lifecycle](/concepts/sessions-and-lifecycle/) before an unattended
+run.
 
 ## Which engines does it drive?
 
-Eight, in three families. Five browsers: Chromium, Firefox, WebKit, real Safari
-and real Chrome on an Android device. Two native-app engines, `android-app` on an
+Eight, in three families. Five browsers: Chromium (`chromium`), Firefox
+(`firefox`), WebKit (`webkit`), real Safari (`safari`) and real Chrome on an
+Android device (`android`). Two native-app engines, `android-app` on an
 emulator and `ios-app` on the iOS Simulator, both behind the `native-device`
 capability. One desktop-app engine, `electron`, which attaches to a running
-Electron app. Pick the engine per session with `open_session({ engine })`.
+Electron app. Pick the engine per session with `open_session({ engine })`, or for
+the whole server with `--engine <kind>` or `BROWX_ENGINE`.
 
 ## Does it get past bot protection?
 

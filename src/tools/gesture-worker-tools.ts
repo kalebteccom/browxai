@@ -59,7 +59,7 @@ export function registerGestureWorkerTools(
     {
       capability: "read",
       description:
-        'Enumerate live workers in this session. Returns `[{workerId, type, url, state?}]` where `workerId` is a stable per-session id (`ww-N` for Web Workers, `sw-N` for Service Workers) the agent passes back to `worker_message_send` / `worker_messages_read`. `type` filters the list (`"web"`, `"service"`, or `"all"` — the default). Web Worker discovery requires the page-side wrapper to have been installed BEFORE the worker was constructed (eagerly done at session creation when `read` is on). Service Workers come from `context.serviceWorkers()` in Playwright (Chromium-based engines only), so only live ones are listed and `state` is `running`; on another engine `type:"service"` returns an error naming the engine and `"all"` lists Web Workers only. A Service Worker on an origin the origin policy does not allow is left out. Capability: `read`.',
+        'List the live workers in this session: `[{workerId, type, url, state?}]`. `workerId` is stable per session (`ww-N` for Web Workers, `sw-N` for Service Workers) and goes to `worker_message_send` and `worker_messages_read`. `type` filters: `"web"`, `"service"` or `"all"` (default). Web Workers are found only if the page-side wrapper was installed before the worker was constructed (done at session creation when `read` is on). Service Workers come from `context.serviceWorkers()` (Chromium-based engines only; only live ones appear, with `state` `running`); on another engine `type:"service"` returns an error naming the engine and `"all"` lists Web Workers only. A Service Worker on an origin the origin rules do not allow is left out.',
       inputSchema: {
         type: z
           .enum(["web", "service", "all"])
@@ -99,7 +99,7 @@ export function registerGestureWorkerTools(
     {
       capability: "action",
       description:
-        "`postMessage` to a worker. `workerId` is the id from `workers_list` (`ww-N` for Web Workers, `sw-N` for Service Workers). For Web Workers, calls the real (unwrapped) `Worker.prototype.postMessage` so the worker's `onmessage` sees a real event — not a synthetic one. For Service Workers, dispatches a `MessageEvent` into the SW global with Playwright's `Worker.evaluate`, so `self.onmessage` and `message` listeners fire; the event is synthetic and has no `source`, so a worker that answers should do it through `clients.matchAll({includeUncontrolled:true})`, and the reply comes back through `worker_messages_read`. Service Workers are reachable on Chromium-based engines only; elsewhere the call returns an error naming the engine. A Service Worker on an origin the origin policy does not allow is refused with an `origin-blocked` error. Binary `MessagePort` transfer is not supported — `message` is a string. Capability: `action`.",
+        "`postMessage` to a worker. `workerId` comes from `workers_list` (`ww-N` Web Worker, `sw-N` Service Worker). For Web Workers it calls the real `Worker.prototype.postMessage`, so `onmessage` sees a real event. For Service Workers it dispatches a synthetic `MessageEvent` into the worker global with Playwright's `Worker.evaluate`, so `self.onmessage` and `message` listeners fire; the event has no `source`, so a worker that replies should use `clients.matchAll({includeUncontrolled:true})`, and the reply arrives through `worker_messages_read`. Service Workers need a Chromium-based engine (elsewhere the call returns an error naming the engine). A Service Worker on an origin the origin rules do not allow is refused with `origin-blocked`. `message` is a string; binary `MessagePort` transfer is not supported.",
       inputSchema: {
         workerId: z.string().describe("Worker id from `workers_list`, e.g. `ww-1` or `sw-1`."),
         message: z
@@ -145,7 +145,7 @@ export function registerGestureWorkerTools(
     {
       capability: "read",
       description:
-        "Drain buffered messages FROM workers since the last read. Returns `[{workerId, data, at}]`. `workerId` filters: omit to drain ALL workers; pass `ww-N` for one Web Worker, `sw-N` for one Service Worker. A Service Worker's messages are the ones it posts to this page with `client.postMessage`, recorded from the page's `navigator.serviceWorker` `message` events; they carry the `sw-N` id `workers_list` gives that script URL, and are only seen for a page that has this tool's wrapper installed before the message arrives. Each call drains (removes) the returned messages — re-reads return only what arrived since. Each ring is capped at 500 entries / 4 KiB per payload; entries past the cap are evicted oldest-first. Message data is reported by the page and is untrusted, like any page text. Capability: `read`.",
+        "Drain the messages buffered from workers since the last read: `[{workerId, data, at}]`. `workerId` filters: omit it to drain every worker, `ww-N` for one Web Worker, `sw-N` for one Service Worker. A Service Worker's messages are the ones it posts to this page with `client.postMessage`, recorded from the page's `navigator.serviceWorker` `message` events under the `sw-N` id `workers_list` gives that script URL; they are seen only if the page had this tool's wrapper installed before the message arrived. Each call removes what it returns. Each ring holds 500 entries of up to 4 KiB; older entries are evicted first. Message data comes from the page and is untrusted, like page text.",
       inputSchema: {
         workerId: z
           .string()
@@ -185,7 +185,7 @@ export function registerGestureWorkerTools(
       capability: "action",
       deep: true,
       description:
-        "Register a fetch interceptor for Service-Worker-handled requests. `pattern` is a glob matched against the intercepted request URL (`*` = single path segment, `**` = any — same shape as `route` / `ws_intercept`). `response` is the canned reply: `{status?, body?, contentType?, headers?}` (defaults: 200, empty body, `application/json`). Fires only when the SW's `fetch` handler actually runs — i.e. the SW chose to intercept the request — which separates SW-mediated traffic from page-direct traffic. Re-add of the same pattern replaces the prior entry. Per-session; lost on session close. Capability: `action`.",
+        "Register a fetch interceptor for requests a Service Worker handles. `pattern` is a glob against the request URL (`*` is one path segment, `**` is any, as in `route` and `ws_intercept`). `response` is the canned reply `{status?, body?, contentType?, headers?}` (defaults: 200, empty body, `application/json`). It fires only when the worker's `fetch` handler runs, which separates worker-mediated traffic from page-direct traffic. Adding the same pattern again replaces the earlier entry. Per session; lost when the session closes.",
       inputSchema: {
         pattern: z
           .string()
@@ -234,7 +234,7 @@ export function registerGestureWorkerTools(
       capability: "action",
       deep: true,
       description:
-        "Remove a `sw_intercept_fetch` interceptor (by exact `pattern`), or — with no `pattern` — every SW fetch interceptor this session installed. Capability: `action`.",
+        "Remove a `sw_intercept_fetch` interceptor by exact `pattern`, or every one this session installed when `pattern` is omitted.",
       inputSchema: {
         pattern: z
           .string()

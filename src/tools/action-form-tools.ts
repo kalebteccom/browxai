@@ -21,7 +21,8 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
     {
       capability: "action",
       batchable: true,
-      description: "Hover over an element by `ref` or `selector`. Returns an ActionResult.",
+      description:
+        "Move the pointer over an element, targeted by `ref`, `selector`, `named` or `coords`, to open menus, tooltips and hover states. Returns an ActionResult; an opened region shows in `structure.appeared`.",
       inputSchema: { ...REF_OR_SELECTOR, ...ACTION_OPTS },
     },
     ({ args, e, target, recordingHint, td }) =>
@@ -42,8 +43,16 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
       capability: "action",
       batchable: true,
       description:
-        "Select option(s) on a <select> by `ref` or `selector`. Returns an ActionResult.",
-      inputSchema: { ...REF_OR_SELECTOR, values: z.array(z.string()), ...ACTION_OPTS },
+        "Choose option(s) of a native `<select>`, targeted by `ref`, `selector` or `named`. For a custom combobox, listbox or menu that is not a `<select>`, use `choose_option`. Returns an ActionResult.",
+      inputSchema: {
+        ...REF_OR_SELECTOR,
+        values: z
+          .array(z.string())
+          .describe(
+            "Option values or visible labels to select. Pass several only for a `multiple` select.",
+          ),
+        ...ACTION_OPTS,
+      },
     },
     ({ args, e, target, recordingHint, td }) =>
       host.actionsFor(e).select({
@@ -63,14 +72,14 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
       capability: "action",
       batchable: true,
       description:
-        "Wait until an element is visible (`ref`/`selector`/`named`/`coords`), or until visible `text` appears anywhere on the page (SPA-readiness gating after a reload/nav). Pass exactly one of a target or `text`. Bounded by design — it CANNOT hang: `timeoutMs` is both the max wait and the anti-wedge deadline (default 5000, 1h hard cap). `ok:false` means the wait expired — on a healthy page that's a real negative (the element/text never appeared); if snapshot/navigate are also timing out it's a wedge symptom, so discard the session rather than re-issuing the wait. No arbitrary-JS predicate mode by design (that's `eval_js`, gated behind the `eval` capability). Returns an ActionResult.",
+        "Wait until an element is visible (`ref`, `selector`, `named` or `coords`), or until visible `text` appears anywhere on the page, for SPA readiness after a reload or navigation. Pass exactly one of a target or `text`. Use `verify_visible` or `verify_text` when a miss should fail the step, `act_and_wait_for_network` to wait on a response, and `poll_eval` for a JS condition. `timeoutMs` is both the max wait and the anti-wedge deadline (default 5000, hard cap 3600000). `ok:false` means the wait expired: on a healthy page the element or text never appeared. If snapshot or navigate also time out, the session is wedged: call `close_session`, then `open_session` a fresh one. Returns an ActionResult.",
       inputSchema: {
         ...REF_OR_SELECTOR,
         text: z
           .string()
           .optional()
           .describe(
-            "wait until this visible text appears (substring match). Mutually exclusive with a target.",
+            "Visible text to wait for (substring match, anywhere on the page). Mutually exclusive with a target.",
           ),
         // wait_for's `timeoutMs` (from ACTION_OPTS) is *both* the max wait and
         // the anti-wedge deadline — a wait is meant to wait, so its ceiling is
@@ -116,12 +125,12 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
       capability: "navigation",
       batchable: true,
       description:
-        "Scroll the page or a scroll container. One general primitive:\n" +
+        "Scroll the window, a scroll container, or an element into view. Targets:\n" +
         "  - No target → scroll the window. Pass `to: top|bottom|left|right` or `by: {x,y}` (CSS px; +y = down).\n" +
         "  - `ref`/`selector`/`named` target, no `to`/`by` → scroll that element *into view* (lazy-load / virtualised lists).\n" +
-        "  - element target + `to`/`by` → scroll *within* that container (set `intoView:false` is implied).\n" +
+        "  - element target + `to`/`by` → scroll *within* that container (`intoView:false` is implied).\n" +
         "  - `coords` target → wheel-scroll at that point (canvas / map / WebGL panning).\n" +
-        "Returns an ActionResult — scroll commonly triggers infinite-scroll XHRs and structure changes; read `network` / `structure` / `snapshotDelta` to see what loaded.",
+        "Returns an ActionResult. Scrolling often triggers infinite-scroll requests, so read `network`, `structure` and `snapshotDelta` to see what loaded.",
       inputSchema: {
         ...REF_OR_SELECTOR,
         to: z
@@ -172,7 +181,7 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
       capability: "action",
       batchable: true,
       description:
-        "Pick an option in a combobox / listbox / menu by visible text. Generic primitive for custom controls that aren't native `<select>` (so the `select` tool can't drive them). The `target` is the trigger control (the combobox itself); `option` is the visible text of the option to commit. Opens the control if not already expanded, waits for a visible listbox/menu/portal, clicks the resolved option element (no type-and-press-Enter), returns the probe on the trigger — `ownerControl.displayTextAfter` shows the committed selection.",
+        "Pick an option in a custom combobox, listbox or menu by visible text. Use `select` for a native `<select>`. Target the trigger control (the combobox itself) with `ref`, `selector` or `named`; `coords` is refused. `option` is the visible text to commit. Opens the control if it is closed, waits for the listbox or menu, and clicks the matching option. Returns an ActionResult; `ownerControl.displayTextAfter` shows the committed selection.",
       inputSchema: {
         ...REF_OR_SELECTOR,
         option: z.string().describe("Visible text of the option to commit."),

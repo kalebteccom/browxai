@@ -202,6 +202,7 @@ main:has(.browx-404) > .content-panel {
 .browx-sidebar-llms:focus-visible,
 .browx-credit a:focus-visible,
 .browx-facts a:focus-visible,
+.browx-install-note a:focus-visible,
 .browx-card a:focus-visible {
   outline: 2px solid var(--sl-color-text-accent);
   outline-offset: 3px;
@@ -362,6 +363,9 @@ main:has(.browx-404) > .content-panel {
     border-color 0.15s ease,
     color 0.15s ease;
 }
+.browx-copy[hidden] {
+  display: none;
+}
 .browx-copy:hover {
   border-color: var(--sl-color-text-accent);
   color: var(--sl-color-white);
@@ -385,7 +389,19 @@ main:has(.browx-404) > .content-panel {
   color: var(--sl-color-red-high);
 }
 
-/* Version, licence, status and links, under the hero. */
+/* One line under the install command: the Node floor and the next step. */
+.browx-install-note {
+  margin: 0.9rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--sl-color-gray-3);
+}
+.browx-install-note a {
+  color: var(--sl-color-text-accent);
+  text-underline-offset: 0.18em;
+}
+
+/* Version, license, status and links, under the hero. */
 .browx-facts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
@@ -1022,7 +1038,6 @@ main:has(.browx-404) > .content-panel {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--sl-color-gray-3);
-  opacity: 0.85;
 }
 
 /* Make the sidebar a column so the llms.txt link can pin to the bottom. */
@@ -1153,6 +1168,19 @@ main:has(.browx-404) > .content-panel {
       0.75rem 100% no-repeat scroll,
     radial-gradient(farthest-side at 100% 50%, var(--browx-edge-glow), transparent) right center /
       0.75rem 100% no-repeat scroll;
+}
+/* Phone widths: a table with few columns and short code (marked by
+   docs-enhance.ts) fills the column and wraps its cells, so it needs no sideways
+   scroll. Wide or code-heavy tables keep the scroll box above. */
+@media (max-width: 40rem) {
+  .sl-markdown-content table[data-browx-wrap] {
+    display: table;
+    width: 100%;
+    background: none;
+  }
+  .sl-markdown-content table[data-browx-wrap] :is(th, td) {
+    overflow-wrap: anywhere;
+  }
 }
 .sl-markdown-content table:focus-visible {
   outline: 2px solid var(--sl-color-text-accent);

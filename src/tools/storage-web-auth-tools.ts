@@ -64,15 +64,15 @@ export function registerStorageWebAuthTools(
     const human = kind === "localStorage" ? "localStorage" : "sessionStorage";
     const lifetimeNote =
       kind === "localStorage"
-        ? 'Persists across reloads + browser restarts (within the origin\'s persistent storage; cleared by `inject_storage_state({mode:"replace"})` or a profile wipe).'
-        : "Session-scoped: cleared automatically when the top-level browsing context ends (tab close). NOT included in `dump_storage_state`/`storageState()` — capture is intentionally a cookies+localStorage blob.";
-    const originScope = `${human} is ORIGIN-SCOPED and tied to the current page — the session MUST be navigated to the target origin before this tool works. On about:blank / a different origin the call rejects with a navigation hint.`;
+        ? 'It persists across reloads and browser restarts (until `inject_storage_state({mode:"replace"})` or a profile wipe).'
+        : "It is cleared when the tab's top-level browsing context ends, and is not included in `dump_storage_state`.";
+    const originScope = `${human} is origin-scoped: \`navigate\` to the target origin first, or the call is rejected with a navigation hint (about:blank, or another origin).`;
 
     register(
       `${prefix}_get`,
       {
         capability: "read",
-        description: `Read one key from ${human} of the current page's origin. Returns \`{value: string|null, origin}\`. ${originScope} Read-only.`,
+        description: `Read one key from ${human} of the current page's origin: \`{value: string|null, origin}\`. ${originScope}`,
         inputSchema: { key: z.string().describe(`${human} key.`), ...SESSION_ARG },
       },
       async ({ key, session }) => {
@@ -98,7 +98,7 @@ export function registerStorageWebAuthTools(
       `${prefix}_list`,
       {
         capability: "read",
-        description: `List every key/value pair in ${human} of the current page's origin. Returns \`{entries:[{key,value}...], origin}\`. ${originScope} Read-only.`,
+        description: `List every key and value in ${human} of the current page's origin: \`{entries:[{key,value}...], origin}\`. ${originScope}`,
         inputSchema: { ...SESSION_ARG },
       },
       async ({ session }) => {
@@ -124,7 +124,7 @@ export function registerStorageWebAuthTools(
       `${prefix}_set`,
       {
         capability: "action",
-        description: `Set a key/value in ${human} of the current page's origin. ${lifetimeNote} ${originScope}`,
+        description: `Set a key in ${human} of the current page's origin. ${lifetimeNote} ${originScope}`,
         inputSchema: {
           key: z.string().describe(`${human} key.`),
           value: z
@@ -188,7 +188,7 @@ export function registerStorageWebAuthTools(
       `${prefix}_clear`,
       {
         capability: "action",
-        description: `Wipe ALL keys in ${human} of the current page's origin. ${originScope}`,
+        description: `Remove every key from ${human} of the current page's origin. ${originScope}`,
         inputSchema: { ...SESSION_ARG },
       },
       async ({ session }) => {
@@ -224,7 +224,7 @@ export function registerStorageWebAuthTools(
     {
       capability: "action",
       description:
-        "Capture the session's current storage state into a named slot at `$BROWX_WORKSPACE/.auth-states/<name>.json`. Names are letters/digits/`._-` only (no separators, no `..`). Overwrites an existing slot of the same name. Pair with `open_session({authState})` to spin up a session pre-logged-in, or with `auth_load` + `inject_storage_state` for in-flight reseating. SECURITY NOTE: cookie *values* may carry credentials — these files are sensitive (a future secrets-masking pass lands separately).",
+        "Save the session's current storage state (cookies and per-origin localStorage) to a named slot at `$BROWX_WORKSPACE/.auth-states/<name>.json`, to reuse a login. Names are letters, digits and `._-` only, and an existing slot of the same name is overwritten. Reuse it with `open_session({authState})` for a new session, or `auth_load` for a live one. Use `cookies_set` for a single cookie and `dump_storage_state` for the blob without a slot. Cookie values may carry credentials: the slot file keeps them as the browser holds them, so treat it as sensitive.",
       inputSchema: {
         name: z.string().describe("Slot name (letters/digits/`._-` only)."),
         ...SESSION_ARG,
@@ -254,7 +254,7 @@ export function registerStorageWebAuthTools(
     {
       capability: "action",
       description:
-        'Load a named storage-state slot AND apply it to an existing session (replaces the context\'s cookies/localStorage/IndexedDB — same semantics as `inject_storage_state({mode:"replace"})`). For SEEDING a new session at creation time, prefer `open_session({authState:"<name>"})` — that\'s cheaper (no clear-then-replace cycle on a fresh context) and lets incognito mode use the Playwright-native primitive.',
+        'Load a named storage-state slot (saved with `auth_save`) and apply it to an existing session, replacing the context\'s cookies, localStorage and IndexedDB, the same as `inject_storage_state({mode:"replace"})`. To seed a new session at creation, prefer `open_session({authState:"<name>"})`, which skips the clear-then-replace step. An unknown name errors: check `auth_list`.',
       inputSchema: {
         name: z.string().describe("Slot name (must exist; auth_save it first)."),
         ...SESSION_ARG,

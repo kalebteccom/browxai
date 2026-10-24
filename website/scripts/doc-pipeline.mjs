@@ -109,6 +109,47 @@ export const agentOnlyPages = [
   },
 ];
 
+// docs/ names its sibling pages by repo path (`docs/plugins.md`), as a link
+// label or as bare code. On the site that reads like a dead file name, so each
+// one becomes a link labelled with the page it opens. Fenced code stays as is.
+const pageLinks = {
+  "threat-model.md": ["Threat model", "/security/threat-model/"],
+  "tool-reference.md": ["Tool reference", "/reference/tool-reference/"],
+  "plugins.md": ["Plugins overview", "/plugins/overview/"],
+  "plugins-first-party.md": ["First-party plugins", "/plugins/first-party/"],
+  "plugin-authoring.md": ["Authoring plugins", "/plugins/authoring/"],
+  "plugin-governance.md": ["Plugin governance", "/plugins/governance/"],
+  "agent-guidance.md": ["Agent guidance", `${GITHUB}/blob/main/docs/agent-guidance.md`],
+};
+
+/** Apply `fn` to every line outside fenced code blocks. */
+function outsideFences(text, fn) {
+  let inFence = false;
+  return text
+    .split("\n")
+    .map((raw) => {
+      if (/^\s*(```+|~~~+)/.test(raw)) {
+        inFence = !inFence;
+        return raw;
+      }
+      return inFence ? raw : fn(raw);
+    })
+    .join("\n");
+}
+
+/** Relabel `[`docs/x.md`](...)` links and link bare `docs/x.md` mentions. */
+export function linkPagePaths(text) {
+  return outsideFences(text, (line) =>
+    line
+      .replace(/\[`docs\/([a-z-]+\.md)`\]\(/g, (m, file) =>
+        pageLinks[file] ? `[${pageLinks[file][0]}](` : m,
+      )
+      .replace(/(?<!\[)`docs\/([a-z-]+\.md)`(?!\])/g, (m, file) =>
+        pageLinks[file] ? `[${pageLinks[file][0]}](${pageLinks[file][1]})` : m,
+      ),
+  );
+}
+
 /** Convert em/en dashes to spaced hyphens, skipping fenced code blocks. */
 export function convertDashes(text) {
   let inFence = false;
@@ -135,6 +176,7 @@ export const q = (s) => `"${s.replace(/"/g, '\\"')}"`;
  */
 export function transformText(text) {
   text = convertDashes(text);
+  text = linkPagePaths(text);
   for (const [re, to] of linkMap) text = text.replace(re, to);
   // Repo-relative links (valid inside docs/, dead on the published site) point
   // at repo root, so rewrite them to GitHub. Directories -> tree, files -> blob.

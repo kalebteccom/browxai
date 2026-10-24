@@ -1,7 +1,9 @@
 // Progressive enhancement for docs pages. Without JS the page reads the same.
-// 1. Inline code that holds a command or a BROWX_* name copies on click, Enter or
-//    Space. The "Copied" bubble is a ::after (see brand.css), so nothing reflows.
+// 1. Inline code that holds a command or a BROWX_* name copies on click, and on
+//    Enter or Space when it is a tab stop (see FOCUS_LIMIT). The "Copied" bubble
+//    is a ::after (see brand.css), so nothing reflows.
 // 2. A table that scrolls sideways becomes focusable, so a keyboard can scroll it.
+//    A table of short cells wraps on phone widths instead (see brand.css).
 // BROWX_NAME and BROWX_NAME=value both copy. A value with a placeholder or an
 // ellipsis is not a command, so it stays plain.
 const COMMAND = /^(?:(?:browxai|npx|pnpm|npm) \S|BROWX_[A-Z0-9_]+(?:=[^\s<…]+)?$)/;
@@ -48,31 +50,81 @@ const copy = async (el: HTMLElement) => {
   }
 };
 
-document.querySelectorAll<HTMLElement>(".sl-markdown-content code").forEach((el) => {
+// Only short codes inside running text are tab stops, and only on a page with
+// few of them. A page past FOCUS_LIMIT (the tool reference) keeps click-to-copy
+// without the tab stops, and keyboard users copy from the block buttons.
+const FOCUS_LIMIT = 60;
+const FOCUS_MAX_CHARS = 80;
+const focusable = (el: HTMLElement, text: string) =>
+  text.length < FOCUS_MAX_CHARS && Boolean(el.closest("p, li, td, th"));
+
+const copyable = [...document.querySelectorAll<HTMLElement>(".sl-markdown-content code")].filter(
+  (el) => COMMAND.test(el.textContent?.trim() ?? "") && !skipped(el),
+);
+const focusCount = copyable.filter((el) => focusable(el, el.textContent?.trim() ?? "")).length;
+
+copyable.forEach((el) => {
   const text = el.textContent?.trim() ?? "";
-  if (!COMMAND.test(text) || skipped(el)) return;
   el.classList.add("browx-copyable");
-  el.tabIndex = 0;
-  el.setAttribute("role", "button");
   el.title = "Click to copy";
+  if (focusCount <= FOCUS_LIMIT && focusable(el, text)) {
+    el.tabIndex = 0;
+    el.setAttribute("role", "button");
+    el.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      void copy(el);
+    });
+  }
   el.addEventListener("click", () => {
     const picked = window.getSelection()?.toString().trim();
     if (!picked || picked === text) void copy(el);
   });
-  el.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter" && e.key !== " ") return;
-    e.preventDefault();
-    void copy(el);
+});
+
+// A table wraps its cells on a phone when it has few columns and no long code
+// token. Anything wider or code-heavy keeps the sideways scroll.
+const wraps = (table: HTMLElement) => {
+  const cols = table.querySelectorAll("tr:first-child > :is(th, td)").length;
+  let longest = 0;
+  table.querySelectorAll("td code, th code").forEach((c) => {
+    longest = Math.max(longest, c.textContent?.length ?? 0);
+  });
+  return cols <= 3 ? longest <= 40 : cols === 4 && longest <= 24;
+};
+
+// The accessible name of a scrollable table is its nearest preceding heading, so
+// a screen reader lists "Environment variables table" and not N identical stops.
+// A second table under the same heading gets "(2 of 2)" style numbering.
+const headings = [
+  ...document.querySelectorAll<HTMLElement>(".sl-markdown-content :is(h1, h2, h3, h4, h5, h6)"),
+];
+const tables = [...document.querySelectorAll<HTMLElement>(".sl-markdown-content table")];
+const headingOf = (table: HTMLElement) =>
+  headings.filter((h) => h.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+const labels = new Map<HTMLElement, string>();
+const byHeading = new Map<HTMLElement | undefined, HTMLElement[]>();
+for (const table of tables) {
+  const h = headingOf(table);
+  byHeading.set(h, [...(byHeading.get(h) ?? []), table]);
+}
+byHeading.forEach((group, h) => {
+  const base = h?.textContent?.trim();
+  group.forEach((table, i) => {
+    if (!base) return labels.set(table, "Scrollable table");
+    const n = group.length > 1 ? ` (${i + 1} of ${group.length})` : "";
+    labels.set(table, `${base} table${n}`);
   });
 });
 
-document.querySelectorAll<HTMLElement>(".sl-markdown-content table").forEach((table) => {
+tables.forEach((table) => {
+  if (wraps(table)) table.dataset.browxWrap = "";
   new ResizeObserver(() => {
     const scrolls = table.scrollWidth > table.clientWidth + 1;
     // No role override: the table keeps its table semantics.
     for (const [name, value] of [
       ["tabindex", "0"],
-      ["aria-label", "Scrollable table"],
+      ["aria-label", labels.get(table) ?? "Scrollable table"],
     ]) {
       if (scrolls) table.setAttribute(name, value);
       else table.removeAttribute(name);

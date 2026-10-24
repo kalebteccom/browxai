@@ -30,12 +30,12 @@ export function registerInputTools(host: ToolHost): void {
       {
         // mouse_down / mouse_move / mouse_up — low-level pointer dispatch.
         capability: "action",
-        description: `Low-level ${act.replace("_", " ")} for custom gestures the higher-level tools don't cover (scrub/trim handles). ${act === "mouse_move" ? "Requires `coords`." : "`coords` optional — moves there first when given, else acts at the current pointer position."}`,
+        description: `Send one low-level mouse ${act.slice(6)} for custom gestures the higher-level tools don't cover (scrub and trim handles). Use \`drag\` for a whole press, move, release. ${act === "mouse_move" ? "Requires `coords` (viewport CSS px)." : "`coords` is optional (viewport CSS px): the pointer moves there first when given, else the event fires at its current position."}`,
         inputSchema: {
           coords: z
             .object({ x: z.number(), y: z.number() })
             .optional()
-            .describe("Viewport CSS px."),
+            .describe("Viewport point in CSS px."),
           ...SESSION_ARG,
         },
       },
@@ -96,16 +96,16 @@ export function registerInputTools(host: ToolHost): void {
         // the action substrate on an engine that cannot dispatch it.
         capability: "action",
         description:
-          `Dispatch ${act.replace("_", " ")} via CDP Input.dispatchTouchEvent — a separate pipeline from \`mouse_*\` for mobile-default apps and canvas / map / drawing widgets that listen for \`touchstart\` / \`touchmove\` / \`touchend\`. ${requiresCoords ? "`coords` required (viewport CSS px)." : "`coords` optional — when omitted, dispatches an empty touchPoints[] (the 'all fingers up' form)."} ` +
-          "`identifier` (default 1) maps to DOM `TouchEvent.changedTouches[].identifier` — use distinct ids per finger to fan out multi-touch. Touch does NOT synthesise mouse events — dispatch mouse_* explicitly if both pipelines are needed.",
+          `Send one touch ${act.slice(6)} through CDP Input.dispatchTouchEvent, for apps that listen for touch events (mobile-first UIs, canvas, maps, drawing widgets). Use \`gesture_swipe\` or \`gesture_pinch\` for common gestures and these three to script your own. ${requiresCoords ? "`coords` is required (viewport CSS px)." : "`coords` is optional; when omitted it sends an empty touchPoints[] (all fingers up)."} ` +
+          "`identifier` (default 1) maps to `TouchEvent.changedTouches[].identifier`: use a distinct id per finger for multi-touch. Touch events do not fire mouse events, and the `mouse_*` tools do not fire touch events.",
         inputSchema: {
           coords: requiresCoords
-            ? z.object({ x: z.number(), y: z.number() }).describe("Viewport CSS px.")
+            ? z.object({ x: z.number(), y: z.number() }).describe("Viewport point in CSS px.")
             : z
                 .object({ x: z.number(), y: z.number() })
                 .optional()
                 .describe(
-                  "Viewport CSS px. Omit to dispatch empty touchPoints[] (all fingers up).",
+                  "Viewport point in CSS px. Omit to send an empty touchPoints[] (all fingers up).",
                 ),
           identifier: z
             .number()
@@ -113,7 +113,7 @@ export function registerInputTools(host: ToolHost): void {
             .nonnegative()
             .optional()
             .describe(
-              "Touch identifier (default 1) — distinct values per finger for multi-touch fan-out.",
+              "Touch identifier (default 1). Use a distinct value per finger for multi-touch.",
             ),
           ...SESSION_ARG,
         },
@@ -150,8 +150,8 @@ export function registerInputTools(host: ToolHost): void {
         capability: "human",
         description:
           action === "profile_snapshot"
-            ? 'Copy a persistent session\'s profile directory into a named snapshot under `<workspace>/profile-snapshots/` — checkpoint a clean authenticated state before a destructive media-editor test. `profile` defaults to "default". ALL sessions must be closed first (copying a live profile dir corrupts it).'
-            : "Restore a named profile snapshot back over a session's profile directory — reset to a clean checkpoint between destructive test runs. ALL sessions must be closed first. Refuses a snapshot `profile_snapshot` did not write or whose files changed since (each snapshot carries a signed manifest).",
+            ? 'Copy a persistent profile directory into a named snapshot under `<workspace>/profile-snapshots/`, to checkpoint a clean authenticated state before a destructive test. Restore it with `profile_restore`. `profile` defaults to "default". Every session must be closed first (use `list_sessions` and `close_sessions`), because copying a live profile directory corrupts it.'
+            : "Restore a named profile snapshot over a profile directory, to reset to a clean checkpoint between destructive runs. Every session must be closed first (use `list_sessions` and `close_sessions`). A snapshot that `profile_snapshot` did not write, or whose files changed since, is refused: each snapshot carries a signed manifest.",
         inputSchema: {
           snapshot: z.string().describe("Snapshot name (letters/digits/._- only)."),
           profile: z

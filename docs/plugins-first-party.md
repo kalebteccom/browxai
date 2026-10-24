@@ -31,10 +31,11 @@ active set at startup, the plugin is disabled with
 `status: "disabled-by-capability-mismatch"` and the reason surfaces on
 `plugins_list`.
 
-Enable both before starting the server:
+Enable both before the server starts, in the `env` of your MCP client's entry
+for browxai (`browxai` run by hand only waits for a client):
 
 ```sh
-$ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
+BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas
 ```
 
 (`set_config` can't add capabilities: a saved `capabilities` list only
@@ -168,10 +169,10 @@ adapter: swap the install name, the URL, and the ops):
 
 ```sh
 # 1. Install the plugin (workspace-rooted; see docs/plugins.md).
-$ browxai plugin install @browxai/plugin-tldraw
+browxai plugin install @browxai/plugin-tldraw
 
-# 2. Start the server with eval + canvas enabled.
-$ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
+# 2. Start the server with eval + canvas enabled: set this in the MCP entry's env.
+BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas
 ```
 
 ```

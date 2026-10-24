@@ -231,8 +231,9 @@ declarations may come in a future minor version.
   installed from the registry under that exact name (no alias, git or
   tarball spec), with an integrity hash in `plugins-lock.json`.
   Reference plugins; same release/CI hygiene as browxai itself.
-- `community`: third-party npm packages
-  (`browxai-plugin-*` or `@<org>/browxai-plugin-*`).
+- `community`: every other registry, git or tarball install. Third-party
+  packages are published as `browxai-plugin-*` or `@<org>/browxai-plugin-*`
+  by convention, and the name does not change the tier.
 - `local`: file-path-installed plugins. Used during plugin
   development (`browxai plugin install file:/abs/path/to/my-plugin`).
 
@@ -246,10 +247,10 @@ During development, install your plugin's working directory by file
 path:
 
 ```sh
-$ pnpm build                                          # inside my-plugin/
-$ browxai plugin install file:./my-plugin             # a relative or an absolute path
-$ browxai plugin list
-$ browxai doctor                                      # plugins section: manifest, lock, drift
+pnpm build                                          # inside my-plugin/
+browxai plugin install file:./my-plugin             # a relative or an absolute path
+browxai plugin list
+browxai doctor                                      # plugins section: manifest, lock, drift
 ```
 
 A relative path resolves from your shell's working directory. The CLI

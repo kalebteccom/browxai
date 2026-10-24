@@ -54,7 +54,7 @@ export function registerStorageIdbTools(
     {
       capability: "read",
       description:
-        "Enumerate every IndexedDB database visible to the current page's origin (`indexedDB.databases()`). Returns `{databases:[{name, version}], origin, supported}`. `supported:false` on engines that don't expose `indexedDB.databases()` (older non-Chromium browsers) — the storage is still readable per-database via `idb_list_stores({dbName})`, you just have to know the names. IndexedDB is ORIGIN-SCOPED — navigate first. Read-only.",
+        "List the IndexedDB databases visible to the current page's origin (`indexedDB.databases()`): `{databases:[{name, version}], origin, supported}`. `supported:false` on engines without `indexedDB.databases()` (older non-Chromium browsers); `idb_list_stores({dbName})` still works if you know the name. Origin-scoped: navigate first.",
       inputSchema: { ...SESSION_ARG },
     },
     async ({ session }) => {
@@ -81,7 +81,7 @@ export function registerStorageIdbTools(
     {
       capability: "read",
       description:
-        "List the object-store names inside a database. Read-only — does NOT trigger an upgrade transaction, so it will only see stores that already exist. Returns `{stores:[...], dbName, version, origin}`. Origin-scoped — navigate first.",
+        "List the object-store names in a database. It does not run an upgrade transaction, so it sees only stores that already exist. Returns `{stores:[...], dbName, version, origin}`. Origin-scoped: navigate first.",
       inputSchema: {
         dbName: z.string().describe("Database name."),
         ...SESSION_ARG,
@@ -111,7 +111,7 @@ export function registerStorageIdbTools(
     {
       capability: "read",
       description:
-        "Get the value at a key in an object store. Returns `{found:true, value}` or `{found:false}`. KEY SHAPES: IDB natively accepts strings, numbers, dates, and arrays as keys — all four shapes round-trip through JSON cleanly (Dates as ISO strings; pass the ISO string back in on subsequent calls). VALUE SHAPES: IDB stores structured-clonable values (Blob/ArrayBuffer/Map/Set/Date), but this tool returns over MCP's JSON-only transport — non-JSON-serialisable values surface as a structured error (the platform value is preserved IN the store; it just can't ride the wire). For binary payloads, store them base64-encoded at the app level. **JSON-string fidelity**: if the app under test stored a value via `JSON.stringify(obj)` (a localStorage-habit common in older code), `idb_get` returns the raw JSON STRING verbatim — IDB faithfully preserves shape, and browxai does NOT auto-detect-and-parse stringified values because some apps legitimately store JSON strings as strings. Call-site responsibility: `JSON.parse` if you expect an object. The companion `idb_put` warning surfaces the opposite footgun (an MCP client double-encoding the input). Origin-scoped — navigate first. Read-only.",
+        "Read the value at a key in an object store: `{found:true, value}` or `{found:false}`. Keys may be strings, numbers, dates (as ISO strings) or arrays. Values travel as JSON, so a value that is not JSON-serialisable (Blob, ArrayBuffer, Map, Set) returns a structured error and stays in the store; store binary data base64-encoded at the app level. A value the app stored with `JSON.stringify` comes back as the raw string, so call `JSON.parse` yourself if you expect an object. Use `idb_list_databases` and `idb_list_stores` to find names. Origin-scoped: navigate first.",
       inputSchema: {
         dbName: z.string().describe("Database name."),
         storeName: z.string().describe("Object store name (must exist)."),
@@ -145,7 +145,7 @@ export function registerStorageIdbTools(
     {
       capability: "action",
       description:
-        "Put a value at a key in an object store. The object store MUST already exist — this tool does not create stores (store creation requires an IDB upgrade transaction, which is the app's schema concern). `value` is anything JSON-serialisable; non-JSON inputs reject at MCP-validation time. If the store uses an in-line keyPath, `key` is ignored (the keyPath read off `value` is authoritative); otherwise `key` becomes the out-of-line primary key. Origin-scoped — navigate first.",
+        "Put a value at a key in an object store. The store must already exist: this tool cannot create one (that needs an upgrade transaction, which belongs to the app's schema). `value` is anything JSON-serialisable. If the store has an in-line keyPath, `key` is ignored and the keyPath on `value` is used; otherwise `key` is the out-of-line primary key. Origin-scoped: navigate first.",
       inputSchema: {
         dbName: z.string().describe("Database name (must exist)."),
         storeName: z.string().describe("Object store name (must exist)."),
@@ -208,7 +208,7 @@ export function registerStorageIdbTools(
     {
       capability: "action",
       description:
-        "Delete the value at a key in an object store. Idempotent — returns the same shape whether or not a record was there. Origin-scoped — navigate first.",
+        "Delete the value at a key in an object store. Idempotent: the result looks the same whether or not a record existed. Origin-scoped: navigate first.",
       inputSchema: {
         dbName: z.string().describe("Database name."),
         storeName: z.string().describe("Object store name."),
@@ -244,7 +244,7 @@ export function registerStorageIdbTools(
     {
       capability: "action",
       description:
-        "Clear every record from an object store (the store itself remains). Origin-scoped — navigate first.",
+        "Remove every record from an object store; the store itself stays. Origin-scoped: navigate first.",
       inputSchema: {
         dbName: z.string().describe("Database name."),
         storeName: z.string().describe("Object store name."),

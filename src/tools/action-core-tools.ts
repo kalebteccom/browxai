@@ -27,8 +27,11 @@ export function registerActionCoreTools(
       capability: "navigation",
       batchable: true,
       description:
-        "Navigate the page to a URL. Returns an ActionResult: navigation + structure changes + console/network slice + post-snapshot.",
-      inputSchema: { url: z.string().describe("Absolute URL"), ...ACTION_OPTS },
+        "Load an absolute URL in the page. Origin rules (`BROWX_ALLOWED_ORIGINS`, `BROWX_BLOCKED_ORIGINS`) apply to the requested URL and to the page it lands on after redirects: a held origin asks the human or returns a deny, and the page stays on the landed URL. Returns an ActionResult (navigation, structure changes, console and network slice, post-snapshot). Use `go_back` and `go_forward` for history.",
+      inputSchema: {
+        url: z.string().describe("Absolute URL with scheme, e.g. https://app.example.com/login."),
+        ...ACTION_OPTS,
+      },
     },
     async ({ url, mode, maxResultTokens, timeoutMs, session }) => {
       const g = host.gateCheck("navigate");
@@ -72,7 +75,7 @@ export function registerActionCoreTools(
       capability: "action",
       batchable: true,
       description:
-        "Click an element by `ref` (preferred — from snapshot/find), `selector`, `named`, or page `coords` ({x,y} viewport pixels — escape hatch for canvas / custom-painted UIs). `force:true` skips Playwright's actionability checks (visibility / stability / receives-events / hit-test) — escape hatch for perpetually-busy SPAs where rAF loops + frequent re-renders make the stability check thrash forever; use only on targets you've verified clickable via snapshot/find first. `dispatch:\"direct\"` goes further and skips the locator engine's pre-dispatch path entirely (chromium only) — reach for it only after the default path AND `force:true` have both failed. Returns an ActionResult.",
+        'Click an element. Target it by `ref` (preferred, from snapshot or find), `selector`, `named`, or `coords` ({x,y} viewport px, for canvas and custom-painted UIs). Prefer this over `act_and_diff` unless the change you need to see is a class or attribute edit. A stale ref errors: call snapshot or find again. `force:true` skips Playwright\'s actionability checks (visibility, stability, receives-events, hit-test); use it only on targets you verified clickable, for busy SPAs where the stability check never settles. `dispatch:"direct"` also skips the locator engine (chromium only); try it only after the default path and `force:true` both failed. Returns an ActionResult.',
       inputSchema: {
         ...REF_OR_SELECTOR,
         button: z
@@ -114,8 +117,17 @@ export function registerActionCoreTools(
     {
       capability: "action",
       batchable: true,
-      description: "Type into an input by `ref` or `selector`. Returns an ActionResult.",
-      inputSchema: { ...REF_OR_SELECTOR, value: z.string(), ...ACTION_OPTS },
+      description:
+        "Replace the value of an input, textarea or contenteditable, targeted by `ref`, `selector` or `named`. Use `fill_form` to set two or more fields in one call, and `select` or `choose_option` for dropdowns. A `value` of `<NAME>` is replaced with the registered secret of that name at dispatch (registering one requires the `secrets` capability, off by default). Returns an ActionResult; `element.value` shows what landed.",
+      inputSchema: {
+        ...REF_OR_SELECTOR,
+        value: z
+          .string()
+          .describe(
+            "Text to enter. Replaces the current value. `<NAME>` substitutes a registered secret.",
+          ),
+        ...ACTION_OPTS,
+      },
     },
     ({ args, e, target, recordingHint, td }) =>
       host.actionsFor(e).fill({
@@ -135,10 +147,14 @@ export function registerActionCoreTools(
       capability: "action",
       batchable: true,
       description:
-        "Press a key. If a `ref`/`selector` is given, presses on that element; else on the page.",
+        "Press one key or chord on a target element, or on the page when no target is given. Use `shortcut` for a sequence of chords or when you need proof the app handled the keys. Returns an ActionResult.",
       inputSchema: {
         ...REF_OR_SELECTOR,
-        key: z.string().describe('Playwright key syntax, e.g. "Enter", "Control+A"'),
+        key: z
+          .string()
+          .describe(
+            'Playwright key syntax: a key name ("Enter", "Escape"), a character, or a chord ("Control+A").',
+          ),
         ...ACTION_OPTS,
       },
     },
@@ -169,7 +185,7 @@ export function registerActionCoreTools(
     {
       capability: "action",
       description:
-        'Dispatch a keyboard chord ("Control+C") or an ordered sequence (["Control+A","Control+C"]) and return handled-observability: the active element, which keydown/copy/cut/paste listeners fired, and whether the app called preventDefault — so you can prove the app actually handled the shortcut, not just that keys were sent. Optional `ref`/`selector` is focused first; else page-level. Copy/cut/paste integrate the per-session clipboard ONLY when the off-by-default `clipboard` capability is enabled: each session has its own clipboard buffer, and the shared OS clipboard is written only transactionally at the copy/cut (capture selection) or paste (inject this session\'s buffer) moment — never ambiently, never read into a session (no cross-session/human clipboard bleed). Observability works without the capability.',
+        'Send a keyboard chord ("Control+C") or an ordered list of chords (["Control+A","Control+C"]) and report whether the app handled it: the active element, which keydown/copy/cut/paste listeners fired, and whether the app called preventDefault. Use `press` for a single key when you do not need that report. An optional `ref`/`selector` is focused first, else the chord goes to the page. Copy, cut and paste use a per-session clipboard buffer only with the `clipboard` capability (off by default); the OS clipboard is written at the copy/cut or paste moment and never read back. The handled-report works without it.',
       inputSchema: {
         keys: z
           .union([z.string(), z.array(z.string()).min(1)])

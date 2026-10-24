@@ -28,7 +28,7 @@ export function registerGestureEmulationTools(
       batchable: true,
       deep: true,
       description:
-        "Throttle the session's network conditions (or simulate offline) via CDP `Network.emulateNetworkConditions`. For flaky-mobile / offline / slow-link repros on a real backend; **composes** with `route_queue` — each route's `delayMs` stacks ON TOP of the emulated `latencyMs`. Per-session; persists across navigation (re-applied on main-frame nav in case CDP drops it on a renderer swap). Empty input (or `{offline:false}` with no other fields) resets to no throttle. **BYOB:** the override applies to the attached Chrome and stays in effect even after browxai detaches, until the human resets DevTools or closes the page (a `warning` field surfaces this).",
+        "Throttle the session's network, or take it offline, through CDP `Network.emulateNetworkConditions`, for slow-link and offline repros against a real backend. It composes with `route_queue`: each route's `delayMs` adds to the emulated `latencyMs`. Per session; persists across navigation. Empty input (or `{offline:false}` alone) removes the throttle. On `attached` sessions the override stays on your Chrome after browxai detaches, until you reset DevTools or close the page (a `warning` says so).",
       inputSchema: {
         offline: z
           .boolean()
@@ -114,7 +114,7 @@ export function registerGestureEmulationTools(
       batchable: true,
       deep: true,
       description:
-        "Slow the renderer to simulate a low-end device via CDP `Emulation.setCPUThrottlingRate`. `throttleRate: 1` = no throttle (and is the reset path); `2` = 2× slowdown; `4`–`6` = mid-to-low-end mobile. Per-session; persists across navigation (re-applied on main-frame nav in case CDP drops it). Empty input resets to `1`. Independent of `network_emulate` — apply both for a full low-end-device repro. **BYOB:** the throttle stays in effect on the attached Chrome until reset or page close (`warning` surfaces this).",
+        "Slow the renderer to mimic a low-end device through CDP `Emulation.setCPUThrottlingRate`. `throttleRate:1` is no throttle (the reset), `2` is 2x slower, `4` to `6` is mid to low-end mobile. Per session; persists across navigation. Empty input resets to `1`. Independent of `network_emulate`: use both for a full low-end repro. On `attached` sessions the throttle stays on your Chrome until reset or page close (a `warning` says so).",
       inputSchema: {
         throttleRate: z
           .number()

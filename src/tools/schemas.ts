@@ -7,7 +7,12 @@ import { z } from "zod";
 // seam alone instead of reaching back into `../server.js` (which would close an
 // import cycle).
 
-const SNAPSHOT_MODE = z.enum(["scoped_snapshot", "tree_diff", "full", "none"]).optional();
+const SNAPSHOT_MODE = z
+  .enum(["scoped_snapshot", "tree_diff", "full", "none"])
+  .optional()
+  .describe(
+    'Shape of `snapshotDelta` in the result. Default "scoped_snapshot": re-snapshot the acted element plus new regions, and omit the tree when nothing changed. "none" omits the tree. "tree_diff" returns only the new region subtrees. "full" returns the whole post-action tree and costs the most tokens.',
+  );
 
 // every browser-touching tool accepts an optional `session` id.
 // Omitting it resolves to the lazily-created "default" session — byte-identical
@@ -18,7 +23,7 @@ export const SESSION_ARG = {
     .string()
     .optional()
     .describe(
-      'Session id (default "default"). Each id is an isolated browser context (own cookie jar, own refs). Open non-default sessions with open_session; list with list_sessions.',
+      'Session id (default "default"), a plain name: letters, digits, `.`, `_`, `-`. Each id is an isolated browser context (own cookie jar, own refs) and is created on first use; `open_session` sets options up front and `list_sessions` lists them.',
     ),
 };
 
@@ -44,7 +49,15 @@ export const TIMEOUT_ARG = {
 
 export const ACTION_OPTS = {
   mode: SNAPSHOT_MODE,
-  maxResultTokens: z.number().int().positive().max(20_000).optional(),
+  maxResultTokens: z
+    .number()
+    .int()
+    .positive()
+    .max(20_000)
+    .optional()
+    .describe(
+      "Approximate token cap for `snapshotDelta.tree` (default 600, max 20000). A cut is reported in `warnings`.",
+    ),
   ...TIMEOUT_ARG,
   ...SESSION_ARG,
 };
@@ -54,7 +67,12 @@ export const ACTION_OPTS = {
 // subtree. `coords` is the escape hatch for visually-located targets (canvas,
 // custom-painted UIs, dismiss-empty-space) — only click/hover honour it.
 export const REF_OR_SELECTOR = {
-  ref: z.string().optional().describe("Stable [eN] ref from snapshot()/find()"),
+  ref: z
+    .string()
+    .optional()
+    .describe(
+      "Stable [eN] ref from snapshot() or find(). Refs reset when the page changes: a stale ref errors, so call snapshot or find again.",
+    ),
   selector: z.string().optional().describe("CSS / selectorHint fallback"),
   named: z.string().optional().describe("Mnemonic name previously bound with name_ref"),
   contextRef: z
@@ -67,6 +85,6 @@ export const REF_OR_SELECTOR = {
     .object({ x: z.number(), y: z.number() })
     .optional()
     .describe(
-      "Page-coordinate target {x,y} (CSS pixels, viewport-relative). Escape hatch for canvas / custom-painted UIs / dismiss-empty-space cases that ref/selector resolution can't address. Honoured by `click` and `hover` only; ignored elsewhere.",
+      "Page-coordinate target {x,y} (CSS px, viewport-relative) for canvas and custom-painted UIs that ref and selector can't address. Check the point with `point_probe` first. Used by click, hover, double_click, wait_for, scroll and drop_files. Other tools refuse it or ignore it.",
     ),
 };

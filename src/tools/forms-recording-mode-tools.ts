@@ -80,7 +80,7 @@ export function registerFormsRecordingModeTools(
     {
       capability: "human",
       description:
-        "Begin recording subsequent tool calls as a draft flow-file. Every successful navigate/click/fill/press/hover/select/wait_for adds an action step (with the resolved selectorHint when a target was given); every successful extract/find/snapshot/eval_js adds a read step carrying what the call asked for (schema+scope / query / scope / expression) and, for `find`, the locator it resolved. Returned page data is never recorded. Call `end_recording` to emit a YAML draft, or `export_playwright_script` to lower the trace to a runnable `.spec.ts` without ending the recording. `record_annotate` attaches annotations to the most-recent step. Calibration-walk → flow-file scaffolding.\n\nOptional `replay: {...}` engages a `.browx` session-replay artifact alongside the YAML draft. **Requires the `replay` capability** (off by default). The archive carries the DOM stream, network/WS metadata (bodies at `reexecutable`), console output and action calls — real page data, as sensitive as the session was.",
+        "Start recording this session's tool calls as a draft flow-file. Each successful navigate, click, fill, press, hover, select or wait_for adds an action step (with the resolved selectorHint when a target was given). Each successful extract, find, snapshot or eval_js adds a read step holding what the call asked for (schema and scope, query, scope, or expression) and, for `find`, the locator it resolved. Page data returned to you is not recorded. Call `end_recording` for a YAML draft, or `export_playwright_script` for a runnable `.spec.ts` that leaves the recording running. `record_annotate` annotates the latest step.\n\nOptional `replay: {...}` also writes a `.browx` session-replay archive (DOM stream, network and WebSocket metadata, console output, action calls). That archive holds real page data and is as sensitive as the session. Requires the `replay` capability (off by default).",
       inputSchema: {
         flowName: z.string().describe('Name of the flow being recorded, e.g. "login-and-search"'),
         replay: replayInputSchema,
@@ -145,9 +145,9 @@ export function registerFormsRecordingModeTools(
     {
       capability: "human",
       description:
-        "Attach a doc annotation (copy + optional arrow position + optional target ref) to the most-recent recorded step, or to a specific `stepId`. Optional `label` tags a span in an active `.browx` replay artifact — the coverage view in the offline player groups spans by that label (e.g. an acceptance-criterion id). No-op on the YAML side if no recording is active; the label still lands on the replay log if one is running.",
+        "Attach a doc annotation (text, optional arrow position, optional target ref) to the latest recorded step, or to `stepId`. `label` tags a span in an active `.browx` replay artifact; the offline player's coverage view groups spans by it (an acceptance-criterion id, for example). With no recording active this does nothing on the YAML side, and the label still reaches the replay log if one is running.",
       inputSchema: {
-        copy: z.string().describe("Annotation copy"),
+        copy: z.string().describe("Annotation text for the flow-file."),
         arrow: z
           .string()
           .optional()
