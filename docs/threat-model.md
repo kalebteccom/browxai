@@ -736,7 +736,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `captcha`, default **off**. Tools: `solve_captcha`.
 
-  Per-session captcha challenge delegation. The capability registers ONE tool (`solve_captcha({type, selector?, siteKey?, imageBase64?})`) that POSTs the challenge to an **external provider configured per-deployment via environment variables** (`BROWX_CAPTCHA_PROVIDER` ∈ {`2captcha`, `capmonster`} + `BROWX_CAPTCHA_API_KEY`; optional `BROWX_CAPTCHA_API_BASE` / `BROWX_CAPTCHA_TIMEOUT_MS` / `BROWX_CAPTCHA_POLL_MS`). The v0.2.0 protocol target is the **2Captcha-compatible REST API** (`/in.php` submit + `/res.php` poll) which CapMonster Cloud mirrors drop-in; other providers extensible. **browxai does NOT bundle a solver and does NOT auto-purchase credits**. What leaves the machine on each call: the API key, the URL of the current page and the widget site-key (or the base64 image for `type:"image"`), sent to `https://2captcha.com` or `https://api.capmonster.cloud` unless `BROWX_CAPTCHA_API_BASE` overrides it. The key rides in the form body of the submit and of each poll request, never in a URL. Cookies, DOM and screenshots are not sent. When the capability is on but no provider is configured, the tool returns a structured `{ok:false, error:"no captcha provider configured — …", hint:…}` and sends nothing. **Legal / ToS exposure is real**: solving captchas may violate the target site's ToS and (depending on jurisdiction) computer-misuse or unauthorised-access law; the operator carries that legal exposure. Loud one-time warning at server boot. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth`.
+  Per-session captcha challenge delegation. The capability registers ONE tool (`solve_captcha({type, selector?, siteKey?, imageBase64?})`) that POSTs the challenge to an **external provider configured per-deployment via environment variables** (`BROWX_CAPTCHA_PROVIDER` ∈ {`2captcha`, `capmonster`} + `BROWX_CAPTCHA_API_KEY`; optional `BROWX_CAPTCHA_API_BASE` / `BROWX_CAPTCHA_TIMEOUT_MS` / `BROWX_CAPTCHA_POLL_MS`). The v0.2.0 protocol target is the **2Captcha-compatible REST API** (`/in.php` submit + `/res.php` poll) which CapMonster Cloud mirrors drop-in; other providers extensible. **browxai does NOT bundle a solver and does NOT auto-purchase credits**. What leaves the machine on each call: the API key, the URL of the current page and the widget site-key (or the base64 image for `type:"image"`), sent to `https://2captcha.com` or `https://api.capmonster.cloud` unless `BROWX_CAPTCHA_API_BASE` overrides it. The key rides in the form body of the submit and of each poll request, never in a URL, and neither request follows a redirect: a redirect from the provider ends the call with an error. Cookies, DOM and screenshots are not sent. When the capability is on but no provider is configured, the tool returns a structured `{ok:false, error:"no captcha provider configured — …", hint:…}` and sends nothing. **Legal / ToS exposure is real**: solving captchas may violate the target site's ToS and (depending on jurisdiction) computer-misuse or unauthorised-access law; the operator carries that legal exposure. Loud one-time warning at server boot. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth`.
 
 - `clipboard`, default **off**. Tools: none, this one is a behaviour gate on `shortcut`.
 
@@ -880,6 +880,15 @@ Both optional. Empty allowlist = no restriction. When `BROWX_ALLOWED_ORIGINS`
 is set, navigation off-allowlist requires confirmation (or, if `navigate_off_allowlist`
 is in `BROWX_CONFIRM_REQUIRED`, hard-fails unless confirmed). Wildcards (`*.example.com`)
 are supported.
+
+Matching rules: scheme and host must match, case-insensitively, and a trailing dot on the
+host is ignored (`https://ads.example.com.` matches an `https://ads.example.com` entry).
+The port is compared as the port the request uses: an entry without a port means the scheme
+default (80 for `http`, 443 for `https`), and an entry with a port matches that port only.
+A `blob:` or `filesystem:` URL is matched by the origin it wraps. A redirect is checked
+again on the URL the navigation landed on, through the same hook as the requested URL.
+Without `navigate_off_allowlist` in `BROWX_CONFIRM_REQUIRED`, a blocked origin only logs a
+warning that names the matching `BROWX_BLOCKED_ORIGINS` entry, and the navigation proceeds.
 
 Documented as **defense-in-depth, not a security boundary**. Page-initiated redirects
 and JS-driven navigation may still escape; the allowlist is a blast-radius reducer + a

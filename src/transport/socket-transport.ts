@@ -26,9 +26,19 @@ import { ReadBuffer, serializeMessage } from "@modelcontextprotocol/sdk/shared/s
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 
+/** Longest incoming line, in bytes, the transport buffers before it closes the
+ *  connection: 32 MiB. The framing is newline-delimited, so a peer that never
+ *  sends a newline would otherwise grow the read buffer without limit. */
+export const MAX_SOCKET_MESSAGE_BYTES = 32 * 1024 * 1024;
+
+const NEWLINE = 0x0a;
+
 export class SocketTransport implements Transport {
   private readonly _socket: Socket;
   private readonly _readBuffer = new ReadBuffer();
+  private readonly _maxMessageBytes: number;
+  /** Bytes buffered since the last newline: the length of the line in progress. */
+  private _pendingBytes = 0;
   private _started = false;
   private _closed = false;
 
@@ -36,8 +46,9 @@ export class SocketTransport implements Transport {
   public onerror?: (error: Error) => void;
   public onmessage?: (message: JSONRPCMessage) => void;
 
-  constructor(socket: Socket) {
+  constructor(socket: Socket, opts: { maxMessageBytes?: number } = {}) {
     this._socket = socket;
+    this._maxMessageBytes = opts.maxMessageBytes ?? MAX_SOCKET_MESSAGE_BYTES;
   }
 
   public start(): Promise<void> {
@@ -74,9 +85,47 @@ export class SocketTransport implements Transport {
   }
 
   private _onData = (chunk: Buffer): void => {
+    if (this._overLimit(chunk)) {
+      this._closeOversized();
+      return;
+    }
     this._readBuffer.append(chunk);
     this._processBuffer();
   };
+
+  /** Track the line in progress across chunks. True when any line, finished or
+   *  not, runs past the limit. */
+  private _overLimit(chunk: Buffer): boolean {
+    let pending = this._pendingBytes;
+    let start = 0;
+    for (;;) {
+      const newline = chunk.indexOf(NEWLINE, start);
+      if (newline === -1) {
+        pending += chunk.length - start;
+        break;
+      }
+      if (pending + (newline - start) > this._maxMessageBytes) return true;
+      pending = 0;
+      start = newline + 1;
+    }
+    this._pendingBytes = pending;
+    return pending > this._maxMessageBytes;
+  }
+
+  private _closeOversized(): void {
+    this._closed = true;
+    this._socket.removeListener("data", this._onData);
+    this._socket.removeListener("close", this._onClose);
+    this._readBuffer.clear();
+    this._pendingBytes = 0;
+    this._socket.destroy();
+    this.onerror?.(
+      new Error(
+        `SocketTransport: an incoming message is over the ${this._maxMessageBytes}-byte limit; closing the connection`,
+      ),
+    );
+    this.onclose?.();
+  }
 
   private _onError = (err: Error): void => {
     this.onerror?.(err);

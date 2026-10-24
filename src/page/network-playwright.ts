@@ -39,15 +39,43 @@ function nextPwRequestId(): string {
   return `pw-${(pwRequestSeq = (pwRequestSeq + 1) % Number.MAX_SAFE_INTEGER)}`;
 }
 
+/** A compressed body is read decoded, so its transfer size understates what
+ *  `response.body()` allocates. A body with a `content-encoding` is read only when
+ *  its transfer size is under `max / COMPRESSED_READ_DIVISOR`. */
+const COMPRESSED_READ_DIVISOR = 8;
+
+/** Whether a response body may be read into memory. Playwright's `response.body()`
+ *  has no streaming form, so the size has to be known before the call: the
+ *  transfer size once the request finished, else the `content-length` header.
+ *  A body over `max` bytes, or of unknown size, is not read. */
+export function bodyReadDecision(
+  headers: Readonly<Record<string, string>>,
+  max: number,
+  finishedBytes?: number,
+): { read: true } | { read: false; size?: number } {
+  const declared =
+    headers["content-length"] === undefined ? NaN : Number(headers["content-length"]);
+  const size = finishedBytes ?? (Number.isFinite(declared) && declared >= 0 ? declared : undefined);
+  if (size === undefined) return { read: false };
+  const encoding = headers["content-encoding"]?.trim().toLowerCase();
+  const limit =
+    encoding && encoding !== "identity" ? Math.floor(max / COMPRESSED_READ_DIVISOR) : max;
+  return size <= limit ? { read: true } : { read: false, size };
+}
+
 /** Best-effort mutation-detail probe over a Playwright `Response` (the off-
  *  Chromium analogue of `probeMutation`). Reads the body via `response.body()`
- *  (cross-browser), extracts only the top-level JSON keys. Returns null on any
- *  failure so the caller filters nulls out, identical to the CDP probe. */
+ *  (cross-browser) when its declared size is within `MAX_BODY_BYTES_TO_PARSE`,
+ *  extracts only the top-level JSON keys. Returns null on any failure so the
+ *  caller filters nulls out, identical to the CDP probe. */
 async function probeMutationPlaywright(
   response: Response,
   detail: MutationDetail,
 ): Promise<MutationEntry | null> {
   try {
+    if (!bodyReadDecision(response.headers(), MAX_BODY_BYTES_TO_PARSE).read) {
+      return mutationWithoutShape(detail);
+    }
     const buf = await response.body();
     if (buf.length > MAX_BODY_BYTES_TO_PARSE) return mutationWithoutShape(detail);
     const trimmed = buf.toString("utf-8").trim();
@@ -161,17 +189,19 @@ export class PlaywrightNetworkTap {
 export class PlaywrightNetworkBuffer {
   private ring: NetworkEntry[] = [];
   private ids = new WeakMap<Request, string>();
-  /** captured bodies keyed by synthetic request id, bounded LRU. */
-  private bodies = new Map<string, { buf: Buffer; truncated: boolean }>();
+  /** recent responses keyed by synthetic request id, bounded LRU. A body is read
+   *  from one only when `network_body` asks for it, so nothing is read into memory
+   *  while the `network-body` capability is off. */
+  private responses = new Map<string, Response>();
   private enabled = false;
   private secrets: SecretRegistry | null = null;
 
   constructor(
     private context: BrowserContext,
     private cap = 500,
-    /** how many recent response bodies to retain for `network_body`. Bounded so
-     *  capturing every body doesn't grow unbounded (the doctrine: bound the
-     *  buffer). Default 50 — the agent fetches a body right after the request. */
+    /** how many recent responses to keep reachable for `network_body`. Bounded so
+     *  the buffer doesn't grow unbounded (the doctrine: bound the buffer).
+     *  Default 50 — the agent fetches a body right after the request. */
     private bodyCap = 50,
     private maxBodyBytes = 256_000,
   ) {}
@@ -201,10 +231,9 @@ export class PlaywrightNetworkBuffer {
       const mime = res.headers()["content-type"];
       if (mime) entry.mimeType = mime;
       this.push(entry);
-      // capture the body at response time (bounded) — bodies aren't fetchable
-      // after the fact off Chromium. Best-effort: a failed read leaves no cache
-      // entry and `network_body` reports "not available".
-      void this.captureBody(id, res);
+      // keep the response reachable for `network_body` (bounded). The body is
+      // read when asked for, never here.
+      this.remember(id, res);
     });
     this.context.on("requestfinished", (req: Request) => {
       const id = this.ids.get(req);
@@ -232,19 +261,12 @@ export class PlaywrightNetworkBuffer {
     });
   }
 
-  private async captureBody(id: string, res: Response): Promise<void> {
-    try {
-      const buf = await res.body();
-      const truncated = buf.length > this.maxBodyBytes;
-      const stored = truncated ? buf.subarray(0, this.maxBodyBytes) : buf;
-      this.bodies.set(id, { buf: stored, truncated });
-      // LRU eviction — keep the most recent `bodyCap` bodies.
-      if (this.bodies.size > this.bodyCap) {
-        const oldest = this.bodies.keys().next().value;
-        if (oldest !== undefined) this.bodies.delete(oldest);
-      }
-    } catch {
-      /* body not retained (e.g. a redirect / no-body response) — best-effort */
+  private remember(id: string, res: Response): void {
+    this.responses.set(id, res);
+    // LRU eviction — keep the most recent `bodyCap` responses.
+    if (this.responses.size > this.bodyCap) {
+      const oldest = this.responses.keys().next().value;
+      if (oldest !== undefined) this.responses.delete(oldest);
     }
   }
 
@@ -263,12 +285,12 @@ export class PlaywrightNetworkBuffer {
     return foldInteresting(this.ring.slice(-limit), this.secrets);
   }
 
-  /** Resolve a `requestId` to its captured body. Bytes were stored as a Buffer
-   *  at response time; emit as utf-8 unless they aren't valid text, in which case
-   *  base64 (matching the CDP `Network.getResponseBody` base64Encoded contract).
-   *  Secrets masking is applied to text bodies (base64 passes through, same as
-   *  the CDP path). */
-  // eslint-disable-next-line @typescript-eslint/require-await
+  /** Resolve a `requestId` to its body. The body is read now, and only when its
+   *  declared size is within `maxBodyBytes` (see `bodyReadDecision`); a larger or
+   *  unsized body is not read and the result says so. Emit as utf-8 unless the
+   *  bytes aren't valid text, in which case base64 (matching the CDP
+   *  `Network.getResponseBody` base64Encoded contract). Secrets masking is applied
+   *  to text bodies (base64 passes through, same as the CDP path). */
   async fetchBody(
     requestId: string,
     secrets: SecretRegistry | null,
@@ -279,35 +301,59 @@ export class PlaywrightNetworkBuffer {
     truncated?: boolean;
     error?: string;
   }> {
-    const cached = this.bodies.get(requestId);
-    if (!cached) {
+    const res = this.responses.get(requestId);
+    if (!res) {
       return {
         ok: false,
         error:
-          `response body not available for "${requestId}" — off Chromium, bodies are captured at ` +
-          `response time into a bounded recent-window cache (no after-the-fact protocol fetch like CDP ` +
+          `response body not available for "${requestId}" — off Chromium, bodies are read from a ` +
+          `bounded recent window of responses (no after-the-fact protocol fetch like CDP ` +
           `Network.getResponseBody). Read the body right after the request, before ${this.bodyCap} newer ` +
           `responses evict it; bodies aren't retained across navigations.`,
       };
     }
+    const finishedBytes = this.ring.find((e) => e.requestId === requestId)?.bytes;
+    const decision = bodyReadDecision(res.headers(), this.maxBodyBytes, finishedBytes);
+    if (!decision.read) {
+      return {
+        ok: false,
+        truncated: true,
+        error:
+          decision.size !== undefined
+            ? `response body is ${decision.size} bytes, over the ${this.maxBodyBytes}-byte cap; it was not read.`
+            : "response body size is not known yet (no content-length, and the request has not finished); it was not read. Retry once the request has finished.",
+      };
+    }
+    let buf: Buffer;
+    try {
+      buf = await res.body();
+    } catch {
+      return {
+        ok: false,
+        error: `response body not available for "${requestId}" — the browser no longer holds it (a redirect, or a navigation since).`,
+      };
+    }
+    // The declared size bounds the read. A decoded body can still run past the cap.
+    const truncated = buf.length > this.maxBodyBytes;
+    const stored = truncated ? buf.subarray(0, this.maxBodyBytes) : buf;
     // Decide text-vs-base64: a body that round-trips through utf-8 cleanly is
     // text; otherwise base64 (the agent decodes + re-masks on its side).
-    const utf8 = cached.buf.toString("utf-8");
-    const isText = Buffer.from(utf8, "utf-8").equals(cached.buf);
+    const utf8 = stored.toString("utf-8");
+    const isText = Buffer.from(utf8, "utf-8").equals(stored);
     if (isText) {
       const out = secrets ? secrets.applyMaskInText(utf8) : utf8;
       return {
         ok: true,
         body: out,
         base64Encoded: false,
-        ...(cached.truncated ? { truncated: true } : {}),
+        ...(truncated ? { truncated: true } : {}),
       };
     }
     return {
       ok: true,
-      body: cached.buf.toString("base64"),
+      body: stored.toString("base64"),
       base64Encoded: true,
-      ...(cached.truncated ? { truncated: true } : {}),
+      ...(truncated ? { truncated: true } : {}),
     };
   }
 }

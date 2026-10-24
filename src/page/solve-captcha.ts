@@ -291,8 +291,10 @@ export async function submitToProvider(
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: submitBody.toString(),
+      redirect: "error",
     });
   } catch (err) {
+    if (isRedirectError(err)) return redirectFailure(config);
     return failureWithHint(
       config.provider,
       `network error submitting to provider: ${err instanceof Error ? err.message : String(err)}`,
@@ -355,8 +357,11 @@ async function pollOnce(
         id: taskId,
         json: "1",
       }).toString(),
+      redirect: "error",
     });
   } catch (err) {
+    // A redirect repeats on every poll, so it ends the wait.
+    if (isRedirectError(err)) return redirectFailure(config);
     log.warn(
       `solve_captcha: poll network blip (${err instanceof Error ? err.message : String(err)}) — continuing`,
     );
@@ -416,6 +421,30 @@ async function pollForSolution(
     const outcome = await pollOnce(taskId, config, started, seams);
     if (outcome) return outcome;
   }
+}
+
+/** `fetch` with `redirect: "error"` rejects with a TypeError whose `cause` says
+ *  the response was a redirect. Matches that, whatever wrapper carries it. */
+function isRedirectError(err: unknown): boolean {
+  // cap: 4 levels of `cause`
+  for (let e: unknown = err, depth = 0; e instanceof Error && depth < 4; depth++) {
+    if (/redirect/i.test(e.message)) return true;
+    e = e.cause;
+  }
+  return false;
+}
+
+/** The provider answered with a redirect. The request carries the API key, so it
+ *  is not followed. */
+function redirectFailure(config: CaptchaProviderConfig): CaptchaFailure {
+  return {
+    ok: false,
+    provider: config.provider,
+    error: "the provider answered with a redirect, which was not followed",
+    hint:
+      "The request carries the API key, so browxai does not follow redirects. " +
+      "Set BROWX_CAPTCHA_API_BASE to the provider's final https endpoint.",
+  };
 }
 
 function failureWithHint(provider: CaptchaProvider, error: string): CaptchaFailure {

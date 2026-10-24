@@ -3,10 +3,12 @@ import {
   ApprovalStore,
   confirmNavigation,
   confirmByobAction,
+  confirmLanding,
   type ConfirmContext,
 } from "./confirm.js";
 import { resolveOriginPolicy, type OriginPolicy } from "./origin.js";
 import { BrowxBridge } from "../helper/bridge.js";
+import { log } from "../util/logging.js";
 
 const NO_POLICY: OriginPolicy = { allowed: [], blocked: [] };
 
@@ -283,5 +285,110 @@ describe("confirm hooks over the operator channel", () => {
     expect(decision.ok).toBe(true);
     const req = (ask.mock.calls[0] as unknown as [{ prompt: { scope: string; tool: string } }])[0];
     expect(req.prompt).toMatchObject({ scope: "navigate_off_allowlist", tool: "navigate" });
+  });
+
+  it("asks the human for a redirect that lands off the allowlist", async () => {
+    const { bridge, ask } = operatorBridge([{ decision: "approve" }]);
+    const decision = await confirmLanding(
+      "https://on.example/go",
+      "https://off.example/landing",
+      ctx({
+        bridge,
+        isByob: false,
+        policy: resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://on.example" }),
+      }),
+    );
+    expect(decision.ok).toBe(true);
+    expect(ask).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("blocked origins without a confirm hook", () => {
+  it("proceeds and the warning names the blocking entry", async () => {
+    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    try {
+      const decision = await confirmNavigation(
+        "https://ads.example.com./banner",
+        ctx({
+          hooks: new Set(),
+          isByob: false,
+          policy: resolveOriginPolicy({ BROWX_BLOCKED_ORIGINS: "https://ads.example.com" }),
+        }),
+      );
+      expect(decision.ok).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = String(warn.mock.calls[0]?.[0]);
+      expect(message).toContain("blocked by BROWX_BLOCKED_ORIGINS");
+      expect(message).toContain('"https://ads.example.com"');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("an off-allowlist URL keeps the allowed-origins wording", async () => {
+    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    try {
+      await confirmNavigation(
+        "https://off.example/",
+        ctx({
+          hooks: new Set(),
+          isByob: false,
+          policy: resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://on.example" }),
+        }),
+      );
+      expect(String(warn.mock.calls[0]?.[0])).toContain("off the allowed-origins list");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe("confirmLanding", () => {
+  const policy = resolveOriginPolicy({ BROWX_BLOCKED_ORIGINS: "https://ads.example.com" });
+
+  it("accepts a landing on the requested origin without a second check", async () => {
+    const decision = await confirmLanding(
+      "https://site.example/a",
+      "https://site.example/b",
+      ctx({ policy, isByob: false }),
+    );
+    expect(decision).toEqual({ ok: true, reason: "landed on requested origin", asked: false });
+  });
+
+  it("refuses a redirect that lands on a blocked origin when nobody can confirm", async () => {
+    const decision = await confirmLanding(
+      "https://site.example/go",
+      "https://ads.example.com./landing",
+      ctx({ policy, isByob: false }),
+    );
+    expect(decision.ok).toBe(false);
+    expect(decision.reason).toContain("no human channel");
+  });
+
+  it("proceeds with a warning when no confirm hook is set", async () => {
+    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    try {
+      const decision = await confirmLanding(
+        "https://site.example/go",
+        "https://ads.example.com/landing",
+        ctx({ policy, hooks: new Set(), isByob: false }),
+      );
+      expect(decision.ok).toBe(true);
+      expect(String(warn.mock.calls[0]?.[0])).toContain("blocked by BROWX_BLOCKED_ORIGINS");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("does not re-check a landing on about:blank", async () => {
+    const decision = await confirmLanding(
+      "https://on.example/go",
+      "about:blank",
+      ctx({
+        isByob: false,
+        policy: resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://on.example" }),
+      }),
+    );
+    expect(decision.ok).toBe(true);
   });
 });

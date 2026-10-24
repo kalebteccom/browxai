@@ -745,7 +745,7 @@ Recent console messages (ring buffer). For per-action attribution, use `ActionRe
 
 **Inputs:** `{ limit?: number (default 50, max 500) }`
 
-**Output:** JSON array of `{ ts, type, text }`.
+**Output:** JSON array of `{ ts, type, text }`. A message longer than 8,192 characters is stored cut to that length and ends in `… [truncated N chars]`.
 
 **Example.**
 
@@ -818,7 +818,7 @@ watch({ durationMs: 5000 })
 
 ### `network_body` _(gated)_
 
-Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default**: requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast, so fetch right after the request; not retained across navigations.
+Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default**: requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast, so fetch right after the request; not retained across navigations. On Firefox and WebKit the body is read when you ask for it, and only if its size is known and within the cap: a response whose `content-length` (or finished transfer size) is over 256 KB, or unknown, comes back as `{ ok:false, truncated:true, error }` and is not read. A compressed response must be under 32 KB on the wire.
 
 Why gated: full bodies routinely carry PII / auth tokens. The `responseShape` (top-level keys only) is the safe default for "did the mutation write back the right shape"; `network_body` is the higher-risk debugging escape hatch for "assert this exact field value" (e.g. a realtime broadcast payload, paired with `ws_read`).
 
@@ -1548,8 +1548,9 @@ on-disk trace, preserving the no-trace contract.
 #### `download_get({ id, pathOnly?, session? })`
 
 - `id: string`: download id from `ActionResult.downloads[].id`.
-- `pathOnly?: boolean`: omit the base64 payload, return only path + metadata.
+- `pathOnly?: boolean`: omit the base64 payload, return only path + metadata. The file is not read.
 - → `{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`.
+- A file over 16 MiB is not returned inline. The call fails with an error that names the limit and the saved path, and `pathOnly:true` still returns the path.
 
 **Example (the whole pipeline).**
 
@@ -2459,7 +2460,7 @@ poll_eval({ expr: "window.__jobs?.pending === 0", intervalMs: 500, timeoutMs: 10
 - `screenshot_marks({ candidates, label?, session? })`: composed PNG with numbered bounding boxes painted over the supplied candidates: the set-of-marks primitive multimodal agents reach for when they want to ground a vision read against a small palette of stable refs ("click 2" instead of estimating a coordinate). Each candidate is either a bare `{ref}` (looked up against the current snapshot for its bbox) OR a full `find()` candidate row passed through (`{ref, role, name, testId, bbox}`: fast path, no extra tree walk). `label` is `"index"` (default) → paints 1..N array positions, `"ref"` → paints the existing `eN`, `"role"` → paints the role for visual grounding. The numbering scheme **shares the existing `name_ref` / `eN` namespace**, with no parallel ID space, so the result's `mapping[index] === ref` and an agent can address either way (`click({ref: mapping[2]})`). Candidates with `bbox:null` (clipped / off-screen) are kept in `marks` with `painted:false` so the mapping stays complete. Image-library choice: a transient in-page DOM overlay drawn over the viewport, screenshot taken, overlay removed: dependency-free (browxai has no Node-side image library in `dependencies`) and running in the same coordinate space `find().evidence.bbox` reports. → `{ marks:[{index, ref, role?, name?, testId?, bbox, painted}], mapping:{"1":"eN", …}, warnings }` + the PNG.
 - `name_region({ name, box, session? })` / `region({ name, session? })`: bind a viewport rectangle to a mnemonic and resolve it back to `{ box, center }`; pass `center` to `click({coords})` to act on the same media segment without coordinate drift across a sub-agent's select→copy→re-check. Example: `name_region({ name: "clip_4", box: { x: 220, y: 410, width: 80, height: 32 } })`, then `region({ name: "clip_4" })` → `{ box, center: { x: 260, y: 426 } }` → `click({ coords: center })`.
 - `cross_session_sample({ action, actionSession, sampleSession, metric, durationMs, … })`: drive an action in one session and trace a metric in **another** over the same window, in one call, for realtime-propagation assertions ("an action in session A should reflect in session B"). → `{ action, sample }`.
-- `export_session_report({ note?, session? })`: bundle a session's QA evidence (url, console errors, recent network summary, named regions, live sessions, `note`) into one JSON object for auditable multi-agent QA. Returned, not written to disk. When a `start_recording({replay})` writer completed on this session, the report links the resulting archive under `replayArtifact: { path, absolutePath }` — the archive carries real page content and is as sensitive as the session was, so treat it accordingly.
+- `export_session_report({ note?, session? })`: bundle a session's QA evidence (url, redacted like `network_read` URLs: no query string, fragment or userinfo; console errors, recent network summary, named regions, live sessions, `note`) into one JSON object for auditable multi-agent QA. Returned, not written to disk. When a `start_recording({replay})` writer completed on this session, the report links the resulting archive under `replayArtifact: { path, absolutePath }` — the archive carries real page content and is as sensitive as the session was, so treat it accordingly.
 - `session_metrics({ session? })` returns a per-session cumulative tool-call rollup: `callsByTool`, `durationMsByTool`, `errorsByTool`, `tokensEstimateSum`, `capabilityDenials`, `sessionStartedAt`, `sessionDurationMs`. Pair with `export_session_report` for a full audit pass: that one is **QA evidence** (what the page looked like / what fired); this one is **dispatch evidence** (what the agent ran, how expensive it got, what got denied). Read-only: it piggybacks on the per-call envelope data the server already has; no new instrumentation, no per-call disk writes. Capability denials (gate-blocked calls) are counted as a session-wide scalar: the denial shape is a property of the capability config, not the tool, and the count alone is the actionable signal. Per-tool `errors` count `ok:false` results that were NOT denials. Note: this is dispatch-level rollup; for an **rrweb-based session-replay artifact** (a la Browserbase) use `start_recording({replay})` / `end_recording` behind the off-by-default `replay` capability. `export_session_report` covers the JSON-evidence half of the pairing and links the artifact under `replayArtifact` when one exists.
 
 ### `export_playwright_script({ path?, session? })`

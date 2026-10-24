@@ -140,6 +140,36 @@ surface" covers.
 - **zod 4.** Tool input schemas are built with zod 4, and a plugin's `inputSchema`
   values are zod 4 schemas. `idb_put` now lists `value` as required in its
   advertised input schema.
+- **Origin entries match more exactly.** A trailing dot on a host
+  (`https://ads.example.com.`) matches the entry for the same host. An entry
+  matches the port a request uses: no port means 80 for `http` and 443 for
+  `https`, so `https://app.example.com` no longer matches
+  `https://app.example.com:8443`, and an entry with a port matches that port
+  only. A `blob:` or `filesystem:` URL matches by the origin it wraps.
+- **`navigate` checks the URL it landed on.** After a redirect, the final URL
+  goes through the same origin policy and confirm hook as the requested one. The
+  warning logged when no confirm hook is set names the `BROWX_BLOCKED_ORIGINS`
+  entry that matched.
+- **Page-sized data is capped.** A console message is stored cut to 8,192
+  characters and ends in a `[truncated N chars]` marker. `download_get` returns
+  at most 16 MiB inline: a larger file fails with an error naming the limit and
+  the saved path, and `pathOnly:true` returns the path without reading the file.
+  The socket transport closes a connection whose message line passes 32 MiB.
+- **`network_body` on Firefox and WebKit reads a body when asked.** It no longer
+  reads every response as it arrives. A body whose `content-length` is over
+  256 KB, or unknown while the request is still running, is not read and the
+  result says so. A compressed body must be under 32 KB on the wire.
+- **`browxai serve` creates its socket owner-only and handles the path with
+  care.** The permissions are set before the socket is created, a relative
+  `--socket` path is resolved to an absolute one, and a leftover file at the path
+  is removed only when it is a socket. Anything else there stops the start with a
+  message naming the path.
+- **`solve_captcha` does not follow redirects from the provider.** A redirect on
+  the submit or the poll call ends the solve with an error that says so and
+  names `BROWX_CAPTCHA_API_BASE`.
+- **`export_session_report` redacts the page URL.** The `url` field now drops
+  the query string, fragment and userinfo, the same way `network_read` shows
+  URLs.
 
 ### Fixed
 

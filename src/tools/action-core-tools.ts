@@ -1,4 +1,4 @@
-import { confirmNavigation, confirmByobAction } from "../policy/confirm.js";
+import { confirmNavigation, confirmLanding, confirmByobAction } from "../policy/confirm.js";
 import { withDeadline } from "../util/deadline.js";
 import { runShortcut } from "../page/shortcut.js";
 import { ACTION_OPTS, REF_OR_SELECTOR, SESSION_ARG, TIMEOUT_ARG } from "./schemas.js";
@@ -43,15 +43,25 @@ export function registerActionCoreTools(
       const decision = await confirmNavigation(url, host.confirmCtxFor(e));
       if (!decision.ok) return host.denyContent("navigate", decision);
       const td = host.actionTimeout({ timeoutMs });
-      return host.asActionResultText(
-        host.actionsFor(e).navigate({
-          url,
-          mode,
-          maxResultTokens,
-          deadlineMs: td.ms,
-          deadlineWarning: td.warning,
-        }),
-      );
+      const result = await host.actionsFor(e).navigate({
+        url,
+        mode,
+        maxResultTokens,
+        deadlineMs: td.ms,
+        deadlineWarning: td.warning,
+      });
+      // A redirect can land on an origin the policy holds, so the final URL
+      // goes through the same hook as the requested one.
+      const landed = result.navigation?.changed ? result.navigation.to : undefined;
+      if (landed) {
+        const after = await confirmLanding(url, landed, host.confirmCtxFor(e));
+        if (!after.ok) {
+          return host.denyContent("navigate", {
+            reason: `${after.reason} (redirected to ${landed}; the page stays there)`,
+          });
+        }
+      }
+      return host.asActionResultText(Promise.resolve(result));
     },
   );
 

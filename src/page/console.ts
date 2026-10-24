@@ -14,6 +14,18 @@ export interface ConsoleMessage {
 
 const DEFAULT_CAP = 200;
 
+/** Longest message the ring stores, in characters (8 KiB of ASCII). The ring caps
+ *  how many messages it keeps; this caps how big each one is. */
+export const MAX_CONSOLE_MESSAGE_CHARS = 8 * 1024;
+
+/** Cut a message to `MAX_CONSOLE_MESSAGE_CHARS`, ending in a marker that says how
+ *  much was dropped. A message within the cap is returned as is. */
+export function capConsoleText(text: string): string {
+  if (text.length <= MAX_CONSOLE_MESSAGE_CHARS) return text;
+  const dropped = text.length - MAX_CONSOLE_MESSAGE_CHARS;
+  return `${text.slice(0, MAX_CONSOLE_MESSAGE_CHARS)}… [truncated ${dropped} chars]`;
+}
+
 export class ConsoleBuffer {
   private msgs: ConsoleMessage[] = [];
   private errs: { ts: number; text: string }[] = [];
@@ -34,11 +46,11 @@ export class ConsoleBuffer {
 
   attach(page: Page): void {
     page.on("console", (m) => {
-      this.msgs.push({ ts: Date.now(), type: m.type(), text: m.text() });
+      this.msgs.push({ ts: Date.now(), type: m.type(), text: capConsoleText(m.text()) });
       if (this.msgs.length > this.cap) this.msgs.shift();
     });
     page.on("pageerror", (err) => {
-      this.errs.push({ ts: Date.now(), text: err.message });
+      this.errs.push({ ts: Date.now(), text: capConsoleText(err.message) });
       if (this.errs.length > this.cap) this.errs.shift();
     });
   }
@@ -51,7 +63,7 @@ export class ConsoleBuffer {
    *  vocabulary (`warn` → `warning`) the readers key on. */
   ingest(level: string, text: string): void {
     const type = level === "warn" ? "warning" : level;
-    this.msgs.push({ ts: Date.now(), type, text });
+    this.msgs.push({ ts: Date.now(), type, text: capConsoleText(text) });
     if (this.msgs.length > this.cap) this.msgs.shift();
   }
 
