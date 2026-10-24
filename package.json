@@ -79,7 +79,8 @@
     "licenses:notices": "license-checker-rseidelsohn --production --markdown",
     "audit:prod": "pnpm audit --prod --audit-level=high",
     "sbom": "cdxgen -t pnpm -o sbom.cdx.json --no-recurse .",
-    "depcheck": "depcheck"
+    "depcheck": "depcheck",
+    "check:examples": "node scripts/check-examples.mjs"
   },
   "pnpm": {
     "overrides": {
