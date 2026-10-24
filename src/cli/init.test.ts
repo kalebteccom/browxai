@@ -67,7 +67,7 @@ describe("browxai init", () => {
       exists: existsSync,
     };
     try {
-      await runInit([dir, "--test-attrs", "data-testid"], { system });
+      await runInit([dir, "--test-attrs", "data-testid", "--no-smoke"], { system });
       expect(existsSync(join(home, ".cursor", "mcp.json"))).toBe(false);
       expect(existsSync(join(dir, ".mcp.json"))).toBe(true);
     } finally {
@@ -85,7 +85,7 @@ describe("browxai init", () => {
     };
     try {
       const code = await runInit(
-        [dir, "--test-attrs", "data-testid", "--write-user-config", "cursor"],
+        [dir, "--test-attrs", "data-testid", "--no-smoke", "--write-user-config", "cursor"],
         {
           system,
         },
@@ -128,5 +128,38 @@ describe("browxai init", () => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     expect(await runInit([dir, "--write-user-config", "vim"])).toBe(2);
     expect(await runInit([dir, "--nope"])).toBe(2);
+  });
+
+  describe("smoke test", () => {
+    const WRITE = ["--test-attrs", "data-testid"];
+
+    it("prints the result line last and exits 0 when it passes", async () => {
+      const smoke = vi
+        .fn()
+        .mockResolvedValue({ ok: true, message: "ok: first snapshot in 812 ms" });
+      expect(await runInit([dir, ...WRITE], { smoke })).toBe(0);
+      expect(smoke).toHaveBeenCalledOnce();
+      expect(out.trimEnd().endsWith("ok: first snapshot in 812 ms")).toBe(true);
+    });
+
+    it("prints the error and exits 1 when it fails", async () => {
+      const smoke = vi
+        .fn()
+        .mockResolvedValue({ ok: false, message: "error: no browser. Run `browxai doctor`." });
+      expect(await runInit([dir, ...WRITE], { smoke })).toBe(1);
+      expect(out).toContain("error: no browser");
+    });
+
+    it("does not run under --no-smoke", async () => {
+      const smoke = vi.fn();
+      expect(await runInit([dir, ...WRITE, "--no-smoke"], { smoke })).toBe(0);
+      expect(smoke).not.toHaveBeenCalled();
+    });
+
+    it("does not run under --no-write", async () => {
+      const smoke = vi.fn();
+      expect(await runInit([dir, ...ARGS], { smoke })).toBe(0);
+      expect(smoke).not.toHaveBeenCalled();
+    });
   });
 });

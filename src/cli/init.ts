@@ -22,6 +22,7 @@ import {
   type ClientSystem,
   type ServerEntry,
 } from "./init-clients.js";
+import { runSmoke, type SmokeOptions, type SmokeResult } from "./init-smoke.js";
 import { applyUserConfig, lineDiff, planUserConfig } from "./init-user-config.js";
 
 interface InitOpts {
@@ -29,14 +30,16 @@ interface InitOpts {
   testAttrs?: string;
   noWrite?: boolean;
   writeUserConfig?: ClientId;
+  noSmoke?: boolean;
 }
 
 /** Seams a test can replace. */
 export interface InitDeps {
   system?: ClientSystem;
+  smoke?: (opts: SmokeOptions) => Promise<SmokeResult>;
 }
 
-export function runInit(args: string[], deps: InitDeps = {}): Promise<number> {
+export async function runInit(args: string[], deps: InitDeps = {}): Promise<number> {
   const opts = parseArgs(args);
   if (!opts) {
     process.stderr.write(
@@ -46,9 +49,10 @@ export function runInit(args: string[], deps: InitDeps = {}): Promise<number> {
         "  --no-write                  print the .mcp.json snippet without creating files\n" +
         "  --write-user-config <client>  add browxai to that client's user-level config after\n" +
         `                              showing the change. <client> is one of: ${CLIENT_IDS.join(", ")}\n` +
-        "  --no-smoke                  skip the headless first-snapshot check at the end\n",
+        "  --no-smoke                  skip the headless first-snapshot check at the end\n" +
+        "                              (also skipped under --no-write)\n",
     );
-    return Promise.resolve(2);
+    return 2;
   }
   const workspace = resolve(opts.workspace);
   const browxDir = join(workspace, ".browxai");
@@ -150,7 +154,14 @@ export function runInit(args: string[], deps: InitDeps = {}): Promise<number> {
       `  5) run \`browxai doctor\` if a session fails to open\n\n` +
       `Keep BROWX_WORKSPACE=${ws} on every \`browxai chrome\` command. The entries above use it, and a Chrome started without it uses ~/.browxai/profile, which is a different profile.\n`,
   );
-  return Promise.resolve(userConfigOk ? 0 : 1);
+  let smokeOk = true;
+  if (!opts.noSmoke && !opts.noWrite) {
+    process.stdout.write("\nchecking that a headless session can take a snapshot...\n");
+    const smoke = await (deps.smoke ?? runSmoke)({ distCli });
+    process.stdout.write(`${smoke.message}\n`);
+    smokeOk = smoke.ok;
+  }
+  return userConfigOk && smokeOk ? 0 : 1;
 }
 
 /** Show the change to a client's user-level config, then make it. */
@@ -193,12 +204,17 @@ function parseArgs(args: string[]): InitOpts | null {
   let testAttrs: string | undefined;
   let noWrite = false;
   let writeUserConfig: ClientId | undefined;
+  let noSmoke = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
     if (a === "--write-user-config") {
       const id = args[++i];
       if (!id || !(CLIENT_IDS as readonly string[]).includes(id)) return null;
       writeUserConfig = id as ClientId;
+      continue;
+    }
+    if (a === "--no-smoke") {
+      noSmoke = true;
       continue;
     }
     if (a.startsWith("--") && a !== "--test-attrs" && a !== "--no-write") return null;
@@ -213,7 +229,7 @@ function parseArgs(args: string[]): InitOpts | null {
     positional.push(a);
   }
   if (positional.length !== 1) return null;
-  return { workspace: positional[0]!, testAttrs, noWrite, writeUserConfig };
+  return { workspace: positional[0]!, testAttrs, noWrite, writeUserConfig, noSmoke };
 }
 
 /**
