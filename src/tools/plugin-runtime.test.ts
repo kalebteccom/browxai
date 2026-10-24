@@ -154,14 +154,34 @@ describe("wirePluginRuntime — declared parameters over MCP", () => {
   const textOf = (res: Awaited<ReturnType<Client["callTool"]>>): string =>
     ((res.content as Array<{ text: string }>)[0] as { text: string }).text;
 
-  it("delivers a declared argument to the handler", async () => {
-    const res = await client.callTool({ name: "tst.echo", arguments: { msg: "hi" } });
-    expect(JSON.parse(textOf(res))).toEqual({ msg: "hi" });
-  });
-
-  it("drops keys the declaration does not name", async () => {
-    const res = await client.callTool({ name: "tst.echo", arguments: { msg: "hi", extra: 1 } });
-    expect(JSON.parse(textOf(res))).toEqual({ msg: "hi" });
+  it.each([
+    {
+      label: "delivers a declared argument to the handler",
+      tool: "tst.echo",
+      args: { msg: "hi" },
+      expected: { msg: "hi" },
+    },
+    {
+      label: "drops keys the declaration does not name",
+      tool: "tst.echo",
+      args: { msg: "hi", extra: 1 },
+      expected: { msg: "hi" },
+    },
+    {
+      label: "keeps undeclared keys when the declaration sets additionalProperties",
+      tool: "tst.loose",
+      args: { kind: "box", width: 3 },
+      expected: { kind: "box", width: 3 },
+    },
+    {
+      label: "keeps an undeclared tool argless",
+      tool: "tst.bare",
+      args: { msg: "hi" },
+      expected: {},
+    },
+  ])("$label", async ({ tool, args, expected }) => {
+    const res = await client.callTool({ name: tool, arguments: args });
+    expect(JSON.parse(textOf(res))).toEqual(expected);
   });
 
   it("refuses a call that omits a required argument", async () => {
@@ -174,19 +194,6 @@ describe("wirePluginRuntime — declared parameters over MCP", () => {
     const echo = tools.find((t) => t.name === "tst.echo");
     expect(echo?.inputSchema.properties).toHaveProperty("msg");
     expect(echo?.inputSchema.required).toEqual(["msg"]);
-  });
-
-  it("keeps undeclared keys when the declaration sets additionalProperties", async () => {
-    const res = await client.callTool({
-      name: "tst.loose",
-      arguments: { kind: "box", width: 3 },
-    });
-    expect(JSON.parse(textOf(res))).toEqual({ kind: "box", width: 3 });
-  });
-
-  it("keeps an undeclared tool argless", async () => {
-    const res = await client.callTool({ name: "tst.bare", arguments: { msg: "hi" } });
-    expect(JSON.parse(textOf(res))).toEqual({});
   });
 });
 

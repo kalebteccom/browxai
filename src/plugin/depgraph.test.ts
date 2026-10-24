@@ -10,7 +10,7 @@ describe("buildDepGraph", () => {
     expect(r.transitiveDeps.size).toBe(0);
   });
 
-  it("topo-sorts deps before dependents", () => {
+  it("topo-sorts deps before dependents and computes transitive deps", () => {
     const r = buildDepGraph({
       directDeps: new Map([
         ["a", ["b"]],
@@ -19,16 +19,6 @@ describe("buildDepGraph", () => {
       ]),
     });
     expect(r.loadOrder).toEqual(["c", "b", "a"]);
-  });
-
-  it("computes transitive deps", () => {
-    const r = buildDepGraph({
-      directDeps: new Map([
-        ["a", ["b"]],
-        ["b", ["c"]],
-        ["c", []],
-      ]),
-    });
     expect([...(r.transitiveDeps.get("a") ?? [])].sort()).toEqual(["b", "c"]);
     expect([...(r.transitiveDeps.get("b") ?? [])].sort()).toEqual(["c"]);
     expect([...(r.transitiveDeps.get("c") ?? [])]).toEqual([]);
@@ -53,25 +43,17 @@ describe("buildDepGraph", () => {
     }
   });
 
-  it("tolerates self-edges (they're not cycles)", () => {
+  it.each([
+    { label: "self-edges (they're not cycles)", edge: "a" },
+    { label: "edges pointing at unknown plugins", edge: "non-existent" },
+  ])("tolerates $label", ({ edge }) => {
     const r = buildDepGraph({
       directDeps: new Map([
-        ["a", ["a"]],
+        ["a", [edge]],
         ["b", []],
       ]),
     });
     expect(new Set(r.loadOrder)).toEqual(new Set(["a", "b"]));
-  });
-
-  it("tolerates edges pointing at unknown plugins", () => {
-    const r = buildDepGraph({
-      directDeps: new Map([
-        ["a", ["non-existent"]],
-        ["b", []],
-      ]),
-    });
-    expect(new Set(r.loadOrder)).toEqual(new Set(["a", "b"]));
-    // The transitive closure ignores the missing dep.
-    expect([...(r.transitiveDeps.get("a") ?? [])]).toEqual([]);
+    expect([...(r.transitiveDeps.get("a") ?? [])].filter((d) => d !== "a")).toEqual([]);
   });
 });

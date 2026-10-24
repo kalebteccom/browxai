@@ -99,18 +99,18 @@ describe("browxai plugin install file:<dir>", () => {
       }
     ).plugins;
 
-  it("records the package name and hands the package manager an absolute path", async () => {
+  it.each([
+    {
+      label: "records the package name and hands the package manager an absolute path",
+      specPath: () => pluginDir,
+    },
+    {
+      label: "resolves a relative path from the working directory, not the install dir",
+      specPath: () => relative(process.cwd(), pluginDir),
+    },
+  ])("$label", async ({ specPath }) => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const code = await runPlugin(["install", `file:${pluginDir}`]);
-    expect(code).toBe(0);
-    expect(pmCalls).toEqual([{ op: "add", target: `file:${pluginDir}` }]);
-    expect(Object.keys(declared())).toEqual(["@browxai/plugin-figma"]);
-  });
-
-  it("resolves a relative path from the working directory, not the install dir", async () => {
-    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const rel = relative(process.cwd(), pluginDir);
-    const code = await runPlugin(["install", `file:${rel}`]);
+    const code = await runPlugin(["install", `file:${specPath()}`]);
     expect(code).toBe(0);
     expect(pmCalls).toEqual([{ op: "add", target: `file:${pluginDir}` }]);
     expect(Object.keys(declared())).toEqual(["@browxai/plugin-figma"]);

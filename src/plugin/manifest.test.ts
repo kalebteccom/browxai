@@ -20,96 +20,59 @@ describe("parseManifestField", () => {
     expect(m.dependsOn).toEqual([]);
   });
 
-  it("rejects an empty namespace", () => {
-    expect(() =>
-      parseManifestField({ apiVersion: "1.0.0", namespace: "", register: "dist/index.js" }),
-    ).toThrow(/namespace/);
-  });
-
-  it("rejects an invalid namespace shape", () => {
-    expect(() =>
-      parseManifestField({
-        apiVersion: "1.0.0",
-        namespace: "Bad-NS!",
-        register: "dist/index.js",
-      }),
-    ).toThrow(/namespace/);
-  });
-
-  it("rejects a reserved namespace", () => {
-    for (const ns of RESERVED_NAMESPACES) {
-      expect(() =>
-        parseManifestField({
-          apiVersion: "1.0.0",
-          namespace: ns,
-          register: "dist/index.js",
-        }),
-      ).toThrow(/reserved/);
-    }
-  });
-
-  it("rejects a dependsOn entry without plugin/version", () => {
-    expect(() =>
-      parseManifestField({
-        apiVersion: "1.0.0",
-        namespace: "demo",
-        register: "dist/index.js",
-        dependsOn: [{ plugin: "" }],
-      }),
-    ).toThrow();
+  const base = { apiVersion: "1.0.0", register: "dist/index.js" };
+  it.each([
+    { label: "an empty namespace", manifests: [{ ...base, namespace: "" }], error: /namespace/ },
+    {
+      label: "an invalid namespace shape",
+      manifests: [{ ...base, namespace: "Bad-NS!" }],
+      error: /namespace/,
+    },
+    {
+      label: "a reserved namespace",
+      manifests: [...RESERVED_NAMESPACES].map((namespace) => ({ ...base, namespace })),
+      error: /reserved/,
+    },
+    {
+      label: "a dependsOn entry without plugin/version",
+      manifests: [{ ...base, namespace: "demo", dependsOn: [{ plugin: "" }] }],
+      error: /./,
+    },
+  ])("rejects $label", ({ manifests, error }) => {
+    for (const m of manifests) expect(() => parseManifestField(m)).toThrow(error);
   });
 });
 
 describe("isApiVersionCompatible", () => {
-  it("accepts same major + same/lower minor", () => {
-    expect(isApiVersionCompatible("1.0.0", "1.0.0")).toBe(true);
-    expect(isApiVersionCompatible("1.0.0", "1.5.0")).toBe(true);
-    expect(isApiVersionCompatible("1.5.0", "1.5.0")).toBe(true);
-  });
-
-  it("rejects newer minor than runtime", () => {
-    expect(isApiVersionCompatible("1.5.0", "1.0.0")).toBe(false);
-  });
-
-  it("rejects different major", () => {
-    expect(isApiVersionCompatible("2.0.0", "1.0.0")).toBe(false);
-    expect(isApiVersionCompatible("0.5.0", "1.0.0")).toBe(false);
-  });
-
-  it("tolerates leading semver operators", () => {
-    expect(isApiVersionCompatible("^1.0.0", "1.0.0")).toBe(true);
+  it.each([
+    ["1.0.0", "1.0.0", true],
+    ["1.0.0", "1.5.0", true],
+    ["1.5.0", "1.5.0", true],
+    ["1.5.0", "1.0.0", false],
+    ["2.0.0", "1.0.0", false],
+    ["0.5.0", "1.0.0", false],
+    ["^1.0.0", "1.0.0", true],
+  ])("plugin %s on runtime %s is compatible: %s", (plugin, runtime, expected) => {
+    expect(isApiVersionCompatible(plugin, runtime)).toBe(expected);
   });
 });
 
 describe("satisfiesRange", () => {
-  it("* matches anything", () => {
-    expect(satisfiesRange("0.0.1", "*")).toBe(true);
-  });
-
-  it("^ allows compatible-within-major", () => {
-    expect(satisfiesRange("1.2.3", "^1.0.0")).toBe(true);
-    expect(satisfiesRange("1.0.0", "^1.0.0")).toBe(true);
-    expect(satisfiesRange("2.0.0", "^1.0.0")).toBe(false);
-    expect(satisfiesRange("0.5.0", "^1.0.0")).toBe(false);
-  });
-
-  it("^0.x.y locks minor too", () => {
-    expect(satisfiesRange("0.1.2", "^0.1.0")).toBe(true);
-    expect(satisfiesRange("0.2.0", "^0.1.0")).toBe(false);
-  });
-
-  it("~ allows patch bumps only", () => {
-    expect(satisfiesRange("1.0.5", "~1.0.0")).toBe(true);
-    expect(satisfiesRange("1.1.0", "~1.0.0")).toBe(false);
-  });
-
-  it(">= matches anything at or above", () => {
-    expect(satisfiesRange("2.0.0", ">=1.5.0")).toBe(true);
-    expect(satisfiesRange("1.0.0", ">=1.5.0")).toBe(false);
-  });
-
-  it("exact requires byte match", () => {
-    expect(satisfiesRange("1.2.3", "1.2.3")).toBe(true);
-    expect(satisfiesRange("1.2.4", "1.2.3")).toBe(false);
+  it.each([
+    ["0.0.1", "*", true],
+    ["1.2.3", "^1.0.0", true],
+    ["1.0.0", "^1.0.0", true],
+    ["2.0.0", "^1.0.0", false],
+    ["0.5.0", "^1.0.0", false],
+    ["0.1.2", "^0.1.0", true],
+    ["0.2.0", "^0.1.0", false],
+    ["1.0.5", "~1.0.0", true],
+    ["1.1.0", "~1.0.0", false],
+    ["2.0.0", ">=1.5.0", true],
+    ["1.0.0", ">=1.5.0", false],
+    ["1.2.3", "1.2.3", true],
+    ["1.2.4", "1.2.3", false],
+  ])("version %s against range %s: %s", (version, range, expected) => {
+    expect(satisfiesRange(version, range)).toBe(expected);
   });
 });

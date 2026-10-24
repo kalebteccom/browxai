@@ -45,23 +45,32 @@ afterEach(() => {
 });
 
 describe("runPlugin dispatcher", () => {
-  it("emits help with no subcommand", async () => {
-    const code = await runPlugin([]);
-    expect(code).toBe(0);
-    expect(stdoutLog.join("")).toMatch(/install <pkg>/);
-    expect(stdoutLog.join("")).toMatch(/sync/);
-  });
-
-  it("rejects unknown subcommands non-zero", async () => {
-    const code = await runPlugin(["dance"]);
-    expect(code).toBe(2);
-    expect(stderrLog.join("")).toMatch(/unknown subcommand/);
-  });
-
-  it("install without arg → exit 1", async () => {
-    const code = await runPlugin(["install"]);
-    expect(code).toBe(1);
-    expect(stderrLog.join("")).toMatch(/missing <pkg>/);
+  it.each([
+    {
+      label: "emits help with no subcommand",
+      argv: [],
+      code: 0,
+      stream: "out",
+      match: [/install <pkg>/, /sync/],
+    },
+    {
+      label: "rejects unknown subcommands non-zero",
+      argv: ["dance"],
+      code: 2,
+      stream: "err",
+      match: [/unknown subcommand/],
+    },
+    {
+      label: "install without an arg exits 1",
+      argv: ["install"],
+      code: 1,
+      stream: "err",
+      match: [/missing <pkg>/],
+    },
+  ])("$label", async ({ argv, code, stream, match }) => {
+    expect(await runPlugin(argv)).toBe(code);
+    const text = (stream === "out" ? stdoutLog : stderrLog).join("");
+    for (const re of match) expect(text).toMatch(re);
   });
 });
 
@@ -110,38 +119,63 @@ describe("runPlugin list", () => {
 });
 
 describe("package-manager detection + verb mapping", () => {
-  it("prefers pnpm when both managers are available", () => {
-    expect(detectPackageManager(() => true)).toBe("pnpm");
+  it.each([
+    { label: "prefers pnpm when both managers are available", has: () => true, expected: "pnpm" },
+    {
+      label: "falls back to npm when pnpm is missing",
+      has: (cmd: string) => cmd === "npm",
+      expected: "npm",
+    },
+    { label: "returns null when neither manager is on PATH", has: () => false, expected: null },
+  ])("$label", ({ has, expected }) => {
+    expect(detectPackageManager(has)).toBe(expected);
   });
 
-  it("falls back to npm when pnpm is missing", () => {
-    expect(detectPackageManager((cmd) => cmd === "npm")).toBe("npm");
-  });
-
-  it("returns null when neither manager is on PATH", () => {
-    expect(detectPackageManager(() => false)).toBeNull();
-  });
-
-  it("maps operations onto npm's verb names", () => {
-    expect(pmArgs("npm", "add", "@browxai/plugin-figma")).toEqual([
-      "install",
-      "--ignore-scripts",
-      "--",
-      "@browxai/plugin-figma",
-    ]);
-    expect(pmArgs("npm", "remove", "x")).toEqual(["uninstall", "--", "x"]);
-    expect(pmArgs("npm", "update", "x")).toEqual(["update", "--", "x"]);
-    expect(pmArgs("npm", "install")).toEqual(["install", "--ignore-scripts"]);
-  });
-
-  it("puts the spec after `--` and turns lifecycle scripts off for pnpm too", () => {
-    expect(pmArgs("pnpm", "add", "file:/tmp/p")).toEqual([
-      "add",
-      "--ignore-scripts",
-      "--",
-      "file:/tmp/p",
-    ]);
-    expect(pmArgs("pnpm", "remove", "x")).toEqual(["remove", "--", "x"]);
+  it.each([
+    {
+      label: "npm add puts the spec after -- with scripts off",
+      pm: "npm",
+      op: "add",
+      spec: "@browxai/plugin-figma",
+      expected: ["install", "--ignore-scripts", "--", "@browxai/plugin-figma"],
+    },
+    {
+      label: "npm remove maps to uninstall",
+      pm: "npm",
+      op: "remove",
+      spec: "x",
+      expected: ["uninstall", "--", "x"],
+    },
+    {
+      label: "npm update keeps the verb",
+      pm: "npm",
+      op: "update",
+      spec: "x",
+      expected: ["update", "--", "x"],
+    },
+    {
+      label: "npm install without a spec",
+      pm: "npm",
+      op: "install",
+      spec: undefined,
+      expected: ["install", "--ignore-scripts"],
+    },
+    {
+      label: "pnpm add puts the spec after -- with scripts off",
+      pm: "pnpm",
+      op: "add",
+      spec: "file:/tmp/p",
+      expected: ["add", "--ignore-scripts", "--", "file:/tmp/p"],
+    },
+    {
+      label: "pnpm remove puts the spec after --",
+      pm: "pnpm",
+      op: "remove",
+      spec: "x",
+      expected: ["remove", "--", "x"],
+    },
+  ] as const)("$label", ({ pm, op, spec, expected }) => {
+    expect(pmArgs(pm, op, spec)).toEqual(expected);
   });
 
   it("refuses a spec that starts with a dash", () => {
