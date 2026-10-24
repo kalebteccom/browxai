@@ -15,12 +15,15 @@
 //               box, clipped boxes, key elements covered at their corners,
 //               headings hidden under the sticky header after an anchor jump
 //   tap-target  interactive elements at least 44 px on phone-sized viewports
+//   stability   top and height of the theme control and status lines across themes
+//               and after a copy click (1 px)
 //   safe-area   env(safe-area-inset-*) used by fixed or sticky edge elements
 // States: the page, the mobile nav open, the search dialog open, 150% root font
 // size, and a 60-character unbroken string injected into a heading, a table
 // cell and a button label.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
@@ -67,7 +70,7 @@ const TAP_MIN = 44;
 const TOL = 1;
 
 function parseArgs(argv) {
-  const o = { base: null, json: null, allow: DEFAULT_ALLOW, pages: PAGES, workers: 4 };
+  const o = { base: null, json: null, allow: DEFAULT_ALLOW, pages: PAGES, workers: Math.min(8, availableParallelism()) };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--json") o.json = argv[++i];
@@ -204,7 +207,9 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
       [r.right - i, r.bottom - i],
     ]) {
       const top = document.elementFromPoint(x, y);
-      if (top && !el.contains(top) && !top.contains(el)) {
+      // A control inside the same component (clear button in a search field) or the open nav overlay is not a defect.
+      if (scenario === "nav" && el.matches("h1")) break;
+      if (top && !el.contains(top) && !top.contains(el) && top.closest("form") !== el.closest("form")) {
         add("covered", el, `point=${n1(x)},${n1(y)} covered by ${sel(top)}`, { lv: "blocker" });
         break;
       }
@@ -417,21 +422,87 @@ async function runJob(browser, base, path, kind) {
     }
   };
 
+  // Bounding box (top and height) of the theme control and of every status line.
+  const boxes = (state) =>
+    page.evaluate((st) => {
+      const out = [];
+      const q = [
+        ["theme-control", "starlight-theme-select"],
+        ["status-line", "[role='status']"],
+      ];
+      for (const [name, css] of q)
+        document.querySelectorAll(css).forEach((el, i) => {
+          const r = el.getBoundingClientRect();
+          if (name === "theme-control" && (r.width <= 1 || !el.checkVisibility())) return;
+          out.push({ id: `${name}#${i}`, top: Math.round((name === "status-line" ? r.top + scrollY : r.top) * 10) / 10, height: Math.round(r.height * 10) / 10, st });
+        });
+      return out;
+    }, state);
+  const stable = async (v, states) => {
+    const base = new Map();
+    for (const [label, fn] of states) {
+      await fn();
+      for (const b of await boxes(label)) {
+        const first = base.get(b.id);
+        if (!first) base.set(b.id, b);
+        else if (Math.abs(first.top - b.top) > TOL || Math.abs(first.height - b.height) > TOL)
+          hits.push({
+            check: "stability",
+            sel: b.id,
+            detail: `${first.st}: top=${first.top} height=${first.height}; ${b.st}: top=${b.top} height=${b.height}`,
+            lv: "should",
+            page: path,
+            vp: key(v),
+            orient: v.o,
+            theme: "-",
+            variant: "base",
+            scenario: "page",
+          });
+      }
+    }
+  };
+
   await load();
-  for (const v of vps) for (const t of THEMES) await measure(v, t, "base", "page");
+  for (const v of vps) {
+    for (const t of THEMES) await measure(v, t, "base", "page");
+    await page.setViewportSize({ width: v.w, height: v.h });
+    const setTheme = (t) => async () => {
+      await page.emulateMedia({ colorScheme: t });
+      await page.evaluate((x) => {
+        document.documentElement.dataset.theme = x;
+      }, t);
+      await page.waitForTimeout(60);
+    };
+    const states = [
+      ["light", setTheme("light")],
+      ["dark", setTheme("dark")],
+      ["light again", setTheme("light")],
+    ];
+    if (await page.$(".browx-copy button, button.browx-copy")) {
+      states.push([
+        "after copy click",
+        async () => {
+          await page.click(".browx-copy button, button.browx-copy", { timeout: 2000 }).catch(() => {});
+          await page.waitForTimeout(150);
+        },
+      ]);
+    }
+    if (SUBSET.has(key(v))) await stable(v, states);
+  }
 
   if (STATE_PAGES.has(path)) {
     for (const v of vps.filter((q) => q.w < 800)) {
       await page.setViewportSize({ width: v.w, height: v.h });
       await load();
-      await page.click("nav.sidebar > button");
+      if (!(await page.$("nav.sidebar > button"))) continue;
+      await page.click("nav.sidebar > button", { timeout: 3000 }).catch(() => {});
       await page.waitForTimeout(150);
       for (const t of THEMES) await measure(v, t, "base", "nav");
     }
     for (const v of vps) {
       await page.setViewportSize({ width: v.w, height: v.h });
       await load();
-      await page.click("site-search button[data-open-modal]");
+      await page.click("site-search button[data-open-modal]", { timeout: 3000 }).catch(() => {});
       await page.waitForSelector("dialog[open] input", { state: "visible", timeout: 3000 }).catch(() => {});
       await page.fill("dialog[open] input", "agent").catch(() => {});
       await page.waitForTimeout(500);

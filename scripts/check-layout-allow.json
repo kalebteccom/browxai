@@ -1,0 +1,7 @@
+[
+  {
+    "check": "offscreen",
+    "selector": "aside.right-sidebar-container.print:hidden > div.right-sidebar",
+    "why": "Starlight sizes this fixed column from the viewport, it never scrolls the page"
+  }
+]
