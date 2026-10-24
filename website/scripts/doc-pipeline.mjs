@@ -109,6 +109,16 @@ export const agentOnlyPages = [
   },
 ];
 
+// Cross-links in docs/ are labelled with the repo path (`docs/plugins.md`). On
+// the site the label should name the page the link opens.
+const pathLabels = {
+  "plugins.md": "Plugins overview",
+  "plugins-first-party.md": "First-party plugins",
+  "plugin-authoring.md": "Authoring plugins",
+  "plugin-governance.md": "Plugin governance",
+  "agent-guidance.md": "Agent guidance",
+};
+
 /** Convert em/en dashes to spaced hyphens, skipping fenced code blocks. */
 export function convertDashes(text) {
   let inFence = false;
@@ -135,6 +145,9 @@ export const q = (s) => `"${s.replace(/"/g, '\\"')}"`;
  */
 export function transformText(text) {
   text = convertDashes(text);
+  text = text.replace(/\[`docs\/([a-z-]+\.md)`\]\(/g, (m, file) =>
+    pathLabels[file] ? `[${pathLabels[file]}](` : m,
+  );
   for (const [re, to] of linkMap) text = text.replace(re, to);
   // Repo-relative links (valid inside docs/, dead on the published site) point
   // at repo root, so rewrite them to GitHub. Directories -> tree, files -> blob.
