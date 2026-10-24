@@ -13,18 +13,22 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { capabilitiesAssignment, capabilitiesWith } from "../util/capabilities.js";
 import {
+  CLIENT_IDS,
   clientsReport,
   detectClients,
   realSystem,
   shellWord,
+  type ClientId,
   type ClientSystem,
   type ServerEntry,
 } from "./init-clients.js";
+import { applyUserConfig, lineDiff, planUserConfig } from "./init-user-config.js";
 
 interface InitOpts {
   workspace: string;
   testAttrs?: string;
   noWrite?: boolean;
+  writeUserConfig?: ClientId;
 }
 
 /** Seams a test can replace. */
@@ -37,8 +41,12 @@ export function runInit(args: string[], deps: InitDeps = {}): Promise<number> {
   if (!opts) {
     process.stderr.write(
       "usage: browxai init <workspace> [--test-attrs data-testid,data-type,...] [--no-write]\n" +
-        "  <workspace>  per-app dir to host browxai state (e.g. ~/site-docs/<app>)\n" +
-        "  --no-write   print the .mcp.json snippet without creating files\n",
+        "                          [--write-user-config <client>] [--no-smoke]\n" +
+        "  <workspace>                 per-app dir to host browxai state (e.g. ~/site-docs/<app>)\n" +
+        "  --no-write                  print the .mcp.json snippet without creating files\n" +
+        "  --write-user-config <client>  add browxai to that client's user-level config after\n" +
+        `                              showing the change. <client> is one of: ${CLIENT_IDS.join(", ")}\n` +
+        "  --no-smoke                  skip the headless first-snapshot check at the end\n",
     );
     return Promise.resolve(2);
   }
@@ -130,6 +138,9 @@ export function runInit(args: string[], deps: InitDeps = {}): Promise<number> {
   };
   const system = deps.system ?? realSystem();
   process.stdout.write(clientsReport(detectClients(system), userEntry, system) + "\n");
+  const userConfigOk = opts.writeUserConfig
+    ? writeUserConfigStep(opts.writeUserConfig, userEntry, system, !!opts.noWrite)
+    : true;
   process.stdout.write(
     `next steps:\n  1) open Claude Code with cwd=${workspace} so this .mcp.json is picked up\n` +
       `  2) use the \`browxai\` MCP server for managed mode. It needs no more setup: it launches your installed Chrome, or the bundled Chromium without one\n` +
@@ -139,7 +150,41 @@ export function runInit(args: string[], deps: InitDeps = {}): Promise<number> {
       `  5) run \`browxai doctor\` if a session fails to open\n\n` +
       `Keep BROWX_WORKSPACE=${ws} on every \`browxai chrome\` command. The entries above use it, and a Chrome started without it uses ~/.browxai/profile, which is a different profile.\n`,
   );
-  return Promise.resolve(0);
+  return Promise.resolve(userConfigOk ? 0 : 1);
+}
+
+/** Show the change to a client's user-level config, then make it. */
+function writeUserConfigStep(
+  id: ClientId,
+  entry: ServerEntry,
+  system: ClientSystem,
+  dryRun: boolean,
+): boolean {
+  const plan = planUserConfig(id, entry, system);
+  if (plan.kind === "refuse") {
+    process.stdout.write(`  ✗ ${plan.message}\n\n`);
+    return false;
+  } else if (plan.kind === "present") {
+    process.stdout.write(`  ✓ ${plan.path} already has a browxai entry, left as it is\n\n`);
+  } else {
+    process.stdout.write(
+      `Change to ${plan.path}:\n\n${lineDiff(plan.before, plan.after, plan.path)}\n\n`,
+    );
+    if (dryRun) {
+      process.stdout.write("  not written (--no-write)\n\n");
+    } else {
+      try {
+        applyUserConfig(plan);
+      } catch (e) {
+        process.stdout.write(
+          `  ✗ could not write ${plan.path}: ${e instanceof Error ? e.message : String(e)}\n\n`,
+        );
+        return false;
+      }
+      process.stdout.write(`  ✓ wrote ${plan.path}. Restart the client to pick it up.\n\n`);
+    }
+  }
+  return true;
 }
 
 function parseArgs(args: string[]): InitOpts | null {
@@ -147,8 +192,16 @@ function parseArgs(args: string[]): InitOpts | null {
   const positional: string[] = [];
   let testAttrs: string | undefined;
   let noWrite = false;
+  let writeUserConfig: ClientId | undefined;
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
+    if (a === "--write-user-config") {
+      const id = args[++i];
+      if (!id || !(CLIENT_IDS as readonly string[]).includes(id)) return null;
+      writeUserConfig = id as ClientId;
+      continue;
+    }
+    if (a.startsWith("--") && a !== "--test-attrs" && a !== "--no-write") return null;
     if (a === "--test-attrs") {
       testAttrs = args[++i];
       continue;
@@ -160,7 +213,7 @@ function parseArgs(args: string[]): InitOpts | null {
     positional.push(a);
   }
   if (positional.length !== 1) return null;
-  return { workspace: positional[0]!, testAttrs, noWrite };
+  return { workspace: positional[0]!, testAttrs, noWrite, writeUserConfig };
 }
 
 /**
