@@ -97,8 +97,8 @@ browxai chrome start
 ```
 
 Then point the browxai server at it. The server reads its environment once at
-start, so set these in the MCP config entry (`env`), not in your shell, and add
-`byob-attach` to the capability list next to the defaults:
+start, so set these in the `env` of the MCP config entry, with `byob-attach`
+added to the capability list next to the defaults:
 
 ```json
 {

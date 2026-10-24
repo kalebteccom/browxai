@@ -67,7 +67,7 @@ person then has five minutes to answer `__browx.confirm(true)` in the DevTools
 `browxai` console context, and the call fails if nobody does. A headless server
 has nobody to answer. Leaving `navigate_off_allowlist` out of
 `BROWX_CONFIRM_REQUIRED` lets those navigations through with a logged warning,
-which makes the lists advisory.
+which turns the lists into a warning in the log.
 
 **`disableWebSecurity`** is turned on only by the operator, with
 `BROWX_DISABLE_WEB_SECURITY=1` in the server's environment. `set_config` can turn
