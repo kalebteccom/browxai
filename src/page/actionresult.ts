@@ -330,6 +330,7 @@ async function shapeActionResult(p: ShapeInput): Promise<ShapedResult> {
     urlAfter: p.urlAfter,
     maxTokens: p.opts.maxResultTokens ?? 600,
     warnings,
+    maskText: ctx.secrets ? (t) => ctx.secrets!.applyMaskInText(t) : undefined,
   });
   const networkBlock = await buildActionNetworkBlock(
     ctx,
@@ -506,6 +507,7 @@ function computeSnapshotDelta(args: {
   urlAfter: string;
   maxTokens: number;
   warnings: string[];
+  maskText?: (text: string) => string;
 }): ActionResult["snapshotDelta"] {
   const navigationChanged = args.urlBefore !== args.urlAfter;
   const structureChanged =
@@ -522,5 +524,12 @@ function computeSnapshotDelta(args: {
   const scopeRefs: string[] = [];
   if (args.descriptor.ref) scopeRefs.push(args.descriptor.ref);
   for (const r of args.structure.appeared) scopeRefs.push(r.ref);
-  return buildSnapshotDelta(effectiveMode, args.postTree, args.maxTokens, args.warnings, scopeRefs);
+  return buildSnapshotDelta(
+    effectiveMode,
+    args.postTree,
+    args.maxTokens,
+    args.warnings,
+    scopeRefs,
+    args.maskText,
+  );
 }

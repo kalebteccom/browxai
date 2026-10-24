@@ -45,7 +45,8 @@ async function readSnapshotHeader(
 }
 
 /** Scope the tree to a ref subtree (when requested), serialise it, and apply the
- *  per-session secrets mask. A snapshot a11y tree carries node names, so a
+ *  per-session secrets mask, to each row's text before it is clipped and to the
+ *  whole body after. A snapshot a11y tree carries node names, so a
  *  labelled `<input value="hunter2">` would surface the value verbatim without
  *  the mask (no-op when the registry is empty / capability is off). */
 function scopeAndSerialise(
@@ -64,7 +65,7 @@ function scopeAndSerialise(
       );
   }
   const rawBody = root
-    ? serialise(root, { maxNodes: opts.maxNodes, omit: opts.omit })
+    ? serialise(root, { maxNodes: opts.maxNodes, omit: opts.omit, maskText: mask })
     : "(empty a11y tree)";
   return { body: mask(rawBody), scopeWarnings };
 }

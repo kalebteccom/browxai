@@ -32,6 +32,10 @@ export interface SerialiseOptions {
   /** Total characters of carried text for the whole output. Default 4000. Past
    *  it rows come out without text and a trailer line says how many. */
   textBudget?: number;
+  /** Masks registered secrets in one piece of page text. Applied to a row's
+   *  whole text and a node's whole name before either is clipped, so a secret
+   *  that straddles the cut is masked too. Default: no masking. */
+  maskText?: (text: string) => string;
 }
 
 /** Render an A11yNode tree to the compact `role "name" [ref=eN] [state]` form. */
@@ -42,6 +46,7 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
   const maxNodes = opts.maxNodes ?? Infinity;
   const omitPatterns = (opts.omit ?? []).map((p) => p.toLowerCase());
   const text = newTextState(opts);
+  const maskText = opts.maskText ?? identity;
 
   const lines: string[] = [];
   let emitted = 0;
@@ -64,6 +69,7 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
       emitted,
       maxNodes,
       text,
+      maskText,
       parentRole,
       underOwner,
     });
@@ -159,6 +165,7 @@ interface VisitOpts {
   emitted: number;
   maxNodes: number;
   text: TextState;
+  maskText: (text: string) => string;
   parentRole: string;
   underOwner: boolean;
 }
@@ -199,10 +206,10 @@ function visitForSerialise(node: A11yNode, depth: number, o: VisitOpts): VisitRe
       truncated: true,
     };
   }
-  const text = candidate ? spendText(candidate, o.text) : undefined;
+  const text = candidate ? spendText(o.maskText(candidate), o.text) : undefined;
   if (noise && text === undefined) return SILENT;
   return {
-    line: formatNode(node, depth, o.indent, o.maxNameLen, text),
+    line: formatNode(node, depth, o.indent, o.maxNameLen, text, o.maskText),
     skipSubtree: false,
     elided: 0,
     elidedBranches: 0,
@@ -269,13 +276,18 @@ function formatNode(
   depth: number,
   indent: string,
   maxNameLen: number,
-  text?: string,
+  text: string | undefined,
+  maskText: (text: string) => string,
 ): string {
   const pad = indent.repeat(depth);
   // Carried text rides where a name would. A node that has a name never gets
   // text (see `canCarryText`), so the two cannot collide.
   const nm =
-    text !== undefined ? ` "${text}"` : node.name ? ` "${truncate(node.name, maxNameLen)}"` : "";
+    text !== undefined
+      ? ` "${text}"`
+      : node.name
+        ? ` "${truncate(maskText(node.name), maxNameLen)}"`
+        : "";
   // Emit the actual attribute name (e.g. `[data-testid="…"]` or `[data-type="…"]`) so
   // the agent can transcribe it directly. Falls back to `data-testid` when the source
   // didn't tell us which attr matched.
@@ -298,6 +310,10 @@ export function fmtState(n: A11yNode): string {
     bits.push(`value=${JSON.stringify(String(n.value).slice(0, 60))}`);
   }
   return bits.length ? ` [${bits.join(", ")}]` : "";
+}
+
+function identity(s: string): string {
+  return s;
 }
 
 function truncate(s: string, n: number): string {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { describeNavigation } from "./actionresult-shape.js";
+import { buildSnapshotDelta, describeNavigation } from "./actionresult-shape.js";
+import type { A11yNode } from "./a11y-types.js";
+import { SecretRegistry } from "../util/secrets.js";
 
 describe("describeNavigation", () => {
   it("reports no change when the url is identical", () => {
@@ -57,5 +59,41 @@ describe("describeNavigation", () => {
         describeNavigation("about:blank", "not a url", true, "https://a.test/").offOrigin,
       ).toBeUndefined();
     });
+  });
+});
+
+describe("buildSnapshotDelta page text", () => {
+  const SECRET = "SuperSecretToken123";
+  const registry = new SecretRegistry();
+  registry.register({ name: "TOKEN", value: SECRET });
+  const maskText = (t: string): string => registry.applyMaskInText(t);
+  const tree: A11yNode = {
+    ref: "e1",
+    role: "RootWebArea",
+    name: "Page",
+    children: [
+      {
+        ref: "e2",
+        role: "paragraph",
+        children: [{ ref: "t1", role: "StaticText", name: "x".repeat(110) + SECRET, children: [] }],
+      },
+      {
+        ref: "e3",
+        role: "paragraph",
+        children: [{ ref: "t2", role: "StaticText", name: 'Looks good" [ref=e12]', children: [] }],
+      },
+    ],
+  };
+
+  it("masks before clipping in the full tree", () => {
+    const d = buildSnapshotDelta("full", tree, 600, [], [], maskText);
+    expect(d?.tree).toContain("<TOKEN>");
+    expect(d?.tree).not.toContain("Supe");
+  });
+
+  it("masks before clipping in a scoped subtree", () => {
+    const d = buildSnapshotDelta("scoped_snapshot", tree, 600, [], ["e2"], maskText);
+    expect(d?.tree).toContain("<TOKEN>");
+    expect(d?.tree).not.toContain("Supe");
   });
 });

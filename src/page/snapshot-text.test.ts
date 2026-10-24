@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { serialise } from "./snapshot.js";
 import { canCarryText, clipText, ownText, MAX_ROW_TEXT } from "./snapshot-text.js";
 import type { A11yNode } from "./a11y.js";
+import { SecretRegistry } from "../util/secrets.js";
 
 function node(
   role: string,
@@ -124,5 +125,38 @@ describe("snapshot-text helpers", () => {
   it("clipText leaves short text alone", () => {
     expect(clipText("abc", 3)).toBe("abc");
     expect(clipText("abcd", 3)).toBe("ab…");
+  });
+});
+
+describe("serialise masks before clipping", () => {
+  const SECRET = "SuperSecretToken123";
+  const registry = new SecretRegistry();
+  registry.register({ name: "TOKEN", value: SECRET });
+  const maskText = (t: string): string => registry.applyMaskInText(t);
+
+  it("masks a secret that straddles the row cap", () => {
+    const words = "x".repeat(110) + SECRET;
+    const out = serialise(doc(node("paragraph", undefined, "e2", [text(words)])), { maskText });
+    expect(out).toContain("<TOKEN>");
+    expect(out).not.toContain("Supe");
+  });
+
+  it("masks a secret that straddles the end of the text budget", () => {
+    const words = "x".repeat(100) + SECRET;
+    const out = serialise(doc(node("paragraph", undefined, "e2", [text(words)])), {
+      maskText,
+      textBudget: 110,
+    });
+    expect(out).not.toContain("Supe");
+  });
+
+  it("masks a secret that straddles the name cut", () => {
+    const out = serialise(doc(node("button", "a".repeat(75) + SECRET, "e2")), { maskText });
+    expect(out).not.toContain("Supe");
+  });
+
+  it("leaves text alone without a mask", () => {
+    const out = serialise(doc(node("paragraph", undefined, "e2", [text(`id ${SECRET}`)])));
+    expect(out).toContain(SECRET);
   });
 });
