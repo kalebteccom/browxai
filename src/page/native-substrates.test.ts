@@ -9,7 +9,7 @@ import { RefRegistry } from "./refs.js";
 import { NativeScreen } from "./native-screen.js";
 import { NativeElementSubstrate } from "./element-substrate-android-app.js";
 import { NativeSnapshotSubstrate } from "./snapshot-substrate-android-app.js";
-import { NativeTargetSubstrate } from "./target-substrate-android-app.js";
+import { NativeTargetSubstrate, nativeTargetUrl } from "./target-substrate-android-app.js";
 import { NativeActionSubstrate, type NativeInputIO } from "./action-substrate-android-app.js";
 import { NativeCaptureSubstrate } from "./capture-substrate-android-app.js";
 import { walk } from "./a11y-types.js";
