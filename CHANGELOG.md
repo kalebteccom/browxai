@@ -17,6 +17,12 @@ surface" covers.
   (the target's frame, or the focused frame for a targetless `press`) has the
   same scheme, host and port. A scope with a path, query or `*` is refused at
   registration. The result carries the normalised `origins`.
+- **Scoped secrets fill through the checked element.** `fill`, `fill_form` and
+  `press` type a scoped value into the same element whose frame passed the
+  scope check, and read that frame's URL again right before typing. If the
+  frame moved to another origin in between, the action returns `ok:false` and
+  nothing is typed. A targetless `press` re-checks the focused frame the same
+  way. Unscoped values are unchanged.
 - **`get_credential` now requires the account to be listed in
   `BROWX_CREDENTIAL_ORIGINS`.** The new setting binds credentials to configured
   origins: `acme=https://app.acme.com|https://sso.acme.com`. The registered
