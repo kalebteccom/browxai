@@ -197,6 +197,80 @@ describe("SecretRegistry.applyMaskInText — egress masking", () => {
   });
 });
 
+describe("SecretRegistry.applyMaskInText — encoded forms", () => {
+  const VALUE = "p@ss word/+é!";
+  const reg = (): SecretRegistry => {
+    const r = new SecretRegistry();
+    r.register({ name: "PW", value: VALUE });
+    return r;
+  };
+
+  it("masks the value percent-encoded in a URL query", () => {
+    const url = `https://app.test/login?user=alice&pw=${encodeURIComponent(VALUE)}&x=1`;
+    expect(reg().applyMaskInText(url)).toBe("https://app.test/login?user=alice&pw=<PW>&x=1");
+  });
+
+  it("masks the value form-encoded in a request body", () => {
+    const body = new URLSearchParams({ user: "alice", pw: VALUE }).toString();
+    expect(body).toContain("+word"); // the space became `+`
+    expect(reg().applyMaskInText(body)).toBe("user=alice&pw=<PW>");
+  });
+
+  it("masks the value's own base64 and base64url, padded or not", () => {
+    const b64 = Buffer.from(VALUE, "utf8").toString("base64");
+    const b64url = Buffer.from(VALUE, "utf8").toString("base64url");
+    const r = reg();
+    expect(r.applyMaskInText(`token=${b64};`)).toBe("token=<PW>;");
+    expect(r.applyMaskInText(`token=${b64url};`)).toBe("token=<PW>;");
+    expect(r.applyMaskInText(`token=${b64.replace(/=+$/, "")};`)).toBe("token=<PW>;");
+  });
+
+  it("does not reach a base64 of a larger string such as Basic credentials", () => {
+    const basic = Buffer.from(`alice:${VALUE}`, "utf8").toString("base64");
+    expect(reg().applyMaskInText(`Authorization: Basic ${basic}`)).toBe(
+      `Authorization: Basic ${basic}`,
+    );
+  });
+
+  it("matches only the value itself for values shorter than six characters", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PIN", value: "a b!" });
+    expect(r.applyMaskInText("pin=a%20b!")).toBe("pin=a%20b!");
+    expect(r.applyMaskInText(`pin=${Buffer.from("a b!").toString("base64")}`)).not.toContain(
+      "<PIN>",
+    );
+    expect(r.applyMaskInText("pin=a b!")).toBe("pin=<PIN>");
+  });
+
+  it("is idempotent across every form", () => {
+    const r = reg();
+    const text = [
+      VALUE,
+      encodeURIComponent(VALUE),
+      new URLSearchParams({ pw: VALUE }).toString(),
+      Buffer.from(VALUE, "utf8").toString("base64"),
+    ].join(" | ");
+    const once = r.applyMaskInText(text);
+    expect(once).not.toMatch(/word|cEBz/);
+    expect(r.applyMaskInText(once)).toBe(once);
+    expect(r.applyMaskInResultText(once)).toBe(once);
+  });
+
+  it("masks an encoded form inside a JSON tool result and keeps it valid", () => {
+    const text = JSON.stringify({ url: `https://a.test/?pw=${encodeURIComponent(VALUE)}` });
+    expect(JSON.parse(reg().applyMaskInResultText(text))).toEqual({
+      url: "https://a.test/?pw=<PW>",
+    });
+  });
+
+  it("picks up a value registered after the first mask", () => {
+    const r = reg();
+    expect(r.applyMaskInText("Zm9vYmFyYmF6")).toBe("Zm9vYmFyYmF6");
+    r.register({ name: "OTHER", value: "foobarbaz" });
+    expect(r.applyMaskInText("Zm9vYmFyYmF6")).toBe("<OTHER>");
+  });
+});
+
 describe("SecretRegistry.containsAnySecret — screenshot warning probe", () => {
   it("flags every registered name whose value appears in the text", () => {
     const r = new SecretRegistry();

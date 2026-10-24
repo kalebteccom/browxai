@@ -2682,7 +2682,7 @@ scanned on the way out:
 | `ActionResult.network.mutations[].urlPattern` + `responseShape`               | masked                                                                                   |
 | `ActionResult.network.wsFrames[].payload` + `url`                             | masked                                                                                   |
 | `network_read.requests[].url` (session ring)                                  | masked                                                                                   |
-| `network_body.body` (response body)                                           | masked: JSON / text only; base64 bodies pass through unchanged (see below)               |
+| `network_body.body` (response body)                                           | masked: JSON / text; base64 bodies only where the value's own base64 appears (see below) |
 | `ws_read.frames[].payload` + `.url`                                           | masked                                                                                   |
 | `console_read.recent[].text` + `errors` + `pageErrors`                        | masked                                                                                   |
 | `snapshot()` tree (a11y node names)                                           | masked                                                                                   |
@@ -2724,6 +2724,12 @@ Longest-value-first: when two registered values overlap (one is a
 substring of another), the longer one is masked first, so a partial leak
 of the shorter alias is impossible.
 
+Encoded forms: a value of 6 characters or more is also masked where it
+appears percent-encoded (`encodeURIComponent`, and the form-body encoding
+that writes a space as `+`) or as its own base64 or base64url encoding,
+padded or not. A shorter value is masked only as typed, since its encodings
+are short enough to turn up by chance.
+
 **Limitations** (enumerated for the threat model):
 
 1. **`screenshot()` is a partial sink.** PNG/JPEG bytes are not OCR'd
@@ -2733,10 +2739,13 @@ of the shorter alias is impossible.
    of the bounding boxes that contain a matched value) is a typed seam for
    v0.2.x. For verified-clean evidence, prefer `snapshot()` / `find()` /
    `text_search()` (all fully masked) over a screenshot.
-2. **Base64 response bodies pass through unchanged in `network_body`.** A
-   literal-substring scan can't match an encoded form. Decode + re-mask on
-   the agent side if you fetch base64 bodies that may carry a secret. The
-   common case (JSON / text) is fully masked.
+2. **Base64 response bodies pass through `network_body` mostly unchanged.**
+   The body is masked only where the value's own base64 appears at an
+   encoding boundary. A value inside a larger encoded string is not found:
+   base64 of `user:password` (`Authorization: Basic …`), a binary body, or a
+   value at an offset that shifts its encoding. Decode + re-mask on the agent
+   side if you fetch base64 bodies that may carry a secret. The common case
+   (JSON / text) is fully masked.
 3. **Cap is 32 secrets per session.** Bounded so the per-sink scan stays
    O(secrets × text-len) reasonable; realistic auth flows fit well under.
 4. **`scope` narrows dispatch, not egress.** Scoped secrets won't be
