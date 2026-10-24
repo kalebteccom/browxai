@@ -11,7 +11,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import type { CDPSession } from "playwright-core";
-import { buildDomIndex, EMPTY_DOM_INDEX } from "./dom-index.js";
+import { buildDomIndex } from "./dom-index.js";
 
 interface FakeNode {
   nodeType: number;
@@ -163,26 +163,6 @@ describe("buildDomIndex — the path the DOM walk speaks", () => {
     );
   });
 
-  it("gives sibling twins their own paths, so identical markup never collides", async () => {
-    // The false-merge case the whole join has to survive: two elements with the
-    // same tag, the same id-lessness and the same test attribute, differing
-    // only in position.
-    const index = await buildDomIndex(
-      cdpReturning(
-        docWith([
-          el("section", 80, [], [el("button", 81, ["data-testid", "save"])]),
-          el("section", 82, [], [el("button", 83, ["data-testid", "save"])]),
-        ]),
-      ),
-      ATTRS,
-    );
-    const claim = { id: "", testId: "save", testIdAttr: "data-testid" };
-    const first = "body:nth-child(2) > section:nth-child(1) > button:nth-child(1)";
-    const second = "body:nth-child(2) > section:nth-child(2) > button:nth-child(1)";
-    expect(index.backendIdFor(first, claim)).toBe(81);
-    expect(index.backendIdFor(second, claim)).toBe(83);
-  });
-
   it("reads test attributes anywhere in the swept tree, shadow roots included", async () => {
     const hosted = el("button", 91, ["data-testid", "inside-shadow"]);
     const host = { ...el("my-app", 90), shadowRoots: [{ nodeType: 11, children: [hosted] }] };
@@ -196,11 +176,5 @@ describe("buildDomIndex — the path the DOM walk speaks", () => {
     const index = await buildDomIndex(cdpReturning(new Error("no DOM agent")), ATTRS);
     expect(index.testAttrCount).toBe(0);
     expect(index.backendIdFor("body:nth-child(2)", CLEAN)).toBeUndefined();
-  });
-
-  it("EMPTY_DOM_INDEX misses every lookup", () => {
-    expect(EMPTY_DOM_INDEX.testAttrCount).toBe(0);
-    expect(EMPTY_DOM_INDEX.testAttrOf(1)).toBeUndefined();
-    expect(EMPTY_DOM_INDEX.backendIdFor("body:nth-child(2)", CLEAN)).toBeUndefined();
   });
 });

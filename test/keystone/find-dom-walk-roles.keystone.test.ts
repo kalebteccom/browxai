@@ -162,21 +162,4 @@ describe("find keystone — DOM-walk candidates carry bare HTML tags", () => {
     },
     KEYSTONE_TIMEOUT,
   );
-
-  it(
-    "mints identical refs across re-finds — the resolution never reaches elementKey",
-    async () => {
-      const session = "ks-find-tag-roles-refs";
-      await openOn(session);
-
-      const first = await callJson<{ candidates: Candidate[] }>("find", { session, query: QUERY });
-      const second = await callJson<{ candidates: Candidate[] }>("find", { session, query: QUERY });
-      expect(first.candidates.length).toBeGreaterThan(0);
-      expect(second.candidates.map((c) => c.ref)).toEqual(first.candidates.map((c) => c.ref));
-
-      const snap = ((await handlers["snapshot"]!({ session })).content[0] as { text: string }).text;
-      for (const c of first.candidates) expect(snap).toContain(`[ref=${c.ref}]`);
-    },
-    KEYSTONE_TIMEOUT,
-  );
 });

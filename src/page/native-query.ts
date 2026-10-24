@@ -136,13 +136,3 @@ export function resolveRecipe(view: NativeScreenView, recipe: NativeRefRecipe): 
   }
   return all.filter((m) => m.recipe.path === recipe.path && m.node.role === recipe.role);
 }
-
-/** The selector string an exported step should carry for a node — the tier-1
- *  form when the app labelled the element, and an honest weaker form when it did
- *  not. `~name` is the Appium accessibility-id spelling RFC 0008 §3 names. */
-export function nativeSelectorHint(node: A11yNode, recipe: NativeRefRecipe): string {
-  if (node.testId) return `~${node.testId}`;
-  if (node.name) return `label=${node.name}`;
-  if (node.text) return `text=${node.text}`;
-  return `role=${recipe.role}`;
-}

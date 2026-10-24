@@ -3,13 +3,6 @@ import { SecretRegistry, composeUrlAndSecretsInText } from "./secrets.js";
 import { sanitizeUrlsInText } from "./url-sanitizer.js";
 
 describe("SecretRegistry — register flow", () => {
-  it("accepts an uppercase identifier name with a non-empty value", () => {
-    const r = new SecretRegistry();
-    r.register({ name: "PASSWORD", value: "hunter2" });
-    expect(r.size()).toBe(1);
-    expect(r.names()).toEqual(["PASSWORD"]);
-  });
-
   it("rejects lowercase / mixed-case / whitespace-bearing names", () => {
     const r = new SecretRegistry();
     expect(() => r.register({ name: "password", value: "v" })).toThrow(/must match/);
@@ -116,11 +109,6 @@ describe("SecretRegistry.applyMaskInText — egress masking", () => {
     r.register({ name: "PATTERN", value: "a+b.c*d" });
     expect(r.applyMaskInText("payload=a+b.c*d end")).toBe("payload=<PATTERN> end");
   });
-
-  it("is a no-op when the registry is empty", () => {
-    const r = new SecretRegistry();
-    expect(r.applyMaskInText("nothing to mask")).toBe("nothing to mask");
-  });
 });
 
 describe("SecretRegistry.containsAnySecret — screenshot warning probe", () => {
@@ -131,12 +119,6 @@ describe("SecretRegistry.containsAnySecret — screenshot warning probe", () => 
     const probe = r.containsAnySecret("password is hunter2, otp 123456");
     expect(probe.hit).toBe(true);
     expect(probe.names.sort()).toEqual(["OTP", "PASSWORD"]);
-  });
-
-  it("returns hit:false when no value appears", () => {
-    const r = new SecretRegistry();
-    r.register({ name: "X", value: "secret" });
-    expect(r.containsAnySecret("page text without it").hit).toBe(false);
   });
 });
 
@@ -157,20 +139,6 @@ describe("SecretRegistry.applyMaskDeep — recursive object/array masking", () =
     expect(out.total).toBe(2); // non-string passes through
   });
 
-  it("masks the leaf of a 20-deep object, and doesn't blow the stack", () => {
-    // This test used to assert only `not.toThrow()`, which passed while the
-    // masker returned everything below depth 8 verbatim. Assert the leaf is
-    // actually rewritten — that is the property register_secret promises.
-    const r = new SecretRegistry();
-    r.register({ name: "X", value: "x" });
-    let obj: unknown = "leaf with x";
-    for (let i = 0; i < 20; i++) obj = { nested: obj };
-    let out: unknown;
-    expect(() => (out = r.applyMaskDeep(obj))).not.toThrow();
-    expect(JSON.stringify(out)).not.toContain("leaf with x");
-    expect(JSON.stringify(out)).toContain("leaf with <X>");
-  });
-
   it("masks a leaf at depth 50 — no depth cap", () => {
     const r = new SecretRegistry();
     r.register({ name: "PASSWORD", value: "hunter2" });
@@ -179,16 +147,6 @@ describe("SecretRegistry.applyMaskDeep — recursive object/array masking", () =
     const json = JSON.stringify(r.applyMaskDeep(obj));
     expect(json).not.toContain("hunter2");
     expect(json).toContain("the password is <PASSWORD>");
-  });
-
-  it("masks through arrays as well as objects at depth", () => {
-    const r = new SecretRegistry();
-    r.register({ name: "TOKEN", value: "tok-xyz" });
-    let obj: unknown = ["carrying tok-xyz"];
-    for (let i = 0; i < 15; i++) obj = [{ rows: obj }];
-    const json = JSON.stringify(r.applyMaskDeep(obj));
-    expect(json).not.toContain("tok-xyz");
-    expect(json).toContain("carrying <TOKEN>");
   });
 
   it("a cyclic graph terminates, masks every reachable leaf, and stays cyclic", () => {

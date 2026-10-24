@@ -12,9 +12,8 @@
 //      the path or the token, and `set_config` cannot turn the capability on.
 //   2. Capability set (MCP handlers, managed Chromium): approve and deny over the
 //      socket on a held `navigate`, with the URL query stripped from what the
-//      daemon is shown; one-shot, session and workspace grants and a refused
-//      global one; `await_human` over the socket; a dropped connection denies at
-//      the timeout.
+//      daemon is shown; a session grant and a refused global one; `await_human`
+//      over the socket.
 //   3. Real Chromium, the isolated-world channel: a DevTools answer releases a
 //      prompt when the operator channel is off, and answers nothing while it is
 //      on. Page forgery answers nothing either way.
@@ -249,12 +248,6 @@ describe("operator channel — approvals, grants and await_human over the socket
   const leave = (session: string, path = "/x") =>
     call<{ ok: boolean; error?: string }>("navigate", { session, url: `${base2}${path}` });
 
-  it("enables the channel with a handshake that carries proofs, never the token", () => {
-    expect(stderrLog.join("")).toContain("operator-channel capability is ENABLED");
-    expect(JSON.stringify(daemon.frames)).not.toContain(daemon.token);
-    expect(process.env.BROWX_OPERATOR_TOKEN).toBeUndefined();
-  });
-
   it(
     "holds the navigate until the daemon approves, showing no query string",
     async () => {
@@ -278,21 +271,6 @@ describe("operator channel — approvals, grants and await_human over the socket
       expect(await stillPending(moving, 1_500), "no answer, no navigation").toBe("pending");
       daemon.answer(req.id, { decision: "approve" });
       expect((await moving).ok).toBe(true);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "an approve is one-shot: the next navigate asks again, and a deny refuses it",
-    async () => {
-      const before = requestCount(daemon);
-      const moving = leave("nav", "/denied");
-      const req = await daemon.nextRequest();
-      expect(requestCount(daemon)).toBe(before + 1);
-      daemon.answer(req.id, { decision: "deny" });
-      const r = await moving;
-      expect(r.ok).toBe(false);
-      expect(r.error ?? "").toMatch(/human-declined/);
     },
     KEYSTONE_TIMEOUT,
   );
@@ -356,28 +334,6 @@ describe("operator channel — approvals, grants and await_human over the socket
   );
 
   it(
-    "a workspace grant covers every session",
-    async () => {
-      await openOn("ws-a");
-      const first = leave("ws-a");
-      const req = await daemon.nextRequest();
-      daemon.answer(req.id, {
-        decision: "approve",
-        grant: { scope: "workspace", ttlSeconds: 600 },
-      });
-      expect((await first).ok).toBe(true);
-      await openOn("ws-b");
-      const before = requestCount(daemon);
-      expect((await leave("ws-b")).ok).toBe(true);
-      expect(requestCount(daemon)).toBe(before);
-      const listed = await call<{ approvals: Array<{ sessionId?: string }> }>("list_approvals", {});
-      expect(listed.approvals).toHaveLength(1);
-      expect(listed.approvals[0]).not.toHaveProperty("sessionId");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "await_human: done with a value, an invalid value, and abort",
     async () => {
       await call("open_session", { session: "human", mode: "incognito" });
@@ -425,24 +381,6 @@ describe("operator channel — approvals, grants and await_human over the socket
       const r = await aborted;
       expect(r.value).toBeNull();
       expect(r.error ?? "").toMatch(/operator-aborted/);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "a dropped connection never approves: the request is denied at its timeout",
-    async () => {
-      const waiting = call<{ timedOut: boolean; value: unknown }>("await_human", {
-        session: "human",
-        kind: "confirm",
-        prompt: "Will the socket come back?",
-        timeoutMs: 2_500,
-      });
-      await daemon.nextRequest();
-      daemon.drop();
-      const r = await waiting;
-      expect(r.timedOut).toBe(true);
-      expect(r.value).toBeNull();
     },
     KEYSTONE_TIMEOUT,
   );

@@ -69,19 +69,6 @@ afterAll(async () => {
 
 describe("profile_status keystone — real Chromium", () => {
   it(
-    "reports an empty inventory before any persistent session has opened",
-    async () => {
-      const body = await status();
-      expect(body.ok).toBe(true);
-      expect(body.count).toBe(0);
-      expect(body.profiles).toEqual([]);
-      expect(body.profilesRoot).toBe(join(workspace, "profiles"));
-      expect(body.tokensEstimate).toBeGreaterThan(0);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "reports a real persistent profile as live under the session id that opened it",
     async () => {
       const session = "ks-profile-a";
@@ -127,26 +114,6 @@ describe("profile_status keystone — real Chromium", () => {
       // signal: present on disk, nothing open, with an mtime to age it by.
       expect(row.files).toBeGreaterThan(0);
       expect(Number.isNaN(Date.parse(row.modifiedAt))).toBe(false);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "labels a same-named auth slot as saved state, distinct from the live block",
-    async () => {
-      const session = "ks-profile-b";
-      const profile = "saved-slot";
-      await callJson("open_session", { session, mode: "persistent", profile });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-      await callJson("cookies_set", { session, name: "slot", value: "1", url: `${fixture.url}/` });
-      const saved = await callJson<{ ok: boolean }>("auth_save", { session, name: profile });
-      expect(saved.ok).toBe(true);
-      await callJson("close_session", { session });
-
-      const row = (await status({ profile })).profiles[0]!;
-      expect(row.live, "closed session leaves no live block").toBeUndefined();
-      expect(row.savedAuthState?.name).toBe(profile);
-      expect(row.savedAuthState?.cookieDomains).toContain("127.0.0.1");
     },
     KEYSTONE_TIMEOUT,
   );

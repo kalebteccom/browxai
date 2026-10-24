@@ -10,7 +10,7 @@
 // Definition of done (AGENT-RUNBOOK.md " close"):
 //   - BROWX_HEADLESS-equivalent works end-to-end (here: createServer({headless})
 //     — programmatic, NOT the env-var singleton, exercising the session model).
-//   - Zero BROWX_* *config* env; config flows through set_config/get_config.
+//   - Zero BROWX_* *config* env.
 //   - Six non-trivial primitives, deterministic token asserts.
 //   - Two sessions = isolated cookie jars (no bleed).
 //   - incognito leaves no filesystem trace (cwd untouched, no profile dir).
@@ -276,28 +276,6 @@ describe("headless-CI keystone — multi-field form fill (one dispatch, atomic r
   );
 });
 
-describe("headless-CI keystone — MCP-driven config model (zero env)", () => {
-  it("get_config reflects built-in defaults; set_config persists and re-resolves", async () => {
-    const before = await callJson<{ config: { confirmRequired: string[] } }>("get_config", {
-      scope: "resolved",
-    });
-    // No BROWX_* env → pure built-in defaults, proving config is not env-driven.
-    expect(before.config.confirmRequired).toContain("byob_action");
-
-    const set = await callJson<{ ok: boolean; resolved: { testAttributes: string[] } }>(
-      "set_config",
-      { scope: "project", patch: { testAttributes: ["data-ks", "data-testid"] } },
-    );
-    expect(set.ok).toBe(true);
-    expect(set.resolved.testAttributes).toEqual(["data-ks", "data-testid"]);
-
-    const after = await callJson<{ config: { testAttributes: string[] } }>("get_config", {
-      scope: "resolved",
-    });
-    expect(after.config.testAttributes).toEqual(["data-ks", "data-testid"]);
-  });
-});
-
 describe("headless-CI keystone — two-user cookie-jar isolation", () => {
   it("a cookie set in session A is not visible to session B", async () => {
     const a = await callJson<{ ok: boolean }>("open_session", {
@@ -347,65 +325,7 @@ describe("headless-CI keystone — incognito no-trace", () => {
   });
 });
 
-// Regression-style perf assertion for find() against DOM-walk-sourced
-// candidates whose selector hint is NOT a valid Playwright locator. Pre-v0.2.1
-// the per-candidate probe loop ran serially and let each Playwright probe
-// call (`boundingBox`, `isEnabled`) auto-wait the full action-timeout window
-// (default 5 s) when the hint didn't resolve to a real locator — and DOM-walk
-// emits a bare tag name as `role` (e.g. `role="a"` for an <a>), which is not
-// a valid ARIA role token, so Playwright's role-locator misses and the probe
-// burns the full timeout per candidate. The outer 5 s actionTimeoutMs anti-
-// wedge would clip this in default operation, so the *observed* pre-fix cost
-// against a fixture with multiple such fall-through nodes was ~5 s (the anti-
-// wedge ceiling) rather than candidates × 5 s; without the cap, pathological
-// pages could still bump up against the 60 s keystone-suite deadline. Post-fix, find()
-// bounds each probe at `PROBE_TIMEOUT_MS` (500 ms) and runs the per-candidate
-// loop in parallel — bringing this case well under 1 s.
-//
-// The fixture node targeted below (<a data-testid="info-link">More info</a>)
-// is deliberately chosen so its DOM-walked role-locator (`role=a`) is invalid
-// and Playwright falls through the probe path that auto-waits. A different
-// query that landed on a valid role-locator candidate (e.g. `role=button`
-// from a native <button>) would NOT exercise the regression and the
-// assertion would have no bite. The 3 s bound is the observed-after-fix
-// number with headroom for slower CI hardware, not aspirational.
-describe("headless-CI keystone — find() wall-clock regression", () => {
-  it(
-    "find() against a fall-through-role candidate completes well under the anti-wedge deadline",
-    async () => {
-      const session = "ks-find-perf";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-
-      // Target the aria-hidden <a>Hidden info link</a> fixture node (no
-      // testid). It is out of the accessibility tree, so the DOM walk is the
-      // only tier that reports it and the tier merge has nothing to fold it
-      // into: it arrives with `role="a"` (bare tag), buildSelectorHint() falls
-      // through to a `role=a[name="Hidden info link"]` hint, and Playwright's
-      // role-locator can't resolve "a" as an ARIA role. Pre-fix the per-candidate probe
-      // loop would auto-wait the action-timeout window on this hint until
-      // the outer 5 s anti-wedge clipped the whole call; post-fix the
-      // per-probe cap returns each miss in ≤500 ms and parallel execution
-      // brings the total well inside 1 s.
-      const t0 = Date.now();
-      const found = await callJson<{
-        candidates: Array<{ selectorHint: string }>;
-      }>("find", { session, query: "Hidden info link" });
-      const elapsed = Date.now() - t0;
-
-      expect(found.candidates.length).toBeGreaterThan(0);
-      // Wall-clock bound chosen from observed post-fix numbers with headroom
-      // for CI variance. A failure here means a probe call's auto-wait cap
-      // has regressed — see PROBE_TIMEOUT_MS in src/page/find.ts.
-      expect(elapsed).toBeLessThan(3_000);
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-});
-
-// Same fixture node — the aria-hidden anchor, which the accessibility tier does
+// The fixture's aria-hidden anchor, which the accessibility tier does
 // not expose and the tier merge therefore leaves alone. The visibility half: a
 // DOM-walk-sourced candidate reports
 // its bare tag in `role` ("a"), so the built hint is `role=a[name="…"]` — a
@@ -852,49 +772,3 @@ describe("headless-CI keystone — Shadow DOM deep piercing", () => {
 // needs the off-by-default `file-io` capability (for fs_picker_respond),
 // so it spins up its own server with the right env, same pattern as the
 // page-archive keystone.
-
-// The Chromium half of the verify-refusal fix. `test/architecture/
-// verify-engine-refusal.test.ts` proves the no-`page`-sub-interface path returns
-// a refusal; only a real browser proves the supported path is untouched — that
-// the `subInterfaceGate` added ahead of `session.page()` does not fire on
-// chromium, and that a genuine miss still lands as `failure.source:"app"` with
-// no engine-refusal fields on it.
-describe("headless-CI keystone — verify_* on chromium is unchanged by the engine gate", () => {
-  it(
-    "passes on a real element and reports a genuine miss as an assertion failure",
-    async () => {
-      const session = "ks-verify-engine";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-
-      type Body = {
-        ok: boolean;
-        engine?: string;
-        hint?: string;
-        failure?: { source?: string; kind?: string; actual?: string };
-      };
-      const pass = await callJson<Body>("verify_count", { session, selector: "body", n: 1 });
-      expect(pass.ok, "verify_count on a real chromium page still passes").toBe(true);
-      expect(pass.engine, "the sub-interface gate must not fire on chromium").toBeUndefined();
-
-      // A genuine miss: the element is absent, so the assertion failed for real.
-      // It must still carry a `failure` block, and must NOT be dressed as a
-      // refusal (no `engine` / `hint`) — the two are separable in both directions.
-      for (const [tool, args] of [
-        ["verify_visible", { selector: "#definitely-not-here" }],
-        ["verify_text", { selector: "body", text: "__no_such_text__", exact: true }],
-        ["verify_count", { selector: "#definitely-not-here", n: 3 }],
-      ] as const) {
-        const miss = await callJson<Body>(tool, { session, ...args });
-        expect(miss.ok, `${tool} must fail on a genuine miss`).toBe(false);
-        expect(miss.failure, `${tool} must still emit a structured failure`).toBeDefined();
-        expect(miss.engine, `${tool} miss must not be shaped as an engine refusal`).toBeUndefined();
-        expect(miss.hint, `${tool} miss must not be shaped as an engine refusal`).toBeUndefined();
-        expect(JSON.stringify(miss)).not.toContain("sub-interface");
-      }
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-});

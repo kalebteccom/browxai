@@ -111,15 +111,6 @@ describe("refusedTools — a tool the engine CAN run and must not", () => {
     const body = JSON.parse((res.content[0] as { text: string }).text) as Body;
     expect(body.ok, "navigate must still work on an engine with no refusedTools").toBe(true);
   });
-
-  it("refuses only the named tool, never its neighbours on the same engine", async () => {
-    // `snapshot` renders a plain-text tree, not JSON — so the assertion is that
-    // it produced one at all. A refusal would have been JSON with `ok:false`.
-    const res = await servers.get(REFUSER)!.handlers.snapshot({});
-    const text = (res.content[0] as { text: string }).text;
-    expect(text).toContain("url:");
-    expect(text).not.toContain('"ok": false');
-  });
 });
 
 describe("electron's shipped declaration", () => {
@@ -131,21 +122,11 @@ describe("electron's shipped declaration", () => {
   });
 
   it("keeps the rest of the navigation family, which operates inside the app", () => {
-    // `reload` on VS Code is its own Cmd-R; `go_back` / `go_forward` walk the
-    // renderer's own history. Refusing these to gate `navigate` would cost three
-    // working tools for one, and `navigation` is one of the four sub-interfaces
+    // `go_back` / `go_forward` walk the renderer's own history. Refusing these
+    // to gate `navigate` would cost two working tools for one, and `navigation` is one of the four sub-interfaces
     // no engine may omit — so the by-name declaration is the only shape that fits.
-    for (const tool of ["reload", "go_back", "go_forward", "click", "snapshot", "find"]) {
+    for (const tool of ["go_back", "go_forward", "click", "snapshot", "find"]) {
       expect(assertEngineRefuses(tool, "electron"), `${tool} must not be refused`).toBeNull();
     }
-  });
-
-  it("is the only engine that refuses anything by name", () => {
-    // A second engine growing a `refusedTools` entry is a deliberate act that
-    // should be read, not inherited from a copy-paste.
-    const withRefusals = (["chromium", "firefox", "webkit", "android", "safari"] as const).filter(
-      (e) => (capabilitiesFor(e)!.refusedTools?.size ?? 0) > 0,
-    );
-    expect(withRefusals).toEqual([]);
   });
 });

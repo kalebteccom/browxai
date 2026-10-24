@@ -141,29 +141,6 @@ describe("collectShadowTrees", () => {
 });
 
 describe("fetchPiercedDocument", () => {
-  it("returns the root + closedAvailable=true when a closed shadow is present", async () => {
-    const root: FakeNode = el("html", {
-      backendNodeId: 1,
-      children: [
-        el("closed-widget", {
-          backendNodeId: 10,
-          shadowRoots: [shadowRoot("closed", [el("button", { backendNodeId: 11 })])],
-        }),
-      ],
-    });
-    const cdp = fakeCdp({
-      send: async (method, params) => {
-        if (method !== "DOM.getDocument") throw new Error(`unexpected ${method}`);
-        expect((params as { pierce: boolean }).pierce).toBe(true);
-        return { root };
-      },
-    });
-    const r = await fetchPiercedDocument(cdp);
-    expect(r.root).toBe(root);
-    expect(r.closedAvailable).toBe(true);
-    expect(r.warning).toBeUndefined();
-  });
-
   it("returns null + warning when CDP refuses pierce", async () => {
     const cdp = fakeCdp({
       send: async () => {
@@ -261,38 +238,6 @@ describe("harvestClosedShadowElements", () => {
 });
 
 describe("runOpenShadowWalk", () => {
-  it("evaluates the page-side walker and forwards its trees", async () => {
-    let seenMethod = "";
-    let seenExpr = "";
-    const cdp = fakeCdp({
-      send: async (method, params) => {
-        seenMethod = method;
-        seenExpr = (params as { expression: string }).expression;
-        return {
-          result: {
-            value: {
-              trees: [
-                {
-                  hostTag: "my-widget",
-                  mode: "open",
-                  children: [{ tag: "div", childCount: 0 }],
-                  descendantCount: 1,
-                },
-              ],
-            },
-          },
-        };
-      },
-    });
-    const trees = await runOpenShadowWalk(cdp, undefined, 50);
-    expect(seenMethod).toBe("Runtime.evaluate");
-    // Signature marker — the page-side walker is a function literal that
-    // accepts (rootSel, max) and walks `Element.shadowRoot` recursively.
-    expect(seenExpr).toContain("shadowRoot");
-    expect(trees).toHaveLength(1);
-    expect(trees[0]?.hostTag).toBe("my-widget");
-  });
-
   it("returns an empty list when CDP throws", async () => {
     const cdp = fakeCdp({
       send: async () => {

@@ -57,7 +57,7 @@ function bodyOf(res: ToolResponse): Record<string, unknown> {
 describe("open_session — per-session engine surface + validation", () => {
   it("exposes an `engine` enum matching the implemented engines (drift guard)", () => {
     const { def } = captureOpenSession();
-    const engineSchema = def.inputSchema?.engine as z.ZodOptional<z.ZodEnum<[string, ...string[]]>>;
+    const engineSchema = def.inputSchema?.engine as z.ZodOptional<z.ZodEnum>;
     expect(engineSchema).toBeDefined();
     expect(engineSchema.unwrap().options).toEqual([...ENGINE_KINDS]);
   });
@@ -82,12 +82,43 @@ describe("open_session — per-session engine surface + validation", () => {
     expect(body.ok).toBe(false);
     expect(String(body.error)).toContain("registry.get must not be reached");
   });
+});
 
-  it("omitting engine skips engine validation entirely (legacy path)", async () => {
+describe("open_session — session id and profile names", () => {
+  const bad = ["../x", "a/../b", "/tmp/x", "a\\b", "", "a\0b", "..", "x".repeat(129)];
+
+  it("refuses a profile that is not a plain name before reaching the registry", async () => {
     const { handler } = captureOpenSession();
-    const body = bodyOf(await handler({ session: "x" }));
-    // No unknown-engine code — it went straight to the registry (sentinel throw).
-    expect(body.code).toBeUndefined();
+    for (const profile of bad) {
+      const body = bodyOf(await handler({ session: "x", profile }));
+      expect(body.ok, JSON.stringify(profile)).toBe(false);
+      expect(body.code).toBe("invalid-name");
+      expect(String(body.error)).toMatch(/^invalid-name: profile /);
+    }
+  });
+
+  it("refuses a session id that is not a plain name before reaching the registry", async () => {
+    const { handler } = captureOpenSession();
+    for (const session of bad) {
+      const body = bodyOf(await handler({ session }));
+      expect(body.code, JSON.stringify(session)).toBe("invalid-name");
+      expect(String(body.error)).toMatch(/^invalid-name: session id /);
+    }
+  });
+
+  it("rejects the same names at the schema, and accepts plain ones", () => {
+    const { def } = captureOpenSession();
+    const schema = z.object(def.inputSchema ?? {});
+    for (const name of bad) {
+      expect(schema.safeParse({ session: "x", profile: name }).success).toBe(false);
+      expect(schema.safeParse({ session: name }).success).toBe(false);
+    }
+    expect(schema.safeParse({ session: "agent-a", profile: "work_2.0" }).success).toBe(true);
+  });
+
+  it("lets a plain profile name through to the registry", async () => {
+    const { handler } = captureOpenSession();
+    const body = bodyOf(await handler({ session: "x", profile: "work" }));
     expect(String(body.error)).toContain("registry.get must not be reached");
   });
 });
@@ -156,15 +187,5 @@ describe("list_sessions — degrades per session, never loses the listing", () =
     // The dead tab degrades in place: url and pages are null, the row survives.
     expect(rows[1]).toMatchObject({ url: null, pages: null });
     expect(rows[2]).toMatchObject({ url: "https://b.test/two", pages: 1 });
-  });
-
-  it("survives every session being gone (no row, no throw)", async () => {
-    const handler = captureListSessions([
-      entryWithPage("gone-1", "gone"),
-      entryWithPage("gone-2", "gone"),
-    ]);
-    const rows = bodyOf(await handler({})).sessions as Array<Record<string, unknown>>;
-    expect(rows).toHaveLength(2);
-    for (const row of rows) expect(row).toMatchObject({ url: null, pages: null });
   });
 });

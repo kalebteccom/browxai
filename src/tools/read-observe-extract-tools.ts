@@ -236,7 +236,7 @@ export function registerReadObserveExtractTools(host: ToolHost): void {
         'Scope to a `ref` (registered) or `scope` (CSS selector); both absent = whole page. Invalid scope (no matches) → structured failure, not empty object. The `mode` arg is RETIRED as of v0.3.2 — deterministic is the only supported path; passing `mode:"llm-assisted"` is tolerated for back-compat (treated as deterministic, emits a one-shot warn) but the typed SDK no longer exposes the field. Read-only.',
       inputSchema: {
         schema: z
-          .record(z.unknown())
+          .record(z.string(), z.unknown())
           .describe(
             "JSON-schema-flavoured shape (object/array/string/number/boolean; `properties` for objects, `items` for arrays). `x-browx-source.selector` (raw CSS) per-property overrides the implicit name-as-query rule. (`x-browx-source.query` is RETIRED in v0.3.3 — tolerated with warn + partialMisses entry.) `required:true` causes a miss to fail-emit; `default` supplies an optional-miss fallback.",
           ),

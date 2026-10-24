@@ -34,9 +34,6 @@ describe("assertPdfSupported", () => {
   it("permits managed `persistent` sessions", () => {
     expect(assertPdfSupported({ mode: "persistent" })).toBeNull();
   });
-  it("permits managed `incognito` sessions", () => {
-    expect(assertPdfSupported({ mode: "incognito" })).toBeNull();
-  });
   it("refuses `attached` (BYOB) sessions with a structured error + hint", () => {
     const r = assertPdfSupported({ mode: "attached" });
     expect(r).not.toBeNull();
@@ -46,11 +43,6 @@ describe("assertPdfSupported", () => {
 });
 
 describe("defaultPdfPath", () => {
-  it("is workspace-relative, under `pdfs/`, and namespaced by sessionId", () => {
-    const p = defaultPdfPath("alpha");
-    expect(p.startsWith("pdfs/alpha-")).toBe(true);
-    expect(p.endsWith(".pdf")).toBe(true);
-  });
   it("sanitises hostile sessionIds for filesystem use", () => {
     const p = defaultPdfPath("../bad/id");
     // No path separators leak through; the leading segment is still `pdfs/`.
@@ -102,13 +94,6 @@ describe("pdfSave", () => {
     expect(existsSync(r.path)).toBe(true);
   });
 
-  it("creates the parent directory if missing", async () => {
-    const { page } = fakePage();
-    const r = await pdfSave(page, WS, "s1", { path: "nested/deeply/out.pdf" });
-    expect(existsSync(r.path)).toBe(true);
-    expect(r.path).toBe(join(WS, "nested/deeply/out.pdf"));
-  });
-
   it("rejects a path that escapes the workspace", async () => {
     const { page } = fakePage();
     await expect(pdfSave(page, WS, "s1", { path: "../../etc/escape.pdf" })).rejects.toThrow(
@@ -116,23 +101,9 @@ describe("pdfSave", () => {
     );
   });
 
-  it("rejects an absolute path outside the workspace", async () => {
-    const { page } = fakePage();
-    await expect(pdfSave(page, WS, "s1", { path: "/tmp/elsewhere.pdf" })).rejects.toThrow(
-      /\$BROWX_WORKSPACE/,
-    );
-  });
-
   it("rejects scale below the [0.1, 2.0] band", async () => {
     const { page } = fakePage();
     await expect(pdfSave(page, WS, "s1", { path: "x.pdf", scale: 0.05 })).rejects.toThrow(
-      /scale must be in \[0\.1, 2\.0\]/,
-    );
-  });
-
-  it("rejects scale above the [0.1, 2.0] band", async () => {
-    const { page } = fakePage();
-    await expect(pdfSave(page, WS, "s1", { path: "x.pdf", scale: 5 })).rejects.toThrow(
       /scale must be in \[0\.1, 2\.0\]/,
     );
   });

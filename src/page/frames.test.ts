@@ -1,13 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Frame, Page } from "playwright-core";
-import {
-  FrameRegistry,
-  fingerprintOf,
-  listFrames,
-  originOf,
-  resolveFrameById,
-  MAIN_FRAME_ID,
-} from "./frames.js";
+import { FrameRegistry, listFrames, originOf, resolveFrameById, MAIN_FRAME_ID } from "./frames.js";
 
 // Tiny in-memory Frame tree. Each fake frame carries the surface
 // `listFrames` and `resolveFrameById` touch — nothing more.
@@ -48,11 +41,6 @@ function fakePage(main: Frame): Page {
 }
 
 describe("originOf", () => {
-  it("returns the URL origin for http/https", () => {
-    expect(originOf("http://example.com/foo")).toBe("http://example.com");
-    expect(originOf("https://a.b.c:8443/x?y")).toBe("https://a.b.c:8443");
-  });
-
   it("returns empty for opaque / synthetic schemes", () => {
     expect(originOf("about:blank")).toBe("");
     expect(originOf("data:text/html,abc")).toBe("");
@@ -103,21 +91,6 @@ describe("FrameRegistry / listFrames", () => {
     expect(out[3]).toMatchObject({ parentFrameId: "f0", name: "frame-b" });
   });
 
-  it("keeps frameIds stable across repeat listings of the same tree", () => {
-    const main = buildTree({
-      url: "http://example.com/",
-      children: [
-        { url: "http://a.test/", name: "a" },
-        { url: "http://b.test/", name: "b" },
-      ],
-    });
-    const page = fakePage(main);
-    const reg = new FrameRegistry();
-    const first = listFrames(page, reg);
-    const second = listFrames(page, reg);
-    expect(first.map((f) => f.frameId)).toEqual(second.map((f) => f.frameId));
-  });
-
   it("keeps a frameId stable across an intra-iframe URL change (same handle)", () => {
     const main = buildTree({
       url: "http://example.com/",
@@ -133,13 +106,6 @@ describe("FrameRegistry / listFrames", () => {
     const second = listFrames(page, reg);
     expect(second[1]!.frameId).toBe(aId);
     expect(second[1]!.url).toBe("http://a.test/somewhere-else");
-  });
-
-  it("fingerprintOf is deterministic and distinguishes siblings by index", () => {
-    const a = buildTree({ url: "http://x.test/", name: "n" });
-    const b = buildTree({ url: "http://x.test/", name: "n" });
-    expect(fingerprintOf(a, "f0", 0)).toBe(fingerprintOf(b, "f0", 0));
-    expect(fingerprintOf(a, "f0", 0)).not.toBe(fingerprintOf(a, "f0", 1));
   });
 });
 

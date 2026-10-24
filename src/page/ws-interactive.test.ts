@@ -80,14 +80,6 @@ describe("WsInteractiveRegistry.install", () => {
     expect(initScripts[0]).toContain("__browxWs");
     expect(initScripts[0]).toBe(WS_PAGE_SCRIPT);
   });
-
-  it("also re-injects into the current document via evaluate (script source)", async () => {
-    const reg = new WsInteractiveRegistry();
-    const { page, evaluates } = fakePage();
-    await reg.install(page);
-    // One evaluate call for the re-injection.
-    expect(evaluates).toHaveLength(1);
-  });
 });
 
 describe("WsInteractiveRegistry.send", () => {
@@ -100,29 +92,9 @@ describe("WsInteractiveRegistry.send", () => {
     const r = await reg.send(f.page, { wsId: "ws-1", message: "hello" });
     expect(r).toEqual({ ok: true, wsId: "ws-1", url: "wss://x/socket", bytes: 5 });
   });
-
-  it("propagates the page-side ok:false (no such id)", async () => {
-    const reg = new WsInteractiveRegistry();
-    const f = fakePage();
-    f.enqueueResponse(() => undefined);
-    f.enqueueResponse(() => ({ ok: false, error: "no socket with id ws-99" }));
-    const r = await reg.send(f.page, { wsId: "ws-99", message: "x" });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/no socket/);
-    expect(r.wsId).toBe("ws-99");
-  });
 });
 
 describe("WsInteractiveRegistry.addInterceptor", () => {
-  it("records pattern + mode and surfaces it on list()", async () => {
-    const reg = new WsInteractiveRegistry();
-    const f = fakePage();
-    const r = await reg.addInterceptor(f.page, { pattern: "wss://x/**", response: "drop" });
-    expect(r.key).toBe("wss://x/**");
-    expect(r.active).toEqual(["wss://x/**"]);
-    expect(reg.list()).toEqual(["wss://x/**"]);
-  });
-
   it("encodes echo / drop / replace into the evaluate arg", async () => {
     const reg = new WsInteractiveRegistry();
     const f = fakePage();
@@ -179,13 +151,6 @@ describe("WsInteractiveRegistry.removeInterceptor", () => {
     const r = await reg.removeInterceptor(f.page, {});
     expect(r.removed.sort()).toEqual(["a", "b"]);
     expect(r.active).toEqual([]);
-  });
-
-  it("removing an unknown pattern returns an empty removed list", async () => {
-    const reg = new WsInteractiveRegistry();
-    const f = fakePage();
-    const r = await reg.removeInterceptor(f.page, { pattern: "never-added" });
-    expect(r.removed).toEqual([]);
   });
 });
 

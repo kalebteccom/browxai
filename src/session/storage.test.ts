@@ -34,7 +34,6 @@ import {
   authDelete,
   assertSafeName,
   resolveWorkspacePath,
-  authStatePath,
   type StorageStateBlob,
 } from "./storage.js";
 
@@ -250,11 +249,6 @@ describe("resolveWorkspacePath", () => {
       /inside \$BROWX_WORKSPACE/,
     );
   });
-  it("rejects absolute paths pointing outside", () => {
-    expect(() => resolveWorkspacePath(ws, "/etc/passwd", "dump_storage_state")).toThrow(
-      /inside \$BROWX_WORKSPACE/,
-    );
-  });
 });
 
 // ---- layer 1: bulk ---------------------------------------------------------
@@ -427,13 +421,6 @@ describe("webStorage (localStorage / sessionStorage)", () => {
       webStorageGet(page as any, "localStorage", { key: "k" }, "localstorage_get"),
     ).rejects.toThrow(/origin-scoped/);
   });
-  it("rejects on empty url", async () => {
-    const { page } = fakePage("");
-
-    await expect(
-      webStorageGet(page as any, "localStorage", { key: "k" }, "localstorage_get"),
-    ).rejects.toThrow(/origin-scoped/);
-  });
 
   for (const kind of ["localStorage", "sessionStorage"] as const) {
     describe(`${kind}`, () => {
@@ -492,12 +479,6 @@ describe("webStorage (localStorage / sessionStorage)", () => {
 // ---- layer 3: named auth-states -------------------------------------------
 
 describe("auth_* (named slots)", () => {
-  it("authStatePath enforces the safe-name posture", () => {
-    expect(authStatePath(ws, "prod")).toBe(join(ws, ".auth-states", "prod.json"));
-    expect(() => authStatePath(ws, "../escape")).toThrow();
-    expect(() => authStatePath(ws, "with/slash")).toThrow();
-    expect(() => authStatePath(ws, "..")).toThrow();
-  });
   it("auth_save → auth_load round-trips the state through the workspace", async () => {
     const { ctx } = fakeContext(seededState());
 

@@ -55,13 +55,13 @@ single-session callers need to know none of this.
 
 ### Managing sessions
 
-- `open_session({ session, mode?, profile?, channel?, backgroundThrottling?, device?, viewport?, har?, hars? })`
+- `open_session({ session, mode?, engine?, profile?, channel?, backgroundThrottling?, device?, viewport?, har?, hars? })`
   eagerly creates an id. Re-opening a live id is an error.
 - `close_session({ session })` tears one down.
 - `close_sessions({ prefix?, all?, idleMs? })` is the bulk reap primitive for
   multi-agent cleanup. Selectors AND together, and at least one is required so
   you cannot accidentally close nothing or everything.
-- `list_sessions()` returns `[{ id, mode, url, pages, openedAt }]`.
+- `list_sessions()` returns `[{ id, mode, engine, url, pages, openedAt }]`.
 
 ## Session modes
 
@@ -77,29 +77,38 @@ names no `profile` runs on the workspace's default profile, whatever its id, and
 browser at a time, so a second live session on the same profile is refused with
 `profile-in-use`, naming the profile and the session that holds it. Give each
 session its own `profile`, or use `incognito`, when two sessions need two
-identities. (Before this default, an id other than `default` got its own
-`profiles/<id>` directory.)
+identities.
 
 ## The MCP-restart gotcha
 
-In `persistent` and `incognito` modes, browxai spawns Chromium as a child
+In `persistent` and `incognito` modes, browxai spawns Chrome as a child
 process of the MCP server. When the MCP client restarts the server, for a
 config edit, a code reload, or any other reason, that Chrome child dies with
 it and any live page state is gone. A stored ref that pointed at a now-dead
 page resolves to `about:blank` or a fresh document.
 
 If you need page state to survive server restarts, run Chrome yourself and
-attach to it:
+attach to it. `browxai chrome start` opens the installed Chrome on the
+workspace's default profile with a debugging port (9222 unless `--port` says
+otherwise):
 
 ```bash
-google-chrome \
-  --remote-debugging-port=9222 \
-  --user-data-dir="$BROWX_WORKSPACE/byob-profile"
+browxai chrome start
 ```
+
+Then start the browxai server with the endpoint set, and `byob-attach` added to
+the capability list next to the defaults:
 
 ```bash
 BROWX_ATTACH_CDP=http://127.0.0.1:9222
+BROWX_CAPABILITIES=read,navigation,action,human,byob-attach
 ```
+
+Without `byob-attach` every attached session is refused, naming the
+capability. `browxai init <workspace>` writes an MCP config with a
+`browxai-attached` entry that already sets both. A profile is open in one Chrome at a time, so
+quit any other Chrome on it first, or pass `--profile NAME`. Stop the Chrome
+with `browxai chrome stop`.
 
 An attached Chrome is not owned by browxai: it is never closed on shutdown and
 it survives browxai restarts cleanly.
@@ -124,7 +133,7 @@ Two launch-time knobs on a chromium session:
   Chrome's own throttling, because reproducing a background-lifecycle bug needs
   a genuinely throttled tab.
 
-Both are launch-time, so an attached session ignores them — pass
+Both are launch-time, so an attached session ignores them. Pass
 `--disable-background-throttling` to `browxai chrome start` instead.
 
 ## Device and viewport
@@ -146,5 +155,5 @@ otherwise deadlock a headless context or silently change app state: dialogs
 (`alert` / `confirm` / `prompt`), permissions (camera, geolocation, and more),
 the `Notification` constructor, and File System Access pickers. Each defaults
 to a `raise` posture, meaning the event is handled so the page does not hang,
-but the next result reports it rather than letting it pass silently. The
+and the next result reports it. The
 [tool reference](/reference/tool-reference/) documents every policy mode.

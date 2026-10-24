@@ -193,13 +193,4 @@ describe("serialise — Chromium's text and layout leaves", () => {
     expect(lines[1]).toBe('  heading "Section" [ref=e2]');
     expect(lines[2]).toBe('  button "Go" [ref=e4]');
   });
-
-  it("collapses a chain of suppressed wrappers to a single level", () => {
-    const tree: A11yNode = node("WebArea", "X", "e1", [
-      node("generic", undefined, "e2", [
-        node("none", undefined, "e3", [node("StaticText", "hi", "e4", [node("link", "Go", "e5")])]),
-      ]),
-    ]);
-    expect(serialise(tree).split("\n")[1]).toBe('  link "Go" [ref=e5]');
-  });
 });

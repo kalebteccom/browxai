@@ -30,7 +30,7 @@ Simulators, emulators and Electron only. There is no real-device lane on either 
 
 A task rarely stays inside the tab, so browxai reaches a short way onto the host machine. Each reach sits behind its own capability, and none of them is in the default set (`read`, `navigation`, `action`, `human`):
 
-- **The real OS clipboard** (`clipboard`). A copy or cut writes through to `pbcopy` on macOS or `xclip` on Linux, at the moment of the command and never in the background. It is write-only: browxai never reads the OS clipboard back into a session, so a session cannot pick up what you or another session put there.
+- **The real OS clipboard** (`clipboard`). A copy or cut writes through to `pbcopy` on macOS, `clip` on Windows or `xclip` on Linux, at the moment of the command and never in the background. It is write-only: browxai never reads the OS clipboard back into a session, so a session cannot pick up what you or another session put there.
 - **Your password manager** (`credentials`). browxai shells out to 1Password, Bitwarden, LastPass or `oathtool` for a username and a TOTP code, with fixed argv and no shell interpolation. The password is never handed to the agent in cleartext; it is registered under an alias the runtime substitutes at dispatch.
 - **A workspace on disk** (`file-io`). File reads and writes are rooted at `$BROWX_WORKSPACE` and any path escaping that root is rejected. Scope is that one directory.
 - **A phone over USB.** Device discovery and port forwarding run `adb devices` and `adb forward`, and nothing else.
@@ -54,7 +54,7 @@ That is the whole of the host reach: three capabilities and adb. browxai has no 
 - **Model-agnostic.** It works with any MCP client (Claude, Codex, …), so nothing here ties you to one model.
 - **Engine-agnostic.** The same tools drive Chromium / Firefox / WebKit / Android Chrome / Safari / a desktop Electron app, each over the protocol that fits it (CDP, WebDriver BiDi, safaridriver), and the two native-app engines over UiAutomator and XCUITest. Pick with `--engine` / `BROWX_ENGINE`; the default is Chromium. Coverage is uneven and the gaps are named: navigation, actions, snapshot/find, screenshots and storage work across the browsers, while the CDP-deep family (tracing, heap, coverage, network interception) is Chromium-only and refuses elsewhere with an explicit `engine:` reason. A native session refuses more, starting with `eval_js` and the whole network family.
 - **Token-efficient.** `snapshot()` returns a compact accessibility tree with stable element refs, not a DOM dump; results are scoped, paginated, and budgeted.
-- **Safe by default.** Capability-gated tools, an origin allow/blocklist, confirmation hooks, and a hard per-call deadline. The dangerous surface (arbitrary JS, full response bodies, OS clipboard, password-manager lookups, workspace file IO, network mocking, attaching to your real Chrome) is off until you opt in.
+- **Safe by default.** Capability-gated tools, an origin allow/blocklist, confirmation hooks, and a hard per-call deadline. The dangerous surface (arbitrary JS, full response bodies, OS clipboard, password-manager lookups, workspace file IO, attaching to your real Chrome) is off until you opt in.
 - **Reaches past the browser, on your say-so.** The OS clipboard, your password manager, a workspace directory, a USB-attached phone, a native app on an emulator and a running Electron app are all in scope, each behind a capability that starts off.
 - **Owns the full session lifecycle.** Managed profiles, BYOB attach, and sessions that can be authenticated, headed, or headless.
 
@@ -75,10 +75,15 @@ Chromium's own sandbox still isolates _page_ content the whole time, which is th
 
 ## Install
 
+Needs Node 22 or later.
+
 ```bash
 npm install -g browxai
-npx playwright-core install chromium    # one-time, ~150 MB
+browxai doctor                                # checks the environment and your setup
+npx playwright-core@1.64.1 install chromium   # optional, ~150 MB: the fallback when Chrome is missing
 ```
+
+browxai launches the Google Chrome already installed on the machine, on one default profile per workspace (`<workspace>/profile`), so logins carry over between sessions. When there is no Chrome it falls back to Playwright's bundled Chromium. `browxai doctor` fails only when neither browser is present. Firefox and WebKit sessions use their own Playwright builds (`npx playwright-core@1.64.1 install firefox webkit`).
 
 Wire it into an MCP client over the stdio transport, e.g. in an `.mcp.json`:
 
@@ -90,7 +95,11 @@ Wire it into an MCP client over the stdio transport, e.g. in an `.mcp.json`:
 }
 ```
 
-That's it. Your agent now has a browser. For drop-in setup per harness, see [Harness setup](#harness-setup) below.
+No global install? Use `{ "command": "npx", "args": ["-y", "browxai"] }` as the entry instead.
+
+Restart the client, then ask your agent to open a page and describe it. A Chrome window opens (set `BROWX_HEADLESS=1` or `true` for none) and the agent works through `navigate`, `snapshot`, `find` and `click`. Tools that need an off-by-default capability, such as `eval_js`, answer with an error that names the capability until you enable it. `BROWX_CAPABILITIES` replaces the default set, so list the defaults too: `read,navigation,action,human,eval`.
+
+browxai does not defeat or spoof bot detection, and it cannot clear a challenge page for you. `browxai chrome login` opens the same Chrome profile with nothing attached, so you can clear the challenge and sign in by hand: see [Sites behind bot protection](https://browxai.com/guides/sites-behind-bot-protection/). For drop-in setup per harness, see [Harness setup](#harness-setup) below.
 
 ## SDK (programmatic surface)
 

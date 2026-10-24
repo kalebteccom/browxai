@@ -101,7 +101,7 @@ a fresh snapshot after every click to find out what happened.
 
 ## Verifying
 
-For checks rather than changes, use the read tools: `text_search`, `inspect`,
+To check without changing anything, use the read tools: `text_search`, `inspect`,
 the `verify_*` family (`verify_visible`, `verify_text`, `verify_value`,
 `verify_count`, `verify_attribute`, `verify_predicate`), and `console_read` /
 `network_read`.

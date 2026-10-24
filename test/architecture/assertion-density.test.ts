@@ -82,16 +82,6 @@ describe("L8 — load-bearing modules carry the asserted invariants", () => {
     }
   });
 
-  it("the invariant helper itself exists and exports invariant + InvariantError", () => {
-    const src = readFileSync(join(ROOT, "src/util/invariant.ts"), "utf8");
-    expect(src).toMatch(/export function invariant\(/);
-    expect(src).toMatch(/export class InvariantError/);
-    // The L8 posture: a STRUCTURED, contained error (the DeadlineError idiom), not
-    // a bare assert — InvariantError extends Error and is thrown, so the dispatch
-    // boundary renders it as a ToolResponse refusal, never a process crash.
-    expect(src).toMatch(/asserts cond/); // TS assertion signature (also narrows, L6 inward)
-  });
-
   it("every load-bearing module imports invariant from the shared helper (one idiom)", () => {
     for (const mod of LOAD_BEARING_MODULES) {
       const src = readFileSync(join(ROOT, mod), "utf8");

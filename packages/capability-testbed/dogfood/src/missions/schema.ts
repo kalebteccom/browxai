@@ -4,8 +4,6 @@ import type { Capability } from "../../../src/harness/types.js";
 import "../../../src/server/pages/index.js";
 import { surfaces } from "../../../src/server/registry.js";
 
-export type SurfaceId = ReturnType<typeof surfaces>[number]["id"];
-
 export interface DogfoodMission {
   readonly id: string;
   readonly capabilityTags: readonly Capability[];

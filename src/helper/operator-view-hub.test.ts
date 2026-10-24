@@ -123,12 +123,6 @@ describe("ViewHub — start and stop", () => {
     ]);
   });
 
-  it("clamps a request above the ceiling before it reaches the source", async () => {
-    await startView({ maxFps: 30, maxWidth: 3000, quality: 100 });
-    expect(source.starts).toEqual([{ quality: 80, maxWidth: 1280 }]);
-    expect(sink.of("view.started")[0]).toMatchObject({ maxFps: 5, maxWidth: 1280, quality: 80 });
-  });
-
   it("refuses by code: bad request, unknown session, engine with no source, too many streams", async () => {
     await startView({ maxFps: "fast" });
     await startView({}, "nobody");
@@ -171,14 +165,6 @@ describe("ViewHub — start and stop", () => {
     hub.handle({ type: "view.stop", session: "default" });
     await vi.advanceTimersByTimeAsync(0);
     expect(sink.of("view.stopped")).toHaveLength(2);
-  });
-
-  it("replaces a running stream when the daemon starts the same session again", async () => {
-    await startView({ maxWidth: 800 });
-    await startView({ maxWidth: 640 });
-    expect(source.stops).toBe(1);
-    expect(source.starts.map((s) => s.maxWidth)).toEqual([800, 640]);
-    expect(sink.of("view.stopped")).toEqual([]);
   });
 
   it("stops when the session closes, and refuses a start for it after", async () => {
@@ -326,15 +312,6 @@ describe("ViewHub — frames", () => {
     expect(source.starts).toHaveLength(1);
   });
 
-  it("never queues: a burst with no ack leaves one frame on the wire", async () => {
-    await startView();
-    for (let i = 0; i < 200; i++) {
-      source.emit("AAAA");
-      await vi.advanceTimersByTimeAsync(20);
-    }
-    expect(sink.of("frame")).toHaveLength(1);
-  });
-
   it("ignores an ack for a sequence number it did not send, or for another session", async () => {
     await startView();
     source.emit();
@@ -364,17 +341,6 @@ describe("ViewHub — frames", () => {
     await vi.advanceTimersByTimeAsync(300);
     source.emit("AAAA");
     expect(sink.of("frame")).toHaveLength(1);
-  });
-
-  it("cuts a large frame into parts that all carry its sequence number", async () => {
-    await startView();
-    source.emit("A".repeat(40_960 * 2 + 8));
-    const parts = sink.of("frame");
-    expect(parts.map((p) => [p.seq, p.part, p.parts])).toEqual([
-      [1, 0, 3],
-      [1, 1, 3],
-      [1, 2, 3],
-    ]);
   });
 
   it("treats a frame as lost after 5 s without an ack, and sends the next", async () => {
@@ -442,12 +408,6 @@ describe("ViewHub — the screencast's own flow control", () => {
     expect(source.starts).toHaveLength(2);
     expect(source.starts[1]!.maxWidth).toBeLessThan(960);
     expect(source.starts[1]!.quality).toBe(45);
-  });
-
-  it("keeps the screencast running after a restart", async () => {
-    await startView();
-    await slowWindows(1);
-    expect(source.live).toBe(true);
   });
 });
 

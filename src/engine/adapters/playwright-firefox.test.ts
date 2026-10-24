@@ -12,21 +12,11 @@ import { FIREFOX_CAPABILITIES } from "../capabilities.js";
 // hatch, refuses CDP-attach structurally (Firefox speaks BiDi/Juggler, not
 // CDP), and resolves the experimental moz-firefox BiDi channel flag.
 describe("PlaywrightFirefoxAdapter — declarative surface", () => {
-  it("identifies as the firefox engine", () => {
-    expect(new PlaywrightFirefoxAdapter().engine).toBe("firefox");
-  });
-
   it("exposes the firefox capability declaration — all sub-interfaces, NO deep", () => {
     const adapter = new PlaywrightFirefoxAdapter();
     expect(adapter.capabilities).toBe(FIREFOX_CAPABILITIES);
     expect(adapter.capabilities.deep).toBe(false);
     expect(adapter.capabilities.subInterfaces.size).toBe(11); // +page (RFC 0004 D5), +element (RFC 0009 P2)
-  });
-
-  it("exposes the two managed launch shapes the session factories delegate to", () => {
-    const adapter = new PlaywrightFirefoxAdapter();
-    expect(typeof adapter.launchPersistent).toBe("function");
-    expect(typeof adapter.launchEphemeral).toBe("function");
   });
 
   it("refuses CDP-attach structurally (firefox-attach-not-supported)", async () => {

@@ -4,14 +4,15 @@ browxai has three documentation surfaces, and each one makes a different promise
 
 ## `docs/`: the public adopter contract
 
-VitePress-published to GitHub Pages, and the source of truth for what browxai promises its adopters.
+Published to browxai.com by Netlify via the Astro + Starlight site in `website/`, and the source of truth for what browxai promises its adopters.
 
 - `docs/tool-reference.md`: every public tool, with input / output shape, capability, ActionResult fields and defaults. Its stability & semver section is the canonical pre-1.0 contract.
 - `docs/threat-model.md`: per-capability security posture, threat rows, egress model.
 - `docs/plugin-authoring.md`: the plugin manifest contract.
-- `docs/plugins.md`: first-party plugin docs.
-- `docs/getting-started.md`: adopter onboarding path.
-- `docs/sdk.md`, `docs/byo-vision.md`, `docs/capabilities.md`: adjacent contracts.
+- `docs/plugins.md`, `docs/plugins-first-party.md`, `docs/plugin-governance.md`: plugin runtime, first-party plugin docs, review and trust tags.
+- `docs/security-best-practices-for-adopters.md`: hardening guidance.
+- `docs/agent-guidance.md`: the reach-for-this-not-that map, served to agents as plaintext only.
+- `website/src/content/docs/`: the hand-written site pages (getting started, concepts, guides).
 
 **Every public behavior change updates the relevant page in the same diff.** Stale public docs poison adopter integration.
 
@@ -21,7 +22,7 @@ Not published. Read by agents and contributors working _on_ browxai.
 
 Discipline lives in `agent-process/commit-discipline.md`, `code-quality.md`, `docs-impact.md` and `dist-rebuild-discipline.md`. Architecture rationale is in `architecture/repo-map.md`, `capability-posture-map.md` and this file. Captured lessons are in `page-side-functions/dom-export-trap.md`, `secrets-and-egress/network-body-and-secrets.md` and `plugin-runtime/lifecycle-and-namespacing.md`, and each of those exists because somebody already hit the problem once. Release process sits in `release-process/semver-clock.md` and `retired-registry-pattern.md`. Field reports are under `adopter-reports/` and `investigations/`, in date order, and several of the surface changes in this repo trace back to them.
 
-**VitePress excludes this subtree** via `srcExclude: ['ai-context/**', 'rfcs/**']`.
+**The site never publishes this subtree.** `website/scripts/doc-pipeline.mjs` syncs an allowlist of `docs/*.md` files, and `ai-context/` and `rfcs/` are not on it.
 
 ## Colocated `README.md`: internal contracts
 

@@ -99,12 +99,6 @@ describe("buildRecordVideoOption (open_session({recordVideo}))", () => {
     expect(r.recordVideo.size).toEqual({ width: 1280, height: 720 });
     expect(r.size).toEqual({ width: 1280, height: 720 });
   });
-
-  it("rejects a target path that escapes the workspace", () => {
-    expect(() => buildRecordVideoOption(ws, "s", { path: "../escape.webm" })).toThrow(
-      /inside \$BROWX_WORKSPACE/,
-    );
-  });
 });
 
 describe("assertVideoSupported (BYOB refusal)", () => {

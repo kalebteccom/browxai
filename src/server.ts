@@ -20,6 +20,7 @@ import {
   resolveCapabilities,
   resolveConfirmHooks,
   CAPABILITY_WARNINGS,
+  capabilitiesAssignment,
 } from "./util/capabilities.js";
 import type { PluginRecord } from "./plugin/types.js";
 import { resolveOriginPolicy, describePolicy } from "./policy/origin.js";
@@ -134,26 +135,26 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const confirmHooks = resolveConfirmHooks(cfgEnv);
   const originPolicy = resolveOriginPolicy(cfgEnv);
   const isByob = !!opts.attachCdp;
-  log.info("browxai: policy", {
+  log.info("policy", {
     capabilities: [...caps.enabled],
     confirmHooks: [...confirmHooks],
     origins: describePolicy(originPolicy),
   });
-  for (const w of caps.warnings) log.warn(`browxai: ${w}`);
+  for (const w of caps.warnings) log.warn(w);
   if (configStore.readonly)
     log.info(
-      "browxai: BROWX_CONFIG_READONLY is set; set_config, reset_config and approve_actions are not registered",
+      "BROWX_CONFIG_READONLY is set; set_config, reset_config and approve_actions are not registered",
     );
   const loosened = configStore.policyAdjustments().filter((k) => k !== "capabilities");
   if (loosened.length)
     log.warn(
-      `browxai: the saved config asks for looser policy than the server's environment allows (${loosened.join(", ")}); ` +
+      `the saved config asks for looser policy than the server's environment allows (${loosened.join(", ")}); ` +
         "a saved layer can only tighten these keys, so the environment's values hold. See docs/threat-model.md.",
     );
   const droppedCaps = configStore.droppedCapabilities();
   if (droppedCaps.length)
     log.warn(
-      `browxai: the saved config names capabilities beyond BROWX_CAPABILITIES (${droppedCaps.join(", ")}); ` +
+      `the saved config names capabilities beyond BROWX_CAPABILITIES (${droppedCaps.join(", ")}); ` +
         "a saved list can only narrow the start-time set, so they stay off. Set them in BROWX_CAPABILITIES to enable them.",
     );
   // Credentials provider: resolved once at server start. The provider object
@@ -162,7 +163,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // failures (missing CLI binary, missing seed, etc.) surface as structured
   // refusals on the tool result — never crash startup.
   const credentialsResolved = resolveCredentialsProvider(cfgEnv);
-  for (const w of credentialsResolved.config.warnings) log.warn(`browxai: ${w}`);
+  for (const w of credentialsResolved.config.warnings) log.warn(w);
   // diagnostics recorder gate + retention window. Resolved up front so both the
   // loud one-time warning (rendered from the table below) and the recorder
   // construction read the same values; the `enabled` flag gates every actual
@@ -184,7 +185,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
             diagnosticsRetentionDays: diagRetentionDays,
           })
         : message;
-    log.warn(`browxai: ${text}`);
+    log.warn(text);
   }
   if (diagnosticsEnabled) {
     // Create the diagnostics root + run the retention sweep up-front so a
@@ -207,15 +208,16 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   });
   if (resolvedConfig.disableWebSecurity)
     log.warn(
-      "browxai: disableWebSecurity is ENABLED — managed/incognito sessions launch with SOP/CORS OFF (--disable-web-security). Use only against test/dev targets.",
+      "disableWebSecurity is ENABLED — managed/incognito sessions launch with SOP/CORS OFF (--disable-web-security). Use only against test/dev targets.",
     );
   if (process.env.BROWX_EXTRACT_STRICT === "1")
     log.warn(
-      "browxai: BROWX_EXTRACT_STRICT=1 — extract() unknown-`x-browx-source`-key warnings are PROMOTED to hard `ok:false` invalid-schema rejections (v0.2.2's partialMisses-only behavior is bypassed). The integer→number coerce and array-`selector`-as-`collection` alias are NOT promoted; only typo-like unknown-key diagnostics are.",
+      "BROWX_EXTRACT_STRICT=1 — extract() unknown-`x-browx-source`-key warnings are PROMOTED to hard `ok:false` invalid-schema rejections (v0.2.2's partialMisses-only behavior is bypassed). The integer→number coerce and array-`selector`-as-`collection` alias are NOT promoted; only typo-like unknown-key diagnostics are.",
     );
   if (isByob && !caps.enabled.has("byob-attach")) {
     log.warn(
-      "browxai: BROWX_ATTACH_CDP is set but `byob-attach` capability is disabled. Add `byob-attach` to BROWX_CAPABILITIES to use it.",
+      "BROWX_ATTACH_CDP is set but the `byob-attach` capability is disabled, so every attached session will be refused. Add `byob-attach` to BROWX_CAPABILITIES, keeping the defaults in the list " +
+        `(${capabilitiesAssignment("byob-attach")}).`,
     );
   }
 
@@ -338,7 +340,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     start: async () => {
       const transport = new StdioServerTransport();
       await server.connect(transport);
-      log.info("browxai: MCP server up on stdio");
+      log.info("MCP server up on stdio");
     },
     shutdown: async () => {
       await registry.closeAll();

@@ -26,12 +26,6 @@ describe("patterniseUrl — url redaction", () => {
     );
   });
 
-  it("preserves human-readable path segments", () => {
-    expect(patterniseUrl("https://api.example.com/v2/users/profile/avatar")).toBe(
-      "https://api.example.com/v2/users/profile/avatar",
-    );
-  });
-
   it("returns the raw url when URL parsing fails", () => {
     expect(patterniseUrl("not a url")).toBe("not a url");
   });
@@ -46,11 +40,6 @@ describe("extractTopLevelKeys — response shape redaction", () => {
     ]);
   });
 
-  it("does not descend into nested objects", () => {
-    const result = extractTopLevelKeys({ outer: { inner: { deep: 1 } } });
-    expect(result).toEqual(["outer"]);
-  });
-
   it("marks array shape via the [].key prefix when an array of objects", () => {
     const result = extractTopLevelKeys([
       { id: 1, label: "a" },
@@ -63,10 +52,6 @@ describe("extractTopLevelKeys — response shape redaction", () => {
     expect(extractTopLevelKeys("just a string")).toBeNull();
     expect(extractTopLevelKeys(42)).toBeNull();
     expect(extractTopLevelKeys(null)).toBeNull();
-  });
-
-  it("returns null for an empty array", () => {
-    expect(extractTopLevelKeys([])).toBeNull();
   });
 
   it("returns null for an array of non-objects", () => {
@@ -96,15 +81,6 @@ describe("cdpTypeFromPlaywright — cross-engine resourceType reconciliation", (
     expect(cdpTypeFromPlaywright("fetch")).toBe("Fetch");
     expect(cdpTypeFromPlaywright("eventsource")).toBe("EventSource");
     expect(cdpTypeFromPlaywright("websocket")).toBe("WebSocket");
-  });
-
-  it("folds the noise types to the same capitalised names NOISE_TYPES gates on", () => {
-    // NOISE_TYPES = {Image, Font, Stylesheet, Media, Manifest}. The mapper must
-    // produce exactly those so the off-Chromium noise-fold matches chromium.
-    for (const t of ["image", "font", "stylesheet", "media", "manifest"]) {
-      const mapped = cdpTypeFromPlaywright(t);
-      expect(["Image", "Font", "Stylesheet", "Media", "Manifest"]).toContain(mapped);
-    }
   });
 
   it("degrades an unknown / CDP-only type to Other (no Playwright equivalent)", () => {

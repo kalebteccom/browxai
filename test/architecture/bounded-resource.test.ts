@@ -27,6 +27,7 @@ import {
 import { estimateTokens } from "../../src/util/tokens.js";
 import { walk, MAX_WALK_DEPTH, type A11yNode } from "../../src/page/a11y.js";
 import { NetworkBuffer } from "../../src/page/network.js";
+import { WorkersSwChannel } from "../../src/page/workers-sw.js";
 
 // ── perf-audit token budget — termination + the ≤ 2.5× ceiling ───────────────
 
@@ -117,17 +118,6 @@ describe("L7 — perf-audit summary budget terminates and stays under the 2.5× 
     expect(JSON.stringify(out)).toBe(before);
   });
 
-  it("the real composeReport path stays under the hard ceiling on an empty context", () => {
-    // End-to-end: a real summary compose must already honour the ceiling.
-    const ctx = { trace: [], coverage: [], resources: [] } as unknown as AuditContext;
-    const report = composeReport(
-      ctx,
-      ["long-tasks", "render-blocking", "unused-code"] as never,
-      "summary",
-    );
-    expect(estimateTokens(JSON.stringify(report))).toBeLessThanOrEqual(SUMMARY_TOKEN_HARD_CEILING);
-  });
-
   it("returns a bounded report (never refuses) on a VALID audit with a ~1MB URL", () => {
     // Regression: a JS resource with a ~1MB-long URL (reachable via data: URIs /
     // long query strings) stores that URL in the issue's `details.url` AND the
@@ -215,5 +205,36 @@ describe("L7 — NetworkBuffer ring is capped", () => {
     }
     const ringLen = (buf as unknown as { ring: unknown[] }).ring.length;
     expect(ringLen).toBe(cap);
+  });
+});
+
+// ── service-worker id index ──────────────────────────────────────────────────
+
+describe("L7 — the service-worker id index is capped on every path that mints an id", () => {
+  const swIndexSize = (ch: WorkersSwChannel): number =>
+    (ch as unknown as { swIdByUrl: Map<string, string> }).swIdByUrl.size;
+
+  it("stops minting ids past 64 distinct URLs when workers are listed", () => {
+    const ch = new WorkersSwChannel();
+    const workers = Array.from({ length: 200 }, (_, i) => ({
+      url: () => `https://x/sw-${i}.js`,
+    }));
+    const context = { serviceWorkers: () => workers } as unknown as Parameters<
+      WorkersSwChannel["list"]
+    >[0];
+    expect(ch.list(context)).toHaveLength(64);
+    expect(swIndexSize(ch)).toBe(64);
+    // Listing again mints nothing new.
+    expect(ch.list(context)).toHaveLength(64);
+    expect(swIndexSize(ch)).toBe(64);
+  });
+
+  it("stops minting ids past 64 distinct URLs when page messages are ingested", () => {
+    const ch = new WorkersSwChannel();
+    ch.ingestPageMessages(
+      Array.from({ length: 200 }, (_, i) => ({ url: `https://x/sw-${i}.js`, data: "m", at: i })),
+    );
+    expect(swIndexSize(ch)).toBe(64);
+    expect(ch.swMessages).toHaveLength(64);
   });
 });

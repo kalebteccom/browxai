@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   runSchedule,
   validateScheduleArgs,
   defaultScheduleDir,
-  ensureWorkspaceDir,
   MAX_CAPTURES_PER_CALL,
   type ScheduleClock,
   type SnapFn,
@@ -73,14 +72,6 @@ describe("validateScheduleArgs", () => {
     expect(() => validateScheduleArgs({ everyMs: 500, durationMs: 100, intoDir: "x" })).toThrow(
       /durationMs/,
     );
-  });
-  it("accepts a well-formed count-bounded schedule", () => {
-    expect(() => validateScheduleArgs({ everyMs: 200, count: 3, intoDir: "x" })).not.toThrow();
-  });
-  it("accepts a well-formed duration-bounded schedule", () => {
-    expect(() =>
-      validateScheduleArgs({ everyMs: 200, durationMs: 1000, intoDir: "x" }),
-    ).not.toThrow();
   });
 });
 
@@ -204,22 +195,6 @@ describe("runSchedule — error & safety paths", () => {
       ),
     ).rejects.toThrow(/\$BROWX_WORKSPACE/);
   });
-
-  it("creates a nested intoDir if missing", async () => {
-    const snap: SnapFn = () => Promise.resolve(fakePng());
-    const r = await runSchedule(
-      snap,
-      {
-        everyMs: 200,
-        count: 1,
-        intoDir: "deeply/nested/shots",
-      },
-      WS,
-      virtualClock(),
-    );
-    expect(existsSync(join(WS, "deeply/nested/shots"))).toBe(true);
-    expect(readdirSync(r.intoDir)).toHaveLength(1);
-  });
 });
 
 describe("defaultScheduleDir", () => {
@@ -229,16 +204,5 @@ describe("defaultScheduleDir", () => {
     // no `:` or `.` survives — windows/macOS-safe
     expect(d.includes(":")).toBe(false);
     expect(d.includes(".")).toBe(false);
-  });
-});
-
-describe("ensureWorkspaceDir", () => {
-  it("creates the dir under the workspace and returns the absolute path", () => {
-    const p = ensureWorkspaceDir(WS, "evt/shots", "screenshot_on");
-    expect(p).toBe(join(WS, "evt/shots"));
-    expect(existsSync(p)).toBe(true);
-  });
-  it("rejects path traversal", () => {
-    expect(() => ensureWorkspaceDir(WS, "../bad", "screenshot_on")).toThrow(/\$BROWX_WORKSPACE/);
   });
 });

@@ -10,7 +10,7 @@ that stay on are bounded.
 For the full trust analysis, read the [threat model](/security/threat-model/).
 This page is the working summary.
 
-<div class="browx-posture not-content" role="img" aria-label="The safe-by-default capability posture. Four capabilities are on by default: read, navigation, action, and human. Every other capability, including eval, byob-attach, network-body, clipboard, file-io, secrets, extensions, credentials, stealth, captcha, device-emulation, canvas, diagnostics, self-approval, and human-gate-override, is off until you opt in at server start.">
+<div class="browx-posture not-content" role="img" aria-label="The safe-by-default capability posture. Four capabilities are on by default: read, navigation, action, and human. Every other capability, including eval, byob-attach, network-body, clipboard, file-io, secrets, extensions, credentials, stealth, captcha, device-emulation, canvas, diagnostics, replay, native-device, self-approval, human-gate-override, operator-channel, and live-view, is off until you opt in at server start.">
   <div class="browx-posture-zone is-on">
     <span class="browx-posture-head"><span class="dot"></span>on by default</span>
     <span class="browx-posture-note">read-only or bounded, always safe to run</span>
@@ -38,6 +38,8 @@ This page is the working summary.
       <span class="browx-cap is-off">device-emulation</span>
       <span class="browx-cap is-off">canvas</span>
       <span class="browx-cap is-off">diagnostics</span>
+      <span class="browx-cap is-off">replay</span>
+      <span class="browx-cap is-off">native-device</span>
       <span class="browx-cap is-off">self-approval</span>
       <span class="browx-cap is-off">human-gate-override</span>
       <span class="browx-cap is-off">operator-channel</span>
@@ -85,14 +87,28 @@ Off by default, each opted in deliberately:
   and frames go to the daemon's socket only. The agent can't start, stop or read
   it. Secret masking doesn't cover pixels: a secret that is visible on screen
   reaches the daemon as drawn.
-- `credentials`, `stealth`, `captcha`, `device-emulation`, `canvas`, and
-  `diagnostics` gate the remaining posture-broadening lanes. The
+- `native-device` gates the two native-app engines, `ios-app` and `android-app`,
+  which install and launch apps on an emulator or simulator and drive OS-level
+  input. `open_session` checks it before anything boots.
+- `replay` enables `.browx` session-replay capture: a DOM stream plus network and
+  console.
+- `captcha` enables `solve_captcha`, which sends a captcha to a third-party
+  solving service you configure (2Captcha or CapMonster). The API key, page URL
+  and site key leave the machine. browxai bundles no solver.
+- `stealth` loads an init script in every session that overrides
+  `navigator.webdriver`, `navigator.plugins`, `navigator.languages` and
+  `window.chrome`.
+- `credentials`, `device-emulation`, `canvas`, and `diagnostics` gate the
+  remaining posture-broadening lanes. The
   [threat model](/security/threat-model/) documents each one's rationale and
   trade-offs.
 
 Because capabilities resolve at server start, changing them means restarting
-the server. `BROWX_CAPABILITIES` is the ceiling: a `capabilities` list saved
-through `set_config` can narrow it and never widen it. Request only what the task in front of you needs: a scrape run
+the server. `BROWX_CAPABILITIES` holds the whole set. Setting it to `eval`
+leaves `eval` as the only capability, with no `click` and no `navigate`; write
+`read,navigation,action,human,eval` to add one to the default. It is also the
+ceiling: a `capabilities` list saved through `set_config` can narrow it and
+never widen it. Request only what the task in front of you needs: a scrape run
 wants `read` and `navigation`; nothing about scraping needs `eval` or
 `network-body`.
 

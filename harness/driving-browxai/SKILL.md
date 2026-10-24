@@ -69,9 +69,11 @@ not the page you asked for; `kind:"widget"` — the page is real but one control
 so in the error text, and none of the timeout playbook above applies: retrying,
 raising `timeoutMs`, and discarding the session all leave the gate in place.
 
-browxai reports challenges and does not solve them. Hand the session to a person
+browxai reports challenges and clears none itself. Hand the session to a person
 with `await_human`, who clears the gate in the live browser, then re-run the
-action. A proof-of-work interstitial usually clears itself in about a second —
+action. `solve_captcha` is a separate tool that forwards a captcha to a
+third-party service and only exists when the operator enabled the off-by-default
+`captcha` capability. A proof-of-work interstitial usually clears itself in about a second —
 re-check once before escalating.
 
 ## Recovering a wedged session: discard, don't repair

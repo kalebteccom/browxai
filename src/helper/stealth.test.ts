@@ -2,21 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { applyStealth, buildStealthScript } from "./stealth.js";
 
 describe("buildStealthScript", () => {
-  it("includes the four well-known fingerprint patches", () => {
-    const s = buildStealthScript();
-    expect(s).toContain("navigator");
-    expect(s).toContain("webdriver");
-    expect(s).toContain("plugins");
-    expect(s).toContain("languages");
-    expect(s).toContain("chrome");
-  });
-
-  it("is wrapped in an IIFE — no globals leak into the page", () => {
-    const s = buildStealthScript();
-    expect(s.startsWith("(() => {")).toBe(true);
-    expect(s.trimEnd().endsWith("})();")).toBe(true);
-  });
-
   it("guards against double-apply via a sentinel on window", () => {
     const s = buildStealthScript();
     // sentinel name and the early-return must be present

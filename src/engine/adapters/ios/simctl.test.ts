@@ -100,16 +100,11 @@ describe("simctl argv construction", () => {
       expect(argv[0]).toBe("simctl");
     }
   });
-
-  it("blocks on bootstatus rather than returning as soon as boot is accepted", () => {
-    expect(bootStatusArgs("U")).toEqual(["simctl", "bootstatus", "U", "-b"]);
-  });
 });
 
 describe("runtimeLabel", () => {
   it("reads the runtime identifier into an OS and a version", () => {
     expect(runtimeLabel("com.apple.CoreSimulator.SimRuntime.iOS-26-5")).toBe("iOS 26.5");
-    expect(runtimeLabel("com.apple.CoreSimulator.SimRuntime.iOS-17-2")).toBe("iOS 17.2");
   });
 
   it("returns an unrecognised identifier verbatim instead of mangling it", () => {

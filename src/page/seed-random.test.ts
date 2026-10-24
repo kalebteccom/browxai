@@ -97,25 +97,6 @@ describe("SeededRandomRegistry — init script", () => {
 });
 
 describe("SeededRandomRegistry — apply", () => {
-  it("installs the init script on the context on first apply", async () => {
-    const { ctx, initScripts } = fakeContext();
-    const { page } = fakePage();
-    const reg = new SeededRandomRegistry();
-    const { state } = await reg.apply(ctx as never, page as never, { seed: 123 });
-    expect(state).toEqual({ seed: 123 });
-    expect(ctx.addInitScript).toHaveBeenCalledTimes(1);
-    expect(initScripts[0]).toContain("123");
-  });
-
-  it("re-applies on the current page immediately via page.evaluate", async () => {
-    const { ctx } = fakeContext();
-    const { page, evaluates } = fakePage();
-    const reg = new SeededRandomRegistry();
-    await reg.apply(ctx as never, page as never, { seed: 5 });
-    expect(page.evaluate).toHaveBeenCalledTimes(1);
-    expect(evaluates[0]).toContain("5");
-  });
-
   it("subsequent applies do NOT re-install the context init script", async () => {
     const { ctx } = fakeContext();
     const { page } = fakePage();

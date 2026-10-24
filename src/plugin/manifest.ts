@@ -48,7 +48,6 @@ export const dependsOnEntrySchema = z.object({
     .string()
     .min(1, "dependsOn[].version: must be a non-empty semver range, e.g. '^1.0.0'"),
 });
-export type DependsOnEntry = z.infer<typeof dependsOnEntrySchema>;
 
 /**
  * The full plugin manifest, as embedded under `package.json#browxai`.

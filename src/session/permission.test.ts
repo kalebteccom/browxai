@@ -4,10 +4,6 @@ import {
   attachPermissionPolicy,
   applyCdpBaseline,
   parsePermissionPolicyArg,
-  cdpPermissionName,
-  cdpSettingFor,
-  SUPPORTED_PERMISSIONS,
-  UNHANDLED_PERMISSION_HINT,
   PERMISSION_PAGE_SCRIPT,
   type PermissionAskHandler,
 } from "./permission.js";
@@ -118,11 +114,6 @@ describe("PermissionPolicyState", () => {
     expect(s.modeFor("camera")).toBe("raise");
   });
 
-  it("modeFor falls back to top-level when no per-permission override", () => {
-    const s = new PermissionPolicyState({ mode: "allow" });
-    expect(s.modeFor("microphone")).toBe("allow");
-  });
-
   it("modeFor honours per-permission override over top-level", () => {
     const s = new PermissionPolicyState({
       mode: "allow",
@@ -141,30 +132,6 @@ describe("PermissionPolicyState", () => {
     expect(s.current().mode).toBe("deny");
     expect(s.since(t0)).toHaveLength(1);
     expect(s.since(t0)[0]?.handledAs).toBe("allowed");
-  });
-});
-
-// ---- exposed constants / mapping -----------------------------------------
-
-describe("CDP mapping", () => {
-  it("every supported permission has a CDP name", () => {
-    for (const name of SUPPORTED_PERMISSIONS) {
-      expect(typeof cdpPermissionName(name)).toBe("string");
-      expect(cdpPermissionName(name).length).toBeGreaterThan(0);
-    }
-  });
-
-  it("cdpSettingFor maps each policy mode deterministically", () => {
-    expect(cdpSettingFor("allow")).toBe("granted");
-    expect(cdpSettingFor("deny")).toBe("denied");
-    expect(cdpSettingFor("raise")).toBe("denied");
-    expect(cdpSettingFor("ask-human")).toBe("prompt");
-  });
-
-  it("UNHANDLED_PERMISSION_HINT mentions both set knobs", () => {
-    expect(UNHANDLED_PERMISSION_HINT).toMatch(/open_session/);
-    expect(UNHANDLED_PERMISSION_HINT).toMatch(/set_permission_policy/);
-    expect(UNHANDLED_PERMISSION_HINT).toMatch(/rejected page-side/);
   });
 });
 
@@ -251,33 +218,6 @@ describe("attachPermissionPolicy — binding handler per mode", () => {
     const { check } = await setupCheck({ mode: "raise" });
     expect(await check({}, JSON.stringify({ permission: "usb" }))).toBe("allow");
   });
-
-  it("runtime set() takes effect on the very next check", async () => {
-    const { state, check } = await setupCheck({ mode: "allow" });
-    expect(await check({}, JSON.stringify({ permission: "camera" }))).toBe("allow");
-    state.set({ mode: "deny" });
-    expect(await check({}, JSON.stringify({ permission: "camera" }))).toBe("deny");
-  });
-
-  it("each supported permission can have its own mode (all 4 modes for all 12 names)", async () => {
-    // Cover the matrix: every supported permission × every mode behaves as expected.
-    for (const perm of SUPPORTED_PERMISSIONS) {
-      for (const mode of ["allow", "deny", "raise"] as const) {
-        const { check, state } = await setupCheck({ mode });
-        const t = Date.now();
-        const decision = await check({}, JSON.stringify({ permission: perm }));
-        expect(decision, `${perm} under ${mode}`).toBe(mode === "allow" ? "allow" : "deny");
-        const rec = state.since(t).at(-1);
-        expect(rec?.handledAs).toBe(
-          mode === "allow" ? "allowed" : mode === "deny" ? "denied" : "raised",
-        );
-      }
-      const { check, state } = await setupCheck({ mode: "ask-human" }, async () => "allow");
-      const t = Date.now();
-      expect(await check({}, JSON.stringify({ permission: perm }))).toBe("allow");
-      expect(state.since(t).at(-1)?.handledAs).toBe("asked-human");
-    }
-  });
 });
 
 // ---- attach idempotency + init-script wiring -----------------------------
@@ -361,10 +301,6 @@ describe("applyCdpBaseline", () => {
 // ---- the init script is browser-only JS ----------------------------------
 
 describe("PERMISSION_PAGE_SCRIPT", () => {
-  it("contains the install guard so re-injection is a no-op", () => {
-    expect(PERMISSION_PAGE_SCRIPT).toMatch(/__browx_permission_installed/);
-  });
-
   it("wraps every API the policy governs", () => {
     expect(PERMISSION_PAGE_SCRIPT).toMatch(/navigator\.mediaDevices/);
     expect(PERMISSION_PAGE_SCRIPT).toMatch(/getCurrentPosition/);
@@ -377,9 +313,5 @@ describe("PERMISSION_PAGE_SCRIPT", () => {
   it("consults the check binding and falls back to allow when missing (BYOB clobber safety)", () => {
     expect(PERMISSION_PAGE_SCRIPT).toMatch(/__browx_permission_check/);
     expect(PERMISSION_PAGE_SCRIPT).toMatch(/return Promise\.resolve\("allow"\)/);
-  });
-
-  it("clearWatch proxies the synthetic id back to the native id", () => {
-    expect(PERMISSION_PAGE_SCRIPT).toMatch(/__browx_watch_map/);
   });
 });

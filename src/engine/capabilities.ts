@@ -219,10 +219,11 @@ export const ANDROID_APP_CAPABILITIES: EngineCapabilities = {
  *  IPC once at first load and never re-requests it comes back empty. Untested
  *  elsewhere; browxai does not have the operator's Slack to experiment on.
  *
- *  `go_back` / `go_forward` / `reload` are NOT here: they operate within the
- *  renderer's own history and are exactly what the app's own keyboard shortcuts
- *  do. `reload` on VS Code is Cmd-R, and `go_back` is what recovered the window
- *  in the measurement above. */
+ *  `go_back` / `go_forward` are NOT here: they operate within the renderer's own
+ *  history and are exactly what the app's own keyboard shortcuts do. `go_back`
+ *  is what recovered the window in the measurement above. There is no `reload`
+ *  tool; an agent that needs one presses the app's own shortcut (Cmd-R on VS
+ *  Code). */
 const ELECTRON_REFUSED_TOOLS: ReadonlyMap<string, string> = new Map([
   [
     "navigate",
@@ -235,7 +236,7 @@ const ELECTRON_REFUSED_TOOLS: ReadonlyMap<string, string> = new Map([
       "re-bootstraps at all is per-app (VS Code recovered via go_back when measured; " +
       "an app that gets its state over IPC once at startup will not). Drive the app " +
       "through its own UI instead: click / press / fill on the elements `snapshot` " +
-      "and `find` return. `reload` re-loads the app's OWN document and is allowed. " +
+      "and `find` return. `go_back` / `go_forward` stay on the app's OWN document and are allowed. " +
       "To fetch a URL, open a separate chromium session " +
       '(`open_session({ engine: "chromium" })`).',
   ],
@@ -251,10 +252,10 @@ const ELECTRON_REFUSED_TOOLS: ReadonlyMap<string, string> = new Map([
  *  two consecutive snapshots.
  *
  *  Every sub-interface is declared, including `navigation` — the renderer has a
- *  real history and `reload` / `go_back` / `go_forward` all work on it. The ONE
+ *  real history and `go_back` / `go_forward` both work on it. The ONE
  *  navigation verb that must not run is `navigate`, and it is declared in
  *  `refusedTools` above rather than by dropping the sub-interface, because
- *  dropping it would refuse three working tools to gate one (and `navigation` is
+ *  dropping it would refuse two working tools to gate one (and `navigation` is
  *  one of the four sub-interfaces no engine may omit).
  *
  *  The other Electron limit is not a capability but a lease shape:

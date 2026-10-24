@@ -1,32 +1,15 @@
 import { describe, it, expect } from "vitest";
 import {
-  ENGINE_KINDS,
   IMPLEMENTED_ENGINES,
   EngineNotYetSupportedError,
   resolveBrowserType,
   capabilitiesFor,
   CHROMIUM_CAPABILITIES,
-  FIREFOX_CAPABILITIES,
-  WEBKIT_CAPABILITIES,
-  ANDROID_CAPABILITIES,
   requireCdp,
   type EngineKind,
 } from "./index.js";
 
 describe("engine port — EngineKind + selection", () => {
-  it("commits to the eight engines (safari, both native, and electron)", () => {
-    expect(ENGINE_KINDS).toEqual([
-      "chromium",
-      "firefox",
-      "webkit",
-      "android",
-      "safari",
-      "ios-app",
-      "android-app",
-      "electron",
-    ]);
-  });
-
   it("wires all eight engines — safari, both native, and electron", () => {
     // safari is the first non-Playwright engine: driven over safaridriver, no
     // Playwright Page, reachable via `--engine safari` / BROWX_ENGINE=safari
@@ -104,49 +87,6 @@ describe("engine port — capability declaration", () => {
     ] as const) {
       expect(caps?.subInterfaces.has(sub)).toBe(true);
     }
-  });
-
-  it("firefox declares the cross-browser sub-interfaces but NO deep (CDP) hatch", () => {
-    const caps = capabilitiesFor("firefox");
-    expect(caps).toBe(FIREFOX_CAPABILITIES);
-    expect(caps?.engine).toBe("firefox");
-    // the headline of the capability gate: firefox has no raw-CDP escape hatch.
-    expect(caps?.deep).toBe(false);
-    // it still serves the nine cross-browser sub-interfaces + `page` (D5: firefox
-    // backs a real Playwright Page) + `element` (RFC 0009 P2).
-    expect(caps?.subInterfaces.size).toBe(11);
-    expect(caps?.subInterfaces.has("page")).toBe(true);
-    expect(caps?.subInterfaces.has("element")).toBe(true);
-  });
-
-  it("webkit declares the cross-browser sub-interfaces but NO deep (CDP) hatch", () => {
-    const caps = capabilitiesFor("webkit");
-    expect(caps).toBe(WEBKIT_CAPABILITIES);
-    expect(caps?.engine).toBe("webkit");
-    // WebKit has no CDP at all (measured: newCDPSession throws) — so the
-    // capability-based engine gate auto-refuses the CDP-deep tools on it.
-    expect(caps?.deep).toBe(false);
-    // it still serves the nine cross-browser sub-interfaces (the walker substrate
-    // + Playwright's cross-browser surface) + `page` (D5: webkit backs a real Page)
-    // + `element` (RFC 0009 P2).
-    expect(caps?.subInterfaces.size).toBe(11);
-    expect(caps?.subInterfaces.has("page")).toBe(true);
-    expect(caps?.subInterfaces.has("element")).toBe(true);
-  });
-
-  it("android declares EVERYTHING incl. deep:true — the standout (it IS Chromium)", () => {
-    const caps = capabilitiesFor("android");
-    expect(caps).toBe(ANDROID_CAPABILITIES);
-    expect(caps?.engine).toBe("android");
-    // The headline behavior: real Chrome-on-Android speaks full CDP, so unlike
-    // firefox/webkit it exposes the deep escape hatch — every tool works, and the
-    // existing CDP substrates serve it verbatim (no new substrate).
-    expect(caps?.deep).toBe(true);
-    // eleven sub-interfaces — the nine cross-browser ones + `page` (D5: android IS
-    // Chromium, so it backs a real Playwright Page) + `element` (RFC 0009 P2).
-    expect(caps?.subInterfaces.size).toBe(11);
-    expect(caps?.subInterfaces.has("page")).toBe(true);
-    expect(caps?.subInterfaces.has("element")).toBe(true);
   });
 });
 

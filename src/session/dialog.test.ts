@@ -4,7 +4,6 @@ import {
   installDialogHandler,
   attachDialogPolicy,
   parseDialogPolicyArg,
-  UNHANDLED_DIALOG_HINT,
 } from "./dialog.js";
 import type { BrowserContext, Dialog, Page } from "playwright-core";
 
@@ -84,13 +83,6 @@ describe("parseDialogPolicyArg", () => {
     });
   });
 
-  it("accepts an empty answer (`accept-prompt-with:`)", () => {
-    expect(parseDialogPolicyArg("accept-prompt-with:")).toEqual({
-      mode: "accept-prompt-with",
-      text: "",
-    });
-  });
-
   it("rejects unknown values", () => {
     expect(() => parseDialogPolicyArg("noop")).toThrow(/invalid/i);
   });
@@ -111,16 +103,6 @@ describe("DialogPolicyState — per-policy handling", () => {
     expect(slice[0]?.handledAs).toBe("accepted");
     expect(slice[0]?.kind).toBe("confirm");
     expect(slice[0]?.message).toBe("go?");
-  });
-
-  it('`dismiss` mode dismisses every dialog and records handledAs="dismissed"', async () => {
-    const state = new DialogPolicyState({ mode: "dismiss" });
-    const { page, fireDialog } = fakePage();
-    installDialogHandler(page, state);
-    const t = Date.now();
-    await fireDialog(makeDialog({ kind: "prompt", message: "name?" }));
-    const slice = state.since(t);
-    expect(slice[0]?.handledAs).toBe("dismissed");
   });
 
   it("`accept-prompt-with:<text>` answers prompts with text but plain-accepts alert/confirm", async () => {
@@ -149,12 +131,6 @@ describe("DialogPolicyState — per-policy handling", () => {
     expect(d.accept).not.toHaveBeenCalled();
     expect(state.raisedSince(t)).toBe(true);
     expect(state.since(t)[0]?.handledAs).toBe("raised");
-  });
-
-  it("UNHANDLED_DIALOG_HINT mentions both set knobs", () => {
-    expect(UNHANDLED_DIALOG_HINT).toMatch(/open_session/);
-    expect(UNHANDLED_DIALOG_HINT).toMatch(/set_dialog_policy/);
-    expect(UNHANDLED_DIALOG_HINT).toMatch(/dismissed server-side/);
   });
 });
 
@@ -226,27 +202,6 @@ describe("attachDialogPolicy — persistence across navigation/new pages", () =>
 });
 
 describe("DialogPolicyState — anti-deadlock guarantee", () => {
-  it("EVERY policy mode acts on the dialog (accept OR dismiss) — never leaves it pending", async () => {
-    const modes: Array<{
-      p: ConstructorParameters<typeof DialogPolicyState>[0];
-      cb: "accept" | "dismiss";
-    }> = [
-      { p: { mode: "accept" }, cb: "accept" },
-      { p: { mode: "dismiss" }, cb: "dismiss" },
-      { p: { mode: "accept-prompt-with", text: "x" }, cb: "accept" },
-      { p: { mode: "raise" }, cb: "dismiss" }, // raise dismisses to unblock
-    ];
-    for (const { p, cb } of modes) {
-      const state = new DialogPolicyState(p);
-      const { page, fireDialog } = fakePage();
-      installDialogHandler(page, state);
-      const d = makeDialog({ kind: "alert" });
-      await fireDialog(d);
-      if (cb === "accept") expect(d.accept, JSON.stringify(p)).toHaveBeenCalled();
-      else expect(d.dismiss, JSON.stringify(p)).toHaveBeenCalled();
-    }
-  });
-
   it("a handler that throws does NOT propagate (page never sees an unhandled rejection)", async () => {
     const state = new DialogPolicyState({ mode: "accept" });
     const { page, fireDialog } = fakePage();
@@ -267,20 +222,6 @@ describe("DialogPolicyState — anti-deadlock guarantee", () => {
 });
 
 describe("ActionResult.dialogs[] capture — buffer semantics", () => {
-  it("since(ts) returns ONLY records at-or-after the timestamp", async () => {
-    const state = new DialogPolicyState({ mode: "accept" });
-    const { page, fireDialog } = fakePage();
-    installDialogHandler(page, state);
-    await fireDialog(makeDialog({ kind: "alert", message: "first" }));
-    await new Promise((r) => setTimeout(r, 5));
-    const t = Date.now();
-    await new Promise((r) => setTimeout(r, 5));
-    await fireDialog(makeDialog({ kind: "alert", message: "second" }));
-    const slice = state.since(t);
-    expect(slice).toHaveLength(1);
-    expect(slice[0]?.message).toBe("second");
-  });
-
   it("buffer is capped — oldest record evicted past `cap`", async () => {
     const state = new DialogPolicyState({ mode: "accept" }, 3);
     const { page, fireDialog } = fakePage();

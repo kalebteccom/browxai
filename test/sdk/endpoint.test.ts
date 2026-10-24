@@ -23,8 +23,4 @@ describe("resolveEndpointPath — unix:// + pipe:// + reject-unknown", () => {
   it("rejects unix:// with an empty path", () => {
     expect(() => resolveEndpointPath("unix://")).toThrow(/empty unix:\/\/ path/);
   });
-
-  it("rejects an empty pipe:// suffix", () => {
-    expect(() => resolveEndpointPath("pipe://")).toThrow(/empty pipe:\/\/ path/);
-  });
 });

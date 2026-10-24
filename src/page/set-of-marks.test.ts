@@ -41,12 +41,6 @@ describe("labelFor", () => {
     bbox: { x: 0, y: 0, width: 10, height: 10 },
     painted: true,
   };
-  it("default index mode prints the 1-based array position", () => {
-    expect(labelFor(entry, "index")).toBe("3");
-  });
-  it("ref mode prints the existing eN", () => {
-    expect(labelFor(entry, "ref")).toBe("e7");
-  });
   it("role mode prints the role, falling back to ref when absent", () => {
     expect(labelFor(entry, "role")).toBe("button");
     expect(labelFor({ ...entry, role: undefined }, "role")).toBe("e7");

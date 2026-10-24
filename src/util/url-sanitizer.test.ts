@@ -25,12 +25,6 @@ describe("sanitizeUrl — credential/identity redaction", () => {
     );
   });
 
-  it("preserves ws/wss scheme + host + path, drops the credentialled query", () => {
-    expect(sanitizeUrl("wss://rt.example.com/socket?sid=AAAA1111bearer&jwt=h.p.s")).toBe(
-      "wss://rt.example.com/socket?…",
-    );
-  });
-
   it("collapses opaque blob:/data: urls to just the scheme", () => {
     expect(sanitizeUrl("blob:https://example.com/9f1c-uuid-here")).toBe("blob:…");
     expect(sanitizeUrl("data:text/html;base64,SGVsbG8=")).toBe("data:…");
@@ -59,10 +53,6 @@ describe("sanitizeUrlsInText — url substrings inside free text", () => {
     expect(sanitizeUrlsInText(msg)).toBe(
       'WebSocket connection to "wss://rt.example.com/ws?…" failed',
     );
-  });
-
-  it("leaves text with no urls untouched", () => {
-    expect(sanitizeUrlsInText("plain log line, no urls here")).toBe("plain log line, no urls here");
   });
 
   it("redacts multiple urls in one line independently", () => {

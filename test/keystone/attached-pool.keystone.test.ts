@@ -139,6 +139,52 @@ afterAll(async () => {
   if (profileDir) rmSync(profileDir, { recursive: true, force: true, maxRetries: 5 });
 }, KEYSTONE_TIMEOUT);
 
+describePool("byob-attach capability gate — real Chrome, capability unset", () => {
+  it(
+    "refuses every attached session and never touches the Chrome",
+    async () => {
+      const before = await openPageUrls();
+      const granted = process.env.BROWX_CAPABILITIES;
+      // The DEFAULT set. Not naming `byob-attach` is the point.
+      process.env.BROWX_CAPABILITIES = "read,navigation,action,human";
+      const server = await createServer({ attachCdp: endpoint, headless: true });
+      const call = (name: string, args: Record<string, unknown>): Promise<string> => {
+        const fn = server.handlers[name];
+        if (!fn) throw new Error(`attached-pool keystone: no handler "${name}"`);
+        return fn(args)
+          .then((r) => (r.content[0] as { text: string }).text)
+          .catch((err: unknown) => String(err));
+      };
+      try {
+        // An agent asking for an attach gets the standard gate refusal.
+        const opened = JSON.parse(
+          await call("open_session", { session: "gated", mode: "attached" }),
+        ) as { ok: boolean; requiredCapability?: string; error?: string; reason?: string };
+        expect(opened.ok).toBe(false);
+        expect(opened.requiredCapability).toBe("byob-attach");
+        expect(opened.error).toMatch(/capability is not in the server's ACTIVE set/);
+        expect(opened.reason).toMatch(/capability-required/);
+
+        // The default session a BROWX_ATTACH_CDP server creates lazily is
+        // attached too, and is refused the same way.
+        const lazy = await call("snapshot", {});
+        expect(lazy).toMatch(/capability-required/);
+        expect(lazy).toMatch(/byob-attach/);
+
+        const listed = JSON.parse(await call("list_sessions", {})) as unknown;
+        expect(JSON.stringify(listed)).not.toMatch(/"gated"/);
+      } finally {
+        await server.shutdown();
+        if (granted === undefined) delete process.env.BROWX_CAPABILITIES;
+        else process.env.BROWX_CAPABILITIES = granted;
+      }
+      // The refusal lands before any connection, so no tab was claimed or opened.
+      expect(await openPageUrls()).toEqual(before);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
 describePool("attached-target pool — two sessions, one Chrome", () => {
   it(
     "leases two distinct targets and keeps each session's writes on its own page",

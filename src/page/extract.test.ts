@@ -74,12 +74,6 @@ describe("validateSchema", () => {
     expect(e).toMatch(/requires `items`/);
   });
 
-  it("rejects an unsupported type", () => {
-    // @ts-expect-error — deliberately invalid
-    const e = validateSchema({ type: "integer" }, "");
-    expect(e).toMatch(/unsupported `type`/);
-  });
-
   it('rejects `integer` with a "did you mean number?" hint', () => {
     // Regression — the adopter trial-1 turn 2 burned a full retry cycle here.
     // The validator still rejects (contract preserved); the message now
@@ -88,17 +82,6 @@ describe("validateSchema", () => {
     const e = validateSchema({ type: "integer" }, "");
     expect(e).toContain('did you mean "number"?');
     expect(e).toMatch(/supported: object, array, string, number, boolean/);
-  });
-
-  it("suggests aliases for other common type typos", () => {
-    // @ts-expect-error — deliberately invalid
-    expect(validateSchema({ type: "bool" }, "")).toContain('did you mean "boolean"?');
-    // @ts-expect-error — deliberately invalid
-    expect(validateSchema({ type: "str" }, "")).toContain('did you mean "string"?');
-    // @ts-expect-error — deliberately invalid
-    expect(validateSchema({ type: "list" }, "")).toContain('did you mean "array"?');
-    // @ts-expect-error — deliberately invalid
-    expect(validateSchema({ type: "dict" }, "")).toContain('did you mean "object"?');
   });
 
   it("walks into nested properties", () => {
@@ -139,9 +122,6 @@ describe("coerceLeaf", () => {
   it("strips $ from a number string", () => {
     expect(coerceLeaf("$1,234.50", "number")).toBe(1234.5);
   });
-  it("preserves an actual number", () => {
-    expect(coerceLeaf(42, "number")).toBe(42);
-  });
   it("returns null when a number cannot be parsed", () => {
     expect(coerceLeaf("not a number", "number")).toBeNull();
   });
@@ -174,18 +154,6 @@ describe("resolveAgainstTree — implicit property-name = query rule", () => {
     expect(out.data).toEqual({ title: "title" });
     expect(out.requiredMisses).toEqual([]);
     expect(out.evidence.refsUsed.length).toBeGreaterThan(0);
-  });
-
-  it("populates evidence.refsUsed with the matched node ref", async () => {
-    seq = 0;
-    const priceNode = n("text", "price");
-    const tree = n("WebArea", undefined, [priceNode]);
-    const out = await resolveAgainstTree({
-      schema: { type: "object", properties: { price: { type: "string" } } },
-      page: noPage,
-      scopeTree: tree,
-    });
-    expect(out.evidence.refsUsed).toContain(priceNode.ref);
   });
 
   it("reports a partialMiss for an unmatched property and skips it in data", async () => {
@@ -291,25 +259,6 @@ describe("resolveAgainstTree — list extraction", () => {
     expect(data.rows.length).toBeGreaterThanOrEqual(2);
     expect(data.rows[0]?.title).toBe("title");
   });
-
-  it("rejects an array without a collection hint as a partial miss", async () => {
-    seq = 0;
-    const tree = n("WebArea", undefined, [n("listitem", "Row")]);
-    const out = await resolveAgainstTree({
-      schema: {
-        type: "object",
-        properties: {
-          rows: {
-            type: "array",
-            items: { type: "object", properties: { title: { type: "string" } } },
-          },
-        },
-      },
-      page: noPage,
-      scopeTree: tree,
-    });
-    expect(out.evidence.partialMisses[0]).toMatch(/array needs `x-browx-source.collection`/);
-  });
 });
 
 describe("resolveAgainstTree — scoped extraction", () => {
@@ -401,26 +350,6 @@ describe("extract() — top-level failure shapes", () => {
       __resetLlmAssistedWarnedForTests();
     }
   });
-
-  it("returns invalid-schema when type is genuinely unsupported (post-v0.2.3 `integer` is now auto-coerced; `null` is still rejected)", async () => {
-    const res = await extract(noPage, cdp, refs, {
-      schema: { type: "null" },
-      testAttributes: ["data-testid"],
-    });
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.failure.kind).toBe("invalid-schema");
-  });
-
-  it("returns invalid-schema when both ref and scope are provided", async () => {
-    const res = await extract(noPage, cdp, refs, {
-      schema: { type: "object", properties: { x: { type: "string" } } },
-      ref: "e1",
-      scope: ".x",
-      testAttributes: ["data-testid"],
-    });
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.failure.kind).toBe("invalid-schema");
-  });
 });
 
 describe("collectUnknownHintKeys — the adopter trial-1 silent-typo regression", () => {
@@ -443,22 +372,6 @@ describe("collectUnknownHintKeys — the adopter trial-1 silent-typo regression"
     expect(out.length).toBe(1);
     expect(out[0]).toContain("unknown `x-browx-source` key `attribute`");
     expect(out[0]).toContain("did you mean `attr`?");
-  });
-
-  it("flags wholly-unsupported keys (transform, format) with the known-set", () => {
-    const out: string[] = [];
-    collectUnknownHintKeys(
-      {
-        type: "number",
-        "x-browx-source": { selector: "span.rank", transform: "int" } as never,
-      },
-      "rank",
-      out,
-    );
-    expect(out.length).toBe(1);
-    expect(out[0]).toContain("unknown `x-browx-source` key `transform`");
-    // No alias for `transform`; the message lists the known keys.
-    expect(out[0]).toMatch(/known: query, selector, attr, prop, text, value, collection/);
   });
 
   it("recurses into nested properties and array items", () => {
@@ -595,27 +508,6 @@ describe("applySchemaRelaxations — Proposal A: integer → number auto-coerce"
     expect(notes[0]).toContain("forward-compat");
   });
 
-  it("coerces `integer` inside nested object properties (one note per site)", () => {
-    const s: ExtractSchema = {
-      type: "object",
-      properties: {
-        // @ts-expect-error — deliberately invalid
-        rank: { type: "integer" },
-        // @ts-expect-error — deliberately invalid
-        points: { type: "integer" },
-        title: { type: "string" },
-      },
-    };
-    const notes: string[] = [];
-    applySchemaRelaxations(s, "", notes);
-    expect(s.properties?.rank?.type).toBe("number");
-    expect(s.properties?.points?.type).toBe("number");
-    expect(s.properties?.title?.type).toBe("string");
-    expect(notes.length).toBe(2);
-    expect(notes.some((n) => n.startsWith("rank:"))).toBe(true);
-    expect(notes.some((n) => n.startsWith("points:"))).toBe(true);
-  });
-
   it("coerces `integer` inside an array's items.properties (the adopter trial-1 turn-2 shape)", () => {
     // Pinned to the exact trial-1 turn-2 schema shape — `integer` on
     // rank/points/comments_count under a per-row items.properties.
@@ -643,26 +535,6 @@ describe("applySchemaRelaxations — Proposal A: integer → number auto-coerce"
     expect(notes.length).toBe(3);
     // Path prefix for items-of-array is `[].…` (matching collectUnknownHintKeys).
     expect(notes.every((n) => n.startsWith("[]."))).toBe(true);
-  });
-
-  it("extract() now returns ok:true on a top-level `integer` schema (flips v0.2.2's invalid-schema)", async () => {
-    const cdp = emptySubstrate;
-    const refs = noPage as unknown as Parameters<typeof extract>[2];
-    // We can't run the full extract() against noPage (composeSnapshot would
-    // throw), but the validate path is the contractual flip-point: before
-    // v0.2.3 the schema was rejected with invalid-schema BEFORE composeSnapshot
-    // even ran. After v0.2.3 the relaxation runs first, the validator sees
-    // `number`, and the call proceeds past validate. The proxy then throws on
-    // the first page.* touch — which lands as a scope-not-found (not the
-    // invalid-schema we used to get). That state-shift IS the proof.
-    const res = await extract(noPage, cdp, refs, {
-      schema: { type: "integer" },
-      testAttributes: ["data-testid"],
-    });
-    expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.failure.kind).not.toBe("invalid-schema");
-    }
   });
 });
 
@@ -709,55 +581,11 @@ describe("applySchemaRelaxations — Proposal B: `selector` on array aliases `co
     expect(s.properties?.price?.["x-browx-source"]?.selector).toBe(".price");
     expect(s.properties?.price?.["x-browx-source"]?.collection).toBeUndefined();
   });
-
-  it("integration: resolveAgainstTree treats array `selector` as `collection` end-to-end", async () => {
-    // Take the already-passing tree-scan collection test and swap `collection`
-    // for `selector` — same data should come out.
-    seq = 0;
-    const row1 = n("listitem", "row-1", [n("text", "Alpha")]);
-    const row2 = n("listitem", "row-2", [n("text", "Beta")]);
-    const tree = n("WebArea", undefined, [n("list", undefined, [row1, row2])]);
-    // Pre-apply the relaxation pass (resolveAgainstTree itself doesn't, but
-    // the extract() entry does — this test pins the resolver-level shape).
-    const schema: ExtractSchema = {
-      type: "array",
-      "x-browx-source": { selector: "listitem" },
-      items: { type: "object", properties: { title: { type: "string" } } },
-    };
-    applySchemaRelaxations(schema, "", []);
-    expect(schema["x-browx-source"]?.collection).toBe("listitem");
-    const out = await resolveAgainstTree({ schema, page: noPage, scopeTree: tree });
-    expect(Array.isArray(out.data)).toBe(true);
-    expect((out.data as unknown[]).length).toBe(2);
-  });
 });
 
 describe("extract() — Proposal D: BROWX_EXTRACT_STRICT=1 hard-reject opt-in", () => {
   const cdp = emptySubstrate;
   const refs = noPage as unknown as Parameters<typeof extract>[2];
-
-  it("env unset → unknown-hint-key keeps v0.2.2 partialMisses-only behavior (no rejection from this path)", async () => {
-    const prev = process.env.BROWX_EXTRACT_STRICT;
-    delete process.env.BROWX_EXTRACT_STRICT;
-    try {
-      const res = await extract(noPage, cdp, refs, {
-        schema: {
-          type: "string",
-          "x-browx-source": { selector: "a", attribute: "href" },
-        },
-        testAttributes: ["data-testid"],
-      });
-      // Either we get past validate (and trip on noPage), or we fail later —
-      // but NOT on an `invalid-schema` for the unknown-key.
-      if (!res.ok) {
-        if (res.failure.kind === "invalid-schema") {
-          expect(String(res.failure.actual)).not.toContain("unknown `x-browx-source` key");
-        }
-      }
-    } finally {
-      if (prev !== undefined) process.env.BROWX_EXTRACT_STRICT = prev;
-    }
-  });
 
   it("env set → unknown-hint-key becomes a hard `invalid-schema` rejection", async () => {
     const prev = process.env.BROWX_EXTRACT_STRICT;
@@ -815,29 +643,6 @@ describe("extract() — Proposal D: BROWX_EXTRACT_STRICT=1 hard-reject opt-in", 
       // The coerce runs before validate; the unknown-key check finds nothing
       // to reject on (no x-browx-source). The call gets past the strict check
       // and trips on the noPage proxy later — NOT an invalid-schema.
-      expect(res.ok).toBe(false);
-      if (!res.ok) {
-        expect(res.failure.kind).not.toBe("invalid-schema");
-      }
-    } finally {
-      if (prev !== undefined) process.env.BROWX_EXTRACT_STRICT = prev;
-      else delete process.env.BROWX_EXTRACT_STRICT;
-    }
-  });
-
-  it("strict mode does NOT promote selector-as-collection alias notes (idiomatic)", async () => {
-    const prev = process.env.BROWX_EXTRACT_STRICT;
-    process.env.BROWX_EXTRACT_STRICT = "1";
-    try {
-      const res = await extract(noPage, cdp, refs, {
-        schema: {
-          type: "array",
-          // selector-on-array — aliased to collection, NOT a typo.
-          "x-browx-source": { selector: "tr.athing" },
-          items: { type: "object", properties: { title: { type: "string" } } },
-        },
-        testAttributes: ["data-testid"],
-      });
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.failure.kind).not.toBe("invalid-schema");

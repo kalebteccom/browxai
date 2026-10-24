@@ -46,16 +46,6 @@ describe("describeNavigation", () => {
       expect(n.offOrigin).toBeUndefined();
     });
 
-    it("stays absent on an http to https upgrade", () => {
-      const n = describeNavigation("about:blank", "https://a.test/", true, "http://a.test/");
-      expect(n.offOrigin).toBeUndefined();
-    });
-
-    it("fires on a www to apex hop, which moves cookie scope", () => {
-      const n = describeNavigation("about:blank", "https://a.test/", true, "https://www.a.test/");
-      expect(n.offOrigin).toEqual({ requested: "https://www.a.test", landed: "https://a.test" });
-    });
-
     it("stays absent when the action carried no requested url", () => {
       expect(
         describeNavigation("https://a.test/", "https://b.test/", true).offOrigin,

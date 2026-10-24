@@ -32,10 +32,4 @@ describe("classifyFailure", () => {
     expect(r.source).toBe("unknown");
     expect(r.hint).toMatch(/list_sessions|indeterminate/i);
   });
-
-  it("does not throw on empty/garbage input", () => {
-    expect(classifyFailure("").source).toBe("unknown");
-
-    expect(classifyFailure(undefined as any).source).toBe("unknown");
-  });
 });

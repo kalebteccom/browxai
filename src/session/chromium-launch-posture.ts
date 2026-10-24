@@ -14,6 +14,7 @@
 // patching, no injected scripts, no user-agent rewriting.
 
 import { log } from "../util/logging.js";
+import { playwrightInstallCommand } from "../util/playwright-version.js";
 import type { SessionOptions } from "./types.js";
 
 /** `channel` value that forces Playwright's bundled Chromium build. */
@@ -64,14 +65,45 @@ export function isChannelNotInstalled(err: unknown, channel: string): boolean {
   );
 }
 
+/** True when `err` is Playwright's refusal to launch the bundled browser because
+ *  its download is missing ("Executable doesn't exist at ..."). */
+export function isBundledBrowserMissing(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes("Executable doesn't exist");
+}
+
+/** Playwright's own missing-browser text points at `npx playwright install`, which
+ *  names neither the Chrome option nor the package browxai ships. Append what to
+ *  do here; the original message stays intact above it. */
+function withNoBrowserHint(err: unknown): unknown {
+  if (!isBundledBrowserMissing(err) || !(err instanceof Error)) return err;
+  return new Error(
+    `${err.message}\n\nbrowxai: no browser to launch. Install Google Chrome (the default), ` +
+      `or download the bundled Chromium with \`${playwrightInstallCommand("chromium")}\`. ` +
+      "`browxai doctor` shows which of the two is present.",
+    { cause: err },
+  );
+}
+
+async function launchBundled<T>(
+  launch: (channelOption: { channel?: string }) => Promise<T>,
+): Promise<T> {
+  try {
+    return await launch({});
+  } catch (err) {
+    throw withNoBrowserHint(err);
+  }
+}
+
 /** Run `launch` on the planned channel. When the plan allows a fallback and the
  *  channel's browser is not installed, log why and run `launch` again on the
- *  bundled build. Any other error propagates. */
+ *  bundled build. A launch that finds no browser at all gets a hint on how to
+ *  install one. Any other error propagates. */
 export async function launchWithChannelPlan<T>(
   plan: ChannelPlan,
   launch: (channelOption: { channel?: string }) => Promise<T>,
 ): Promise<T> {
-  if (!plan.channel) return launch({});
+  if (!plan.channel) return launchBundled(launch);
   try {
     return await launch({ channel: plan.channel });
   } catch (err) {
@@ -82,7 +114,7 @@ export async function launchWithChannelPlan<T>(
         "(or BROWX_CHANNEL=chromium) to use the bundled build without this warning.",
       { reason: err instanceof Error ? err.message.split("\n")[0] : String(err) },
     );
-    return launch({});
+    return launchBundled(launch);
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -27,16 +27,30 @@ describe("resolveProfileDir", () => {
     expect(resolveProfileDir(ws, "")).toBe(join(root, "profile"));
   });
 
-  it("follows BROWX_DEFAULT_PROFILE for the default", () => {
-    const custom = join(root, "elsewhere");
-    mkdirSync(custom, { mode: 0o700 });
-    const ws = resolveWorkspace({ BROWX_WORKSPACE: root, BROWX_DEFAULT_PROFILE: custom });
-    expect(resolveProfileDir(ws, undefined)).toBe(custom);
-  });
-
   it("maps an explicit name to <workspace>/profiles/<name>", () => {
     const ws = resolveWorkspace({ BROWX_WORKSPACE: root });
     expect(resolveProfileDir(ws, "work")).toBe(join(root, "profiles", "work"));
+  });
+
+  it("refuses a name that is not one plain directory name, and creates nothing", () => {
+    const ws = resolveWorkspace({ BROWX_WORKSPACE: join(root, "ws") });
+    const bad = [
+      "../x",
+      "../../x",
+      "a/../b",
+      "a/b",
+      "a\\b",
+      join(root, "abs"),
+      "..",
+      "a\0b",
+      "x".repeat(129),
+    ];
+    for (const name of bad) {
+      expect(() => resolveProfileDir(ws, name), JSON.stringify(name)).toThrow(/^invalid-name:/);
+    }
+    // The workspace root exists; nothing else was created, inside or beside it.
+    expect(readdirSync(root)).toEqual(["ws"]);
+    expect(readdirSync(join(root, "ws"))).toEqual([]);
   });
 });
 
@@ -54,16 +68,6 @@ describe("liveProfileRefusal", () => {
     expect(msg).toContain('session "agent-a" has it open');
     expect(msg).toContain("explicit `profile`");
     expect(msg).toContain('"incognito"');
-  });
-
-  it("names an explicit profile by its name", () => {
-    const msg = liveProfileRefusal(
-      [{ id: "a", session: { profileDir: "/ws/profiles/work" } }],
-      "b",
-      "/ws/profiles/work",
-      "work",
-    )!;
-    expect(msg).toContain('profile "work"');
   });
 
   it("allows a different directory, and ignores sessions with no profile directory", () => {
@@ -124,9 +128,5 @@ describe("refuseLockedProfile", () => {
     expect(() => refuseLockedProfile(root, "agent-b")).toThrow(
       new RegExp(`profile-in-use.*agent-b.*pid ${process.pid}.*incognito`),
     );
-  });
-
-  it("passes for an unlocked profile", () => {
-    expect(() => refuseLockedProfile(root, "agent-b")).not.toThrow();
   });
 });

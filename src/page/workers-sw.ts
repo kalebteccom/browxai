@@ -1,25 +1,35 @@
-// Service Workers transport — the CDP-side half of the Workers façade.
+/// <reference lib="dom" />
+// Service Workers transport — the Service-Worker half of the Workers façade.
 //
-// SWs are independent CDP targets — `addInitScript` doesn't reach them, and
-// the page-side wrapper of `Worker` is a no-op (SWs register via
+// SWs are independent targets — `addInitScript` doesn't reach them, and the
+// page-side wrapper of `Worker` is a no-op (SWs register via
 // `navigator.serviceWorker.register`, not `new Worker`). So:
-//   • Enumerate via CDP `ServiceWorker.enable` + `ServiceWorker.workerVersionUpdated`.
-//   • Attach to each SW target via `Target.setAutoAttach({autoAttach:true,
-//     waitForDebuggerOnStart:false, flatten:true})`, then on the attached
-//     session run `Fetch.enable` with our pattern, and on `Fetch.requestPaused`
-//     call `Fetch.fulfillRequest` with the canned response. The intercept fires
-//     ONLY when the SW's fetch handler actually runs — i.e. the SW chose to
-//     intercept this URL — which is the right semantic.
-//   • For postMessage to a SW, the SW target has `Runtime.evaluate` so we
-//     dispatch a `MessageEvent` into the SW global; FROM-SW messages come back
-//     via a `Runtime.bindingCalled` shuttle installed on the SW session.
+//   • Enumerate and message through Playwright's own handle on them:
+//     `context.serviceWorkers()` returns a `Worker` per live SW (Chromium
+//     only), and `Worker.evaluate` runs in the SW global. `context.newCDPSession`
+//     reaches page targets only, and a CDP `sessionId` passed inside a
+//     `Runtime.evaluate` params object is not routed to a child session by
+//     `CDPSession.send`, so neither is used to reach a SW.
+//   • postMessage to a SW: `Worker.evaluate` dispatches a `MessageEvent` into
+//     the SW global, so `self.onmessage` and `message` listeners fire. FROM-SW
+//     messages are the ones the SW posts to its clients; the page-side script
+//     (`workers-page.ts`) records them from `navigator.serviceWorker`, and
+//     `ingestPageMessages` moves them into the ring here.
+//   • Fetch interception stays on CDP: `Target.setAutoAttach` +
+//     `ServiceWorker.enable` on the top-level session, then `Fetch.enable` and
+//     `Fetch.fulfillRequest` with the canned response. The intercept fires ONLY
+//     when the SW's fetch handler actually runs — i.e. the SW chose to intercept
+//     this URL — which is the right semantic.
 //
-// `WorkersSwChannel` owns the SW attachment map, the stable `sw-*` id index,
-// the active fetch-interceptor patterns, the server-side FROM-SW ring, and the
-// CDP listener detachers. The façade installs the listeners lazily on first
-// call, so a session that never uses SWs pays zero CDP overhead.
+// `WorkersSwChannel` owns the stable `sw-*` id index (keyed by script URL, so a
+// message and a listing of the same SW agree), the SW attachment map and active
+// fetch-interceptor patterns, the server-side FROM-SW ring, and the CDP listener
+// detachers. The CDP listeners install lazily on the first fetch-intercept call,
+// so a session that only lists or messages SWs pays zero CDP overhead.
 
-import type { CDPSession } from "playwright-core";
+import type { BrowserContext, CDPSession, Worker } from "playwright-core";
+import { isOriginAllowed, type OriginPolicy } from "../policy/origin.js";
+import { invariant } from "../util/invariant.js";
 import { globToRegex } from "./ws-interactive.js";
 import type { SwFetchInterceptSpec, WorkerListing, WorkerMessage } from "./workers-types.js";
 
@@ -44,18 +54,30 @@ interface ActiveFetchIntercept {
 
 const SW_RING_MAX = 500;
 const SW_PAYLOAD_MAX = 4000;
+const SW_URL_MAX = 64;
+
+/** Runs inside the service worker (`Worker.evaluate` serialises this function
+ *  literal, so it must not close over anything). The event is synthetic: its
+ *  `source` is null, so a worker that replies through `event.source` has nobody
+ *  to answer and has to go through `clients` instead. */
+function dispatchSwMessage(data: string): boolean {
+  self.dispatchEvent(new MessageEvent("message", { data }));
+  return true;
+}
 
 export class WorkersSwChannel {
   /** SW attachments keyed by CDP sessionId. */
   swAttached = new Map<string, SwAttachment>();
-  /** Stable monotonic id for the SW listing — `sw-1`, `sw-2`, …. Keyed by
-   *  CDP sessionId so the id survives status transitions on the same SW. */
-  private swIdBySession = new Map<string, string>();
+  /** Stable monotonic id for each SW script URL — `sw-1`, `sw-2`, …. A message
+   *  the page received from a SW names only that URL, and a live SW of the same
+   *  URL reuses the id, so `worker_messages_read` and `workers_list` agree on
+   *  which SW is `sw-N`, and the id survives the SW stopping and restarting. */
+  private swIdByUrl = new Map<string, string>();
   private nextSwId = 1;
   /** Active fetch interceptors. Re-add of the same pattern replaces. */
   private fetchInterceptors = new Map<string, ActiveFetchIntercept>();
-  /** Server-side ring of FROM-SW messages (we relay these via a CDP
-   *  `Runtime.bindingCalled` shuttle on each SW session). */
+  /** Server-side ring of FROM-SW messages, filled from the page-side ring
+   *  (`navigator.serviceWorker` `message` events) on each read. */
   swMessages: WorkerMessage[] = [];
   /** True once we've called `ServiceWorker.enable` + wired the auto-attach
    *  on the top-level CDP session. */
@@ -118,14 +140,12 @@ export class WorkersSwChannel {
         fetchEnabled: false,
       };
       this.swAttached.set(e.sessionId, att);
-      this.swIdBySession.set(e.sessionId, `sw-${this.nextSwId++}`);
       if (this.fetchInterceptors.size > 0)
         void this.applyFetchEnable(cdp, att).catch(() => undefined);
     });
     this.onCdp(cdp, "Target.detachedFromTarget", (raw) => {
       const { sessionId } = raw as { sessionId: string };
       this.swAttached.delete(sessionId);
-      this.swIdBySession.delete(sessionId);
     });
   }
 
@@ -217,45 +237,79 @@ export class WorkersSwChannel {
   // -------------------------------------------------------------------------
   // Tool surface.
 
-  /** Listings for the currently-attached SWs (the `sw-*` family). */
-  list(): WorkerListing[] {
-    const out: WorkerListing[] = [];
-    for (const [sessionId, att] of this.swAttached) {
-      const id = this.swIdBySession.get(sessionId) ?? `sw-${this.nextSwId++}`;
-      this.swIdBySession.set(sessionId, id);
-      out.push({ workerId: id, type: "service", url: att.url, state: att.status });
-    }
-    return out;
+  /** Stable `sw-N` id for a SW script URL, or undefined once `SW_URL_MAX`
+   *  distinct URLs hold an id and this one is not among them. Every path that
+   *  mints an id goes through here, so the index stays bounded. A caller drops
+   *  the SW or message that has no id. */
+  private idForUrl(url: string): string | undefined {
+    let id = this.swIdByUrl.get(url);
+    if (id) return id;
+    if (this.swIdByUrl.size >= SW_URL_MAX) return undefined;
+    id = `sw-${this.nextSwId++}`;
+    this.swIdByUrl.set(url, id);
+    invariant(
+      this.swIdByUrl.size <= SW_URL_MAX,
+      `sw id index holds ${this.swIdByUrl.size} entries, cap is ${SW_URL_MAX}`,
+    );
+    return id;
   }
 
-  /** Dispatch a `MessageEvent` into the matching SW global via `Runtime.evaluate`. */
+  /** The live SWs of a context as `{id, url, worker}`, one per `sw-N` id. Two
+   *  live workers can share a script URL (two scopes, or a version swap); they
+   *  share the id too, and the newest one stands for it. A worker whose URL
+   *  cannot get an id (the index is full), or whose origin `policy` does not
+   *  allow, is left out. */
+  private liveWorkers(
+    context: BrowserContext,
+    policy?: OriginPolicy,
+  ): Array<{ id: string; url: string; worker: Worker }> {
+    const byId = new Map<string, { id: string; url: string; worker: Worker }>();
+    for (const worker of context.serviceWorkers()) {
+      const url = worker.url();
+      if (policy && !isOriginAllowed(url, policy)) continue;
+      const id = this.idForUrl(url);
+      if (!id) continue;
+      byId.delete(id);
+      byId.set(id, { id, url, worker });
+    }
+    return [...byId.values()];
+  }
+
+  /** Listings for the SWs Playwright currently holds for the context (the
+   *  `sw-*` family). Playwright drops a SW when its target goes away, so a
+   *  stopped SW is not listed and every listed one is `running`. */
+  list(context: BrowserContext, policy?: OriginPolicy): WorkerListing[] {
+    return this.liveWorkers(context, policy).map(({ id, url }) => ({
+      workerId: id,
+      type: "service",
+      url,
+      state: "running",
+    }));
+  }
+
+  /** Dispatch a `MessageEvent` into the matching SW global with `Worker.evaluate`. */
   async sendMessage(
-    cdp: CDPSession,
+    context: BrowserContext,
     args: { workerId: string; message: string },
+    policy?: OriginPolicy,
   ): Promise<{ ok: boolean; workerId: string; error?: string }> {
-    await this.installSwListener(cdp);
-    // Find the SW attachment for this id.
-    const sessionId = [...this.swIdBySession].find(([, id]) => id === args.workerId)?.[0];
-    if (!sessionId)
+    const hit = this.liveWorkers(context).find((w) => w.id === args.workerId);
+    if (!hit)
       return {
         ok: false,
         workerId: args.workerId,
         error: `no service worker with id ${args.workerId}`,
       };
-    // Dispatch a MessageEvent into the SW global by running JS in the SW
-    // context. Playwright doesn't surface child-session sends as a public
-    // API; we use the parent CDP's Runtime.evaluate routed via the
-    // sessionId field (flatten mode).
-    const payload = JSON.stringify(args.message);
-    const sendOpts: { expression: string; returnByValue: boolean } = {
-      expression: `self.dispatchEvent(new MessageEvent('message', { data: ${payload} })); true;`,
-      returnByValue: true,
-    };
+    if (policy && !isOriginAllowed(hit.url, policy))
+      return {
+        ok: false,
+        workerId: args.workerId,
+        error:
+          `origin-blocked: service worker ${args.workerId} (${hit.url}) is on an origin the ` +
+          "origin policy does not allow (BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS), so it is not messaged",
+      };
     try {
-      // `sessionId` is a flatten-mode routing field absent from the generated
-      // `evaluateParameters` type; spread it the same way the Fetch handlers
-      // above do so the literal isn't excess-property-checked.
-      await cdp.send("Runtime.evaluate", { ...sendOpts, ...(sessionId ? { sessionId } : {}) });
+      await hit.worker.evaluate(dispatchSwMessage, args.message);
       return { ok: true, workerId: args.workerId };
     } catch (err) {
       return {
@@ -329,15 +383,36 @@ export class WorkersSwChannel {
     return [...this.fetchInterceptors.keys()];
   }
 
-  /** Append a FROM-SW message to the server-side ring. Currently unused by
-   *  the production path (the SW side message-relay is left as a future
-   *  follow-up — see report); kept for symmetry + future use. */
-  recordSwMessage(workerId: string, data: string): void {
+  /** Append a FROM-SW message to the server-side ring. */
+  recordSwMessage(workerId: string, data: string, at: number = Date.now()): void {
     let trimmed = data;
     if (trimmed.length > SW_PAYLOAD_MAX) trimmed = trimmed.slice(0, SW_PAYLOAD_MAX) + "…";
-    this.swMessages.push({ workerId, data: trimmed, at: Date.now() });
+    this.swMessages.push({ workerId, data: trimmed, at });
     if (this.swMessages.length > SW_RING_MAX) {
       this.swMessages.splice(0, this.swMessages.length - SW_RING_MAX);
+    }
+  }
+
+  /** Take the messages the page-side ring drained (`{url, data, at}` per
+   *  message) into the server ring, under the `sw-N` id of the posting SW's
+   *  script URL. The page owns that ring and can return anything, so the input
+   *  is untyped: only the last `SW_RING_MAX` well-formed entries are kept, and
+   *  every field is coerced and bounded. */
+  ingestPageMessages(drained: unknown): void {
+    if (!Array.isArray(drained)) return;
+    for (const m of drained.slice(-SW_RING_MAX)) {
+      if (typeof m !== "object" || m === null) continue;
+      const { url, data, at } = m as { url?: unknown; data?: unknown; at?: unknown };
+      const scriptUrl = typeof url === "string" ? url.slice(0, 2048) : "";
+      // A page can name any URL it likes; past SW_URL_MAX distinct ones the
+      // unknown URLs are dropped so the id index stays bounded.
+      const id = this.idForUrl(scriptUrl);
+      if (!id) continue;
+      this.recordSwMessage(
+        id,
+        typeof data === "string" ? data : "",
+        typeof at === "number" && Number.isFinite(at) ? at : Date.now(),
+      );
     }
   }
 

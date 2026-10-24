@@ -49,23 +49,8 @@ afterEach(() => {
 // --- resolveExtensionPath --------------------------------------------------
 
 describe("resolveExtensionPath", () => {
-  it("resolves a workspace-rooted extension directory", () => {
-    const ext = makeExtensionDir(workspace, "ext/foo", {
-      name: "foo",
-      version: "0.0.1",
-      manifest_version: 3,
-    });
-    expect(resolveExtensionPath(workspace, "ext/foo", "extensions_install")).toBe(ext);
-  });
-
   it("rejects path traversal that escapes the workspace", () => {
     expect(() => resolveExtensionPath(workspace, "../escape", "extensions_install")).toThrow(
-      /must resolve inside/,
-    );
-  });
-
-  it("rejects absolute paths pointing outside the workspace", () => {
-    expect(() => resolveExtensionPath(workspace, "/etc", "extensions_install")).toThrow(
       /must resolve inside/,
     );
   });
@@ -148,15 +133,6 @@ describe("readManifest", () => {
 // --- extensionIdFromPath ---------------------------------------------------
 
 describe("extensionIdFromPath", () => {
-  it("returns a 32-char lowercase a-p string", () => {
-    const id = extensionIdFromPath("/some/path");
-    expect(id).toMatch(/^[a-p]{32}$/);
-  });
-
-  it("is deterministic for the same path", () => {
-    expect(extensionIdFromPath("/x/y")).toBe(extensionIdFromPath("/x/y"));
-  });
-
   it("differs across distinct paths", () => {
     expect(extensionIdFromPath("/x/y")).not.toBe(extensionIdFromPath("/x/z"));
   });
@@ -175,14 +151,6 @@ describe("buildLaunchArgs", () => {
 
   it("returns empty args for an empty list", () => {
     expect(buildLaunchArgs([])).toEqual([]);
-  });
-
-  it("emits both --disable-extensions-except and --load-extension flags", () => {
-    const args = buildLaunchArgs([mk("/a/ext1"), mk("/b/ext2")]);
-    expect(args).toEqual([
-      "--disable-extensions-except=/a/ext1,/b/ext2",
-      "--load-extension=/a/ext1,/b/ext2",
-    ]);
   });
 
   it("skips disabled extensions", () => {

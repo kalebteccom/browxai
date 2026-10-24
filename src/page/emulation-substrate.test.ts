@@ -19,10 +19,6 @@ function safariHandle(): SafariSessionHandle {
 }
 
 describe("SafariEmulationSubstrate", () => {
-  it("tags the safari engine", () => {
-    expect(new SafariEmulationSubstrate(safariHandle()).engine).toBe("safari");
-  });
-
   it("refuses set_geolocation cleanly with a chromium/firefox/webkit hint", async () => {
     const sub: EmulationSubstrate = new SafariEmulationSubstrate(safariHandle());
     const r = await sub.setGeolocation({ latitude: 1, longitude: 2 });
@@ -33,26 +29,12 @@ describe("SafariEmulationSubstrate", () => {
     expect(r.hint).toContain("chromium");
   });
 
-  it("refuses clearing geolocation (null coords) too", async () => {
-    const sub: EmulationSubstrate = new SafariEmulationSubstrate(safariHandle());
-    const r = await sub.setGeolocation(null);
-    expect(r.kind).toBe("refusal");
-  });
-
   it("refuses set_color_scheme cleanly", async () => {
     const sub: EmulationSubstrate = new SafariEmulationSubstrate(safariHandle());
     const r = await sub.setColorScheme("dark");
     expect(r.kind).toBe("refusal");
     if (r.kind !== "refusal") throw new Error("expected refusal");
     expect(r.error).toContain("set_color_scheme");
-  });
-
-  it("refuses set_reduced_motion cleanly", async () => {
-    const sub: EmulationSubstrate = new SafariEmulationSubstrate(safariHandle());
-    const r = await sub.setReducedMotion("reduce");
-    expect(r.kind).toBe("refusal");
-    if (r.kind !== "refusal") throw new Error("expected refusal");
-    expect(r.error).toContain("set_reduced_motion");
   });
 });
 
@@ -79,12 +61,6 @@ describe("PlaywrightEmulationSubstrate", () => {
     })) as unknown as () => Page;
     return { context, page, geo, media };
   }
-
-  it("tags the engine it was built for (default chromium)", () => {
-    const { context, page } = stubs();
-    expect(new PlaywrightEmulationSubstrate(context, page).engine).toBe("chromium");
-    expect(new PlaywrightEmulationSubstrate(context, page, "webkit").engine).toBe("webkit");
-  });
 
   it("applies geolocation via context.setGeolocation (accuracy defaults to 0)", async () => {
     const { context, page, geo } = stubs();

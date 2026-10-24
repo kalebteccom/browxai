@@ -72,6 +72,18 @@ export const DEFAULT_CAPABILITIES: readonly Capability[] = [
   "human",
 ];
 
+/** The default capability list plus `extra`, comma-joined. `BROWX_CAPABILITIES`
+ *  replaces the default set, so a list that opts in to one more capability has
+ *  to repeat the defaults. */
+export function capabilitiesWith(extra: string): string {
+  return [...DEFAULT_CAPABILITIES, extra].join(",");
+}
+
+/** The `BROWX_CAPABILITIES=...` assignment text for the defaults plus `extra`. */
+export function capabilitiesAssignment(extra: string): string {
+  return `BROWX_CAPABILITIES=${capabilitiesWith(extra)}`;
+}
+
 /**
  * Capabilities that USED to be valid and have since been retired. A retired
  * capability is still ACCEPTED in `BROWX_CAPABILITIES` (and the `capabilities`
@@ -268,8 +280,8 @@ export interface CapabilityWarningContext {
 export interface CapabilityWarning {
   capability: Capability;
   /** The loud one-time warning text. A function for the two warnings that
-   *  interpolate runtime values; a string for the rest. server.ts prefixes
-   *  `browxai: ` exactly as before. */
+   *  interpolate runtime values; a string for the rest. server.ts passes the text to `log.warn`, which adds the
+   *  `browxai:` prefix. */
   message: string | ((ctx: CapabilityWarningContext) => string);
 }
 
@@ -277,7 +289,7 @@ export interface CapabilityWarning {
  * The off-by-default-capability startup warning table (the data behind the
  * formerly ~95 lines of per-capability `if (caps.enabled.has(...)) log.warn(...)`
  * blocks in server.ts). server.ts iterates this in order, emitting one loud
- * `log.warn("browxai: " + message)` per ENABLED capability — preserving the
+ * `log.warn(message)` per ENABLED capability — preserving the
  * exact text, the exact set of capabilities that warn, the exact emission order,
  * and the one-time-per-startup semantics. Keeping the data here (next to the
  * `Capability` vocabulary) leaves server.ts pure composition/wiring.
@@ -293,6 +305,11 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
     capability: "eval",
     message:
       "eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.",
+  },
+  {
+    capability: "byob-attach",
+    message:
+      'byob-attach capability is ENABLED — `open_session({mode:"attached"})`, a server started with `BROWX_ATTACH_CDP`, and the attach-only `android` and `electron` engines can now connect to a browser or app you already run. That browser is NOT-OWNED and holds your real profile: every cookie, password and authed tab is in scope of any page the agent visits, and managed-profile isolation does not apply. browxai detaches on shutdown and never closes the browser or resets its storage. Each attach also logs its own warning naming the target. Same posture class as `eval` / `network-body` / `secrets` — see docs/threat-model.md.',
   },
   {
     capability: "network-body",

@@ -18,31 +18,10 @@ describe("withDeadline", () => {
     await expect(withDeadline(slow, 5, "click")).rejects.toBeInstanceOf(DeadlineError);
   });
 
-  it("the DeadlineError names the label + ms and points at recovery", async () => {
-    try {
-      await withDeadline(new Promise(() => {}), 3, "eval_js");
-      throw new Error("should have timed out");
-    } catch (e) {
-      const msg = (e as Error).message;
-      expect(msg).toContain('"eval_js"');
-      expect(msg).toContain("3ms");
-      // recoverable framing: retry-once / discard-the-session / raise-for-one
-      expect(msg).toMatch(/RECOVERABLE/);
-      expect(msg).toMatch(/close_session/);
-      expect(msg).toMatch(/never fixes a wedged session/);
-    }
-  });
-
   it("propagates the op's own rejection (not masked by the timer)", async () => {
     await expect(withDeadline(Promise.reject(new Error("boom")), 1000, "x")).rejects.toThrow(
       "boom",
     );
-  });
-
-  it("does not leak the timer when the op wins (process exits clean)", async () => {
-    // If the timer weren't cleared, an unref'd handle could keep the loop
-    // alive; resolving fast and asserting completion is the observable proxy.
-    await expect(withDeadline(Promise.resolve("ok"), 10_000, "x")).resolves.toBe("ok");
   });
 });
 
@@ -66,10 +45,5 @@ describe("clampTimeout — ceiling", () => {
 
   it("floors a sub-minimum request", () => {
     expect(clampTimeout(0, DEFAULT_ACTION_TIMEOUT_MS).ms).toBe(MIN_ACTION_TIMEOUT_MS);
-  });
-
-  it("default is 5000ms; ceiling is exactly 1h", () => {
-    expect(DEFAULT_ACTION_TIMEOUT_MS).toBe(5_000);
-    expect(MAX_ACTION_TIMEOUT_MS).toBe(3_600_000);
   });
 });

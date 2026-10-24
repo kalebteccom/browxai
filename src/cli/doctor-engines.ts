@@ -1,7 +1,8 @@
 // `browxai doctor` — the per-engine availability probes.
 //
 // One probe per browser engine doctor reports on: chromium (the managed-mode
-// dependency — a missing binary FAILS doctor) and the four opt-in lanes —
+// dependency — a missing bundled binary FAILS doctor only when no Google Chrome
+// is installed either) and the four opt-in lanes —
 // firefox, webkit, android, electron — whose probes are always INFORMATIONAL (a
 // missing binary / no device / an unset attach endpoint just tells the operator
 // how to enable the engine; it never fails doctor). Each returns a doctor `Check` row; doctor.ts owns the checklist
@@ -14,6 +15,8 @@
 
 import { existsSync } from "node:fs";
 import type { Check } from "./doctor.js";
+import { findInstalledChrome } from "./chrome-launch.js";
+import { playwrightInstallCommand } from "../util/playwright-version.js";
 import {
   AndroidCdpAdapter,
   defaultAdbRunner,
@@ -25,28 +28,54 @@ import {
   extractWsUrl,
 } from "../engine/index.js";
 
-// Chromium installed (managed-mode dependency). Lazy import so doctor doesn't pay
-// the playwright-core cost on bare invocation. A missing binary FAILS doctor —
-// chromium is the default engine, not opt-in.
-export async function chromiumCheck(): Promise<Check> {
+// The installed Google Chrome, the browser a chromium session launches by
+// default. Informational: a missing Chrome is only a fault when the bundled
+// Chromium is missing too (see `chromiumCheck`).
+export function chromeCheck(find: () => string | undefined = findInstalledChrome): Check {
+  const path = find();
+  if (path) return { name: "chrome", ok: true, detail: path };
+  return {
+    name: "chrome",
+    ok: true,
+    info: true,
+    detail:
+      "Google Chrome not found. Sessions fall back to the bundled Chromium, and `browxai chrome start` / `chrome login` need Chrome installed",
+  };
+}
+
+// Bundled Chromium (playwright-core's download). The default launch uses the
+// installed Chrome and only falls back to this build, so it is a hard
+// requirement only when `chromeInstalled` is false. Lazy import so doctor
+// doesn't pay the playwright-core cost on bare invocation.
+export async function chromiumCheck(chromeInstalled = false): Promise<Check> {
+  const install = playwrightInstallCommand("chromium");
   try {
     const { chromium } = await import("playwright-core");
     const path = chromium.executablePath();
     if (path && existsSync(path)) {
       return { name: "chromium", ok: true, detail: `${path}` };
     }
+    if (chromeInstalled) {
+      return {
+        name: "chromium",
+        ok: true,
+        info: true,
+        detail: `bundled build not downloaded. Not needed while Google Chrome is installed; run \`${install}\` to use channel "chromium"`,
+      };
+    }
     return {
       name: "chromium",
       ok: false,
-      detail: "playwright-core has no Chromium binary cached",
-      fix: "run `pnpm install-browser`",
+      detail: "no Google Chrome and no bundled Chromium, so a session has no browser to launch",
+      fix: `install Google Chrome, or run \`${install}\``,
     };
   } catch (e) {
     return {
       name: "chromium",
-      ok: false,
+      ok: chromeInstalled,
+      ...(chromeInstalled ? { info: true } : {}),
       detail: e instanceof Error ? e.message : String(e),
-      fix: "run `pnpm install` and `pnpm install-browser`",
+      fix: `reinstall browxai (playwright-core failed to load), then run \`${install}\``,
     };
   }
 }
@@ -67,7 +96,7 @@ export async function firefoxCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: 'not installed (opt-in second engine — browserType:"firefox")',
-      fix: "run `npx playwright install firefox` to enable the firefox engine",
+      enable: `\`${playwrightInstallCommand("firefox")}\``,
     };
   } catch (e) {
     return {
@@ -75,7 +104,7 @@ export async function firefoxCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "run `npx playwright install firefox` to enable the firefox engine",
+      enable: `\`${playwrightInstallCommand("firefox")}\``,
     };
   }
 }
@@ -97,7 +126,7 @@ export async function webkitCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: 'not installed (opt-in third engine — browserType:"webkit")',
-      fix: "run `npx playwright install webkit` to enable the webkit engine",
+      enable: `\`${playwrightInstallCommand("webkit")}\``,
     };
   } catch (e) {
     return {
@@ -105,7 +134,7 @@ export async function webkitCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "run `npx playwright install webkit` to enable the webkit engine",
+      enable: `\`${playwrightInstallCommand("webkit")}\``,
     };
   }
 }
@@ -130,7 +159,7 @@ export async function androidCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: `${msg} (opt-in BYOB lane — browserType:"android")`,
-      fix: "connect an Android phone over USB, enable USB debugging, open Chrome",
+      enable: "connect an Android phone over USB, turn on USB debugging, open Chrome",
     };
   }
   // Device ready — try to reach the Chrome socket so the operator knows whether
@@ -155,7 +184,7 @@ export async function androidCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: `device ${serial} ready but Chrome socket not reachable: ${msg}`,
-      fix: "open Chrome on the device + enable USB web-debugging (chrome://inspect should list its tabs)",
+      enable: "open Chrome on the device with USB debugging on (chrome://inspect lists its tabs)",
     };
   } finally {
     if (localPort) {
@@ -179,8 +208,8 @@ const ELECTRON_UA = /\bElectron\/([0-9][\w.]*)/;
  *  Electron version from the protocol answers that without driving anything. */
 export async function electronCheck(): Promise<Check> {
   const name = "electron";
-  const fix =
-    "launch the app with a loopback debugging port (e.g. `--remote-debugging-port=9333`), set BROWX_ATTACH_CDP to it, and grant the `byob-attach` capability. Read docs/threat-model.md first: that port is unauthenticated for the app's lifetime and your EDR will flag the launch (MITRE T1539).";
+  const enable =
+    "start the app with `--remote-debugging-port=9333`, set BROWX_ATTACH_CDP to it, add `byob-attach` to BROWX_CAPABILITIES (that port is unauthenticated, read docs/threat-model.md)";
   const endpoint = process.env.BROWX_ATTACH_CDP?.trim();
   if (!endpoint) {
     return {
@@ -188,7 +217,7 @@ export async function electronCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: 'BROWX_ATTACH_CDP not set (opt-in attach-only lane — browserType:"electron")',
-      fix,
+      enable,
     };
   }
   try {
@@ -219,7 +248,7 @@ export async function electronCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: `BROWX_ATTACH_CDP=${endpoint} not reachable: ${msg}`,
-      fix,
+      enable,
     };
   }
 }

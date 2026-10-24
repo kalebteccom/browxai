@@ -4,11 +4,16 @@ description: What browxai does and does not do for sites that gate access with b
 ---
 
 Some sites put a bot-protection layer (a Cloudflare challenge, Turnstile and
-similar) in front of the page. browxai does not defeat or spoof bot detection.
-It ships no solver, no token service and no fingerprint patch, and it cannot
-guarantee access to any site. A site's terms of use apply to what you drive
-against it. What follows is how to run a normal browser and how to hand the one
-step a person has to do to a person.
+similar) in front of the page. By default browxai does not defeat or spoof bot
+detection, and it cannot guarantee access to any site. Two optional
+capabilities, both off by default, go further:
+[`stealth`](#fingerprint-patches-through-stealth-off-by-default) patches four
+browser properties, and
+[`captcha`](#captcha-solving-through-a-third-party-service-off-by-default) sends
+a captcha to a third-party solving service you configure and pay for. browxai
+runs no token service and bundles no solver. A site's terms of use apply to what
+you drive against it. What follows is how to run a normal browser and how to
+hand the one step a person has to do to a person.
 
 ## Light protection: a regular Chrome
 
@@ -21,9 +26,10 @@ installed browxai falls back to the bundled Chromium and logs a warning saying
 so. `channel: "chromium"` pins the bundled build, and `BROWX_AUTOMATION_SWITCH=1`
 puts the automation switch back for debugging.
 
-That is all it changes. browxai adds no `--disable-blink-features` flag, does
-not patch `navigator`, injects no script to hide the debugger and does not
-rewrite the user agent.
+That is all the default launch changes. browxai adds no
+`--disable-blink-features` flag, injects no script to hide the debugger and does
+not rewrite the user agent. With `stealth` off it does not patch `navigator`
+either.
 
 ## Strict challenges: clear them by hand, then continue
 
@@ -57,3 +63,48 @@ When a challenge appears mid-run, `ActionResult.challenge` names it. The
 `await_human` tool pauses the run and lets a person clear it in the live browser,
 then the run continues. Use it for one-off gates; use `chrome login` for a
 profile you want to keep signed in.
+
+## Fingerprint patches through `stealth` (off by default)
+
+The `stealth` capability registers no tool. With it on, every session's browser
+context loads an init script that runs before any page script and overrides four
+properties Playwright leaves recognizable: `navigator.webdriver` (set to false),
+`navigator.plugins` (a non-empty list), `navigator.languages` (filled in when
+the headless default left it empty) and `window.chrome` (defined). It bundles no
+anti-fingerprinting library beyond those four patches, and a site that probes
+for an attached debugger still sees one. Enabling it logs a warning at server
+start that names the terms-of-service exposure. Circumventing automation
+detection may break a site's terms, and you carry that exposure.
+
+## Captcha solving through a third-party service (off by default)
+
+The `captcha` capability registers `solve_captcha`. It is not in the default set
+(`read`, `navigation`, `action`, `human`), and enabling it logs a warning at
+server start that names the terms-of-service exposure. Solving captchas may break
+a site's terms and, depending on where you are, computer-misuse law. You carry
+that exposure.
+
+browxai bundles no solver, so the tool needs an account with one of two services:
+2Captcha or CapMonster. Set `BROWX_CAPTCHA_PROVIDER` (`2captcha` or `capmonster`)
+and `BROWX_CAPTCHA_API_KEY` in the server's environment, both together.
+`BROWX_CAPTCHA_API_BASE`, `BROWX_CAPTCHA_TIMEOUT_MS` (default 120000) and
+`BROWX_CAPTCHA_POLL_MS` (default 5000) are optional. browxai never buys credits.
+With the capability on and no provider set, the tool returns `ok:false` and sends
+nothing.
+
+What leaves your machine on a call: the API key, the URL of the current page,
+and the widget's site key, or the image bytes for an `image` captcha. They go to
+the provider's API (`https://2captcha.com` or `https://api.capmonster.cloud`
+unless you override the base URL). Cookies, page content and screenshots are not
+sent. The provider solves on its own infrastructure, and browxai polls it until
+an answer arrives or the timeout passes.
+
+`solve_captcha` takes a `type` (`recaptcha2`, `recaptcha3`, `hcaptcha`,
+`turnstile` or `image`) plus a `siteKey`, or a `selector` whose element carries
+`data-sitekey`. It returns `{ ok, provider, solution, taskId, elapsedMs }`. It
+does not submit anything: you put the token into the page yourself, and how that
+works differs per site. It does not read `ActionResult.challenge`.
+
+For a gate you want a person to clear, use `await_human` or the `chrome login`
+flow above. The [tool reference](/reference/tool-reference/) has the full
+contract, and the [threat model](/security/threat-model/) has the posture row.

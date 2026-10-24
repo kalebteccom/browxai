@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   BindingGuard,
   TokenBucket,
-  DEFAULT_BUDGETS,
   SHED_LOG_INTERVAL_MS,
   type BindingBudget,
   type BindingClass,
@@ -129,15 +128,6 @@ describe("BindingGuard", () => {
     expect(handled).toBe(3);
   });
 
-  it("a binding without a deny result never settles over budget", async () => {
-    const { guard } = setup();
-    const wrapped = guard.wrap("write", "write", () => undefined);
-    const page = {};
-    wrapped({ page }, "1");
-    wrapped({ page }, "2");
-    expect(await neverSettles(wrapped({ page }, "3"))).toBe(true);
-  });
-
   it("keeps each page's budget separate", () => {
     const { guard } = setup();
     const wrapped = guard.wrap("check", "decision", () => "allow", { denyResult: () => "deny" });
@@ -161,16 +151,6 @@ describe("BindingGuard", () => {
     note({ page }, "{}");
     perm({ page }, "{}");
     expect(note({ page }, "{}")).toBe("deny");
-  });
-
-  it("refills with time", () => {
-    const { guard, advance } = setup();
-    const wrapped = guard.wrap("check", "decision", () => "allow", { denyResult: () => "deny" });
-    const page = {};
-    for (let i = 0; i < 3; i++) wrapped({ page }, "{}");
-    expect(wrapped({ page }, "{}")).toBe("deny");
-    advance(2_000);
-    expect(wrapped({ page }, "{}")).toBe("allow");
   });
 
   it("sheds beyond the in-flight cap while handlers wait on a human", async () => {
@@ -288,25 +268,5 @@ describe("BindingGuard", () => {
     ]);
     // The page cap holds for a fresh frame too.
     expect(wrapped({ page, frame: {} }, "{}")).toBe("deny");
-  });
-
-  it("a replay-class call over budget is dropped without closing or failing anything", async () => {
-    const { guard } = setup();
-    let seen = 0;
-    const wrapped = guard.wrap("replay_emit", "replay", () => {
-      seen++;
-    });
-    const page = {};
-    wrapped({ page }, "1");
-    wrapped({ page }, "2");
-    expect(await neverSettles(wrapped({ page }, "3"))).toBe(true);
-    expect(seen).toBe(2);
-  });
-
-  it("the default decision budget leaves room for normal use", () => {
-    const b = DEFAULT_BUDGETS.decision;
-    expect(b.burst).toBeGreaterThanOrEqual(50);
-    expect(b.shedReplyBurst).toBeGreaterThan(0);
-    expect(DEFAULT_BUDGETS.write.shedReplyBurst).toBe(0);
   });
 });

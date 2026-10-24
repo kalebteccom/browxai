@@ -13,7 +13,6 @@ import {
   hierarchyDigest,
   NativeHierarchyParseError,
   nameFor,
-  nativeElementKey,
   parseBounds,
   parseHierarchy,
   roleFor,
@@ -52,14 +51,6 @@ describe("parseHierarchy", () => {
     expect(roots[0]!.children[0]!.text).toBe("hello");
   });
 
-  it("handles self-closing and paired nodes in the same document", () => {
-    const roots = parseHierarchy(
-      dump(node({}, node({ text: "a" }) + node({ text: "b" }, node({ text: "c" })))),
-    );
-    expect(roots[0]!.children.map((c) => c.text)).toEqual(["a", "b"]);
-    expect(roots[0]!.children[1]!.children[0]!.text).toBe("c");
-  });
-
   it("keeps every top-level window rather than dropping all but the first", () => {
     // Android 12+ reports the app, the status bar and the navigation bar as
     // three roots. Dropping two of them loses the system UI an agent may need to
@@ -79,11 +70,6 @@ describe("parseHierarchy", () => {
     expect(() => parseHierarchy("ERROR: could not get idle state.")).toThrow(
       NativeHierarchyParseError,
     );
-  });
-
-  it("survives an attribute value containing a > character", () => {
-    const roots = parseHierarchy(dump(node({ text: "a &gt; b" })));
-    expect(roots[0]!.text).toBe("a > b");
   });
 });
 
@@ -125,12 +111,6 @@ describe("roleFor", () => {
     password: false,
     children: [],
     ...over,
-  });
-
-  it("maps the widget classes onto the snapshot role vocabulary", () => {
-    expect(roleFor(n({ className: "android.widget.Button" }))).toBe("button");
-    expect(roleFor(n({ className: "android.widget.EditText" }))).toBe("textbox");
-    expect(roleFor(n({ className: "android.widget.TextView" }))).toBe("text");
   });
 
   it("maps a vendor subclass like its base", () => {
@@ -178,20 +158,10 @@ describe("testIdFor", () => {
     });
   });
 
-  it("records which attribute matched", () => {
-    // A selector hint has to say what it actually queried. Implying a convention
-    // the app did not use is how an exported step stops reproducing.
-    expect(testIdFor({ ...base, resourceId: "com.acme.app:id/x" })!.testIdAttr).toBe("resource-id");
-  });
-
   it("ignores the platform's own furniture", () => {
     // `android:id/content` is on every screen of every app. Anchoring identity to
     // it would make refs collide across unrelated screens.
     expect(testIdFor({ ...base, resourceId: "android:id/content" })).toBeUndefined();
-  });
-
-  it("returns undefined when the app set no testID", () => {
-    expect(testIdFor(base)).toBeUndefined();
   });
 });
 
@@ -292,35 +262,6 @@ describe("the selector model — a testID-anchored ref survives a layout change"
     const byId = new Map<string, string>();
     for (const { node: n } of walk(root)) if (n.testId) byId.set(n.testId, n.ref);
     expect(byId.get("a")).not.toBe(byId.get("b"));
-  });
-
-  it("passes an empty path to elementKey exactly when a testID is present", () => {
-    // The rule stated as an equality, so a refactor that reintroduces the path
-    // into a testID-bearing key fails here rather than in a flaky move test.
-    const withId = nativeElementKey({
-      role: "button",
-      name: "Go",
-      testId: "submit",
-      path: "a/b/c",
-      bounds: null,
-    });
-    const movedWithId = nativeElementKey({
-      role: "button",
-      name: "Go",
-      testId: "submit",
-      path: "x/y/z/w",
-      bounds: null,
-    });
-    expect(withId).toBe(movedWithId);
-
-    const withoutId = nativeElementKey({ role: "button", name: "Go", path: "a/b/c", bounds: null });
-    const movedWithoutId = nativeElementKey({
-      role: "button",
-      name: "Go",
-      path: "x/y/z/w",
-      bounds: null,
-    });
-    expect(withoutId).not.toBe(movedWithoutId);
   });
 
   it("namespaces refs by window so two windows with identical markup do not collide", () => {

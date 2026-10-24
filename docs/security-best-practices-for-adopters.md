@@ -16,7 +16,7 @@ Operational practices for teams integrating browxai. Each practice carries its r
 
 ## Capability posture
 
-browxai ships off-by-default for posture-broadening capabilities (`eval`, `byob-attach`, `extensions`, `device-emulation`, `secrets`, `network-body`, `file-io`). Enabling any of these is opt-in to a broader risk surface. Read `docs/threat-model.md` before enabling a capability.
+browxai ships every capability past `read`, `navigation`, `action` and `human` off by default, among them `eval`, `byob-attach`, `extensions`, `device-emulation`, `secrets`, `network-body`, `file-io`, `stealth` and `captcha`. Enabling any of these opts in to a broader risk surface. Read `docs/threat-model.md` before enabling a capability.
 
 The capability gate documents what a tool is allowed to reach. It does not contain a tool that has reached it.
 

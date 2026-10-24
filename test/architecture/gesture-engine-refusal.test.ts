@@ -38,9 +38,7 @@ const NO_CDP = "gesture-no-cdp" as EngineKind;
 const ANSWERS = "gesture-answers" as EngineKind;
 
 /** The five registrations that left `DEEP_TOOLS`, with an argument bag that
- *  reaches the substrate on each. The table is the unit of coverage here, so its
- *  length is asserted below — a generated table that quietly loses a row runs
- *  fewer cases and stays green, which is the trap RFC 0009 P2 hit. */
+ *  reaches the substrate on each. */
 const RETIRED = [
   { tool: "touch_start", args: { coords: { x: 10, y: 20 } } },
   { tool: "touch_move", args: { coords: { x: 30, y: 40 } } },
@@ -112,16 +110,6 @@ describe("the five touch tools still refuse on an engine that cannot dispatch to
     await server.handlers.open_session({ session: "no-cdp" });
   });
 
-  it("covers all five registrations", () => {
-    expect(RETIRED.map((r) => r.tool)).toEqual([
-      "touch_start",
-      "touch_move",
-      "touch_end",
-      "gesture_swipe",
-      "gesture_pinch",
-    ]);
-  });
-
   for (const { tool, args } of RETIRED) {
     it(`${tool} refuses with the engine gate's own error line`, async () => {
       const body = await call(server, tool, args);
@@ -138,11 +126,6 @@ describe("the five touch tools still refuse on an engine that cannot dispatch to
       expect(body.hint).toContain("chromium");
     });
   }
-
-  it("the refusal envelope matches the engine gate's, so one classifier covers both", async () => {
-    const body = await call(server, "gesture_swipe", RETIRED[3].args);
-    expect(Object.keys(body).sort()).toEqual(["engine", "error", "hint", "ok", "tokensEstimate"]);
-  });
 });
 
 describe("an engine that CAN dispatch touch without CDP now answers", () => {

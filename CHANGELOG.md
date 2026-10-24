@@ -6,6 +6,109 @@ All notable changes to browxai are documented here. The format follows
 [Stability & semver](docs/tool-reference.md) policy for what "the stable
 surface" covers.
 
+## Unreleased
+
+### Changed
+
+- **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
+  naming the variable for a base that is not `https`. Plain `http` still works
+  for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.
+- **Service-worker tools follow the origin policy.** `workers_list` leaves out a
+  service worker on an origin `BROWX_BLOCKED_ORIGINS` blocks or
+  `BROWX_ALLOWED_ORIGINS` does not list, and `worker_message_send` refuses it
+  with an `origin-blocked` error.
+- **`worker_messages_read` says its data is untrusted.** The tool description and
+  the tool reference now state that service-worker and web-worker message data
+  is reported by the page and is untrusted, like any page text.
+- `open_session` now rejects profile names that are not plain names (no path
+  separators, no `..`). The refusal is `invalid-name` and gives the rule:
+  letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most
+  128 characters. Session ids follow the same rule, on `open_session` and on any
+  tool that creates a session on first use, because a session id names its
+  `.downloads/` and `.artifacts/` directories. `profile_snapshot` and
+  `profile_restore` apply the rule to `profile` and reject `.` and `..` as a
+  snapshot name.
+- `worker_messages_read` now masks registered secrets in message data, as
+  `ws_read` does. `workers_list` masks them in worker URLs, and
+  `worker_message_send` in an error it echoes from the page.
+- **`solve_captcha` keeps the provider API key out of URLs.** The poll request
+  is now a POST with the key in the form body, as the submit already was. It
+  used to put the key in the query string.
+- **`browxai doctor` checks the browser the default launch uses.** It reports the
+  installed Google Chrome, and a missing bundled Chromium no longer fails doctor
+  while Chrome is installed. It fails when neither is present, and it now checks
+  for Node 22 or later and prints the browxai version.
+- **`browxai doctor` warns when `BROWX_ATTACH_CDP` is set without `byob-attach`.**
+  It prints a `⚠` row with the one-line fix instead of leaving the refusal to
+  show up at the first attach. The warning does not change doctor's exit code.
+- **A launch with no Chrome and no bundled Chromium names the fix.** The
+  Playwright "Executable doesn't exist" error keeps its text and gains a line
+  pointing at Google Chrome or `npx playwright-core install chromium`.
+- **Browser install hints name the playwright-core version browxai runs.** Doctor and
+  the launch error now print `npx playwright-core@<version> install chromium`
+  (and the same for firefox and webkit), with the version read from the
+  installed package. A bare `npx playwright-core install chromium` fetches the
+  newest release, whose Chromium build can differ from the one browxai launches.
+  The docs show the current version, 1.64.1.
+- **`browxai doctor` says how to enable an opt-in engine.** A firefox, webkit,
+  android or electron row that is not ready now prints an `enable with:` line
+  under it. Before, only failed rows got a hint.
+- **Running `browxai` in a terminal prints a one-time note on stderr** saying it
+  is an MCP server that waits for a client, and pointing at `browxai doctor`.
+- **`browxai --help` lists `chrome status` and the `safari` engine.**
+- **`browxai init` suggests the npx entry.** The snippet still uses `node` and
+  the absolute `dist/cli.js` path, and init now prints one line pointing at
+  `{ "command": "npx", "args": ["-y", "browxai"] }`, which survives a move of node
+  or the global prefix.
+- **`browxai init` next steps** now cover the `byob-attach` capability the
+  `browxai-attached` entry needs, and warn when the written path sits in the npx
+  cache.
+  `browxai chrome start` prints the same capability line next to the attach
+  endpoint.
+- **The disabled-tool hint says `BROWX_CAPABILITIES` replaces the default set**,
+  so a newcomer who sets it to one capability keeps `read,navigation,action,human`.
+- **zod 4.** Tool input schemas are built with zod 4, and a plugin's `inputSchema`
+  values are zod 4 schemas. `idb_put` now lists `value` as required in its
+  advertised input schema.
+
+### Fixed
+
+- **`BROWX_HEADLESS=true` now launches headless from the CLI.** `browxai` and
+  `browxai serve` only honoured `1`, while the config layer accepted `1` and
+  `true`. Both now accept `1` and `true`, in any case.
+- **`worker_message_send` now reaches a service worker, and `workers_list` lists
+  them.** Both went through a CDP `sessionId` that Playwright does not route to a
+  child session, so the message never arrived and the list could come back empty.
+  They now use Playwright's own service worker handles (`context.serviceWorkers()`
+  and `Worker.evaluate`), and a worker's `message` listener fires. The `sw-N` ids
+  are unchanged and still match the ids `worker_messages_read` returns. Service
+  workers are only reachable on Chromium-based engines. `worker_message_send` to
+  an `sw-N` and `workers_list({ type: "service" })` return an error naming the
+  engine elsewhere, and `workers_list` with the default `all` lists Web Workers
+  only. A listed service worker's `state` is now always `running`, since
+  Playwright only holds one while it is alive.
+- **`browxai chrome start --port abc` is refused.** A port that is not a whole
+  number from 1 to 65535 now prints a message and exits with code 2. It used to
+  fall back to 9222 without saying so.
+- **Server log lines no longer read `browxai: browxai: ...`.** The logger adds the
+  prefix, so the message text drops its own.
+- **Attaching to an existing Chrome now requires the `byob-attach` capability,
+  as documented.** Before, a server started with `BROWX_ATTACH_CDP` and without
+  the capability only logged a warning and attached anyway. Every `attached`
+  session is now refused at creation without it: `open_session({ mode:
+  "attached" })` returns the standard refusal with `requiredCapability:
+  "byob-attach"`, and the default session of a `BROWX_ATTACH_CDP` server, the
+  `android` engine and the `electron` engine are refused the same way. To keep
+  attaching, set `BROWX_CAPABILITIES=read,navigation,action,human,byob-attach`
+  and restart the server; a saved config or `set_config` cannot add it.
+- **`worker_messages_read` now returns service-worker messages.** It only ever
+  returned Web Worker messages. Messages a service worker posts to the page with
+  `client.postMessage` are now recorded and come back with an `sw-N` `workerId`,
+  in the same shape as Web Worker messages.
+- Docs: install steps now state Node 22 and that Chrome is the default browser;
+  the `BROWX_CHANNEL` row said the bundled build; the BYOB recipe used a stale
+  profile directory; the harness READMEs said Node 20.
+
 ## [0.13.0] - 2026-10-22
 
 Installed Chrome on one default profile per workspace.

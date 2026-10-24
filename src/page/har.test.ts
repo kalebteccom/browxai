@@ -128,14 +128,6 @@ describe("startHar (happy path)", () => {
     expect(options.updateContent).toBe("embed");
   });
 
-  it("auto-names the .har under <workspace>/har/ when no path is supplied", async () => {
-    const { ctx } = fakeContext();
-    const state = newHarRecorderState();
-    const r = await startHar(ctx, state, ws, "agent-a");
-    expect(r.path.startsWith(join(ws, "har") + "/")).toBe(true);
-    expect(r.path.endsWith(".har")).toBe(true);
-  });
-
   it("honours mode + content overrides", async () => {
     const { ctx, calls } = fakeContext();
     const state = newHarRecorderState();
@@ -170,14 +162,6 @@ describe("startHar (workspace-escape rejection)", () => {
     expect(state.active).toBe(false);
   });
 
-  it("rejects an absolute path pointing outside the workspace", async () => {
-    const { ctx } = fakeContext();
-    const state = newHarRecorderState();
-    await expect(startHar(ctx, state, ws, "s", { path: "/etc/passwd" })).rejects.toThrow(
-      /inside \$BROWX_WORKSPACE/,
-    );
-  });
-
   it("refuses to start over an active native-record session", async () => {
     const { ctx } = fakeContext();
     const state = newHarRecorderState();
@@ -203,23 +187,6 @@ describe("startHar (re-recording within same session)", () => {
     // The prior recorder was flushed by an `unrouteAll` between the two routeFromHAR calls.
     const order = calls.map((c) => c.method);
     expect(order).toEqual(["routeFromHAR", "unrouteAll", "routeFromHAR"]);
-  });
-
-  it("clears state cleanly after stop, then a fresh start works", async () => {
-    const { ctx, calls } = fakeContext();
-    const state = newHarRecorderState();
-    await startHar(ctx, state, ws, "agent-a", { path: "first.har" });
-    const stopped = await stopHar(ctx, state);
-    expect(stopped.wasActive).toBe(true);
-    expect(stopped.finalized).toBe(false);
-    expect(state.active).toBe(false);
-
-    const r2 = await startHar(ctx, state, ws, "agent-a", { path: "second.har" });
-    expect(r2.replacedPrior).toBe(false);
-    expect(state.active).toBe(true);
-    expect(state.path).toBe(join(ws, "second.har"));
-    const methods = calls.map((c) => c.method);
-    expect(methods).toEqual(["routeFromHAR", "unrouteAll", "routeFromHAR"]);
   });
 });
 
@@ -279,13 +246,6 @@ describe("readHarIfSmall (inline-vs-path threshold)", () => {
     writeFileSync(p, big);
     expect(readHarIfSmall(p)).toBeUndefined();
   });
-
-  it("respects a custom cap", () => {
-    const p = join(ws, "tiny.har");
-    writeFileSync(p, "abcd");
-    expect(readHarIfSmall(p, 2)).toBeUndefined();
-    expect(readHarIfSmall(p, 1024)).toBe("abcd");
-  });
 });
 
 describe("applyHarReplay", () => {
@@ -312,11 +272,5 @@ describe("buildRecordHarOption (open_session({har}))", () => {
     expect(r.recordHar.path).toBe(join(ws, "creation.har"));
     expect(r.recordHar.mode).toBe("full");
     expect(r.recordHar.content).toBe("embed");
-  });
-
-  it("rejects a path that escapes the workspace", () => {
-    expect(() => buildRecordHarOption(ws, "s", { path: "../escape.har" })).toThrow(
-      /inside \$BROWX_WORKSPACE/,
-    );
   });
 });

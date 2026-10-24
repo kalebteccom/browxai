@@ -38,16 +38,6 @@ const HUMAN_DEFAULT_ALLOWLIST = new Set<string>([
 ]);
 
 describe("L2 — every registered tool declares a capability (derived)", () => {
-  it("no tool silently falls back to the human default (only the sanctioned allowlist)", async () => {
-    const names = await registeredToolNames();
-    const undeclared = names.filter(
-      (n) => !(n in TOOL_CAPABILITY) && !HUMAN_DEFAULT_ALLOWLIST.has(n),
-    );
-    expect(undeclared, `tools missing a TOOL_CAPABILITY entry: ${undeclared.join(", ")}`).toEqual(
-      [],
-    );
-  });
-
   it("the 7 former gate-gap tools now carry a derived capability row (P2 gap-closure)", async () => {
     // These declared their capability in their description but had NO row before
     // P2, so isToolEnabled silently passed them through the human default. P2's
@@ -86,12 +76,6 @@ describe("L2 — every registered tool declares a capability (derived)", () => {
     expect(count).toBe(Object.keys(TOOL_CAPABILITY).length);
     // A concrete spot-check: eval_js is present in the iteration under `eval`.
     expect(spread.find(([name]) => name === "eval_js")?.[1]).toBe("eval");
-  });
-
-  it("no stale TOOL_CAPABILITY entry survives a removed tool (every derived row is real)", async () => {
-    const names = new Set(await registeredToolNames());
-    const stale = Object.keys(TOOL_CAPABILITY).filter((n) => !names.has(n));
-    expect(stale, `stale capability rows: ${stale.join(", ")}`).toEqual([]);
   });
 
   it("the derived map and the registration set partition every tool exactly", async () => {

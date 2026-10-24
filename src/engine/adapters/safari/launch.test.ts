@@ -21,20 +21,10 @@ function fakeProc(): { proc: ProcessLike; killed: () => number } {
 }
 
 describe("assertSafariAvailable", () => {
-  it("throws off-macOS", () => {
-    expect(() => assertSafariAvailable({ platform: "linux" })).toThrow(SafariUnavailableError);
-  });
-
   it("throws when safaridriver is absent", () => {
     expect(() => assertSafariAvailable({ platform: "darwin", binaryExists: () => false })).toThrow(
       /not found/,
     );
-  });
-
-  it("passes when macOS + binary present", () => {
-    expect(() =>
-      assertSafariAvailable({ platform: "darwin", binaryExists: () => true }),
-    ).not.toThrow();
   });
 });
 

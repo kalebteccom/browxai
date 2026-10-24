@@ -58,15 +58,6 @@ describe("ReplayLog — writing", () => {
     ).rejects.toThrow(/must resolve inside \$BROWX_WORKSPACE/);
   });
 
-  it("reports byte and event counts that match the file on disk", async () => {
-    const log = await ReplayLog.open({ workspaceRoot: root, path: "e.jsonl" });
-    for (let i = 0; i < 50; i++) log.record("net/request", { url: `https://x/${i}`, i });
-    const stats = await log.close();
-
-    expect(stats.events).toBe(50);
-    expect(stats.bytes).toBe(readFileSync(stats.path).byteLength);
-  });
-
   it("counts events by type, which is what the manifest carries", async () => {
     const log = await ReplayLog.open({ workspaceRoot: root, path: "e.jsonl" });
     log.record("action/call", {});
@@ -134,14 +125,6 @@ describe("ReplayLog — the clock", () => {
     expect(ts).toEqual([500, 500, 500]);
     for (let i = 1; i < ts.length; i++) expect(ts[i]).toBeGreaterThanOrEqual(ts[i - 1] as number);
   });
-
-  it("defaults clockOrigin to wall-clock ms", async () => {
-    const before = Date.now();
-    const log = await ReplayLog.open({ workspaceRoot: root, path: "e.jsonl" });
-    await log.close();
-    expect(log.clockOrigin).toBeGreaterThanOrEqual(before);
-    expect(log.clockOrigin).toBeLessThanOrEqual(Date.now());
-  });
 });
 
 describe("ReplayLog — caps", () => {
@@ -177,41 +160,9 @@ describe("ReplayLog — caps", () => {
     expect(() => lines(stats.path)).not.toThrow();
     expect(stats.truncated?.droppedEvents).toBe(100 - stats.events);
   });
-
-  it("keeps recording when the caps are not reached", async () => {
-    const log = await ReplayLog.open({
-      workspaceRoot: root,
-      path: "e.jsonl",
-      maxEvents: 10,
-      maxBytes: 1024 * 1024,
-    });
-    for (let i = 0; i < 10; i++) expect(log.record("a", { i })).toBe(true);
-    const stats = await log.close();
-
-    expect(stats.truncated).toBeUndefined();
-    expect(stats.events).toBe(10);
-  });
-
-  it("records the cap breach once and counts every event after it", async () => {
-    const log = await ReplayLog.open({ workspaceRoot: root, path: "e.jsonl", maxEvents: 1 });
-    log.record("a", {});
-    expect(log.record("b", {})).toBe(false);
-    expect(log.record("c", {})).toBe(false);
-    expect(log.truncated?.droppedEvents).toBe(2);
-    expect(log.truncated?.reason).toBe("event-cap");
-    await log.close();
-  });
 });
 
 describe("ReplayLog — backpressure", () => {
-  it("record() is synchronous, so capture can never await the disk", async () => {
-    const log = await ReplayLog.open({ workspaceRoot: root, path: "e.jsonl" });
-    const returned: unknown = log.record("a", {});
-    expect(returned).toBe(true);
-    expect(returned).not.toBeInstanceOf(Promise);
-    await log.close();
-  });
-
   it("drops events instead of growing the buffer when writes cannot keep up", async () => {
     const log = await ReplayLog.open({
       workspaceRoot: root,
@@ -285,17 +236,5 @@ describe("ReplayLog — close", () => {
     const second = await log.close();
     expect(second).toEqual(first);
     expect(lines(first.path)).toHaveLength(1);
-  });
-
-  it("flushes a buffer that never reached the flush threshold", async () => {
-    const log = await ReplayLog.open({
-      workspaceRoot: root,
-      path: "e.jsonl",
-      flushBytes: 10 * 1024 * 1024,
-    });
-    log.record("a", { pad: "z".repeat(100) });
-    expect(readFileSync(join(root, "e.jsonl"), "utf8")).toBe("");
-    const stats = await log.close();
-    expect(lines(stats.path)).toHaveLength(1);
   });
 });

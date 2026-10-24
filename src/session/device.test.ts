@@ -28,12 +28,6 @@ describe("resolveDevice", () => {
     expect(cfg.isMobile).toBe(preset.isMobile); // preset traits preserved
   });
 
-  it("viewport-only spec yields a config with just the viewport", () => {
-    expect(resolveDevice({ viewport: { width: 800, height: 600 } })).toEqual({
-      viewport: { width: 800, height: 600 },
-    });
-  });
-
   it("throws UnknownDeviceError for an unrecognised preset", () => {
     expect(() => resolveDevice({ device: "Nonexistent Phone 999" })).toThrow(UnknownDeviceError);
     try {

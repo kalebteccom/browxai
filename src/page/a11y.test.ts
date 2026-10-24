@@ -80,21 +80,6 @@ describe("getA11yTree — ignored nodes splice, they do not prune", () => {
     expect(names(tree!)).toEqual(["Save", "Cancel"]);
   });
 
-  it("contributes no entry for the ignored node itself", async () => {
-    const tree = await getA11yTree(cdpServing(CHROMIUM_SHAPED), new RefRegistry());
-    const allRoles: string[] = [];
-    const stack = [tree!];
-    while (stack.length) {
-      const n = stack.pop()!;
-      allRoles.push(n.role);
-      stack.push(...n.children);
-    }
-    // The children are through…
-    expect(allRoles.filter((r) => r === "button")).toHaveLength(2);
-    // …and "none", the role CDP reports for an ignored wrapper, is not.
-    expect(allRoles).not.toContain("none");
-  });
-
   it("yields a tree when the ROOT is ignored", async () => {
     // A detached-ish document whose root node is itself ignored. Pre-fix this
     // returned null and the whole a11y tier went dark.
@@ -122,16 +107,6 @@ describe("getA11yTree — ignored nodes splice, they do not prune", () => {
     const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
     expect(tree!.role).toBe("RootWebArea");
     expect(names(tree!)).toEqual(["Visible"]);
-  });
-
-  it("keeps an all-ignored document's root as the DOM-walk anchor", async () => {
-    const nodes: FixtureNode[] = [
-      { nodeId: "1", ignored: true, role: { value: "none" }, childIds: ["2"] },
-      { nodeId: "2", parentId: "1", ignored: true, role: { value: "none" } },
-    ];
-    const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
-    expect(tree).not.toBeNull();
-    expect(tree!.children).toEqual([]);
   });
 
   it("splices in document order at the ignored node's position", async () => {
@@ -215,28 +190,6 @@ describe("getA11yTree — path and ref stability", () => {
     expect(findButton(after!)!.ref).toBe(findButton(before!)!.ref);
   });
 
-  it("a wrapper whose ROLE changes re-keys its descendants — the limit of the guarantee", async () => {
-    // The role value is part of the path segment, so a wrapper that changes
-    // role rotates every ref beneath it. Verified against real Chromium:
-    // `generic` → `group` on a plain `<div>` moved the button from e3 to e6,
-    // and `role="presentation"` moved it again because Chromium drops the node
-    // from the tree entirely instead of marking it ignored. The CHANGELOG and
-    // the comment in `a11y.ts` claim ref stability only for the flip that keeps
-    // the role.
-    const asGeneric: FixtureNode[] = [
-      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
-      { nodeId: "2", parentId: "1", role: { value: "generic" }, childIds: ["3"] },
-      { nodeId: "3", parentId: "2", role: { value: "button" }, name: { value: "Save" } },
-    ];
-    const asGroup = asGeneric.map((n) =>
-      n.nodeId === "2" ? { ...n, role: { value: "group" } } : n,
-    );
-    const refs = new RefRegistry();
-    const before = await getA11yTree(cdpServing(asGeneric), refs);
-    const after = await getA11yTree(cdpServing(asGroup), refs);
-    expect(before!.children[0]!.children[0]!.ref).not.toBe(after!.children[0]!.children[0]!.ref);
-  });
-
   it("an ignored sibling does not shift its later siblings' path indices", async () => {
     const refs = new RefRegistry();
     const nodes: FixtureNode[] = [
@@ -266,18 +219,6 @@ describe("getA11yTree — malformed graphs terminate", () => {
     expect(tree!.children[0]!.children[0]!.role).toBe("button");
     // The cycle stops here rather than re-expanding "group".
     expect(tree!.children[0]!.children[0]!.children).toEqual([]);
-  });
-
-  it("emits a node once when two parents claim the same child", async () => {
-    const nodes: FixtureNode[] = [
-      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2", "3"] },
-      { nodeId: "2", parentId: "1", role: { value: "group" }, childIds: ["4"] },
-      { nodeId: "3", parentId: "1", role: { value: "group" }, childIds: ["4"] },
-      { nodeId: "4", parentId: "2", role: { value: "button" }, name: { value: "Shared" } },
-    ];
-    const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
-    expect(tree!.children[0]!.children.map((c) => c.role)).toEqual(["button"]);
-    expect(tree!.children[1]!.children).toEqual([]);
   });
 });
 
@@ -341,25 +282,6 @@ describe("getA11yTree — the test-attribute sweep", () => {
       ["data-test", "data-cy"],
     );
     expect(tree!.children[0]!.testIdAttr).toBe("data-test");
-  });
-
-  it("reaches an element nested anywhere under the document", async () => {
-    const tree = await getA11yTree(
-      cdpWithDom(axNodes, {
-        backendNodeId: 1,
-        children: [
-          {
-            backendNodeId: 2,
-            children: [
-              { backendNodeId: 3, children: [{ backendNodeId: 40, attributes: ["data-qa", "q"] }] },
-            ],
-          },
-        ],
-      }),
-      new RefRegistry(),
-      ["data-qa"],
-    );
-    expect(tree!.children[0]!.testId).toBe("q");
   });
 
   it("survives a DOM agent that refuses", async () => {

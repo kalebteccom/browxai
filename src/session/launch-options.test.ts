@@ -2,11 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  backgroundThrottlingArgs,
-  buildIncognitoLaunchOptions,
-  buildManagedLaunch,
-} from "./launch-options.js";
+import { buildIncognitoLaunchOptions, buildManagedLaunch } from "./launch-options.js";
 
 // buildManagedLaunch resolves the workspace (and creates it) to derive the
 // default profile dir, so the suite pins it away from the real ~/.browxai.
@@ -31,22 +27,6 @@ const BACKGROUND_FLAGS = [
   "--disable-renderer-backgrounding",
 ];
 
-describe("backgroundThrottlingArgs", () => {
-  it('emits the three lifecycle flags for "disabled"', () => {
-    expect(backgroundThrottlingArgs({ backgroundThrottling: "disabled" })).toEqual(
-      BACKGROUND_FLAGS,
-    );
-  });
-
-  it('emits nothing for "default"', () => {
-    expect(backgroundThrottlingArgs({ backgroundThrottling: "default" })).toEqual([]);
-  });
-
-  it("emits nothing when unset", () => {
-    expect(backgroundThrottlingArgs({})).toEqual([]);
-  });
-});
-
 describe("buildManagedLaunch — background-throttling flags", () => {
   it('carries the three flags on chromiumArgs for "disabled"', () => {
     const { chromiumArgs } = buildManagedLaunch("chromium", {
@@ -67,12 +47,6 @@ describe("buildManagedLaunch — background-throttling flags", () => {
 });
 
 describe("buildIncognitoLaunchOptions — background-throttling flags", () => {
-  it('splices the three flags for "disabled"', () => {
-    expect(
-      buildIncognitoLaunchOptions("chromium", { backgroundThrottling: "disabled" }).args,
-    ).toEqual(BACKGROUND_FLAGS);
-  });
-
   it("appends them after the web-security flags without displacing them", () => {
     const { args } = buildIncognitoLaunchOptions("chromium", {
       disableWebSecurity: true,
@@ -87,11 +61,5 @@ describe("buildIncognitoLaunchOptions — background-throttling flags", () => {
 
   it("omits `args` entirely when unset", () => {
     expect(buildIncognitoLaunchOptions("chromium", {})).not.toHaveProperty("args");
-  });
-
-  it('omits `args` for "default"', () => {
-    expect(
-      buildIncognitoLaunchOptions("chromium", { backgroundThrottling: "default" }),
-    ).not.toHaveProperty("args");
   });
 });

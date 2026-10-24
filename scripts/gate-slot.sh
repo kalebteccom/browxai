@@ -10,11 +10,11 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 if [ ! -d "$LOCK_DIR" ]; then
-  echo "gate-slot: lock directory $LOCK_DIR does not exist; create it with deploy/dev-vm/setup.sh" >&2
+  echo "gate-slot: lock directory $LOCK_DIR does not exist; create it (mkdir -p $LOCK_DIR && chmod 1777 $LOCK_DIR) or set GATE_LOCK_DIR to a directory every gate user can write" >&2
   exit 2
 fi
 if [ ! -w "$LOCK_DIR" ]; then
-  echo "gate-slot: $(id -un) cannot write $LOCK_DIR; it must be ci:ci mode 1777, see deploy/dev-vm/setup.sh" >&2
+  echo "gate-slot: $(id -un) cannot write $LOCK_DIR; make it writable by every gate user (chmod 1777 $LOCK_DIR) or set GATE_LOCK_DIR" >&2
   exit 2
 fi
 

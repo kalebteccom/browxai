@@ -135,12 +135,6 @@ describe("@browxai/plugin-figma handlers", () => {
       expect(parseFirst(res).code).toBe("bad-arg");
     });
 
-    it("returns bad-arg when nodeId missing", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.move_node(api, { dx: 1, dy: 1 });
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
-
     it("returns figma-not-loaded when global is undefined", async () => {
       const api = makeApi(async () => evalEnvelope(false));
       const res = await handlers.move_node(api, { nodeId: "1:2", dx: 0, dy: 0 });

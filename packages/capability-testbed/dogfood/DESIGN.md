@@ -909,10 +909,6 @@ packages/capability-testbed/dogfood/
       generator.ts
         Coverage, friction, outcomes, and Markdown generation.
     mock/
-      mock-app-server.ts
-        Fake `codex app-server` stdio JSON-RPC server for CI tests.
-      mock-mcp-server.ts
-        Fake MCP server/proxy target for CI validation.
       fixtures.ts
         Representative mcpToolCall, reasoning, plan, and usage frames.
   test/
@@ -946,8 +942,8 @@ Reuse rules:
 - Do not duplicate assertions. `oracle/exercise-oracle.ts` must call
   `buildContext()` and `runExercise()` from `src/harness/driver.ts`, so the
   same `EXERCISES[tool]` map remains the single assertion source.
-- Mock app-server and mock MCP are for CI validation of the dogfood runner
-  itself. They do not replace real Codex or real browxai in host dogfood runs.
+- The `--mock` mode replays canned frames to validate the dogfood runner
+  itself. It does not replace real Codex or real browxai in host dogfood runs.
 
 ## 6. REPRODUCIBILITY PLAN
 

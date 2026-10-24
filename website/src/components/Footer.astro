@@ -1,15 +1,21 @@
 ---
 // Wraps Starlight's default footer (prev/next, edit link, last updated) and
-// adds a site-wide credit line.
+// adds a site-wide credit line with the version, licence and package links.
 import Default from "@astrojs/starlight/components/Footer.astro";
+import { LICENSE_URL, NPM_URL, REPO_URL, packageVersion } from "../lib/package-info";
+const version = packageVersion();
 ---
 
 <Default><slot /></Default>
 
 <div class="browx-credit">
+  browxai{version && ` v${version}`}
+  <span class="sep" aria-hidden="true">·</span>
+  <a href={LICENSE_URL}>MIT licensed</a>
+  <span class="sep" aria-hidden="true">·</span>
+  <a href={REPO_URL}>GitHub</a>
+  <span class="sep" aria-hidden="true">·</span>
+  <a href={NPM_URL}>npm</a>
+  <span class="sep" aria-hidden="true">·</span>
   Made by <a href="https://kalebtec.com">Kalebtec</a>
-  <span class="sep">·</span>
-  <a href="https://github.com/kalebteccom/browxai">GitHub</a>
-  <span class="sep">·</span>
-  MIT licensed
 </div>

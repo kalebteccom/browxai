@@ -46,7 +46,7 @@ export {
 } from "./capabilities.js";
 export { requireCdp, type CdpCapable } from "./session-cdp.js";
 export { requirePage, type PageCapable } from "./session-page.js";
-export { engineDeclares } from "./sub-interface.js";
+export { engineDeclares, engineDeclaration } from "./sub-interface.js";
 export { engineRequiresCapability } from "./registry.js";
 export {
   assertEngineSubInterface,

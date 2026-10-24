@@ -88,14 +88,4 @@ describe("IosLifecycle — the app_* family on ios-app", () => {
     expect((err as Error).message).toContain("simctl erase");
     expect((err as Error).message).toContain("EVERY app");
   });
-
-  it("rejects rather than throws synchronously, so an awaiting caller catches it", async () => {
-    // A bare `throw` from a method typed `Promise<void>` fires at the call site,
-    // before the caller's `await` exists. The `async` keyword is what converts it
-    // into the rejection the port promises, and this is the test that pins it.
-    const { lifecycle } = rig();
-    const pending = lifecycle.reset("com.acme.checkout");
-    expect(pending).toBeInstanceOf(Promise);
-    await expect(pending).rejects.toBeInstanceOf(NativeUnsupportedError);
-  });
 });

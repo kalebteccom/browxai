@@ -6,8 +6,8 @@ Register browxai as an MCP server in Claude Code, and install the
 ## Prerequisites
 
 - A recent Claude Code (`claude --version`).
-- Node.js 20+.
-- One-time Chromium download: `npx playwright-core install chromium`.
+- Node.js 22+.
+- Google Chrome installed. Without it, download the bundled Chromium once with `npx playwright-core@1.64.1 install chromium`.
 
 ## 1. Register the MCP server
 

@@ -9,11 +9,9 @@
 //     under 2000-token budget.
 //   - layout_thrash_trace: fixture page with rAF loop reading offsetHeight
 //     in a write/read alternation produces forcedLayoutsCount > 0.
-//   - memory_diff: two synthetic heap snapshots on disk → retainerGrowth
-//     surfaces the synthesised growers.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
@@ -183,107 +181,3 @@ describe("perf module keystone — layout_thrash_trace", () => {
     KEYSTONE_TIMEOUT,
   );
 });
-
-describe("perf module keystone — memory_diff", () => {
-  it(
-    "diffs two synthetic heap snapshots and surfaces the synthesised growers",
-    async () => {
-      // Synthesise two tiny but spec-valid V8 heap snapshots directly on disk.
-      // memory_diff is pure file-IO; no browser interaction needed for the
-      // tool itself. We round-trip via the live MCP handler to exercise the
-      // workspace-path + parsing wiring.
-      const beforePath = join(workspace, "before.heapsnapshot");
-      const afterPath = join(workspace, "after.heapsnapshot");
-      writeFileSync(
-        beforePath,
-        makeFixtureSnapshot([
-          { type: "object", name: "Cache", count: 1, size: 2_000 },
-          { type: "object", name: "LeakyItem", count: 1, size: 1_000 },
-        ]),
-      );
-      writeFileSync(
-        afterPath,
-        makeFixtureSnapshot([
-          { type: "object", name: "Cache", count: 1, size: 10_000 },
-          { type: "object", name: "LeakyItem", count: 1, size: 5_000 },
-          { type: "object", name: "NewGrower", count: 1, size: 8_000 },
-        ]),
-      );
-      const r = await callJson<{
-        ok: boolean;
-        retainerGrowth: Array<{ node: string; deltaBytes: number; deltaPercent: number | "+inf" }>;
-        summary: { totalGrowth: number; top3Growers: Array<{ node: string }> };
-      }>("memory_diff", { beforePath, afterPath });
-      expect(r.ok).toBe(true);
-      const names = r.retainerGrowth.map((g) => g.node);
-      expect(names).toContain("object:Cache");
-      expect(names).toContain("object:NewGrower");
-      const cache = r.retainerGrowth.find((g) => g.node === "object:Cache")!;
-      expect(cache.deltaBytes).toBe(8000);
-      const newGrower = r.retainerGrowth.find((g) => g.node === "object:NewGrower")!;
-      expect(newGrower.deltaPercent).toBe("+inf");
-      expect(r.summary.totalGrowth).toBeGreaterThan(0);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it("rejects a workspace-escape path with a structured error", async () => {
-    const r = await callJson<{ ok: boolean; error?: string }>("memory_diff", {
-      beforePath: "../../etc/passwd",
-      afterPath: "../../etc/passwd",
-    });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/\$BROWX_WORKSPACE/);
-  });
-});
-
-// Locally-redefined heap-snapshot fixture builder for the memory_diff keystone
-// (mirrors the one in src/page/memory-diff.test.ts). Standalone so the test
-// can stay self-contained.
-function makeFixtureSnapshot(
-  groups: Array<{ type: string; name: string; count: number; size: number }>,
-): string {
-  const nodeFields = [
-    "type",
-    "name",
-    "id",
-    "self_size",
-    "edge_count",
-    "trace_node_id",
-    "detachedness",
-  ];
-  const edgeFields = ["type", "name_or_index", "to_node"];
-  const nodeTypes = ["object", "closure", "hidden", "string"];
-  const edgeTypes = ["context", "element"];
-  const strings: string[] = [""];
-  const stringIdx = (s: string): number => {
-    const existing = strings.indexOf(s);
-    if (existing >= 0) return existing;
-    strings.push(s);
-    return strings.length - 1;
-  };
-  const nodes: number[] = [];
-  let id = 1;
-  for (const g of groups) {
-    const typeIdx = nodeTypes.indexOf(g.type);
-    const nameIdx = stringIdx(g.name);
-    for (let i = 0; i < g.count; i++) {
-      nodes.push(typeIdx, nameIdx, id++, g.size, 0, 0, 0);
-    }
-  }
-  return JSON.stringify({
-    snapshot: {
-      meta: {
-        node_fields: nodeFields,
-        node_types: [nodeTypes, "string", "number", "number", "number", "number", "number"],
-        edge_fields: edgeFields,
-        edge_types: [edgeTypes, "string_or_number", "node"],
-      },
-      node_count: nodes.length / 7,
-      edge_count: 0,
-    },
-    nodes,
-    edges: [],
-    strings,
-  });
-}

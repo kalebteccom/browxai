@@ -147,9 +147,3 @@ registerEngine({
   // state, and it is what the synthetic engine does too.
   postWire: () => {},
 });
-
-/** Test seam: drop every lease. A leaked lease across test files would make the
- *  second file's session refuse for a holder that no longer exists. */
-export function resetNativeDeviceLeases(): void {
-  LEASES.clear();
-}

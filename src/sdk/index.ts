@@ -1,5 +1,5 @@
 // browxai SDK — typed programmatic surface over the same tool registry the
-// MCP path exposes. See docs/sdk.md (or src/sdk/types.ts) for the public
+// MCP path exposes. See src/sdk/types.ts for the public
 // types, and `test/sdk/` for executable specs.
 //
 // Mental model: a `BrowxaiClient` is a thin, typed driver over ONE of three

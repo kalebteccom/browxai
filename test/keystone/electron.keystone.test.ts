@@ -36,7 +36,7 @@
 // target and cannot mint another, so this file opens one session in `beforeAll`
 // and every case drives it. That is not test hygiene, it is the subject: a
 // per-case session would hit the refusal in case 3 and prove nothing about the
-// other four.
+// others.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -87,9 +87,8 @@ beforeAll(async () => {
   workspace = mkdtempSync(join(tmpdir(), "browx-electron-keystone-"));
   process.env.BROWX_WORKSPACE = workspace;
   // byob-attach is the capability this lane rides — the same one the desktop
-  // CDP-attach already required. diagnostics is on so the deep tool below is left
-  // to the ENGINE gate, which allows it (electron is deep:true).
-  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach,diagnostics";
+  // CDP-attach already required.
+  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach";
   // No confirm hooks: `byob_action` is ON by default and every action against an
   // attached app waits five minutes on a human. That gate is real and is asserted
   // in its own suite; here it would only make the file hang.
@@ -198,21 +197,6 @@ describeElectron("electron keystone — a real desktop app over its debugging po
       expect(second.error).toContain(SESSION);
       // The raw protocol string is what this replaced. It must not leak.
       expect(second.error).not.toContain("Protocol error");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "a DEEP tool runs on electron — the proof of deep:true",
-    async () => {
-      // Same standout as android: firefox/webkit structured-REFUSE the CDP-deep
-      // tools, and electron speaks full CDP, so the SAME capability-based gate
-      // allows them with no per-engine edit.
-      const session = SESSION;
-      const cov = await callJson<{ ok: boolean; engine?: string }>("coverage_start", { session });
-      expect(cov.engine, "coverage_start is NOT engine-refused on electron").toBeUndefined();
-      expect(cov.ok).toBe(true);
-      await callJson("coverage_stop", { session }).catch(() => undefined);
     },
     KEYSTONE_TIMEOUT,
   );

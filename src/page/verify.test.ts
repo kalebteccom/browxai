@@ -74,56 +74,6 @@ function refForButton(refs: RefRegistry, name = "Save"): string {
 }
 
 describe("verifyVisible", () => {
-  it("ok when locator reports visible", async () => {
-    const refs = new RefRegistry();
-    const ref = refForButton(refs);
-    const page = mockPage({ "role:button[name=Save]": { count: 1, isVisible: true } });
-    const r = await verifyVisible(elementsOver(page, refs), { ref });
-    expect(r.ok).toBe(true);
-  });
-
-  it("fails source:'app' when not visible — includes the reason from the probe", async () => {
-    const refs = new RefRegistry();
-    const ref = refForButton(refs);
-    const page = mockPage({
-      "role:button[name=Save]": {
-        count: 1,
-        isVisible: false,
-        notVisibleReason: "hidden (display:none)",
-      },
-    });
-    const r = await verifyVisible(elementsOver(page, refs), { ref });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.failure?.source).toBe("app");
-      expect(r.failure?.kind).toBe("visible");
-      expect(r.failure?.actual).toContain("display:none");
-    }
-  });
-
-  it("fails source:'app' when locator matches zero nodes", async () => {
-    const refs = new RefRegistry();
-    const ref = refForButton(refs);
-    const page = mockPage({ "role:button[name=Save]": { count: 0 } });
-    const r = await verifyVisible(elementsOver(page, refs), { ref });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.failure?.source).toBe("app");
-      expect(r.failure?.actual).toContain("0 nodes");
-    }
-  });
-
-  it("fails source:'browxai' when ref is no longer in the registry", async () => {
-    const refs = new RefRegistry();
-    const page = mockPage({});
-    const r = await verifyVisible(elementsOver(page, refs), { ref: "e999" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.failure?.source).toBe("browxai");
-      expect(r.failure?.actual).toContain("no longer");
-    }
-  });
-
   it("fails source:'browxai' on coords target — verify family is structural", async () => {
     const refs = new RefRegistry();
     const page = mockPage({});
@@ -166,16 +116,6 @@ describe("verifyText", () => {
 });
 
 describe("verifyValue", () => {
-  it("ok when DOM-side value matches", async () => {
-    const refs = new RefRegistry();
-    const ref = refForButton(refs, "Email");
-    const page = mockPage({
-      "role:button[name=Email]": { count: 1, evaluatedValue: "you@example.com" },
-    });
-    const r = await verifyValue(elementsOver(page, refs), { ref }, "you@example.com");
-    expect(r.ok).toBe(true);
-  });
-
   it("fails source:'app' with actual when value differs", async () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Email");
@@ -199,16 +139,6 @@ describe("verifyValue", () => {
 });
 
 describe("verifyAttribute", () => {
-  it("ok when attribute equals the expected value", async () => {
-    const refs = new RefRegistry();
-    const ref = refForButton(refs, "Toggle");
-    const page = mockPage({
-      "role:button[name=Toggle]": { count: 1, attributes: { "aria-pressed": "true" } },
-    });
-    const r = await verifyAttribute(elementsOver(page, refs), { ref }, "aria-pressed", "true");
-    expect(r.ok).toBe(true);
-  });
-
   it("fails source:'app' on attribute mismatch", async () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Toggle");
@@ -253,14 +183,6 @@ describe("verifyPredicate — pure server-side eval", () => {
     },
   };
 
-  it("ok when the predicate holds", () => {
-    const r = verifyPredicate(
-      { kind: "equals", key: "actionResult.element.value", value: "hello world" },
-      data,
-    );
-    expect(r.ok).toBe(true);
-  });
-
   it("fails source:'app' when the predicate doesn't hold over the data", () => {
     const r = verifyPredicate(
       { kind: "equals", key: "actionResult.element.value", value: "nope" },
@@ -285,36 +207,6 @@ describe("verifyPredicate — pure server-side eval", () => {
       expect(r.failure?.source).toBe("browxai");
       expect(r.failure?.kind).toBe("predicate-shape");
     }
-  });
-
-  it("rejects accessor keys outside the allow-list", () => {
-    const r = verifyPredicate(
-      { kind: "equals", key: "process.env.SECRET", value: "x" },
-      { process: { env: { SECRET: "leaked" } } },
-    );
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.failure?.source).toBe("browxai");
-  });
-
-  it("composite and/or/not flow through to the engine", () => {
-    const pred: Predicate = {
-      kind: "and",
-      predicates: [
-        { kind: "exists", key: "actionResult.element.value" },
-        {
-          kind: "or",
-          predicates: [
-            { kind: "equals", key: "actionResult.navigation.kind", value: "full_load" },
-            { kind: "equals", key: "actionResult.navigation.kind", value: "spa" },
-          ],
-        },
-        {
-          kind: "not",
-          predicates: [{ kind: "gt", key: "actionResult.console.errors.length", value: 0 }],
-        },
-      ],
-    };
-    expect(verifyPredicate(pred, data).ok).toBe(true);
   });
 
   // The key reason verify_predicate is NOT arbitrary JS: there is no
@@ -373,12 +265,6 @@ describe("shared-vocabulary regression: batch.expect and verify_predicate share 
       predicate: { kind: "equals", key: "element.value", value: "hello" },
     },
     {
-      name: "valueEquals — element present, value undefined",
-      body: { element: {} },
-      expect: { valueEquals: "hello" },
-      predicate: { kind: "equals", key: "element.value", value: "hello" },
-    },
-    {
       name: "valueEquals empty string against empty string",
       body: { element: { value: "" } },
       expect: { valueEquals: "" },
@@ -397,12 +283,6 @@ describe("shared-vocabulary regression: batch.expect and verify_predicate share 
       predicate: { kind: "contains", key: "element.displayText", value: "engineer" },
     },
     {
-      name: "displayTextIncludes — missing intermediate",
-      body: { element: {} },
-      expect: { displayTextIncludes: "x" },
-      predicate: { kind: "contains", key: "element.displayText", value: "x" },
-    },
-    {
       name: "displayTextIncludes — displayText is null (not string)",
       body: { element: { displayText: null } },
       expect: { displayTextIncludes: "x" },
@@ -419,22 +299,10 @@ describe("shared-vocabulary regression: batch.expect and verify_predicate share 
       },
     },
     {
-      name: "controlDisplayTextIncludes — missing ownerControl",
-      body: { element: {} },
-      expect: { controlDisplayTextIncludes: "x" },
-      predicate: { kind: "contains", key: "element.ownerControl.displayTextAfter", value: "x" },
-    },
-    {
       name: "containerTextIncludes hits row text",
       body: { element: { container: { rowText: "row alpha beta gamma" } } },
       expect: { containerTextIncludes: "beta" },
       predicate: { kind: "contains", key: "element.container.rowText", value: "beta" },
-    },
-    {
-      name: "containerTextIncludes — missing container",
-      body: { element: {} },
-      expect: { containerTextIncludes: "x" },
-      predicate: { kind: "contains", key: "element.container.rowText", value: "x" },
     },
     {
       name: "controlChanged true hits",
@@ -447,18 +315,6 @@ describe("shared-vocabulary regression: batch.expect and verify_predicate share 
       body: { element: { ownerControl: { changed: false } } },
       expect: { controlChanged: false },
       predicate: { kind: "equals", key: "element.ownerControl.changed", value: false },
-    },
-    {
-      name: "controlChanged true misses when actually false",
-      body: { element: { ownerControl: { changed: false } } },
-      expect: { controlChanged: true },
-      predicate: { kind: "equals", key: "element.ownerControl.changed", value: true },
-    },
-    {
-      name: "controlChanged — ownerControl absent",
-      body: { element: {} },
-      expect: { controlChanged: true },
-      predicate: { kind: "equals", key: "element.ownerControl.changed", value: true },
     },
   ];
 

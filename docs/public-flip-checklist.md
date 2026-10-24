@@ -60,7 +60,7 @@ are generated from `docs/*.md` at build time by `website/scripts/sync-docs.mjs`;
 1. Create the Netlify site from the `kalebteccom/browxai` repo. `netlify.toml`
    already declares the build:
    - Command: `pnpm --filter @browxai/website rebuild esbuild sharp && pnpm --filter @browxai/website build`
-   - Publish: `website/dist`. Node 20; pnpm via the root `packageManager` field.
+   - Publish: `website/dist`. Node 26 (`NODE_VERSION` in `netlify.toml`); pnpm via the root `packageManager` field.
    - For a private repo, grant Netlify's GitHub app read access, or do a manual
      deploy of the prebuilt output: `netlify deploy --prod --dir=website/dist`.
 2. Trigger a deploy and confirm it is green. The build runs the link

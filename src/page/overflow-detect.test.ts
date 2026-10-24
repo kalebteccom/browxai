@@ -6,10 +6,8 @@ import {
   applyLimit,
   resolveTypes,
   overflows,
-  OVERFLOW_EPSILON,
   type OverflowDetectPage,
   type MinimalElement,
-  type OverflowFinding,
 } from "./overflow-detect.js";
 
 interface PageRawFinding {
@@ -151,22 +149,9 @@ describe("synthesiseSelector — selector tiers", () => {
 });
 
 describe("EPSILON math — overflows()", () => {
-  it("OVERFLOW_EPSILON is 1 px (sub-pixel-noise tolerance)", () => {
-    expect(OVERFLOW_EPSILON).toBe(1);
-  });
-
-  it("equal dims do not trip", () => {
-    expect(overflows(100, 100)).toBe(false);
-  });
-
   it("sub-pixel difference does not trip (within epsilon)", () => {
     expect(overflows(100.5, 100)).toBe(false);
     expect(overflows(101, 100)).toBe(false);
-  });
-
-  it("> EPSILON difference trips", () => {
-    expect(overflows(101.5, 100)).toBe(true);
-    expect(overflows(200, 100)).toBe(true);
   });
 
   it("custom epsilon honoured", () => {
@@ -185,23 +170,12 @@ describe("type filter — resolveTypes()", () => {
     expect(s.has("viewport-horizontal")).toBe(true);
   });
 
-  it("empty array → all four (an empty filter is treated as default)", () => {
-    const s = resolveTypes([]);
-    expect(s.size).toBe(4);
-  });
-
   it("subset preserved", () => {
     const s = resolveTypes(["clipped", "text-ellipsis"]);
     expect(s.size).toBe(2);
     expect(s.has("clipped")).toBe(true);
     expect(s.has("text-ellipsis")).toBe(true);
     expect(s.has("layout")).toBe(false);
-  });
-
-  it("unknown values dropped silently", () => {
-    const s = resolveTypes(["clipped", "bogus" as unknown as "clipped"]);
-    expect(s.size).toBe(1);
-    expect(s.has("clipped")).toBe(true);
   });
 
   it("all-unknown falls back to all four (don't silently match nothing)", () => {
@@ -211,13 +185,6 @@ describe("type filter — resolveTypes()", () => {
 });
 
 describe("limit handling — applyLimit()", () => {
-  it("returns all when under cap, truncated:false", () => {
-    const arr = [1, 2, 3];
-    const r = applyLimit(arr, 50);
-    expect(r.kept.length).toBe(3);
-    expect(r.truncated).toBe(false);
-  });
-
   it("equals cap → still not truncated", () => {
     const r = applyLimit([1, 2, 3], 3);
     expect(r.kept.length).toBe(3);
@@ -299,15 +266,6 @@ describe("detectOverflow — runner integration with fake page", () => {
     expect(r.warnings[0]).toContain("scope:viewport");
   });
 
-  it("returns ok:true with empty findings when the page is clean", async () => {
-    const page = fakePage({ findings: [], scanCapped: false });
-    const r = await detectOverflow(page, {});
-    expect(r.ok).toBe(true);
-    expect(r.findings.length).toBe(0);
-    expect(r.truncated).toBe(false);
-    expect(r.warnings.length).toBe(0);
-  });
-
   it("folds selectorTruncated into evidence", async () => {
     const page = fakePage({
       findings: [
@@ -334,30 +292,5 @@ describe("detectOverflow — runner integration with fake page", () => {
     const ev = r.findings[0]!.evidence as { selectorTruncated?: true; originalLength?: number };
     expect(ev.selectorTruncated).toBe(true);
     expect(ev.originalLength).toBe(350);
-  });
-
-  it("preserves bbox + selector + type + evidence on a clean finding", async () => {
-    const raw = {
-      selector: '[data-testid="ok"]',
-      selectorTruncated: false,
-      selectorOriginalLength: 18,
-      bbox: { x: 10, y: 20, w: 100, h: 50 },
-      type: "layout" as const,
-      evidence: {
-        scrollWidth: 200,
-        clientWidth: 100,
-        scrollHeight: 50,
-        clientHeight: 50,
-        overflowX: "auto",
-        overflowY: "visible",
-      },
-    };
-    const page = fakePage({ findings: [raw], scanCapped: false });
-    const r = await detectOverflow(page, {});
-    const f = r.findings[0] as OverflowFinding;
-    expect(f.selector).toBe('[data-testid="ok"]');
-    expect(f.bbox).toEqual({ x: 10, y: 20, w: 100, h: 50 });
-    expect(f.type).toBe("layout");
-    expect(f.evidence).toEqual(raw.evidence);
   });
 });

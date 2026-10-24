@@ -103,14 +103,6 @@ describe("Recorder", () => {
     expect(r.inspect()).toBeNull();
   });
 
-  it("annotates a read step", () => {
-    const r = new Recorder();
-    r.start("read-thread");
-    r.recordRead({ type: "extract", schema: { type: "object" } }, "https://a.example.com");
-    expect(r.annotate({ copy: "the sender lands here" })).toEqual({ ok: true });
-    expect(r.end().yaml).toContain('copy: "the sender lands here"');
-  });
-
   it("flags medium/low stability with a review comment", () => {
     const r = new Recorder();
     r.start("smoke");

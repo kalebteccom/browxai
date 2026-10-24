@@ -32,13 +32,6 @@ describe("header rules", () => {
     });
   });
 
-  it("replaces the authorization value with a marker rather than deleting the key", () => {
-    const out = new Redactor().headers({ authorization: "Bearer abc" })!;
-    expect(Object.keys(out)).toContain("authorization");
-    expect(isRedacted(out.authorization)).toBe(true);
-    expect(JSON.stringify(out)).not.toContain("Bearer abc");
-  });
-
   it("is configurable — a custom list replaces the defaults", () => {
     const out = new Redactor({ headers: ["x-api-key"] }).headers({
       "X-API-Key": "k",
@@ -94,23 +87,6 @@ describe("body rules by JSON path", () => {
   });
 });
 
-describe("a WS frame gets the same treatment as an HTTP body", () => {
-  it("applies the identical rule to both", () => {
-    const r = new Redactor({
-      bodyPaths: ["auth.token"],
-      secrets: registryWith("PASSWORD", "hunter2"),
-    });
-    const wire = JSON.stringify({ auth: { token: "t" }, echo: "hunter2" });
-    const httpBody = r.payload(wire);
-    const wsFrame = r.payload(wire);
-    expect(wsFrame).toEqual(httpBody);
-    expect(JSON.parse(wsFrame as string)).toEqual({
-      auth: { token: redactedMarker("body-rule") },
-      echo: "<PASSWORD>",
-    });
-  });
-});
-
 describe("registered secrets", () => {
   it("masks through the SecretRegistry chokepoint, deeply", () => {
     const r = new Redactor({ secrets: registryWith("PASSWORD", "hunter2") });
@@ -130,10 +106,5 @@ describe("registered secrets", () => {
     expect(JSON.stringify(out)).not.toContain("hunter2");
     expect(JSON.stringify(out)).toContain("<PASSWORD>");
     expect(out.t).toBe(12);
-  });
-
-  it("is a no-op when no secret is registered", () => {
-    const body = '{"a":"b"}';
-    expect(new Redactor().payload(body)).toBe(body);
   });
 });

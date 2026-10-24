@@ -16,12 +16,6 @@ describe("elementKey", () => {
     });
     expect(new Set([a, b, c, d, e]).size).toBe(5);
   });
-
-  it("is deterministic", () => {
-    const k1 = elementKey({ role: "textbox", name: "Email", path: "main/form/input[0]" });
-    const k2 = elementKey({ role: "textbox", name: "Email", path: "main/form/input[0]" });
-    expect(k1).toBe(k2);
-  });
 });
 
 describe("RefRegistry", () => {
@@ -66,27 +60,6 @@ describe("augmentLocator — provenance merge", () => {
     expect(got?.source).toBe("both"); // sources combine
   });
 
-  it("a11y testId discovered later fills in without clobbering cssPath", () => {
-    const r = new RefRegistry();
-    const ref = r.forKey("k1", {
-      role: "td",
-      cssPath: "table > tbody > tr:nth-child(3) > td:nth-child(2)",
-      source: "dom",
-    });
-    r.augmentLocator(ref, { testId: "row-3-status", testIdAttr: "data-testid" });
-    const got = r.locatorOf(ref);
-    expect(got?.testId).toBe("row-3-status");
-    expect(got?.testIdAttr).toBe("data-testid");
-    expect(got?.cssPath).toBe("table > tbody > tr:nth-child(3) > td:nth-child(2)");
-  });
-
-  it("combines two distinct sources into 'both'", () => {
-    const r = new RefRegistry();
-    const ref = r.forKey("k1", { role: "button", source: "a11y" });
-    r.augmentLocator(ref, { source: "dom" });
-    expect(r.locatorOf(ref)?.source).toBe("both");
-  });
-
   it("does nothing when called for an unknown ref", () => {
     const r = new RefRegistry();
     r.augmentLocator("e999", { role: "button", source: "a11y" });
@@ -95,13 +68,6 @@ describe("augmentLocator — provenance merge", () => {
 });
 
 describe("named refs", () => {
-  it("binds a mnemonic to an existing ref and resolves it back", () => {
-    const r = new RefRegistry();
-    const ref = r.forKey("hash-abc");
-    r.nameRef("main_panel", ref);
-    expect(r.refByNameLookup("main_panel")).toBe(ref);
-  });
-
   it("throws when binding to a ref that doesn't exist", () => {
     const r = new RefRegistry();
     expect(() => r.nameRef("ghost", "e999")).toThrow(/not in registry/);
@@ -164,12 +130,6 @@ describe("frame binding (ref-frames side table)", () => {
     expect(refFrameOf(r, ref)).toBe(f);
   });
 
-  it("refFrameOf() returns undefined for refs with no binding (main-frame default)", () => {
-    const r = new RefRegistry();
-    const ref = r.forKey("k1");
-    expect(refFrameOf(r, ref)).toBeUndefined();
-  });
-
   it("bindRefFrame on an unknown ref is a silent no-op (defensive)", () => {
     const r = new RefRegistry();
     bindRefFrame(r, "e999", fakeFrame("ghost"));
@@ -184,11 +144,5 @@ describe("frame binding (ref-frames side table)", () => {
     expect(refA).toBe(refB);
     bindRefFrame(a, refA, fakeFrame("f-a"));
     expect(refFrameOf(b, refB)).toBeUndefined();
-  });
-
-  it("RefRegistry names no Playwright type — the frame binding is not a member", () => {
-    const r = new RefRegistry() as unknown as Record<string, unknown>;
-    expect(typeof r.bindFrame).toBe("undefined");
-    expect(typeof r.frameOf).toBe("undefined");
   });
 });

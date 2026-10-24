@@ -36,57 +36,61 @@ function pascal(name: string): string {
     .join("");
 }
 
+/** The zod 4 definition record of a schema: `type` is the construct tag
+ *  (`"string"`, `"optional"`, `"object"`, …), the rest is construct-specific. */
+function defOf(schema: z.ZodTypeAny): { type?: string } & Record<string, unknown> {
+  return schema._zod.def as unknown as { type?: string } & Record<string, unknown>;
+}
+
 /** Lower one zod type to a TypeScript type string. Covers the constructs the tool
  *  input schemas use; deterministic (object keys + union members keep declared
  *  order) so the output is stable across runs. Unknown constructs degrade to
  *  `unknown` rather than throwing — the drift test still pins the result. */
 function zodToTs(schema: z.ZodTypeAny, indent: number): string {
-  const def = schema._def as { typeName?: string } & Record<string, unknown>;
-  const tn = def.typeName;
-  switch (tn) {
-    case "ZodString":
+  const def = defOf(schema);
+  switch (def.type) {
+    case "string":
       return "string";
-    case "ZodNumber":
+    case "number":
       return "number";
-    case "ZodBoolean":
+    case "boolean":
       return "boolean";
-    case "ZodNull":
+    case "null":
       return "null";
-    case "ZodUndefined":
-    case "ZodVoid":
+    case "undefined":
+    case "void":
       return "undefined";
-    case "ZodAny":
-    case "ZodUnknown":
+    case "any":
+    case "unknown":
       return "unknown";
-    case "ZodLiteral":
-      return JSON.stringify((def as { value: unknown }).value);
-    case "ZodEnum":
-      return ((def as { values: string[] }).values ?? []).map((v) => JSON.stringify(v)).join(" | ");
-    case "ZodNativeEnum": {
-      const values = Object.values((def as { values: Record<string, unknown> }).values ?? {});
+    case "literal":
+      return ((def as { values?: unknown[] }).values ?? [])
+        .map((v) => JSON.stringify(v))
+        .join(" | ");
+    case "enum": {
+      const values = Object.values((def as { entries?: Record<string, unknown> }).entries ?? {});
       return values.map((v) => JSON.stringify(v)).join(" | ") || "unknown";
     }
-    case "ZodOptional":
+    case "optional":
+    case "default":
       return zodToTs((def as { innerType: z.ZodTypeAny }).innerType, indent);
-    case "ZodNullable":
+    case "nullable":
       return `${zodToTs((def as { innerType: z.ZodTypeAny }).innerType, indent)} | null`;
-    case "ZodDefault":
-      return zodToTs((def as { innerType: z.ZodTypeAny }).innerType, indent);
-    case "ZodEffects":
-      return zodToTs((def as { schema: z.ZodTypeAny }).schema, indent);
-    case "ZodArray":
-      return `Array<${zodToTs((def as { type: z.ZodTypeAny }).type, indent)}>`;
-    case "ZodUnion": {
-      const opts = (def as { options: z.ZodTypeAny[] }).options ?? [];
+    case "pipe":
+      return zodToTs((def as { in: z.ZodTypeAny }).in, indent);
+    case "array":
+      return `Array<${zodToTs((def as { element: z.ZodTypeAny }).element, indent)}>`;
+    case "union": {
+      const opts = (def as { options?: z.ZodTypeAny[] }).options ?? [];
       return opts.map((o) => zodToTs(o, indent)).join(" | ");
     }
-    case "ZodRecord":
+    case "record":
       return `Record<string, ${zodToTs((def as { valueType: z.ZodTypeAny }).valueType, indent)}>`;
-    case "ZodTuple": {
-      const items = (def as { items: z.ZodTypeAny[] }).items ?? [];
+    case "tuple": {
+      const items = (def as { items?: z.ZodTypeAny[] }).items ?? [];
       return `[${items.map((i) => zodToTs(i, indent)).join(", ")}]`;
     }
-    case "ZodObject":
+    case "object":
       return objectToTs(schema as z.ZodObject<z.ZodRawShape>, indent);
     default:
       return "unknown";
@@ -94,8 +98,8 @@ function zodToTs(schema: z.ZodTypeAny, indent: number): string {
 }
 
 function isOptional(schema: z.ZodTypeAny): boolean {
-  const tn = (schema._def as { typeName?: string }).typeName;
-  return tn === "ZodOptional" || tn === "ZodDefault";
+  const tn = defOf(schema).type;
+  return tn === "optional" || tn === "default";
 }
 
 function objectToTs(schema: z.ZodObject<z.ZodRawShape>, indent: number): string {

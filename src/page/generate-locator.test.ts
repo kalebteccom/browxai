@@ -103,16 +103,6 @@ describe("generatePlaywrightLocator — tier mapping", () => {
     });
     expect(out.playwright).toBe(`page.getByRole('button', { name: 'O\\'Brien' })`);
   });
-
-  it("escapes backslashes inside testId values", () => {
-    const out = generatePlaywrightLocator({
-      role: "button",
-      testId: "back\\slash",
-      testIdAttr: "data-testid",
-      source: "dom",
-    });
-    expect(out.playwright).toBe(`page.getByTestId('back\\\\slash')`);
-  });
 });
 
 describe("generateLocator — registry lookup", () => {

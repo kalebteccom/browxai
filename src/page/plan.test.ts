@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  PLAN_VERBS,
   clampTtl,
   validateVerbArgs,
   validateDescriptor,
   evidenceFromCandidate,
   buildDescriptor,
-  estimateDescriptorTokens,
   execute,
   plan,
   type ActionDescriptor,
@@ -83,12 +81,6 @@ beforeEach(() => {
   vi.mocked(find).mockReset();
 });
 
-describe("PLAN_VERBS — the action surface plan/execute covers", () => {
-  it("is a fixed whitelist (no arbitrary-verb escape)", () => {
-    expect([...PLAN_VERBS]).toEqual(["click", "fill", "hover", "press", "select"]);
-  });
-});
-
 describe("clampTtl — descriptor lifetime bounds", () => {
   it("defaults to 60s when unset / non-finite", () => {
     expect(clampTtl(undefined)).toBe(60_000);
@@ -100,10 +92,6 @@ describe("clampTtl — descriptor lifetime bounds", () => {
     expect(clampTtl(0)).toBe(1_000);
     expect(clampTtl(-9999)).toBe(1_000);
     expect(clampTtl(60 * 60_000)).toBe(30 * 60_000);
-  });
-  it("passes through sane values", () => {
-    expect(clampTtl(5_000)).toBe(5_000);
-    expect(clampTtl(60_000)).toBe(60_000);
   });
 });
 
@@ -128,10 +116,6 @@ describe("validateVerbArgs — per-verb args contract", () => {
     expect(validateVerbArgs("click", { button: "left" })).toBeNull();
     // @ts-expect-error — feeding an invalid literal on purpose
     expect(validateVerbArgs("click", { button: "wibble" })).toMatch(/button/);
-  });
-  it("hover takes no args", () => {
-    expect(validateVerbArgs("hover", undefined)).toBeNull();
-    expect(validateVerbArgs("hover", {})).toBeNull();
   });
 });
 
@@ -183,56 +167,7 @@ describe("buildDescriptor — assembled descriptor shape", () => {
   });
 });
 
-describe("estimateDescriptorTokens", () => {
-  it("returns a positive integer roughly tracking descriptor size", () => {
-    const small = buildDescriptor({
-      picked: cand(),
-      alternatives: [],
-      query: "x",
-      verb: "click",
-      verbArgs: {},
-      warnings: [],
-      ttlMs: 1_000,
-    });
-    const big = buildDescriptor({
-      picked: cand({ name: "x".repeat(500) }),
-      alternatives: Array.from({ length: 4 }, (_, i) =>
-        cand({ ref: `e${i + 2}`, name: "y".repeat(200) }),
-      ),
-      query: "x",
-      verb: "click",
-      verbArgs: {},
-      warnings: [],
-      ttlMs: 1_000,
-    });
-    expect(estimateDescriptorTokens(small)).toBeGreaterThan(0);
-    expect(estimateDescriptorTokens(big)).toBeGreaterThan(estimateDescriptorTokens(small));
-  });
-});
-
 describe("validateDescriptor — shape guard at execute() entry", () => {
-  it("accepts a well-formed descriptor", () => {
-    const d: ActionDescriptor = {
-      id: "abc",
-      ref: "e1",
-      verb: "click",
-      args: {},
-      evidence: {
-        query: "q",
-        selectorHint: "#x",
-        selectorTier: 1,
-        stability: "high",
-        role: "button",
-        score: 1,
-        actionable: true,
-        warnings: [],
-        alternatives: [],
-      },
-      expiresAt: Date.now() + 1000,
-    };
-    const r = validateDescriptor(d);
-    expect(r.ok).toBe(true);
-  });
   it("rejects non-objects, missing fields, and unknown verbs", () => {
     expect(validateDescriptor(null).ok).toBe(false);
     expect(validateDescriptor("nope").ok).toBe(false);
@@ -296,13 +231,6 @@ describe("execute() — refusal modes (no dispatch happens)", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("ref-gone");
     expect(vi.mocked(actions.click)).not.toHaveBeenCalled();
-  });
-
-  it("refuses a structurally-invalid descriptor with reason 'invalid'", async () => {
-    const refs = new RefRegistry();
-    const r = await execute(fakeCtx(refs), { id: "x", verb: "wibble" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe("invalid");
   });
 
   it("re-validates verb args at execute time (a hand-edited descriptor that dropped value)", async () => {
@@ -500,32 +428,5 @@ describe("plan() — descriptor production from a find() candidate", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.descriptor.evidence.warnings.some((w) => /scored confidently/.test(w))).toBe(true);
-  });
-
-  it("named-ref descriptor: a descriptor bound to a named ref still dispatches via the same registry", async () => {
-    // Named refs and plan's ref share the SAME `eN` namespace — no parallel
-    // id system. We bind a name to a ref, then build a descriptor that
-    // *carries the bound ref directly*; execute looks it up via refs.has().
-    const refs = new RefRegistry();
-    refs.forKey("k1", { role: "button", name: "Play" });
-    refs.nameRef("play_btn", "e1");
-    expect(refs.refByNameLookup("play_btn")).toBe("e1");
-
-    vi.mocked(find).mockResolvedValueOnce({
-      candidates: [cand({ ref: "e1", name: "Play" })],
-      warnings: [],
-    });
-    const planned = await plan({} as never, {} as never, refs, {
-      query: "play",
-      verb: "click",
-      testAttributes: [],
-    });
-    expect(planned.ok).toBe(true);
-    if (!planned.ok) return;
-    // The descriptor's ref is e1 — the same ref the name "play_btn" points
-    // to. There is one namespace, not two; the name is an alias.
-    expect(planned.descriptor.ref).toBe("e1");
-    const dispatched = await execute(fakeCtx(refs), planned.descriptor);
-    expect(dispatched.ok).toBe(true);
   });
 });

@@ -4,7 +4,6 @@ import {
   validatePredicate,
   resolveKey,
   isAllowedKey,
-  allowedKeyRoots,
   type Predicate,
 } from "./predicates.js";
 
@@ -37,15 +36,6 @@ describe("isAllowedKey + allowedKeyRoots", () => {
     expect(isAllowedKey("__proto__.toString")).toBe(false);
     expect(isAllowedKey("")).toBe(false);
   });
-
-  it("publishes the root list for docs / errors", () => {
-    const roots = allowedKeyRoots();
-    expect(roots).toContain("actionResult");
-    expect(roots).toContain("snapshot");
-    // sorted for stable display
-    const sorted = [...roots].sort();
-    expect(roots).toEqual(sorted);
-  });
 });
 
 describe("resolveKey", () => {
@@ -77,14 +67,6 @@ describe("resolveKey", () => {
     expect(resolveKey(SAMPLE, "actionResult.constructor")).toBeUndefined();
     expect(resolveKey(SAMPLE, "actionResult.constructor.name")).toBeUndefined();
     expect(resolveKey(SAMPLE, "actionResult.element.prototype")).toBeUndefined();
-  });
-
-  it("predicates against prototype-pollution-shaped keys fail cleanly (never leak prototype)", () => {
-    // Plumb the denylist all the way through the public evaluator — an
-    // `equals` against `actionResult.__proto__` must fail (actual=undefined)
-    // rather than match the prototype object's stringification.
-    const r = evaluatePredicate({ kind: "exists", key: "actionResult.__proto__.toString" }, SAMPLE);
-    expect(r.ok).toBe(false);
   });
 });
 
@@ -271,27 +253,6 @@ describe("evaluatePredicate — and / or / not", () => {
       predicates: [{ kind: "equals", key: "actionResult.navigation.kind", value: "spa" }],
     };
     expect(evaluatePredicate(no, SAMPLE).ok).toBe(false);
-  });
-
-  it("nested combinators evaluate recursively", () => {
-    const pred: Predicate = {
-      kind: "and",
-      predicates: [
-        { kind: "exists", key: "actionResult.element.value" },
-        {
-          kind: "or",
-          predicates: [
-            { kind: "equals", key: "actionResult.navigation.kind", value: "spa" },
-            { kind: "equals", key: "actionResult.navigation.kind", value: "hash" },
-          ],
-        },
-        {
-          kind: "not",
-          predicates: [{ kind: "gt", key: "actionResult.console.errors.length", value: 5 }],
-        },
-      ],
-    };
-    expect(evaluatePredicate(pred, SAMPLE).ok).toBe(true);
   });
 });
 

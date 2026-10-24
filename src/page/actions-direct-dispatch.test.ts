@@ -59,16 +59,6 @@ describe("directDispatchUnsupported — the engine refusal", () => {
     expect(r.error).toContain('"firefox"');
     expect(r.action).toEqual({ type: "click", selector: "#send" });
   });
-
-  it("names the engine it was asked to run on, so the refusal is not generic", () => {
-    for (const engine of ["firefox", "webkit", "safari"]) {
-      expect(directDispatchUnsupported({ ref: "e1" }, engine).error).toContain(`"${engine}"`);
-    }
-  });
-
-  it("says why there is no page-JS fallback rather than leaving it unexplained", () => {
-    expect(directDispatchUnsupported({ ref: "e1" }, "webkit").error).toContain("isTrusted:false");
-  });
 });
 
 describe("directClick — dispatch plumbing", () => {

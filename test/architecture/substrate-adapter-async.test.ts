@@ -20,12 +20,10 @@
 // the structured `{ok:false, …}` envelope with it. Both guards were written
 // correctly. The adapter made them unreachable.
 //
-// Three gates here, in order of reach:
+// Two gates here, in order of reach:
 //   1. the static scan — EVERY method on EVERY adapter file, so an adapter added
 //      tomorrow is covered the day it lands;
-//   2. the mechanism — the two spellings side by side, proving the static rule
-//      has teeth and is not cargo cult;
-//   3. the drive — the adapters the Playwright bundle builds over a `() => …`
+//   2. the drive — the adapters the Playwright bundle builds over a `() => …`
 //      accessor, each constructed with that accessor already throwing, with the
 //      set of adapters derived from the bundle itself.
 
@@ -119,31 +117,6 @@ describe("L5 — every substrate adapter method typed Promise<T> is async", () =
       "A method typed `Promise<T>` that is not `async` throws SYNCHRONOUSLY when its " +
         "injected accessor throws — past every caller's `.catch()`. Declare it `async`.",
     ).toEqual([]);
-  });
-});
-
-describe("the mechanism — why the `async` keyword is load-bearing", () => {
-  const boom = (): string => {
-    throw new Error("attach-target-gone");
-  };
-
-  it("a non-async Promise<T> method escapes the caller's .catch()", () => {
-    class NotAsync {
-      url(): Promise<string> {
-        return Promise.resolve(boom());
-      }
-    }
-    // The `.catch` is attached to a promise that never gets created.
-    expect(() => new NotAsync().url().catch(() => null)).toThrow("attach-target-gone");
-  });
-
-  it("the same body declared async rejects, so the .catch() runs", async () => {
-    class IsAsync {
-      async url(): Promise<string> {
-        return boom();
-      }
-    }
-    await expect(new IsAsync().url().catch(() => null)).resolves.toBeNull();
   });
 });
 

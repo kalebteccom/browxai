@@ -44,7 +44,8 @@ export interface ResolvedConfig {
   disableWebSecurity?: boolean;
   /** Playwright browser `channel` for chromium sessions (`"chrome"`,
    *  `"msedge"`, `"chrome-beta"`, …) — launches the operator's installed
-   *  browser instead of the bundled Chrome for Testing. Unset ⇒ bundled.
+   *  browser instead of the default. Unset ⇒ the installed Chrome when present,
+   *  else the bundled Chromium.
    *  Overridable per `open_session({channel})`. Firefox has its own
    *  `BROWX_FIREFOX_CHANNEL` and is unaffected. */
   channel?: string;
@@ -94,6 +95,12 @@ export const BUILTIN_DEFAULTS: ResolvedConfig = {
 
 const CONFIG_FILE = "config.json";
 
+/** `BROWX_HEADLESS` truthiness: `1` or `true` (any case, surrounding space ignored). */
+export function isHeadlessEnv(value: string | undefined): boolean {
+  const v = value?.trim().toLowerCase();
+  return v === "1" || v === "true";
+}
+
 /** Legacy `BROWX_*` env vars as a low-precedence layer (above defaults). */
 export function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   const layer: ConfigLayer = {};
@@ -115,7 +122,7 @@ export function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   const bo = list(env.BROWX_BLOCKED_ORIGINS?.trim());
   if (bo) layer.blockedOrigins = bo;
   const hl = env.BROWX_HEADLESS?.trim();
-  if (hl) layer.headless = hl === "1" || hl.toLowerCase() === "true";
+  if (hl) layer.headless = isHeadlessEnv(hl);
   const hos = list(env.BROWX_HIDE_OVERLAY_SELECTORS?.trim());
   if (hos) layer.hideOverlaySelectors = hos;
   const ch = env.BROWX_CHANNEL?.trim();

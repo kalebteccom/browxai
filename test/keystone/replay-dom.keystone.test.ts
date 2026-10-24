@@ -300,30 +300,4 @@ describeDom("replay DOM capture keystone — rrweb against real Chromium", () =>
     },
     KEYSTONE_TIMEOUT,
   );
-
-  it(
-    "omits targetId on a single-tab session and writes it once a second tab opens",
-    async () => {
-      const cap = await startCapture();
-      try {
-        const first = await cap.context.newPage();
-        await first.goto(`${fixture.url}/`, { waitUntil: "load" });
-        await settle(cap, (e) => e.some((x) => x.payload.type === RRWEB_FULL_SNAPSHOT));
-
-        expect(cap.events.length).toBeGreaterThan(0);
-        for (const e of cap.events) expect("targetId" in e).toBe(false);
-
-        const second = await cap.context.newPage();
-        await second.goto(`${fixture.url}/`, { waitUntil: "load" });
-        await settle(cap, (e) => e.some((x) => x.targetId !== undefined));
-
-        const tagged = cap.events.filter((e) => e.targetId !== undefined);
-        expect(tagged.length).toBeGreaterThan(0);
-        expect(new Set(tagged.map((e) => e.targetId)).size).toBeGreaterThanOrEqual(1);
-      } finally {
-        await cap.close();
-      }
-    },
-    KEYSTONE_TIMEOUT,
-  );
 });

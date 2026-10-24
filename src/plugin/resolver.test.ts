@@ -18,25 +18,11 @@ afterEach(() => {
 });
 
 describe("readDeclaration", () => {
-  it("returns [] when plugins.json is missing", () => {
-    const paths = pluginPaths(workspaceRoot);
-    expect(readDeclaration(paths)).toEqual([]);
-  });
-
   it("returns [] on malformed JSON, with no throw", () => {
     const paths = pluginPaths(workspaceRoot);
     mkdirSync(paths.root, { recursive: true });
     writeFileSync(paths.declarationFile, "{not valid");
     expect(readDeclaration(paths)).toEqual([]);
-  });
-
-  it("parses array form", () => {
-    const paths = pluginPaths(workspaceRoot);
-    mkdirSync(paths.root, { recursive: true });
-    writeFileSync(paths.declarationFile, JSON.stringify({ plugins: ["a", "b"] }));
-    const d = readDeclaration(paths);
-    expect(d.map((p) => p.name)).toEqual(["a", "b"]);
-    expect(d.every((p) => p.enabled)).toBe(true);
   });
 
   it("parses object form with trust + enabled flags", () => {

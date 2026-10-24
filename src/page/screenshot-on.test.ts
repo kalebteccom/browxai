@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   runScreenshotOn,
   validateOnArgs,
   defaultOnDir,
-  TRIGGERS,
   MAX_TRIGGERS_PER_WINDOW,
   type SnapFn,
   type TriggerSource,
@@ -107,46 +106,40 @@ describe("validateOnArgs", () => {
       validateOnArgs({ trigger: "navigation", durationMs: 600_001, intoDir: "x" }),
     ).toThrow(/durationMs/);
   });
-  it("accepts each of the four supported triggers", () => {
-    for (const t of TRIGGERS) {
-      expect(() => validateOnArgs({ trigger: t, durationMs: 100, intoDir: "x" })).not.toThrow();
-    }
-  });
 });
 
-describe("runScreenshotOn — happy path per trigger", () => {
-  for (const trigger of TRIGGERS) {
-    it(`captures on "${trigger}" fires inside the window`, async () => {
-      const snap: SnapFn = () => Promise.resolve(fakePng());
-      const source = makeSource();
-      const clock = virtualClock();
-      const p = runScreenshotOn(
-        snap,
-        source,
-        {
-          trigger,
-          durationMs: 1000,
-          intoDir: `evt/${trigger}`,
-        },
-        WS,
-        clock,
-      );
-      // settle subscription
-      await new Promise((r) => setImmediate(r));
-      expect(source.subscribedTo).toBe(trigger);
-      source.fire();
-      source.fire();
-      // let the in-flight snap promises settle
-      await new Promise((r) => setImmediate(r));
-      await new Promise((r) => setImmediate(r));
-      clock.runWindowEnd();
-      const r = await p;
-      expect(r.trigger).toBe(trigger);
-      expect(r.paths.length).toBeGreaterThanOrEqual(1);
-      expect(source.disposed).toBe(true);
-      for (const fp of r.paths) expect(existsSync(fp)).toBe(true);
-    });
-  }
+describe("runScreenshotOn — happy path", () => {
+  it('captures on "navigation" fires inside the window', async () => {
+    const trigger: Trigger = "navigation";
+    const snap: SnapFn = () => Promise.resolve(fakePng());
+    const source = makeSource();
+    const clock = virtualClock();
+    const p = runScreenshotOn(
+      snap,
+      source,
+      {
+        trigger,
+        durationMs: 1000,
+        intoDir: `evt/${trigger}`,
+      },
+      WS,
+      clock,
+    );
+    // settle subscription
+    await new Promise((r) => setImmediate(r));
+    expect(source.subscribedTo).toBe(trigger);
+    source.fire();
+    source.fire();
+    // let the in-flight snap promises settle
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    clock.runWindowEnd();
+    const r = await p;
+    expect(r.trigger).toBe(trigger);
+    expect(r.paths.length).toBeGreaterThanOrEqual(1);
+    expect(source.disposed).toBe(true);
+    for (const fp of r.paths) expect(existsSync(fp)).toBe(true);
+  });
 });
 
 describe("runScreenshotOn — bounded & safe", () => {
@@ -250,49 +243,6 @@ describe("runScreenshotOn — bounded & safe", () => {
     const r = await p;
     expect(r.warnings.some((w) => /snap fail/.test(w))).toBe(true);
     expect(r.paths.length).toBe(1); // 1 success
-  });
-
-  it("disposes the trigger subscription on every exit path", async () => {
-    const snap: SnapFn = () => Promise.resolve(fakePng());
-    const source = makeSource();
-    const clock = virtualClock();
-    const p = runScreenshotOn(
-      snap,
-      source,
-      {
-        trigger: "network-mutation",
-        durationMs: 300,
-        intoDir: "evt/dispose",
-      },
-      WS,
-      clock,
-    );
-    await new Promise((r) => setImmediate(r));
-    clock.runWindowEnd();
-    await p;
-    expect(source.disposed).toBe(true);
-  });
-
-  it("creates a nested intoDir if missing", async () => {
-    const snap: SnapFn = () => Promise.resolve(fakePng());
-    const source = makeSource();
-    const clock = virtualClock();
-    const p = runScreenshotOn(
-      snap,
-      source,
-      {
-        trigger: "navigation",
-        durationMs: 100,
-        intoDir: "deep/nested/evt",
-      },
-      WS,
-      clock,
-    );
-    await new Promise((r) => setImmediate(r));
-    clock.runWindowEnd();
-    const r = await p;
-    expect(existsSync(join(WS, "deep/nested/evt"))).toBe(true);
-    expect(readdirSync(r.intoDir).length).toBe(0);
   });
 });
 

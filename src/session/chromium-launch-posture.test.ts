@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   automationSwitchOptions,
+  isBundledBrowserMissing,
   isChannelNotInstalled,
   launchWithChannelPlan,
   planChromiumChannel,
 } from "./chromium-launch-posture.js";
 import { log } from "../util/logging.js";
 import { envLayer } from "../util/config-store.js";
+import { playwrightInstallCommand } from "../util/playwright-version.js";
 
 const NOT_FOUND = new Error(
   "browserType.launchPersistentContext: Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome\n" +
@@ -113,11 +115,38 @@ describe("launchWithChannelPlan", () => {
     ).rejects.toBe(boom);
     expect(launch).toHaveBeenCalledTimes(1);
   });
+});
 
-  it("launches once with no channel for the bundled plan", async () => {
-    const launch = vi.fn().mockResolvedValue("bundled");
-    await launchWithChannelPlan({ fallbackToBundled: false }, launch);
-    expect(launch.mock.calls).toEqual([[{}]]);
+describe("a launch that finds no browser", () => {
+  const NO_BUNDLED = new Error(
+    "browserType.launchPersistentContext: Executable doesn't exist at /home/u/.cache/ms-playwright/chromium-1200/chrome-linux/chrome\n" +
+      "Looks like Playwright was just installed or updated. Please run: npx playwright install",
+  );
+
+  it("recognises Playwright's missing-download error", () => {
+    expect(isBundledBrowserMissing(NO_BUNDLED)).toBe(true);
+    expect(isBundledBrowserMissing(new Error("profile locked"))).toBe(false);
+  });
+
+  it("adds an install hint after the fallback to the bundled build also fails", async () => {
+    vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    const launch = vi.fn().mockRejectedValueOnce(NOT_FOUND).mockRejectedValueOnce(NO_BUNDLED);
+    const err = await launchWithChannelPlan(
+      { channel: "chrome", fallbackToBundled: true },
+      launch,
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain("Executable doesn't exist");
+    expect((err as Error).message).toMatch(/Install Google Chrome/);
+    expect((err as Error).message).toContain(`\`${playwrightInstallCommand("chromium")}\``);
+    expect((err as Error).message).toMatch(/npx playwright-core@\d+\.\d+\.\d+ install chromium/);
+    expect((err as Error).cause).toBe(NO_BUNDLED);
+  });
+
+  it("leaves other bundled-launch errors untouched", async () => {
+    const boom = new Error("profile locked");
+    const launch = vi.fn().mockRejectedValue(boom);
+    await expect(launchWithChannelPlan({ fallbackToBundled: false }, launch)).rejects.toBe(boom);
   });
 });
 
@@ -129,13 +158,5 @@ describe("automationSwitchOptions", () => {
   it("restores the switch for BROWX_AUTOMATION_SWITCH=1 or true", () => {
     expect(automationSwitchOptions({ BROWX_AUTOMATION_SWITCH: "1" })).toEqual({});
     expect(automationSwitchOptions({ BROWX_AUTOMATION_SWITCH: " TRUE " })).toEqual({});
-  });
-
-  it("keeps dropping it for any other value", () => {
-    for (const v of ["", "0", "no"]) {
-      expect(automationSwitchOptions({ BROWX_AUTOMATION_SWITCH: v })).toEqual({
-        ignoreDefaultArgs: ["--enable-automation"],
-      });
-    }
   });
 });

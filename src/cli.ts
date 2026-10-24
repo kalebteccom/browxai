@@ -18,6 +18,7 @@ import "./cli/register-commands.js";
 import { commandFor, registeredCommands } from "./cli/command-registry.js";
 import { log } from "./util/logging.js";
 import { resolveConfig } from "./util/config.js";
+import { isHeadlessEnv } from "./util/config-store.js";
 import { resolveWorkspace } from "./util/workspace.js";
 import { PACKAGE_VERSION } from "./util/version.js";
 import { resolveEngineSelection, UnknownEngineError } from "./engine/index.js";
@@ -25,7 +26,7 @@ import { resolveEngineSelection, UnknownEngineError } from "./engine/index.js";
 const USAGE = `Usage: browxai [subcommand]
 
   browxai                       start the MCP server (stdio)            — default
-  browxai doctor                env + connectivity health-check
+  browxai doctor                env + connectivity health-check (run this first)
   browxai chrome start [opts]   launch an attachable Chrome (BYOB host) on the
                                 installed Google Chrome and the workspace
                                 profile. --port N, --profile NAME, --force,
@@ -37,7 +38,9 @@ const USAGE = `Usage: browxai [subcommand]
                                 challenge and sign in. --url URL, --profile NAME,
                                 --force. Quit that Chrome when done.
   browxai chrome stop           kill the Chrome that \`chrome start\` launched
-  browxai init <workspace>      bootstrap a per-app workspace (.mcp.json + sniff)
+  browxai chrome status         say whether that Chrome is still running
+  browxai init <workspace>      bootstrap a per-app workspace: writes <workspace>/.mcp.json
+                                (managed + attached entries) and picks test attributes
   browxai serve --socket <p>    long-running server on a Unix socket / named pipe
                                 — accepts MCP-over-socket connections from SDK clients
                                 (\`createBrowxai({ endpoint: "unix:///..." })\`).
@@ -45,8 +48,9 @@ const USAGE = `Usage: browxai [subcommand]
   browxai plugin <sub>          install / remove / list / info / upgrade / sync
                                 plugins. All ops are workspace-rooted.
 
-  --engine <kind>               browser engine for the MCP server: chromium
-                                (default) | firefox | webkit | android. Overrides
+  --engine <kind>               engine for the MCP server: chromium (default) |
+                                firefox | webkit | android | safari | ios-app |
+                                android-app | electron. Overrides
                                 BROWX_ENGINE. android implies attach-mode (real
                                 Chrome-on-Android over adb — no BROWX_ATTACH_CDP).
   --version, -v                 print the browxai version
@@ -102,7 +106,7 @@ async function main(): Promise<void> {
   const workspace = resolveWorkspace();
   const config = resolveConfig();
   const attachCdp = process.env.BROWX_ATTACH_CDP?.trim() || undefined;
-  const headless = process.env.BROWX_HEADLESS === "1";
+  const headless = isHeadlessEnv(process.env.BROWX_HEADLESS);
   // Engine selection: explicit `--engine <kind>` > `BROWX_ENGINE` env > default
   // chromium (left to server.ts when this resolves undefined — byte-identical to
   // never passing browserType). An unknown engine fails loudly here, before the
@@ -122,7 +126,7 @@ async function main(): Promise<void> {
     throw err;
   }
 
-  log.info("browxai: starting", {
+  log.info("starting", {
     workspace: workspace.root,
     mode: attachCdp ? "byob" : "managed",
     attachCdp,
@@ -131,10 +135,19 @@ async function main(): Promise<void> {
     testAttributes: config.testAttributes,
   });
 
+  // Run by hand in a terminal, the server logs and then waits on stdin, which
+  // looks like a hang. stderr only: stdout is the MCP wire.
+  if (process.stdin.isTTY) {
+    process.stderr.write(
+      "browxai: this is an MCP server on stdio. It waits for an MCP client to connect, so there is nothing to type here.\n" +
+        '  Add it to your client\'s MCP config (command: "browxai"), or run `browxai doctor` to check this machine and `browxai --help` for the other commands. Ctrl+C quits.\n',
+    );
+  }
+
   const server = await createServer({ attachCdp, headless, browserType });
 
   const shutdown = async (signal: string): Promise<void> => {
-    log.info(`browxai: shutdown (${signal})`);
+    log.info(`shutdown (${signal})`);
     await server.shutdown();
     process.exit(0);
   };
@@ -145,6 +158,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log.error("browxai: fatal", { error: err instanceof Error ? err.message : String(err) });
+  log.error("fatal", { error: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });

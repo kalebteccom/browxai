@@ -59,7 +59,7 @@ export function registerBatchActTools(
         action: z.object({
           tool: z.string().describe("Inner tool name (batch whitelist)."),
           args: z
-            .record(z.unknown())
+            .record(z.string(), z.unknown())
             .optional()
             .describe("Inner tool args (same shape as a top-level call)."),
         }),
@@ -164,7 +164,7 @@ export function registerBatchActTools(
       inputSchema: {
         action: z.object({
           tool: z.string().describe("Inner tool name (batch whitelist)."),
-          args: z.record(z.unknown()).optional().describe("Inner tool args."),
+          args: z.record(z.string(), z.unknown()).optional().describe("Inner tool args."),
         }),
         scope: z
           .string()
@@ -259,7 +259,7 @@ export function registerBatchActTools(
             z.object({
               tool: z.string().describe("Tool name (must be in the batch whitelist)"),
               args: z
-                .record(z.unknown())
+                .record(z.string(), z.unknown())
                 .optional()
                 .describe("Args for the inner tool, same shape as a top-level call"),
               label: z

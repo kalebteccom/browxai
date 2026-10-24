@@ -68,7 +68,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
       .optional(),
     hideOverlaySelectors: z.array(z.string()).optional(),
     plugins: z.array(z.string()).optional(),
-    unstable: z.record(z.unknown()).optional(),
+    unstable: z.record(z.string(), z.unknown()).optional(),
   };
 
   register(

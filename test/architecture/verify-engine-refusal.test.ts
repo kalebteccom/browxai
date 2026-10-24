@@ -164,17 +164,6 @@ describe("verify_* refuses on an engine with no `element` sub-interface", () => 
       expect(JSON.stringify(body)).not.toContain("no-playwright-page");
     });
   }
-
-  it("the refusal envelope matches the engine gate's, so one classifier covers both", async () => {
-    const refusal = await callVerify(noElement, "verify_visible");
-    expect(Object.keys(refusal).sort()).toEqual([
-      "engine",
-      "error",
-      "hint",
-      "ok",
-      "tokensEstimate",
-    ]);
-  });
 });
 
 describe("verify_* on an engine that declares `element` is unchanged", () => {

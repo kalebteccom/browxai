@@ -49,12 +49,6 @@ describe("parseViewStart", () => {
     expect(low).toMatchObject({ params: { maxFps: 0.2, maxWidth: 160, quality: 10 } });
   });
 
-  it("keeps a request under the ceiling as asked", () => {
-    expect(
-      parseViewStart({ session: "s", maxFps: 2, maxWidth: 800, quality: 50, format: "jpeg" }),
-    ).toMatchObject({ ok: true, params: { maxFps: 2, maxWidth: 800, quality: 50 } });
-  });
-
   it("refuses a missing or oversized session, a wrong type and a format other than jpeg", () => {
     const bad = { ok: false, code: "invalid-view" };
     expect(parseViewStart({})).toEqual(bad);

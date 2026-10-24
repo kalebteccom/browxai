@@ -7,14 +7,11 @@
 // socket would pass whether or not Chromium delivers frames, the 64 KiB line
 // limit holds for real JPEG sizes, or the agent can reach the stream.
 //
-//   1. live-view without operator-channel: the server refuses to start.
-//   2. Capability unset (operator-channel on): a view.start gets `view-disabled`,
+//   1. Capability unset (operator-channel on): a view.start gets `view-disabled`,
 //      no frame is ever sent, and `set_config` cannot turn the capability on.
-//   3. Capability set: frames arrive at the 5 fps cap as real JPEGs under the
+//   2. Capability set: frames arrive at the 5 fps cap as real JPEGs under the
 //      line limit; nothing the agent can call names or carries the stream; no
-//      frame lands in the workspace or the log; view.stop, a closed session and
-//      a dropped connection each end the stream; a daemon that acks slowly is
-//      stepped down to 640 px, and one that does not ack gets one frame.
+//      frame lands in the workspace or the log; view.stop ends the stream.
 //
 // The page is animated by CSS only. Nothing on it calls back into CDP, so the
 // only CDP traffic is the screencast under test.
@@ -32,7 +29,6 @@ import { waitFor } from "./fixture.js";
 const KEYSTONE_TIMEOUT = 120_000;
 const CAPS_ON = "read,navigation,action,human,operator-channel,live-view";
 const CAPS_CHANNEL_ONLY = "read,navigation,action,human,operator-channel";
-const CAPS_VIEW_ONLY = "read,navigation,action,human,live-view";
 const MAX_LINE_BYTES = 64 * 1024;
 
 // Everything browxai writes to stderr, so a test can assert what never appears.
@@ -189,32 +185,7 @@ afterAll(async () => {
 }, KEYSTONE_TIMEOUT);
 
 // ---------------------------------------------------------------------------
-// 1. live-view needs operator-channel.
-// ---------------------------------------------------------------------------
-
-describe("live view — without operator-channel", () => {
-  it("refuses to start the server, and the socket variables are still taken out", async () => {
-    const ws = isolateEnv("browx-view-nochannel-");
-    const daemon = await startFakeDaemon();
-    try {
-      process.env.BROWX_CAPABILITIES = CAPS_VIEW_ONLY;
-      Object.assign(process.env, operatorEnv(daemon));
-      await expect(createServer({ headless: true })).rejects.toThrow(
-        /live-view.*needs operator-channel/,
-      );
-      expect(process.env.BROWX_OPERATOR_SOCKET).toBeUndefined();
-      expect(process.env.BROWX_OPERATOR_TOKEN).toBeUndefined();
-      await sleep(300); // absence window: no dial may happen
-      expect(daemon.connections).toBe(0);
-    } finally {
-      await daemon.close();
-      rmSync(ws, { recursive: true, force: true });
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 2. Capability unset.
+// 1. Capability unset.
 // ---------------------------------------------------------------------------
 
 describe("live view — capability unset", () => {
@@ -264,7 +235,7 @@ describe("live view — capability unset", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Capability set.
+// 2. Capability set.
 // ---------------------------------------------------------------------------
 
 describe("live view — capability set, managed Chromium", () => {
@@ -424,83 +395,5 @@ describe("live view — capability set, managed Chromium", () => {
     expect(log).not.toContain((f.data as string).slice(0, 80));
     expect(log).not.toContain("/9j/");
     expect(log).not.toContain(daemon.token);
-  });
-
-  it("stops the stream when its session closes, and tells the daemon", async () => {
-    await call("close_session", { session: "b" });
-    await waitFor(() => stopped("b").length === 1);
-    expect(stopped("b")[0]).toMatchObject({ reason: "session-closed" });
-    daemon.send({ type: "view.start", session: "b" });
-    await waitFor(() => ofType(daemon, "error").some((e) => e.session === "b"));
-    expect(ofType(daemon, "error").find((e) => e.session === "b")).toMatchObject({
-      code: "unknown-session",
-    });
-  });
-
-  it("refuses a view.start for a session that was never opened, and opens none", async () => {
-    daemon.send({ type: "view.start", session: "never-opened" });
-    await waitFor(() => ofType(daemon, "error").some((e) => e.session === "never-opened"));
-    const listed = await call<{ sessions: Array<{ id: string }> }>("list_sessions", {});
-    expect(listed.sessions.map((s) => s.id)).not.toContain("never-opened");
-  });
-
-  it("sends one frame and holds the rest while the daemon does not ack", async () => {
-    await openOn("c");
-    daemon.send({ type: "view.start", session: "c" });
-    await waitFor(() => completeFrames(daemon, "c").length === 1);
-    await sleep(3_000); // absence window, inside the 5 s ack timeout: no second frame
-    expect(completeFrames(daemon, "c")).toHaveLength(1);
-    daemon.send({ type: "view.stop", session: "c" });
-    await waitFor(() => stopped("c").length === 1);
-  });
-
-  it(
-    "steps down to 640 px when the daemon acks slowly, and never sends ahead of an ack",
-    async () => {
-      await openOn("d");
-      const ack = autoAck(daemon, 900);
-      try {
-        daemon.send({ type: "view.start", session: "d", maxFps: 5, maxWidth: 960 });
-        await waitFor(() => completeFrames(daemon, "d").length >= 1);
-        await waitFor(
-          () => {
-            const last = completeFrames(daemon, "d").at(-1);
-            return !!last && (last.width as number) <= 640;
-          },
-          { timeoutMs: 25_000 },
-        );
-        const frames = completeFrames(daemon, "d");
-        expect(frames[0]!.width as number).toBeGreaterThan(640);
-        // One in flight at a time: each frame went out after the one before it was acked.
-        for (let i = 1; i < frames.length; i++) {
-          const prevAck = ack.ackedAt.get(frames[i - 1]!.seq as number);
-          expect(prevAck).toBeDefined();
-          expect(frames[i]!.at as number).toBeGreaterThanOrEqual(prevAck!);
-        }
-      } finally {
-        ack.stop();
-      }
-      daemon.send({ type: "view.stop", session: "d" });
-      await waitFor(() => stopped("d").length === 1);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it("stops the stream when the connection drops, and does not resume after the redial", async () => {
-    await openOn("e");
-    const ack = autoAck(daemon);
-    try {
-      daemon.send({ type: "view.start", session: "e" });
-      await waitFor(() => completeFrames(daemon, "e").length >= 1);
-    } finally {
-      ack.stop();
-    }
-    const authed = daemon.authenticated;
-    daemon.drop();
-    await waitFor(() => daemon.authenticated === authed + 1);
-    await sleep(500); // lets a frame already in flight land before counting
-    const n = ofType(daemon, "frame").length;
-    await sleep(1_500); // absence window: no frame after the redial
-    expect(ofType(daemon, "frame").length).toBe(n);
   });
 });

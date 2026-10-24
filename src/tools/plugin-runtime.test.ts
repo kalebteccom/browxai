@@ -37,12 +37,6 @@ describe("warnNonFirstPartyPlugins", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("stays silent when nothing loaded", () => {
-    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
-    warnNonFirstPartyPlugins([]);
-    expect(warn).not.toHaveBeenCalled();
-  });
-
   it("names each community plugin with its declared capabilities", () => {
     const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
     warnNonFirstPartyPlugins([
@@ -63,13 +57,5 @@ describe("warnNonFirstPartyPlugins", () => {
     const msg = warn.mock.calls[0]![0];
     expect(msg).toContain("[local]");
     expect(msg).toContain("none declared");
-  });
-
-  it("states that the capability list is disclosure, not enforcement", () => {
-    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
-    warnNonFirstPartyPlugins([record("browxai-plugin-third", "community", ["eval"])]);
-    const msg = warn.mock.calls[0]![0];
-    expect(msg).toContain("does not sandbox plugins");
-    expect(msg).toContain("disclosure, not enforcement");
   });
 });

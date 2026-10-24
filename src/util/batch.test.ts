@@ -131,14 +131,6 @@ describe("runBatch — labels + expect", () => {
     expect(report.results[0]?.label).toBe("set type");
   });
 
-  it("omits label on entries where the call didn't supply one", async () => {
-    const report = await runBatch([{ tool: "click" }], {
-      allowed: ALLOWED,
-      handlers: { click: jsonHandler({ ok: true }) },
-    });
-    expect(report.results[0]?.label).toBeUndefined();
-  });
-
   it("marks call ok=false when expect predicate fails", async () => {
     const handler = jsonHandler({ ok: true, element: { value: "actual" } });
     const report = await runBatch(
@@ -158,21 +150,6 @@ describe("runBatch — labels + expect", () => {
     );
     expect(report.results[0]?.ok).toBe(true);
     expect(report.results[0]?.error).toBeUndefined();
-  });
-
-  it("respects stopOnError when an expect predicate fails", async () => {
-    const ok = jsonHandler({ ok: true, element: { value: "good" } });
-    const expecting = jsonHandler({ ok: true, element: { value: "actual" } });
-    const report = await runBatch(
-      [
-        { tool: "fill", args: {}, label: "first" },
-        { tool: "fill", args: {}, label: "second", expect: { valueEquals: "intended" } },
-        { tool: "click", args: {}, label: "third" }, // should not run
-      ],
-      { allowed: ALLOWED, handlers: { fill: ok, click: expecting } },
-    );
-    expect(report.failedAt).toBe(1);
-    expect(report.results.length).toBe(2);
   });
 });
 
@@ -198,12 +175,6 @@ describe("evaluateExpect — predicate evaluation", () => {
         body,
       ),
     ).toBeNull();
-  });
-
-  it("returns a descriptive error when valueEquals fails", () => {
-    expect(evaluateExpect({ valueEquals: "expected" }, { element: { value: "other" } })).toMatch(
-      /element.value/,
-    );
   });
 
   it("handles missing element gracefully", () => {

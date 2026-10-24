@@ -514,6 +514,46 @@ const WORKERS_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+// Service-worker keystone — the page registers `/sw.js` (scope `/`), and once
+// the worker is active posts it "ping". The worker answers the sender with
+// "pong:ping" through `client.postMessage`; the page's own `message` listener
+// writes the reply into `#sw-state`, and `worker_messages_read` returns it from
+// the page-side service-worker ring. A message `worker_message_send` dispatches
+// into the worker has no `source`, so the worker answers every window client it
+// can see instead (the page is not controlled by the worker it just registered,
+// hence `includeUncontrolled`). `/sw.js` is served from the same loopback
+// origin (a secure context), as the registration requires.
+const SW_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>service worker keystone</title></head>
+<body>
+<output data-testid="sw-state" id="sw-state">idle</output>
+<script>
+  navigator.serviceWorker.addEventListener("message", function (ev) {
+    document.getElementById("sw-state").textContent = String(ev.data);
+  });
+  navigator.serviceWorker.register("/sw.js").then(function () {
+    return navigator.serviceWorker.ready;
+  }).then(function (reg) {
+    document.getElementById("sw-state").textContent = "active";
+    reg.active.postMessage("ping");
+  });
+</script>
+</body>
+</html>`;
+
+const SW_SCRIPT = `self.addEventListener("message", function (ev) {
+  var reply = "pong:" + ev.data;
+  if (ev.source) {
+    ev.source.postMessage(reply);
+    return;
+  }
+  self.clients.matchAll({ includeUncontrolled: true, type: "window" }).then(function (list) {
+    list.forEach(function (client) { client.postMessage(reply); });
+  });
+});
+`;
+
 //  overflow_detect keystone — a page deliberately constructed to
 // trip each of the four overflow detectors exactly once:
 //
@@ -1168,6 +1208,8 @@ function handleUpgrade(
  *   GET /echo             → renders the request's Cookie header (isolation)
  *   GET /challenge-*      → the three challenge-marker pages (detection keystone)
  *   GET /ws-page          → page that opens a WebSocket against /ws
+ *   GET /sw-page          → page that registers /sw.js and pings it
+ *   GET /sw.js            → service worker that answers a message with "pong:<data>"
  *   GET /thin-a11y-page   → table-shaped markup with a thin a11y tree
  *   GET /ignored-wrapper-page → interactive content under CDP-ignored wrappers
  *   GET /find-statictext-page → one real button buried in prose that repeats its words
@@ -1227,6 +1269,16 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/workers-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(WORKERS_PAGE);
+      return;
+    }
+    if (u.pathname === "/sw-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(SW_PAGE);
+      return;
+    }
+    if (u.pathname === "/sw.js") {
+      res.writeHead(200, { "content-type": "application/javascript; charset=utf-8" });
+      res.end(SW_SCRIPT);
       return;
     }
     if (u.pathname === "/thin-a11y-page") {

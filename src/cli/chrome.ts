@@ -20,14 +20,15 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveWorkspace } from "../util/workspace.js";
+import { capabilitiesAssignment } from "../util/capabilities.js";
 import { profileLockHolder, resolveProfileDir } from "../session/profile-guard.js";
 import {
   buildLoginArgs,
   buildStartArgs,
   findInstalledChrome,
-  isValidProfileName,
   parseHttpUrl,
 } from "./chrome-launch.js";
+import { isValidProfileName, PROFILE_NAME_RULE } from "../util/profile-name.js";
 
 const DEFAULT_PORT = 9222;
 
@@ -51,9 +52,7 @@ function resolveLaunchTarget(
 ): { chromePath: string; profileDir: string } | undefined {
   const profile = parseFlagStr(opts, "--profile");
   if (opts.includes("--profile") && (profile === undefined || !isValidProfileName(profile))) {
-    process.stderr.write(
-      `invalid --profile "${profile ?? ""}": use a plain name (letters, digits, ., _, -), no path separators\n`,
-    );
+    process.stderr.write(`invalid --profile "${profile ?? ""}": ${PROFILE_NAME_RULE}\n`);
     return undefined;
   }
   const chromePath = findInstalledChrome();
@@ -76,7 +75,12 @@ function resolveLaunchTarget(
 }
 
 function startChrome(opts: string[]): Promise<number> {
-  const port = parseFlagNum(opts, "--port") ?? DEFAULT_PORT;
+  const port = parsePort(opts);
+  if (port === undefined) {
+    const raw = opts[opts.indexOf("--port") + 1] ?? "";
+    process.stderr.write(`invalid --port "${raw}": expected a whole number from 1 to 65535\n`);
+    return Promise.resolve(2);
+  }
   const insecure = opts.includes("--insecure"); // opt-in security-lowered (BYOB recipe's `--disable-web-security`)
   const noBackgroundThrottling = opts.includes("--disable-background-throttling");
   const pidFile = join(resolveWorkspace().root, "chrome.pid");
@@ -114,7 +118,7 @@ function startChrome(opts: string[]): Promise<number> {
   }
   writeFileSync(pidFile, String(child.pid), "utf8");
   process.stdout.write(
-    `browxai chrome started\n  pid:     ${child.pid}\n  port:    ${port}\n  profile: ${profileDir}\n  attach:  BROWX_ATTACH_CDP=http://127.0.0.1:${port}\n\nstop with: browxai chrome stop\n`,
+    `browxai chrome started\n  pid:     ${child.pid}\n  port:    ${port}\n  profile: ${profileDir}\n  attach:  BROWX_ATTACH_CDP=http://127.0.0.1:${port}\n  caps:    ${capabilitiesAssignment("byob-attach")}\n\nstop with: browxai chrome stop\n`,
   );
   return Promise.resolve(0);
 }
@@ -200,11 +204,15 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function parseFlagNum(args: string[], flag: string): number | undefined {
-  const i = args.indexOf(flag);
-  if (i < 0) return undefined;
-  const v = Number(args[i + 1]);
-  return Number.isFinite(v) ? v : undefined;
+/** The `--port` value, `DEFAULT_PORT` when the flag is absent, or undefined when
+ *  the value is missing, non-numeric or outside 1 to 65535. */
+function parsePort(args: string[]): number | undefined {
+  const i = args.indexOf("--port");
+  if (i < 0) return DEFAULT_PORT;
+  const raw = args[i + 1];
+  if (raw === undefined || !/^\d+$/.test(raw)) return undefined;
+  const port = Number(raw);
+  return port >= 1 && port <= 65535 ? port : undefined;
 }
 
 function parseFlagStr(args: string[], flag: string): string | undefined {

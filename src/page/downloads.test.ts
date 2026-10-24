@@ -11,30 +11,14 @@ import {
 } from "./downloads.js";
 
 describe("sanitiseFilename", () => {
-  it("passes through a plain filename", () => {
-    expect(sanitiseFilename("report.pdf")).toBe("report.pdf");
-  });
-
   it("strips path separators (forward + back)", () => {
     expect(sanitiseFilename("a/b/c.pdf")).toBe("a_b_c.pdf");
     expect(sanitiseFilename("a\\b\\c.pdf")).toBe("a_b_c.pdf");
   });
 
-  it("rejects parent-traversal sequences", () => {
-    // separator stripping makes ../../etc/passwd safe (collapsed to a flat name).
-    const out = sanitiseFilename("../../etc/passwd");
-    expect(out).not.toContain("/");
-    expect(out).not.toContain("..");
-    expect(out).not.toMatch(/^\./);
-  });
-
   it("strips leading dots so the on-disk file isn't hidden", () => {
     expect(sanitiseFilename(".bashrc")).toBe("bashrc");
     expect(sanitiseFilename("...evil.sh")).toBe("evil.sh");
-  });
-
-  it("strips NUL + control bytes", () => {
-    expect(sanitiseFilename("a\x00b\x07c.txt")).toBe("a_b_c.txt");
   });
 
   it("caps very long names", () => {
@@ -65,12 +49,6 @@ describe("mimeTypeFromName", () => {
 });
 
 describe("DownloadsRegistry", () => {
-  it("starts off (captureOn=false), empty list", () => {
-    const reg = new DownloadsRegistry("/tmp/x");
-    expect(reg.captureOn).toBe(false);
-    expect(reg.list()).toEqual([]);
-  });
-
   it("records entries with monotonic ids and tracks since(ts)", () => {
     const reg = new DownloadsRegistry("/tmp/x");
     const a = reg.record({

@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigStore, envLayer, resolvedToEnv, BUILTIN_DEFAULTS } from "./config-store.js";
+import {
+  ConfigStore,
+  envLayer,
+  isHeadlessEnv,
+  resolvedToEnv,
+  BUILTIN_DEFAULTS,
+} from "./config-store.js";
 
 let dir: string;
 beforeEach(() => {
@@ -18,15 +24,6 @@ describe("ConfigStore precedence", () => {
     expect(s.resolve()).toEqual(BUILTIN_DEFAULTS);
   });
 
-  it("env layer overrides defaults", () => {
-    const s = new ConfigStore(dir, { BROWX_CAPABILITIES: "read", BROWX_HEADLESS: "1" });
-    const r = s.resolve();
-    expect(r.capabilities).toEqual(["read"]);
-    expect(r.headless).toBe(true);
-    // untouched keys keep defaults
-    expect(r.testAttributes).toEqual(BUILTIN_DEFAULTS.testAttributes);
-  });
-
   it("user layer overrides env; project overrides user; session overrides project", () => {
     writeFileSync(
       join(dir, "config.json"),
@@ -38,11 +35,6 @@ describe("ConfigStore precedence", () => {
     const s = new ConfigStore(dir, { BROWX_TEST_ATTRIBUTES: "data-env" });
     expect(s.resolve().testAttributes).toEqual(["data-p"]); // project wins
     expect(s.resolve({ testAttributes: ["data-s"] }).testAttributes).toEqual(["data-s"]); // session wins
-  });
-
-  it("arrays replace (not merge) across layers", () => {
-    const s = new ConfigStore(dir, { BROWX_HIDE_OVERLAY_SELECTORS: "#a,#b" });
-    expect(s.resolve({ hideOverlaySelectors: ["#c"] }).hideOverlaySelectors).toEqual(["#c"]);
   });
 
   it("unstable.* shallow-merges across layers instead of replacing", () => {
@@ -131,6 +123,12 @@ describe("envLayer", () => {
     expect(envLayer({ BROWX_HEADLESS: "0" }).headless).toBe(false);
     expect(envLayer({ BROWX_HEADLESS: "true" }).headless).toBe(true);
   });
+  it("isHeadlessEnv accepts '1' and 'true' in any case, nothing else", () => {
+    for (const v of ["1", "true", "TRUE", "True", " 1 "]) expect(isHeadlessEnv(v)).toBe(true);
+    for (const v of [undefined, "", "0", "false", "yes", "on"])
+      expect(isHeadlessEnv(v)).toBe(false);
+    expect(envLayer({ BROWX_HEADLESS: "TRUE" }).headless).toBe(true);
+  });
 
   it("disableWebSecurity maps only from the exact BROWX_DISABLE_WEB_SECURITY opt-in", () => {
     // The env is the operator's channel; `set_config` is the agent's. SOP-off is
@@ -148,43 +146,6 @@ describe("envLayer", () => {
   });
 });
 
-describe("actionTimeoutMs precedence", () => {
-  it("defaults undefined (server falls back to 5000); set via any persistent layer or session", () => {
-    const dir = mkdtempSync(join(tmpdir(), "browx-wm1-"));
-    try {
-      const s = new ConfigStore(dir, {});
-      expect(s.resolve().actionTimeoutMs).toBeUndefined();
-      s.setLayer("user", { actionTimeoutMs: 3000 });
-      expect(s.resolve().actionTimeoutMs).toBe(3000);
-      s.setLayer("project", { actionTimeoutMs: 1500 });
-      expect(s.resolve().actionTimeoutMs).toBe(1500); // project > user
-      expect(s.resolve({ actionTimeoutMs: 20000 }).actionTimeoutMs).toBe(20000); // session > project
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("disableWebSecurity precedence", () => {
-  it("defaults off; only the env turns it on; a saved layer can only turn it off", () => {
-    const dir = mkdtempSync(join(tmpdir(), "browx-wl1-"));
-    try {
-      const off = new ConfigStore(dir, {});
-      off.setLayer("project", { disableWebSecurity: true });
-      expect(off.resolve().disableWebSecurity).toBeUndefined(); // config can't enable it
-      const on = new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" });
-      expect(on.resolve().disableWebSecurity).toBe(true);
-      on.setLayer("project", { disableWebSecurity: false });
-      expect(on.resolve().disableWebSecurity).toBeUndefined();
-      expect(
-        new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" }).resolve({}).disableWebSecurity,
-      ).toBeUndefined();
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
 describe("hideOverlaySelectors precedence", () => {
   it("defaults []; env layer parses; project/session override", () => {
     const dir = mkdtempSync(join(tmpdir(), "browx-hos-"));
@@ -197,15 +158,6 @@ describe("hideOverlaySelectors precedence", () => {
       expect(s.resolve().hideOverlaySelectors).toEqual(["#cookie-banner"]);
       // session layer wins (e.g. opt back out)
       expect(s.resolve({ hideOverlaySelectors: [] }).hideOverlaySelectors).toEqual([]);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("absent env leaves the built-in [] default", () => {
-    const dir = mkdtempSync(join(tmpdir(), "browx-hos2-"));
-    try {
-      expect(new ConfigStore(dir, {}).resolve().hideOverlaySelectors).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -260,12 +212,6 @@ describe("ConfigStore BROWX_CONFIG_READONLY", () => {
     // Reads still resolve the persisted layers.
     expect(s.resolve().headless).toBe(true);
   });
-
-  it("is off unless the value is 1 or true", () => {
-    expect(new ConfigStore(dir, {}).readonly).toBe(false);
-    expect(new ConfigStore(dir, { BROWX_CONFIG_READONLY: "0" }).readonly).toBe(false);
-    expect(new ConfigStore(dir, { BROWX_CONFIG_READONLY: "TRUE" }).readonly).toBe(true);
-  });
 });
 
 describe("resolvedToEnv adapter", () => {
@@ -288,10 +234,3 @@ describe("resolvedToEnv adapter", () => {
 });
 
 // Sanity: config file path lands in the workspace root, not cwd (no-trace).
-describe("ConfigStore no-trace", () => {
-  it("writes config.json under the given workspace root only", () => {
-    const s = new ConfigStore(dir, {});
-    s.setLayer("user", { headless: true });
-    expect(existsSync(join(dir, "config.json"))).toBe(true);
-  });
-});

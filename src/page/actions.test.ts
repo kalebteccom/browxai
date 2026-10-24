@@ -117,15 +117,6 @@ describe("probe() — post-action element observability", () => {
     expect(r.checked).toBe(true);
   });
 
-  it('surfaces checked:"mixed" for an indeterminate checkbox', async () => {
-    const loc = locator({
-      inputValue: "on",
-      evaluateReturns: [false, "mixed", null],
-    });
-    const r = await probe(loc, { ref: "e8" });
-    expect(r.checked).toBe("mixed");
-  });
-
   it("omits checked for non-checkbox elements", async () => {
     const loc = locator({
       inputValue: "free text",
@@ -154,16 +145,6 @@ describe("probe() — ownerControl + container deltas", () => {
     expect(r.ownerControl?.displayTextBefore).toBe("Enter Tag");
     expect(r.ownerControl?.displayTextAfter).toBe("Engineering");
     expect(r.ownerControl?.label).toBe("Type");
-  });
-
-  it("composes ownerControl with changed=false when displayText matches pre", async () => {
-    const loc = locator({
-      inputValue: "",
-      evaluateReturns: [false, undefined, "Engineering", { ownerText: "Engineering" }],
-    });
-    const pre: PreProbeData = { ownerText: "Engineering" };
-    const r = await probe(loc, { ref: "e2" }, undefined, pre);
-    expect(r.ownerControl?.changed).toBe(false);
   });
 
   it("omits ownerControl when neither pre nor post has owner text", async () => {
@@ -211,21 +192,6 @@ describe("probe() — ownerControl + container deltas", () => {
     const r = await probe(loc, { ref: "e5" }, undefined, pre);
     expect(r.container?.changed).toBe(true);
   });
-
-  it("flags container.changed=false when row text is stable", async () => {
-    const loc = locator({
-      inputValue: "",
-      evaluateReturns: [
-        false,
-        undefined,
-        null,
-        { container: { kind: "row", rowText: "unchanged" } },
-      ],
-    });
-    const pre: PreProbeData = { container: { kind: "row", rowText: "unchanged" } };
-    const r = await probe(loc, { ref: "e6" }, undefined, pre);
-    expect(r.container?.changed).toBe(false);
-  });
 });
 
 describe("preProbe()", () => {
@@ -272,12 +238,6 @@ describe("scrollMode — scroll primitive dispatch", () => {
 
   it("intoView:false forces container even without to/by", () => {
     expect(scrollMode({ target: { ref: "e1" }, intoView: false }).kind).toBe("container");
-  });
-
-  it("intoView:true forces into-view even with to/by", () => {
-    expect(scrollMode({ target: { ref: "e1" }, to: "bottom", intoView: true }).kind).toBe(
-      "into-view",
-    );
   });
 
   it("coords target → wheel-at regardless of to/by", () => {

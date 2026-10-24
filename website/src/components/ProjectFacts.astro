@@ -1,0 +1,37 @@
+---
+// Version, licence, status and links in one place, so a skimmer (or the
+// Kalebtec Tools page linking here) finds them without reading the page.
+import { LICENSE_URL, NPM_URL, REPO_URL, packageVersion } from "../lib/package-info";
+const version = packageVersion();
+---
+
+<dl class="browx-facts not-content">
+  {
+    version && (
+      <div>
+        <dt>Version</dt>
+        <dd>
+          <a href={NPM_URL}>v{version}</a>
+        </dd>
+      </div>
+    )
+  }
+  <div>
+    <dt>Licence</dt>
+    <dd><a href={LICENSE_URL}>MIT</a></dd>
+  </div>
+  <div>
+    <dt>Status</dt>
+    <dd>Pre-1.0, semver. The default tool surface is stable; gated capabilities are experimental.</dd>
+  </div>
+  <div>
+    <dt>Links</dt>
+    <dd>
+      <a href={REPO_URL}>GitHub</a>
+      <span class="sep" aria-hidden="true">·</span>
+      <a href={NPM_URL}>npm</a>
+      <span class="sep" aria-hidden="true">·</span>
+      <a href="/getting-started/">Docs</a>
+    </dd>
+  </div>
+</dl>

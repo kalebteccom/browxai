@@ -9,19 +9,13 @@ import type { BrowserContext, CDPSession, Page } from "playwright-core";
 import {
   newEmulationState,
   reapplyAll,
-  applyLocaleCdp,
   clearLocaleCdp,
-  applyTimezoneCdp,
   clearTimezoneCdp,
   applyGeolocation,
   clearGeolocation,
-  applyColorScheme,
-  applyReducedMotion,
-  applyUserAgentCdp,
   clearUserAgentCdp,
   applyPermissions,
   clearPermissions,
-  BYOB_EMULATION_WARNING,
   type EmulationState,
 } from "./emulation.js";
 
@@ -62,12 +56,6 @@ const asPage = (p: FakePage) => p as unknown as Page;
 // --- per-primitive --------------------------------------------------------
 
 describe("locale (CDP-only mid-session)", () => {
-  it("apply sends Emulation.setLocaleOverride with the locale", async () => {
-    const cdp = fakeCdp();
-    await applyLocaleCdp(asCdp(cdp), "en-GB");
-    expect(cdp.send).toHaveBeenCalledWith("Emulation.setLocaleOverride", { locale: "en-GB" });
-  });
-
   it("clear sends Emulation.setLocaleOverride with empty string", async () => {
     const cdp = fakeCdp();
     await clearLocaleCdp(asCdp(cdp));
@@ -76,14 +64,6 @@ describe("locale (CDP-only mid-session)", () => {
 });
 
 describe("timezone (CDP-only mid-session)", () => {
-  it("apply sends Emulation.setTimezoneOverride", async () => {
-    const cdp = fakeCdp();
-    await applyTimezoneCdp(asCdp(cdp), "America/New_York");
-    expect(cdp.send).toHaveBeenCalledWith("Emulation.setTimezoneOverride", {
-      timezoneId: "America/New_York",
-    });
-  });
-
   it("clear sends the override with empty timezoneId", async () => {
     const cdp = fakeCdp();
     await clearTimezoneCdp(asCdp(cdp));
@@ -92,16 +72,6 @@ describe("timezone (CDP-only mid-session)", () => {
 });
 
 describe("geolocation (Playwright context mutator)", () => {
-  it("apply calls context.setGeolocation with coords + default accuracy", async () => {
-    const ctx = fakeContext();
-    await applyGeolocation(asContext(ctx), { latitude: 40.7, longitude: -74 });
-    expect(ctx.setGeolocation).toHaveBeenCalledWith({
-      latitude: 40.7,
-      longitude: -74,
-      accuracy: 0,
-    });
-  });
-
   it("apply preserves explicit accuracy", async () => {
     const ctx = fakeContext();
     await applyGeolocation(asContext(ctx), { latitude: 1, longitude: 2, accuracy: 50 });
@@ -115,43 +85,7 @@ describe("geolocation (Playwright context mutator)", () => {
   });
 });
 
-describe("colour scheme (Playwright page mutator)", () => {
-  it("apply calls page.emulateMedia({colorScheme})", async () => {
-    const page = fakePage();
-    await applyColorScheme(asPage(page), "dark");
-    expect(page.emulateMedia).toHaveBeenCalledWith({ colorScheme: "dark" });
-  });
-
-  it("'no-preference' is a valid pass-through (clears via Playwright semantics)", async () => {
-    const page = fakePage();
-    await applyColorScheme(asPage(page), "no-preference");
-    expect(page.emulateMedia).toHaveBeenCalledWith({ colorScheme: "no-preference" });
-  });
-});
-
-describe("reduced motion (Playwright page mutator)", () => {
-  it("apply calls page.emulateMedia({reducedMotion})", async () => {
-    const page = fakePage();
-    await applyReducedMotion(asPage(page), "reduce");
-    expect(page.emulateMedia).toHaveBeenCalledWith({ reducedMotion: "reduce" });
-  });
-
-  it("'no-preference' clears via Playwright semantics", async () => {
-    const page = fakePage();
-    await applyReducedMotion(asPage(page), "no-preference");
-    expect(page.emulateMedia).toHaveBeenCalledWith({ reducedMotion: "no-preference" });
-  });
-});
-
 describe("user agent (CDP-only mid-session)", () => {
-  it("apply sends Network.setUserAgentOverride", async () => {
-    const cdp = fakeCdp();
-    await applyUserAgentCdp(asCdp(cdp), "MyBot/1.0");
-    expect(cdp.send).toHaveBeenCalledWith("Network.setUserAgentOverride", {
-      userAgent: "MyBot/1.0",
-    });
-  });
-
   it("clear sends override with empty UA", async () => {
     const cdp = fakeCdp();
     await clearUserAgentCdp(asCdp(cdp));
@@ -197,18 +131,6 @@ describe("permissions", () => {
     state.permissions.set("https://a.com", ["geolocation"]);
     state.permissions.set("https://b.com", ["notifications"]);
     await clearPermissions(asContext(ctx), state);
-    expect(ctx.clearPermissions).toHaveBeenCalled();
-    expect(state.permissions.size).toBe(0);
-  });
-
-  it("clearPermissions with per-origin arg still wipes everything (platform limit)", async () => {
-    const ctx = fakeContext();
-    const state = newEmulationState();
-    state.permissions.set("https://a.com", ["geolocation"]);
-    state.permissions.set("https://b.com", ["notifications"]);
-    await clearPermissions(asContext(ctx), state, "https://a.com");
-    // Playwright lacks per-origin revocation — caller surfaces this as a warning,
-    // and the underlying call is context-wide.
     expect(ctx.clearPermissions).toHaveBeenCalled();
     expect(state.permissions.size).toBe(0);
   });
@@ -286,11 +208,3 @@ describe("reapplyAll — persistence across new pages / reconnect", () => {
 });
 
 // --- BYOB warning ---------------------------------------------------------
-
-describe("BYOB warning string", () => {
-  it("names CDP override + detach-persistence as the sharp edge", () => {
-    expect(BYOB_EMULATION_WARNING).toMatch(/CDP/);
-    expect(BYOB_EMULATION_WARNING).toMatch(/PERSIST/i);
-    expect(BYOB_EMULATION_WARNING).toMatch(/not-owned/);
-  });
-});

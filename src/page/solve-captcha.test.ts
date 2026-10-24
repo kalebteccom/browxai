@@ -49,17 +49,6 @@ describe("resolveCaptchaProvider", () => {
     }
   });
 
-  it("resolves capmonster with its canonical base URL", () => {
-    const r = resolveCaptchaProvider({
-      BROWX_CAPTCHA_PROVIDER: "capmonster",
-      BROWX_CAPTCHA_API_KEY: "k",
-    });
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.config.apiBase).toBe("https://api.capmonster.cloud");
-    }
-  });
-
   it("honours an explicit BROWX_CAPTCHA_API_BASE override", () => {
     const r = resolveCaptchaProvider({
       BROWX_CAPTCHA_PROVIDER: "2captcha",
@@ -72,6 +61,44 @@ describe("resolveCaptchaProvider", () => {
       expect(r.config.apiBase).toBe("https://example.test/captcha");
     }
   });
+
+  it("refuses a plain-http BROWX_CAPTCHA_API_BASE on a non-loopback host", () => {
+    const r = resolveCaptchaProvider({
+      BROWX_CAPTCHA_PROVIDER: "2captcha",
+      BROWX_CAPTCHA_API_KEY: "k",
+      BROWX_CAPTCHA_API_BASE: "http://captcha.example.test",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toBe("partial");
+      expect(r.error).toMatch(/BROWX_CAPTCHA_API_BASE must be an https URL/);
+    }
+  });
+
+  it("refuses a non-http(s) BROWX_CAPTCHA_API_BASE and an unparseable one", () => {
+    for (const base of ["ftp://127.0.0.1", "not a url"]) {
+      const r = resolveCaptchaProvider({
+        BROWX_CAPTCHA_PROVIDER: "2captcha",
+        BROWX_CAPTCHA_API_KEY: "k",
+        BROWX_CAPTCHA_API_BASE: base,
+      });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/BROWX_CAPTCHA_API_BASE/);
+    }
+  });
+
+  it.each(["http://127.0.0.1:8080", "http://localhost:8080/", "http://[::1]:8080"])(
+    "accepts plain http for the loopback base %s",
+    (base) => {
+      const r = resolveCaptchaProvider({
+        BROWX_CAPTCHA_PROVIDER: "2captcha",
+        BROWX_CAPTCHA_API_KEY: "k",
+        BROWX_CAPTCHA_API_BASE: base,
+      });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.config.apiBase).toBe(base.replace(/\/+$/, ""));
+    },
+  );
 
   it("rejects a non-positive timeoutMs", () => {
     const r = resolveCaptchaProvider({
@@ -101,11 +128,6 @@ describe("unconfiguredFailure", () => {
     expect(f.hint).toMatch(/auto-purchase|fund/i);
     for (const p of KNOWN_PROVIDERS) expect(f.hint).toContain(p);
   });
-
-  it("does not surface a `provider` value when none is configured", () => {
-    const f = unconfiguredFailure();
-    expect(f.provider).toBeNull();
-  });
 });
 
 describe("submitToProvider", () => {
@@ -118,10 +140,10 @@ describe("submitToProvider", () => {
   };
 
   it("submits a recaptcha2 challenge with the right form fields", async () => {
-    const calls: Array<{ url: string; body?: string }> = [];
+    const calls: Array<{ url: string; body?: string; method?: string }> = [];
     let pollN = 0;
-    const fakeFetch = vi.fn(async (url: string, init?: { body?: string }) => {
-      calls.push({ url, body: init?.body });
+    const fakeFetch = vi.fn(async (url: string, init?: { body?: string; method?: string }) => {
+      calls.push({ url, body: init?.body, method: init?.method });
       if (url.endsWith("/in.php")) {
         return new Response(JSON.stringify({ status: 1, request: "tid-42" }), { status: 200 });
       }
@@ -151,6 +173,18 @@ describe("submitToProvider", () => {
     expect(submit.body).toMatch(/googlekey=site-abc/);
     expect(submit.body).toContain("pageurl=https%3A%2F%2Fapp.example%2Flogin");
     expect(submit.body).toMatch(/method=userrecaptcha/);
+    // every poll is a POST to /res.php with the key and task id in the form body,
+    // and no request URL carries the key
+    const polls = calls.filter((c) => c.url.endsWith("/res.php"));
+    expect(polls).toHaveLength(2);
+    for (const p of polls) {
+      expect(p.method).toBe("POST");
+      const form = new URLSearchParams(p.body);
+      expect(form.get("key")).toBe("secret-key");
+      expect(form.get("id")).toBe("tid-42");
+      expect(form.get("action")).toBe("get");
+    }
+    for (const c of calls) expect(c.url).not.toContain("secret-key");
   });
 
   it("returns a structured failure when the provider rejects the submission", async () => {

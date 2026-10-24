@@ -31,13 +31,6 @@ describe("searchTreeForText — pure-tree match", () => {
     expect(hits[0]?.name).toBe("Engineering");
   });
 
-  it("returns an empty list when nothing matches — the absence-check primitive", () => {
-    seq = 0;
-    const tree = n("WebArea", undefined, [n("text", "Engineering"), n("text", "Design")]);
-    const hits = searchTreeForText(tree, "Support", true);
-    expect(hits).toEqual([]);
-  });
-
   it("ignores nodes with empty / whitespace-only names", () => {
     seq = 0;
     const tree = n("WebArea", undefined, [

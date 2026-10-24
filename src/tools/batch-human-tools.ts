@@ -160,7 +160,7 @@ export function registerBatchHumanTools(
             z.object({
               tool: z.string().describe("Tool name (must be in the batch whitelist)"),
               args: z
-                .record(z.unknown())
+                .record(z.string(), z.unknown())
                 .optional()
                 .describe("Args for the inner tool, same shape as a top-level call"),
               label: z

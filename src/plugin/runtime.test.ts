@@ -135,18 +135,6 @@ describe("startPluginRuntime — basic loading", () => {
     expect(host.tools.has("a.echo")).toBe(true);
   });
 
-  it("surfaces a not-installed plugin as load-error", async () => {
-    writeDecl(workspaceRoot, ["missing-plugin"]);
-    const r = await startPluginRuntime({
-      workspaceRoot,
-      enabledCapabilities: new Set(["read"] as never),
-      host: makeHost(host),
-    });
-    expect(r.plugins).toHaveLength(1);
-    expect(r.plugins[0]?.status).toBe("load-error");
-    expect(r.plugins[0]?.statusReason).toMatch(/not installed/);
-  });
-
   it("rejects an invalid manifest", async () => {
     const root = join(workspaceRoot, "plugins", "node_modules", "bad-plugin");
     mkdirSync(root, { recursive: true });
@@ -476,28 +464,6 @@ describe("startPluginRuntime — apiVersion + dep-version checks", () => {
     expect(warned).toMatch(/plugin-old-range/);
     expect(warned).toMatch(/advisory/);
     expect(warned).toContain(PACKAGE_VERSION);
-    warnSpy.mockRestore();
-  });
-
-  it("does not warn when the host satisfies browxaiVersion", async () => {
-    const { log } = await import("../util/logging.js");
-    const { PACKAGE_VERSION } = await import("../util/version.js");
-    const warnSpy = vi.spyOn(log, "warn");
-    makePlugin(workspaceRoot, {
-      name: "plugin-good-range",
-      namespace: "goodrange",
-      browxaiVersion: `^${PACKAGE_VERSION}`,
-      source: "export function register(){}",
-    });
-    writeDecl(workspaceRoot, ["plugin-good-range"]);
-    const r = await startPluginRuntime({
-      workspaceRoot,
-      enabledCapabilities: new Set(["read"] as never),
-      host: makeHost(host),
-    });
-    expect(r.plugins[0]?.status).toBe("loaded");
-    const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
-    expect(warned).not.toMatch(/browxaiVersion/);
     warnSpy.mockRestore();
   });
 

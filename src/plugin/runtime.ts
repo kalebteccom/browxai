@@ -197,17 +197,3 @@ export async function startPluginRuntime(opts: RuntimeStartOptions): Promise<Run
     toolCount,
   };
 }
-
-/**
- * Lookup table accessor exposed for the `plugins_info` MCP tool. The
- * runtime holds an internal `liveTools` map; the result of
- * {@link startPluginRuntime} is the structured surface — this helper is
- * just for callers wanting the tool registry view on a plugin.
- */
-export function toolsForPlugin(
-  records: ReadonlyArray<PluginRecord>,
-  pluginName: string,
-): ReadonlyArray<string> {
-  const rec = records.find((r) => r.manifest.name === pluginName);
-  return rec?.tools ?? [];
-}

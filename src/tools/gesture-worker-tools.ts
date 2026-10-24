@@ -7,8 +7,24 @@ import type {
   SessionHost,
   ActionHost,
   ServerServicesHost,
+  EgressHost,
 } from "./host.js";
-import { requirePage } from "../engine/index.js";
+import { engineDeclaration, requirePage } from "../engine/index.js";
+import type { ServiceWorkerAccess } from "../page/workers.js";
+import type { SessionEntry } from "../session/registry.js";
+import type { OriginPolicy } from "../policy/origin.js";
+
+/** Whether this session's engine can reach service workers. Playwright exposes
+ *  them (`context.serviceWorkers()`) on the engines that declare the raw-CDP
+ *  `deep` escape hatch, which is every Chromium-based one. Read from the engine's
+ *  declaration, so a new Chromium-based engine needs no edit here. */
+function swAccessFor(e: SessionEntry, originPolicy: OriginPolicy): ServiceWorkerAccess {
+  return {
+    engine: e.session.engine,
+    supported: engineDeclaration(e.session.engine)?.deep === true,
+    originPolicy,
+  };
+}
 
 /**
  * Worker-visibility tools: workers_list / worker_message_send /
@@ -18,9 +34,9 @@ import { requirePage } from "../engine/index.js";
  * through the shared `ToolHost` seam in the same source order.
  */
 export function registerGestureWorkerTools(
-  host: RegisterHost & GateHost & SessionHost & ActionHost & ServerServicesHost,
+  host: RegisterHost & GateHost & SessionHost & ActionHost & ServerServicesHost & EgressHost,
 ): void {
-  const { z, register, gateCheck, engineGate, entryFor } = host;
+  const { z, register, gateCheck, engineGate, entryFor, egressFor } = host;
 
   // ---- Workers visibility -----------------------------------------
   // Web Workers + Service Workers are invisible to the rest of the surface —
@@ -32,7 +48,9 @@ export function registerGestureWorkerTools(
   //   • `worker_messages_read`     — drain FROM-worker messages (read)
   //   • `sw_intercept_fetch`       — fulfil SW-handled requests (action)
   // Web Worker discovery uses a page-side `Worker` constructor wrapper (same
-  // shape as the WS family); SW discovery uses CDP `Target.setAutoAttach` +
+  // shape as the WS family); SW listing and messaging use Playwright's
+  // `context.serviceWorkers()` and `Worker.evaluate` (Chromium-based engines
+  // only), while SW fetch interception uses CDP `Target.setAutoAttach` +
   // `ServiceWorker.enable` on the session's top-level CDP. See
   // src/page/workers.ts for the full design.
 
@@ -41,7 +59,7 @@ export function registerGestureWorkerTools(
     {
       capability: "read",
       description:
-        'Enumerate live workers in this session. Returns `[{workerId, type, url, state?}]` where `workerId` is a stable per-session id (`ww-N` for Web Workers, `sw-N` for Service Workers) the agent passes back to `worker_message_send` / `worker_messages_read`. `type` filters the list (`"web"`, `"service"`, or `"all"` — the default). Web Worker discovery requires the page-side wrapper to have been installed BEFORE the worker was constructed (eagerly done at session creation when `read` is on). Service Worker `state` is one of `stopped`/`starting`/`running`/`stopping`. Capability: `read`.',
+        'Enumerate live workers in this session. Returns `[{workerId, type, url, state?}]` where `workerId` is a stable per-session id (`ww-N` for Web Workers, `sw-N` for Service Workers) the agent passes back to `worker_message_send` / `worker_messages_read`. `type` filters the list (`"web"`, `"service"`, or `"all"` — the default). Web Worker discovery requires the page-side wrapper to have been installed BEFORE the worker was constructed (eagerly done at session creation when `read` is on). Service Workers come from `context.serviceWorkers()` in Playwright (Chromium-based engines only), so only live ones are listed and `state` is `running`; on another engine `type:"service"` returns an error naming the engine and `"all"` lists Web Workers only. A Service Worker on an origin the origin policy does not allow is left out. Capability: `read`.',
       inputSchema: {
         type: z
           .enum(["web", "service", "all"])
@@ -57,16 +75,17 @@ export function registerGestureWorkerTools(
       try {
         const list = await e.workers.list(
           requirePage(e.session),
-          requireCdp(e.session),
+          swAccessFor(e, host.confirmCtxFor(e).policy),
           type ?? "all",
         );
-        const body = { ok: true, workers: list, tokensEstimate: 0 };
+        // Worker script URLs are page-controlled and can carry a registered value.
+        const body = { ok: true, workers: egressFor(e).maskDeep(list), tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
       } catch (err) {
         const body = {
           ok: false,
-          error: err instanceof Error ? err.message : String(err),
+          error: egressFor(e).maskDeep(err instanceof Error ? err.message : String(err)),
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
@@ -80,7 +99,7 @@ export function registerGestureWorkerTools(
     {
       capability: "action",
       description:
-        "`postMessage` to a worker. `workerId` is the id from `workers_list` (`ww-N` for Web Workers, `sw-N` for Service Workers). For Web Workers, calls the real (unwrapped) `Worker.prototype.postMessage` so the worker's `onmessage` sees a real event — not a synthetic one. For Service Workers, dispatches a `MessageEvent` into the SW global via CDP `Runtime.evaluate` on the SW's attached session. Binary `MessagePort` transfer is not supported — `message` is a string. Capability: `action`.",
+        "`postMessage` to a worker. `workerId` is the id from `workers_list` (`ww-N` for Web Workers, `sw-N` for Service Workers). For Web Workers, calls the real (unwrapped) `Worker.prototype.postMessage` so the worker's `onmessage` sees a real event — not a synthetic one. For Service Workers, dispatches a `MessageEvent` into the SW global with Playwright's `Worker.evaluate`, so `self.onmessage` and `message` listeners fire; the event is synthetic and has no `source`, so a worker that answers should do it through `clients.matchAll({includeUncontrolled:true})`, and the reply comes back through `worker_messages_read`. Service Workers are reachable on Chromium-based engines only; elsewhere the call returns an error naming the engine. A Service Worker on an origin the origin policy does not allow is refused with an `origin-blocked` error. Binary `MessagePort` transfer is not supported — `message` is a string. Capability: `action`.",
       inputSchema: {
         workerId: z.string().describe("Worker id from `workers_list`, e.g. `ww-1` or `sw-1`."),
         message: z
@@ -96,18 +115,23 @@ export function registerGestureWorkerTools(
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.workers.sendMessage(requirePage(e.session), requireCdp(e.session), {
-          workerId,
-          message,
-        });
-        const body = { ...r, tokensEstimate: 0 };
+        const r = await e.workers.sendMessage(
+          requirePage(e.session),
+          swAccessFor(e, host.confirmCtxFor(e).policy),
+          {
+            workerId,
+            message,
+          },
+        );
+        // A failed send echoes the page's error message.
+        const body = { ...egressFor(e).maskDeep(r), tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
       } catch (err) {
         const body = {
           ok: false,
           workerId,
-          error: err instanceof Error ? err.message : String(err),
+          error: egressFor(e).maskDeep(err instanceof Error ? err.message : String(err)),
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
@@ -121,7 +145,7 @@ export function registerGestureWorkerTools(
     {
       capability: "read",
       description:
-        "Drain buffered messages FROM workers since the last read. Returns `[{workerId, data, at}]`. `workerId` filters: omit to drain ALL workers; pass `ww-N` for one Web Worker, `sw-N` for one Service Worker. Each call drains (removes) the returned messages — re-reads return only what arrived since. The page-side ring is capped at 500 entries / 4 KiB per payload; entries past the cap are evicted oldest-first. Capability: `read`.",
+        "Drain buffered messages FROM workers since the last read. Returns `[{workerId, data, at}]`. `workerId` filters: omit to drain ALL workers; pass `ww-N` for one Web Worker, `sw-N` for one Service Worker. A Service Worker's messages are the ones it posts to this page with `client.postMessage`, recorded from the page's `navigator.serviceWorker` `message` events; they carry the `sw-N` id `workers_list` gives that script URL, and are only seen for a page that has this tool's wrapper installed before the message arrives. Each call drains (removes) the returned messages — re-reads return only what arrived since. Each ring is capped at 500 entries / 4 KiB per payload; entries past the cap are evicted oldest-first. Message data is reported by the page and is untrusted, like any page text. Capability: `read`.",
       inputSchema: {
         workerId: z
           .string()
@@ -139,13 +163,14 @@ export function registerGestureWorkerTools(
           requirePage(e.session),
           workerId !== undefined ? { workerId } : {},
         );
-        const body = { ok: true, messages, tokensEstimate: 0 };
+        // Message data is whatever the worker posted, so it is masked like `ws_read` frames.
+        const body = { ok: true, messages: egressFor(e).maskDeep(messages), tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
       } catch (err) {
         const body = {
           ok: false,
-          error: err instanceof Error ? err.message : String(err),
+          error: egressFor(e).maskDeep(err instanceof Error ? err.message : String(err)),
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
@@ -172,7 +197,7 @@ export function registerGestureWorkerTools(
             status: z.number().int().min(100).max(599).optional(),
             body: z.string().optional(),
             contentType: z.string().optional(),
-            headers: z.record(z.string()).optional(),
+            headers: z.record(z.string(), z.string()).optional(),
           })
           .describe(
             'Canned response. Defaults: status 200, body "", contentType application/json.',

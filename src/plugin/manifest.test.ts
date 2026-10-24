@@ -20,12 +20,6 @@ describe("parseManifestField", () => {
     expect(m.dependsOn).toEqual([]);
   });
 
-  it("rejects a missing namespace", () => {
-    expect(() => parseManifestField({ apiVersion: "1.0.0", register: "dist/index.js" })).toThrow(
-      /namespace/,
-    );
-  });
-
   it("rejects an empty namespace", () => {
     expect(() =>
       parseManifestField({ apiVersion: "1.0.0", namespace: "", register: "dist/index.js" }),
@@ -52,17 +46,6 @@ describe("parseManifestField", () => {
         }),
       ).toThrow(/reserved/);
     }
-  });
-
-  it("parses dependsOn entries", () => {
-    const m = parseManifestField({
-      apiVersion: "1.0.0",
-      namespace: "demo",
-      register: "dist/index.js",
-      dependsOn: [{ plugin: "@browxai/plugin-example", version: "^1.0.0" }],
-    });
-    expect(m.dependsOn).toHaveLength(1);
-    expect(m.dependsOn[0]?.plugin).toBe("@browxai/plugin-example");
   });
 
   it("rejects a dependsOn entry without plugin/version", () => {

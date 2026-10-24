@@ -39,6 +39,9 @@ Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rule
 
 - `src/cli.ts`, `src/cli/` — the `browxai` bin and subcommands.
 - `src/server.ts` — MCP server, tool registry composition, capability gates wired in here.
+- `src/tools/`: the `host.register` call for every MCP tool, grouped by area (`*-tools.ts`), plus the `ToolHost` seam.
+- `src/engine/`: engine registry, per-engine capability declarations (`capabilities.ts`) and adapters.
+- `src/replay/`: `.browx` session-replay capture and player.
 - `src/page/` — per-tool handlers and page-side functions (`actions.ts`, `dom-export.ts`, `bbox.ts`, `compose.ts`, `archive.ts`, `coverage.ts`, …). One tool = one file. Page-side functions run inside the browser context.
 - `src/session/` — session lifecycle, managed profiles, BYOB attach, persistent vs. incognito modes.
 - `src/util/` — capability gate (`capabilities.ts`), workspace path resolution (`workspace.ts`), secrets masking (`secrets.ts`), config store, deadlines, url sanitizer, no-trace contract.
@@ -50,7 +53,7 @@ Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rule
 - `deploy/` — reference deployment artifacts for adopters (`Dockerfile`). Keep the Playwright base-image tag aligned with the `playwright-core` range in `package.json`.
 - `packages/plugins/{example, figma, tldraw, excalidraw}/` — workspace plugins demonstrating the v0.7 plugin contract.
 - `packages/capability-testbed/` — a multi-surface web app plus an agentic harness that drives **every** tool against it, and a `dogfood/` runner that hands the same missions to a real agent over MCP. Deliberately **outside CI** (heavy: real browsers, every off-by-default capability enabled) and run on demand. `reports/FULL-REPORT.md` holds the latest full pass. This is the lane that finds defects unit tests structurally cannot — the last run took 181/196 to 196/196 and surfaced six real bugs (`clock` virtual-time race, `cookies_delete` path filter, `extract` array leaf, `text_search` visibility filter, `drop_files` page-function serialization, `set_locale`).
-- `docs/` — public adopter contract (tool-reference, threat-model, plugin-authoring, plugins, sdk, getting-started, byo-vision, capabilities), published via the Astro + Starlight site in `website/` (Netlify).
+- `docs/` — public adopter contract (tool-reference, threat-model, plugin-authoring, plugins, plugins-first-party, plugin-governance, security-best-practices-for-adopters, agent-guidance), published via the Astro + Starlight site in `website/` (Netlify).
 - `docs/ai-context/` — agent-facing routing layer. Discipline, architecture notes, lessons captured. **Never published to the docs site.** Read before touching the corresponding area.
 - `docs/rfcs/` — numbered design RFCs.
 - `test/` — keystone tests (real Chromium), architecture fitness tests and SDK tests.
@@ -60,30 +63,31 @@ Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rule
 
 Safe by default — no auto-broadening. Every off-by-default capability has a per-tool keystone test asserting the gate blocks when the capability is not granted.
 
-| State           | Capability            | Notes                                                                                               |
-| --------------- | --------------------- | --------------------------------------------------------------------------------------------------- |
-| ON by default   | `read`                | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot        |
-| ON by default   | `navigation`          | navigate, go_back, go_forward, reload                                                               |
-| ON by default   | `action`              | click, fill, select, drag, scroll, hover, press, wait_for                                           |
-| ON by default   | `human`               | confirmation hooks, await_human                                                                     |
-| OFF + loud-warn | `eval`                | `eval_js`, `poll_eval` — arbitrary JS in page context                                               |
-| OFF + loud-warn | `network-body`        | full response bodies + interception                                                                 |
-| OFF + loud-warn | `byob-attach`         | attach to user's existing Chrome, or a running desktop Electron app (no managed profile)            |
-| OFF + loud-warn | `clipboard`           | OS clipboard read/write                                                                             |
-| OFF + loud-warn | `file-io`             | `upload_file`, downloads to workspace                                                               |
-| OFF + loud-warn | `secrets`             | `register_secret`, secret materialization at egress                                                 |
-| OFF + loud-warn | `extensions`          | install/inspect Chrome extensions                                                                   |
-| OFF + loud-warn | `stealth`             | anti-fingerprint posture tweaks                                                                     |
-| OFF + loud-warn | `captcha`             | captcha solver glue                                                                                 |
-| OFF + loud-warn | `device-emulation`    | viewport / UA / geolocation overrides beyond defaults                                               |
-| OFF + loud-warn | `diagnostics`         | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff                                    |
-| OFF + loud-warn | `canvas`              | canvas-app eval routing (figma / tldraw / excalidraw plugins)                                       |
-| OFF + loud-warn | `replay`              | `.browx` session-replay artifact capture (DOM stream + network + console)                           |
-| OFF + loud-warn | `native-device`       | gates two ENGINES: `ios-app` / `android-app` install and launch apps and drive OS-level input       |
-| OFF + loud-warn | `self-approval`       | `approve_actions` — the agent pre-approves the confirm hooks that hold its own actions              |
-| OFF + loud-warn | `human-gate-override` | `set_*_policy` may move a policy off `ask-human`; `grant_permissions` may grant what it holds       |
-| OFF + loud-warn | `operator-channel`    | `await_human` and the confirm hooks go to the host daemon's Unix socket, and only its answer counts |
-| OFF + loud-warn | `live-view`           | the socket's daemon can stream browser pixels to the operator (needs `operator-channel`)            |
+| State           | Capability            | Notes                                                                                                         |
+| --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| ON by default   | `read`                | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot                  |
+| ON by default   | `navigation`          | navigate, go_back, go_forward, scroll, set_viewport                                                           |
+| ON by default   | `action`              | click, fill, select, drag, hover, press, wait_for, route, set_* emulation                                     |
+| ON by default   | `human`               | confirmation hooks, await_human                                                                               |
+| OFF + loud-warn | `eval`                | `eval_js`, `poll_eval` — arbitrary JS in page context                                                         |
+| OFF + loud-warn | `network-body`        | `network_body`: full response bodies                                                                          |
+| OFF + loud-warn | `byob-attach`         | attach to user's existing Chrome (desktop or Android), or a running desktop Electron app (no managed profile) |
+| OFF             | `clipboard`           | `shortcut` copy/cut/paste writes the OS clipboard (write-only, never read back)                               |
+| OFF             | `file-io`             | `upload_file`, downloads, `screenshot({path})`, page and element exports, video, all workspace-rooted         |
+| OFF + loud-warn | `secrets`             | `register_secret`, secret materialization at egress                                                           |
+| OFF + loud-warn | `extensions`          | install/inspect Chrome extensions                                                                             |
+| OFF + loud-warn | `stealth`             | anti-fingerprint posture tweaks                                                                               |
+| OFF + loud-warn | `credentials`         | `get_totp`, `get_credential` against a password manager CLI                                                   |
+| OFF + loud-warn | `captcha`             | `solve_captcha`: forwards a captcha to a third-party solving service (2Captcha, CapMonster)                   |
+| OFF + loud-warn | `device-emulation`    | `emulate_bluetooth` / `emulate_usb` / `emulate_hid`, `device_requests`: synthetic Web device catalogs         |
+| OFF + loud-warn | `diagnostics`         | recorder, `diagnostics_note` (the read-side queries ride `read`)                                              |
+| OFF + loud-warn | `canvas`              | `canvas_*` tools and `gesture_chain` (figma / tldraw / excalidraw plugins)                                    |
+| OFF + loud-warn | `replay`              | `.browx` session-replay artifact capture (DOM stream + network + console)                                     |
+| OFF + loud-warn | `native-device`       | gates two ENGINES: `ios-app` / `android-app` install and launch apps and drive OS-level input                 |
+| OFF + loud-warn | `self-approval`       | `approve_actions` — the agent pre-approves the confirm hooks that hold its own actions                        |
+| OFF + loud-warn | `human-gate-override` | `set_*_policy` may move a policy off `ask-human`; `grant_permissions` may grant what it holds                 |
+| OFF + loud-warn | `operator-channel`    | `await_human` and the confirm hooks go to the host daemon's Unix socket, and only its answer counts           |
+| OFF + loud-warn | `live-view`           | the socket's daemon can stream browser pixels to the operator (needs `operator-channel`)                      |
 
 Per-capability rationale, ActionResult shape, and threat-model rows live in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/ai-context/architecture/capability-posture-map.md`](docs/ai-context/architecture/capability-posture-map.md).
 
@@ -117,9 +121,9 @@ Do not loosen the keystone gate. See [`docs/ai-context/page-side-functions/dom-e
 Adding a new MCP tool:
 
 1. Gate definition — Zod schema for input + output in the tool handler file.
-2. Capability map entry — declare which capability gates the tool, default ON or OFF.
+2. Capability — set `capability` (and `batchable` / `deep` where they apply) in the `host.register` metadata. The central capability, batch and deep maps are derived from it.
 3. Handler implementation — under `src/page/<tool>.ts` (page-touching) or `src/session/` (session-scope). Returns an `ActionResult`.
-4. Registry — register in `src/server.ts` via the existing `register()` composition.
+4. Registry — put the `host.register` call in the matching `src/tools/<area>-tools.ts` module. `src/server.ts` composes those modules and holds no registrations.
 5. Threat-model row — `docs/threat-model.md`.
 6. Keystone test — real Chromium, asserting both success and capability-blocked paths.
 7. Tool reference — `docs/tool-reference.md` row.

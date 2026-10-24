@@ -5,8 +5,7 @@ description: browxai is a browser-control surface designed for AI agents, not fo
 
 browxai is an [MCP](https://modelcontextprotocol.io/) server that hands an AI
 agent a curated browser. It runs over stdio, it speaks to any MCP client, and
-it is built around one idea: the consumer of this surface is a model, not a
-person.
+it is built around one idea: the consumer of this surface is a model.
 
 That single constraint drives every design choice below.
 
@@ -31,11 +30,11 @@ in tokens or guessing at selectors.
 ## Not a wrapper
 
 browxai is not a thin shell over someone else's MCP server. It owns its own
-multi-engine transport spanning Chromium, Firefox, and WebKit, real
-Chrome-on-Android, and real Safari, each over the automation protocol that fits
-it, behind one capability-port seam. That ownership is the point: it lets browxai
-own the full session lifecycle rather than inheriting whatever a wrapped tool
-allows.
+multi-engine transport across eight engines in three families: Chromium,
+Firefox, WebKit, real Safari and real Chrome-on-Android; native apps on an
+Android emulator and the iOS Simulator; and an attached desktop Electron app.
+Each speaks the automation protocol that fits it, behind one capability-port
+seam. That ownership lets browxai own the full session lifecycle.
 
 Owning the transport is what makes the rest possible: managed profiles,
 incognito contexts, attach-to-an-existing-Chrome (BYOB), authenticated and
@@ -49,7 +48,8 @@ posture is closed:
 
 - Tools are grouped into capabilities. The default set is `read`, `navigation`,
   `action`, and `human`. Arbitrary JavaScript, full response bodies, the OS
-  clipboard, file I/O, and a few other sharp tools are off until you opt in.
+  clipboard, file I/O, the native-app engines, and a few other sharp tools are
+  off until you opt in.
 - Navigation can be scoped to an origin allow and block list.
 - Sensitive actions can route through a human confirmation hook before they
   dispatch.

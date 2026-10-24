@@ -66,15 +66,6 @@ export function newExtensionRegistry(): ExtensionRegistry {
   return { loaded: [] };
 }
 
-/** Result envelope for install / reload / uninstall — the standard ok/error
- *  shape the tool layer wraps with `tokensEstimate`. */
-export interface ExtensionMutationResult {
-  ok: true;
-  loaded: LoadedExtension[];
-  /** Optional note surfaced to the agent (rebuild warning, etc.). */
-  note?: string;
-}
-
 /**
  * Resolve a caller-supplied `path` to an absolute workspace-rooted directory
  * containing an MV3 (or MV2) manifest. Rejects:

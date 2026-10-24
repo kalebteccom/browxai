@@ -8,7 +8,6 @@
 // `record_annotate` reach for. That keeps `sources.ts` a leaf and `log.ts`
 // unaware of Playwright.
 
-import { relative } from "node:path";
 import { readFile, unlink } from "node:fs/promises";
 import type { BrowserContext, CDPSession, ConsoleMessage, Page } from "playwright-core";
 
@@ -438,11 +437,4 @@ export class ReplaySession {
     this.pendingBodyFetches = tap.pendingBodyFetches;
     this.subscriptions.push({ detach: tap.detach });
   }
-}
-
-/** Workspace-relative path for a resolved absolute artifact path. Used by
- *  `export_session_report` to keep the linked artifact path portable. */
-export function workspaceRelative(workspace: Workspace, absPath: string): string {
-  const rel = relative(workspace.root, absPath);
-  return rel.startsWith("..") ? absPath : rel;
 }

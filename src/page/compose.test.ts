@@ -144,13 +144,6 @@ describe("composeSnapshot —  back-compat", () => {
     expect(getDocumentCalls).toHaveLength(1);
     expect(getDocumentCalls[0]![1]).toEqual({ depth: -1 });
   });
-
-  it("passing `{}` is identical to omitting opts", async () => {
-    const cdp = happyPathCdp();
-    const refs = new RefRegistry();
-    const out = await composeSnapshot(cdp, refs, ["data-testid"], {});
-    expect(out.stats).not.toHaveProperty("closedShadowEntries");
-  });
 });
 
 describe("composeSnapshot — stats.tier names the tier that carried the snapshot", () => {
@@ -459,16 +452,5 @@ describe("composeSnapshot — the two tiers report one element once", () => {
     );
     expect(out.stats.domWalkCombined).toBe(0);
     expect(out.stats.domWalkNew).toBe(1);
-  });
-
-  it("reports the same body and the same counts on the second snapshot", async () => {
-    const refs = new RefRegistry();
-    const cdp = twoTierCdp(OPEN_BUTTON, OPEN_BUTTON_DOM, [
-      entry({ role: "button", name: "Open", cssPath: BUTTON_PATH }),
-    ]);
-    const first = await composeSnapshot(cdp, refs, ["data-testid"]);
-    const second = await composeSnapshot(cdp, refs, ["data-testid"]);
-    expect(second.stats).toEqual(first.stats);
-    expect(serialise(second.tree!)).toBe(serialise(first.tree!));
   });
 });

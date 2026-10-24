@@ -25,6 +25,7 @@ import { createServer, NAME, VERSION } from "../server.js";
 import { resolveEngineSelection, UnknownEngineError, type EngineKind } from "../engine/index.js";
 import { SocketTransport } from "../transport/socket-transport.js";
 import { log } from "../util/logging.js";
+import { isHeadlessEnv } from "../util/config-store.js";
 
 interface ServeOptions {
   readonly socketPath: string;
@@ -55,7 +56,7 @@ export async function runServe(rawArgs: string[]): Promise<number> {
     return 2;
   }
   const attachCdp = process.env.BROWX_ATTACH_CDP?.trim() || undefined;
-  const headless = process.env.BROWX_HEADLESS === "1";
+  const headless = isHeadlessEnv(process.env.BROWX_HEADLESS);
   // Server default engine: `--engine <kind>` > `BROWX_ENGINE` > chromium (left
   // to server.ts when undefined). An unknown engine fails loudly here, before
   // the server starts — same posture as `browxai` stdio (src/cli.ts). Per-session
@@ -201,11 +202,11 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
 
 async function startServe(opts: ServeOptions): Promise<number> {
   const { shutdown } = await startServeForTests(opts);
-  log.info("browxai: serve listening", { socket: opts.socketPath });
+  log.info("serve listening", { socket: opts.socketPath });
 
   // Keep the process alive until a signal.
   const onSignal = async (sig: string): Promise<void> => {
-    log.info(`browxai: serve shutdown (${sig})`);
+    log.info(`serve shutdown (${sig})`);
     await shutdown();
     process.exit(0);
   };

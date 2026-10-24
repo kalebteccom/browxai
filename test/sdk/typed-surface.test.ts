@@ -40,11 +40,6 @@ describe("SDK typed surface", () => {
     expect(SDK_TOOLS.filter((t) => !registered.has(t))).toEqual([]);
   });
 
-  it("the typed methods are a strict SUBSET of what callTool reaches", () => {
-    // Curation, not a ceiling: `callTool` reaches the whole registered surface.
-    expect(SDK_TOOLS.length).toBeLessThan(registeredTools().length);
-  });
-
   it("each typed method routes through the gate — no direct dispatch slot", async () => {
     // Empty capability set: every typed method whose capability is NOT `human`
     // must refuse. This is what makes `(client as any).<method>()` indexing

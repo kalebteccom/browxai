@@ -33,11 +33,6 @@ function safariHandle(): {
 }
 
 describe("SafariScriptSubstrate", () => {
-  it("tags the safari engine", () => {
-    const { handle } = safariHandle();
-    expect(new SafariScriptSubstrate(handle).engine).toBe("safari");
-  });
-
   it("wraps the expression in `return (…)` and runs it over execute/sync", async () => {
     const { handle, calls } = safariHandle();
     const sub: ScriptSubstrate = new SafariScriptSubstrate(handle);
@@ -56,12 +51,6 @@ describe("SafariScriptSubstrate", () => {
 });
 
 describe("PlaywrightScriptSubstrate", () => {
-  it("tags the supplied engine (default chromium)", () => {
-    const page = (() => ({ evaluate: async () => undefined })) as unknown as () => Page;
-    expect(new PlaywrightScriptSubstrate(page).engine).toBe("chromium");
-    expect(new PlaywrightScriptSubstrate(page, "firefox").engine).toBe("firefox");
-  });
-
   it("delegates the raw expression to page.evaluate verbatim (no wrapping)", async () => {
     const seen: string[] = [];
     const page = (() => ({

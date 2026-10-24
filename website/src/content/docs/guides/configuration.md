@@ -42,12 +42,13 @@ persisted layers for that session only.
 | `capabilities`                      | Narrows the enabled capability set. `BROWX_CAPABILITIES` is the ceiling; a saved list can drop capabilities, never add.                                               |
 | `confirmRequired`                   | Which policy hooks route through human confirmation before dispatch.                                                                                                  |
 | `allowedOrigins` / `blockedOrigins` | Origin allow and block lists for `navigate`. Wildcards allowed; block overrides allow.                                                                                |
-| `headless`                          | Launch managed Chromium headless.                                                                                                                                     |
+| `headless`                          | Launch managed Chrome headless.                                                                                                                                       |
 | `channel`                           | Playwright browser channel for chromium sessions (`chrome`, `msedge`, `chromium`, …). Unset launches the installed Chrome, or the bundled Chromium when it is absent. |
 | `defaultDevice` / `defaultViewport` | Applied when `open_session` does not specify a device or viewport.                                                                                                    |
 | `actionTimeoutMs`                   | The anti-wedge hard deadline on every action and read path. Default 5000.                                                                                             |
 | `disableWebSecurity`                | Turn off the same-origin policy and CORS for managed and incognito sessions. Dangerous; off by default.                                                               |
 | `hideOverlaySelectors`              | CSS selectors for chrome or overlay elements to neutralize non-destructively on every navigation.                                                                     |
+| `plugins`                           | Plugin names to load. A saved list is a subset of `BROWX_PLUGINS`, and a change applies on the next server start.                                                     |
 | `unstable`                          | A free-form namespace for experimental knobs. Not stable across versions.                                                                                             |
 
 ### A few keys worth understanding
@@ -55,8 +56,8 @@ persisted layers for that session only.
 **`actionTimeoutMs`** applies to every action body, `eval_js`, and the read CDP
 paths. The default of 5000 ms is deliberate: an action that needs longer is
 almost always a no-op or a wedged page op. Every action and read tool also
-takes a per-call `timeoutMs` override; raise that for one known-slow call
-rather than raising the global default. The value is clamped to a one-hour
+takes a per-call `timeoutMs` override; raise that for one known-slow call.
+The value is clamped to a one-hour
 ceiling.
 
 **`disableWebSecurity`** is turned on only by the operator, with
@@ -87,17 +88,17 @@ documented but no longer the recommended path. `BROWX_WORKSPACE` is the
 exception: it anchors where the config store itself lives, so it is a location,
 not config.
 
-| Env var                  | Default                                 | What                                                                              |
-| ------------------------ | --------------------------------------- | --------------------------------------------------------------------------------- |
-| `BROWX_WORKSPACE`        | `~/.browxai/`                           | Workspace root. All transient state lives here. Never `cwd`.                      |
-| `BROWX_ATTACH_CDP`       | unset                                   | Attach to an externally launched Chrome over CDP (BYOB). Loopback hostnames only. |
-| `BROWX_HEADLESS`         | `0`                                     | Managed mode only. `1` launches headless.                                         |
-| `BROWX_TEST_ATTRIBUTES`  | `data-testid,data-test,data-cy,data-qa` | Selector-anchor attributes, order-sensitive.                                      |
-| `BROWX_CAPABILITIES`     | `read,navigation,action,human`          | Capability categories enabled at server start.                                    |
-| `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action`    | Policy hooks that route through human confirmation.                               |
-| `BROWX_ALLOWED_ORIGINS`  | unset                                   | Allow list for `navigate`. Wildcards allowed.                                     |
-| `BROWX_BLOCKED_ORIGINS`  | unset                                   | Block list; overrides the allow list.                                             |
-| `BROWX_CHANNEL`          | unset                                   | Playwright browser channel for chromium sessions. Unset uses the bundled build.   |
+| Env var                  | Default                                 | What                                                                                                       |
+| ------------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `BROWX_WORKSPACE`        | `~/.browxai/`                           | Workspace root. All transient state lives here. Never `cwd`.                                               |
+| `BROWX_ATTACH_CDP`       | unset                                   | Attach to an externally launched Chrome over CDP (BYOB). Loopback hostnames only. Needs `byob-attach`.     |
+| `BROWX_HEADLESS`         | `0`                                     | Managed mode only. `1` or `true` launches headless.                                                        |
+| `BROWX_TEST_ATTRIBUTES`  | `data-testid,data-test,data-cy,data-qa` | Selector-anchor attributes, order-sensitive.                                                               |
+| `BROWX_CAPABILITIES`     | `read,navigation,action,human`          | The full capability set at server start. It replaces the default set, so list the defaults too.            |
+| `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action`    | Policy hooks that route through human confirmation.                                                        |
+| `BROWX_ALLOWED_ORIGINS`  | unset                                   | Allow list for `navigate`. Wildcards allowed.                                                              |
+| `BROWX_BLOCKED_ORIGINS`  | unset                                   | Block list; overrides the allow list.                                                                      |
+| `BROWX_CHANNEL`          | unset                                   | Playwright browser channel for chromium sessions. Unset uses the installed Chrome, else the bundled build. |
 
 For the complete configuration and session surface, see the
 [tool reference](/reference/tool-reference/).

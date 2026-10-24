@@ -11,8 +11,8 @@
 //     configured" hint — never tries to "guess" the answer.
 //
 //   - The provider API shape we target for v0.2.0 is the **2Captcha** REST
-//     contract (`POST /in.php` to submit + poll `GET /res.php` for the
-//     answer). CapMonster Cloud mirrors this API exactly (it documents
+//     contract (`POST /in.php` to submit + poll `POST /res.php` for the
+//     answer; the API key always rides in the form body, never in a URL). CapMonster Cloud mirrors this API exactly (it documents
 //     itself as drop-in compatible with 2Captcha), so configuring
 //     `BROWX_CAPTCHA_PROVIDER=capmonster` + `BROWX_CAPTCHA_API_BASE=https://api.capmonster.cloud`
 //     works without code changes. Other providers (AntiCaptcha's
@@ -106,10 +106,10 @@ export function resolveCaptchaProvider(
         `Other providers can be supported by extending src/page/solve-captcha.ts.`,
     };
   }
-  const apiBase = (env.BROWX_CAPTCHA_API_BASE?.trim() || DEFAULT_BASE_FOR[provider]).replace(
-    /\/+$/,
-    "",
-  );
+  const rawBase = env.BROWX_CAPTCHA_API_BASE?.trim() || DEFAULT_BASE_FOR[provider];
+  const baseError = apiBaseError(rawBase);
+  if (baseError) return { ok: false, reason: "partial", error: baseError };
+  const apiBase = rawBase.replace(/\/+$/, "");
   const timeout = parsePositiveIntEnv(
     env.BROWX_CAPTCHA_TIMEOUT_MS,
     120_000,
@@ -122,6 +122,29 @@ export function resolveCaptchaProvider(
     ok: true,
     config: { provider, apiKey: rawKey, apiBase, timeoutMs: timeout.value, pollMs: poll.value },
   };
+}
+
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["127.0.0.1", "[::1]", "localhost"]);
+
+/** An error message when `BROWX_CAPTCHA_API_BASE` is not usable: the API key and
+ *  the challenge go to this base, so it must be https. Plain http is accepted
+ *  only for a loopback host (a local proxy or a test double). Returns null when
+ *  the base is fine. The message names the variable and the scheme and host it
+ *  refused, never the full value. */
+function apiBaseError(base: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    return 'BROWX_CAPTCHA_API_BASE is not a valid URL. Use an https URL such as "https://api.capmonster.cloud".';
+  }
+  if (url.protocol === "https:") return null;
+  if (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname)) return null;
+  return (
+    `BROWX_CAPTCHA_API_BASE must be an https URL, but it is ${url.protocol}//${url.host}. ` +
+    "The API key and the challenge are sent to this base. Plain http is accepted only for " +
+    "127.0.0.1, ::1 or localhost."
+  );
 }
 
 /** Parse a positive-integer env var (ms), falling back to `fallback` when unset.
@@ -178,7 +201,7 @@ export interface CaptchaFailure {
 
 /**
  * Submit a challenge to the configured provider and poll for the solution.
- * Uses native `fetch` (Node 18+ ships it; Node 20 is the project's floor).
+ * Uses native `fetch` (Node 18+ ships it; Node 22 is the project's floor).
  * The provider may return a transient busy state (`CAPCHA_NOT_READY`) — we
  * poll until the deadline.
  *
@@ -311,7 +334,7 @@ interface PollSeams {
   sleepFn: (ms: number) => Promise<void>;
 }
 
-/** One poll tick: fetch /res.php once. Returns a terminal solution/failure, or
+/** One poll tick: POST /res.php once. Returns a terminal solution/failure, or
  *  null to keep polling (transient blip or still-working). */
 async function pollOnce(
   taskId: string,
@@ -321,9 +344,18 @@ async function pollOnce(
 ): Promise<CaptchaSolution | CaptchaFailure | null> {
   let pollResp: Response;
   try {
-    pollResp = await seams.fetchImpl(
-      `${config.apiBase}/res.php?key=${encodeURIComponent(config.apiKey)}&action=get&id=${encodeURIComponent(taskId)}&json=1`,
-    );
+    // The key rides in a POST form body, like the submit call, so it never
+    // appears in a URL (and so never in a proxy log or a fetch error message).
+    pollResp = await seams.fetchImpl(`${config.apiBase}/res.php`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        key: config.apiKey,
+        action: "get",
+        id: taskId,
+        json: "1",
+      }).toString(),
+    });
   } catch (err) {
     log.warn(
       `solve_captcha: poll network blip (${err instanceof Error ? err.message : String(err)}) — continuing`,
