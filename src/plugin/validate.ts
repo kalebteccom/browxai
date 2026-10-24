@@ -18,7 +18,7 @@
 
 import { log } from "../util/logging.js";
 import { PACKAGE_VERSION } from "../util/version.js";
-import type { Capability } from "../util/capabilities.js";
+import { capabilitiesWith, type Capability } from "../util/capabilities.js";
 import { isApiVersionCompatible, RUNTIME_API_VERSION, satisfiesRange } from "./manifest.js";
 import type { ResolvedManifest } from "./manifest.js";
 import {
@@ -274,8 +274,9 @@ export function validatePlugins(opts: RuntimeStartOptions): ValidatedPlan {
       capFail.set(
         name,
         `plugin declares capabilities [${missing.join(", ")}] not enabled on this server. ` +
-          `Add them to BROWX_CAPABILITIES (or set_config({capabilities:[...]})) and RESTART. ` +
-          `Capabilities are resolved ONCE at server start — set_config alone won't enable a plugin's gate.`,
+          `Set BROWX_CAPABILITIES=${capabilitiesWith(missing.join(","))} (that variable replaces the default set, ` +
+          `so the defaults stay in the list) and RESTART. ` +
+          `Capabilities are resolved ONCE at server start, and a saved set_config({capabilities}) list can only narrow them.`,
       );
     }
   }

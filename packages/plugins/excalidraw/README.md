@@ -1,43 +1,43 @@
 # @browxai/plugin-excalidraw
 
-First-party browxai canvas-app adapter for Excalidraw. Exposes five
-small, useful tools (`excalidraw.get_scene_state`,
-`excalidraw.get_viewport`, `excalidraw.add_element`,
-`excalidraw.delete_element`, `excalidraw.set_scroll`) over the
-`window.excalidrawAPI` global that the host page sets when embedding the
-Excalidraw React component. Each tool is a thin wrapper around an
-`eval_js` round-trip: the plugin builds the appropriate
-`excalidrawAPI.*` expression, dispatches through `eval_js`, and parses
-the value back. When `window.excalidrawAPI` is undefined (Excalidraw not
-mounted, or the host page didn't forward the ref), every tool returns
-the structured `code:"excalidraw-not-loaded"` envelope.
+Adds five Excalidraw tools to browxai: `excalidraw.get_scene_state`, `excalidraw.get_viewport`, `excalidraw.add_element`, `excalidraw.delete_element` and `excalidraw.set_scroll`. Each one runs a short expression against the `window.excalidrawAPI` global through `eval_js`. When `window.excalidrawAPI` is undefined, every tool returns `code:"excalidraw-not-loaded"`.
 
-## Install
+## Capabilities it needs
+
+`eval` and `canvas`. Both are off by default. If either is missing when the server starts, the plugin loads as `disabled-by-capability-mismatch` and the reason shows up in `plugins_list`.
+
+## Enable it
 
 ```sh
-$ browxai plugin install @browxai/plugin-excalidraw
+browxai plugin install @browxai/plugin-excalidraw
+BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
 ```
 
-The host must have the `eval` and `canvas` capabilities enabled — the
-plugin declares both at the manifest level. Restart the browxai server
-after install (plugin lifecycle is resolved-once-at-server-start).
+`BROWX_CAPABILITIES` replaces the default set, so the line lists the four defaults (`read,navigation,action,human`) and adds `eval,canvas`. In an MCP client config:
 
-The tools surface as `excalidraw.get_scene_state` (etc.) on MCP
-`tools/list`, and on the SDK as
-`client.plugins.excalidraw.get_scene_state(...)`.
+```json
+{
+  "mcpServers": {
+    "browxai": {
+      "command": "browxai",
+      "env": { "BROWX_CAPABILITIES": "read,navigation,action,human,eval,canvas" }
+    }
+  }
+}
+```
 
-## Targeted Excalidraw API surface
+Restart the server after every install. Plugins load once, at server start. Then check `plugins_list()` for `status: "loaded"`.
 
-This plugin pokes the Excalidraw 0.17+ ref API as of 2026-06:
-`excalidrawAPI.getSceneElements()`, `excalidrawAPI.getAppState()`,
-`excalidrawAPI.updateScene({elements, appState})`. These are the
-top-level stable methods of the imperative API. Host pages that embed
-the Excalidraw component must forward the `excalidrawAPI` ref to
-`window.excalidrawAPI` for this plugin to find it; the public
-excalidraw.com deployment does this by default.
+## Example prompt
+
+> On the open Excalidraw board, read the scene state, add a 200 by 120 rectangle at 64,64, then scroll the view to 0,0.
+
+## Notes
+
+- The tools act on the default session. Open the Excalidraw page there first. The host page has to forward the Excalidraw component's `excalidrawAPI` ref to `window.excalidrawAPI`. Check with `eval_js({expr: "typeof window.excalidrawAPI"})`.
+- They use `getSceneElements()`, `getAppState()` and `updateScene({elements, appState})` from the imperative API of Excalidraw 0.17 and later.
+- Typed SDK access: `client.plugins.excalidraw.get_scene_state({})`, with the types from `@browxai/plugin-excalidraw/schema`.
 
 ## Full reference
 
-The per-tool reference for this adapter — every op with args, return
-shape, and error codes, plus a usage walkthrough — lives at
-<https://browxai.com/plugins/first-party/>.
+Every tool with args, return shape and error codes, plus a walkthrough: <https://browxai.com/plugins/first-party/>.

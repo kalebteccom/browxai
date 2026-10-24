@@ -229,7 +229,19 @@ export function register(api: PluginApi): void {
     {
       description:
         "Append a scene element via `excalidrawAPI.updateScene({elements: [...existing, new]})`. Required: `type, x, y, width, height`; any extra fields are passed through to Excalidraw. Returns `{ok, elementId}` — id minted via `crypto.randomUUID()` if not supplied. App-not-loaded / bad-arg surface structured errors.",
-      inputSchema: {},
+      inputSchema: {
+        type: "object",
+        properties: {
+          type: { type: "string", description: "Element type, for example `rectangle` or `text`." },
+          x: { type: "number", description: "X position, in scene coordinates." },
+          y: { type: "number", description: "Y position, in scene coordinates." },
+          width: { type: "number", description: "Width." },
+          height: { type: "number", description: "Height." },
+          id: { type: "string", description: "Element id. Minted when omitted." },
+        },
+        required: ["type", "x", "y", "width", "height"],
+        additionalProperties: true,
+      },
     },
     (args) => handlers.add_element(api, args),
   );
@@ -239,7 +251,11 @@ export function register(api: PluginApi): void {
     {
       description:
         "Remove the element with `elementId` from the scene via `excalidrawAPI.updateScene`. Returns `{ok, elementId}` on success, `{code:'element-not-found'}` if the id isn't present.",
-      inputSchema: {},
+      inputSchema: {
+        type: "object",
+        properties: { elementId: { type: "string", description: "Id of the element to remove." } },
+        required: ["elementId"],
+      },
     },
     (args) => handlers.delete_element(api, args),
   );
@@ -249,7 +265,14 @@ export function register(api: PluginApi): void {
     {
       description:
         "Set `appState.scrollX/scrollY` via `excalidrawAPI.updateScene`. Returns `{ok, scrollX, scrollY}`.",
-      inputSchema: {},
+      inputSchema: {
+        type: "object",
+        properties: {
+          scrollX: { type: "number", description: "Horizontal scroll offset." },
+          scrollY: { type: "number", description: "Vertical scroll offset." },
+        },
+        required: ["scrollX", "scrollY"],
+      },
     },
     (args) => handlers.set_scroll(api, args),
   );

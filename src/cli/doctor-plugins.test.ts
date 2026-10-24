@@ -276,7 +276,7 @@ describe("manifest sanity (no code execution)", () => {
     const checks = run();
     const row = find(checks, /capability\(ies\) \[eval, canvas\] not enabled/);
     expect(row?.ok).toBe(false);
-    expect(row?.fix).toContain("add eval,canvas to BROWX_CAPABILITIES");
+    expect(row?.fix).toContain("set BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas");
     expect(row?.fix).toMatch(/restart/);
   });
 

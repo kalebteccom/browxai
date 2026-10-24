@@ -1,41 +1,43 @@
 # @browxai/plugin-tldraw
 
-First-party browxai canvas-app adapter for Tldraw. Exposes five small,
-useful tools (`tldraw.get_selected_shapes`, `tldraw.get_viewport`,
-`tldraw.create_shape`, `tldraw.delete_shape`, `tldraw.select_shapes`)
-over the `window.editor` global that Tldraw v2+ exposes when an Editor
-component is mounted on the page. Each tool is a thin wrapper around an
-`eval_js` round-trip: the plugin builds the appropriate `editor.*`
-expression, dispatches through `eval_js`, and parses the value back.
-When `window.editor` is undefined (Tldraw not mounted), every tool
-returns the structured `code:"tldraw-not-loaded"` envelope.
+Adds five Tldraw tools to browxai: `tldraw.get_selected_shapes`, `tldraw.get_viewport`, `tldraw.create_shape`, `tldraw.delete_shape` and `tldraw.select_shapes`. Each one runs a short expression against the `window.editor` global (Tldraw v2 and later) through `eval_js`. When `window.editor` is undefined, every tool returns `code:"tldraw-not-loaded"`.
 
-## Install
+## Capabilities it needs
+
+`eval` and `canvas`. Both are off by default. If either is missing when the server starts, the plugin loads as `disabled-by-capability-mismatch` and the reason shows up in `plugins_list`.
+
+## Enable it
 
 ```sh
-$ browxai plugin install @browxai/plugin-tldraw
+browxai plugin install @browxai/plugin-tldraw
+BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
 ```
 
-The host must have the `eval` and `canvas` capabilities enabled — the
-plugin declares both at the manifest level. Restart the browxai server
-after install (plugin lifecycle is resolved-once-at-server-start).
+`BROWX_CAPABILITIES` replaces the default set, so the line lists the four defaults (`read,navigation,action,human`) and adds `eval,canvas`. In an MCP client config:
 
-The tools surface as `tldraw.get_selected_shapes` (etc.) on MCP
-`tools/list`, and on the SDK as
-`client.plugins.tldraw.get_selected_shapes(...)`.
+```json
+{
+  "mcpServers": {
+    "browxai": {
+      "command": "browxai",
+      "env": { "BROWX_CAPABILITIES": "read,navigation,action,human,eval,canvas" }
+    }
+  }
+}
+```
 
-## Targeted Tldraw API surface
+Restart the server after every install. Plugins load once, at server start. Then check `plugins_list()` for `status: "loaded"`.
 
-This plugin pokes the Tldraw v2.x Editor API as of 2026-06:
-`editor.getSelectedShapes()`, `editor.getViewportPageBounds()`,
-`editor.getZoomLevel()`, `editor.createShapes([...])`,
-`editor.deleteShapes([...])`, `editor.setSelectedShapes(...)`. The
-v2 API has been stable across minor versions; if Tldraw renames a
-method, swap the eval-expression string in `src/index.ts` and the
-unit tests stay green.
+## Example prompt
+
+> On the open Tldraw board, tell me which shapes are selected, then create a `geo` shape at 128,128 and select it.
+
+## Notes
+
+- The tools act on the default session. Open the Tldraw page there first. The page has to expose the editor as `window.editor`. Check with `eval_js({expr: "typeof window.editor"})`.
+- They use these Editor methods: `getSelectedShapes()`, `getViewportPageBounds()`, `getZoomLevel()`, `createShapes()`, `deleteShapes()`, `setSelectedShapes()`. If Tldraw renames one, change the expression string in `src/index.ts`.
+- Typed SDK access: `client.plugins.tldraw.get_viewport({})`, with the types from `@browxai/plugin-tldraw/schema`.
 
 ## Full reference
 
-The per-tool reference for this adapter — every op with args, return
-shape, and error codes, plus a usage walkthrough — lives at
-<https://browxai.com/plugins/first-party/>.
+Every tool with args, return shape and error codes, plus a walkthrough: <https://browxai.com/plugins/first-party/>.

@@ -1,7 +1,7 @@
 {
   "name": "@browxai/plugin-excalidraw",
   "version": "0.1.1",
-  "description": "Excalidraw canvas-app adapter plugin for browxai — surfaces scene/viewport/add/delete/scroll over the `window.excalidrawAPI` page-side global.",
+  "description": "Excalidraw canvas-app adapter plugin for browxai: scene, viewport, add, delete and scroll over the `window.excalidrawAPI` page-side global.",
   "author": "Kalebtec",
   "license": "MIT",
   "type": "module",
@@ -25,6 +25,16 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./schema.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "schema.d.ts",
@@ -41,7 +51,7 @@
   },
   "browxai": {
     "apiVersion": "1.0.0",
-    "browxaiVersion": "^0.7.0",
+    "browxaiVersion": ">=0.13.0",
     "namespace": "excalidraw",
     "register": "dist/index.js",
     "capabilities": [

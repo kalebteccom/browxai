@@ -26,6 +26,7 @@ export {
 export type {
   BrowxaiArgs,
   BrowxaiClient,
+  BrowxaiClientWithPlugins,
   BrowxaiContentItem,
   BrowxaiResult,
   BrowxaiSdkOptions,

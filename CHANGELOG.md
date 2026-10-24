@@ -210,6 +210,35 @@ surface" covers.
   profile directory; the harness READMEs said Node 20.
 - Lazily created sessions refuse a missing `byob-attach` capability with the same
   structured refusal as `open_session`.
+- **First-party plugins no longer log an "untested combination" warning.** Their
+  `browxaiVersion` range was `^0.7.0`, which excludes every later 0.x host. It is
+  now `>=0.13.0` and reaches npm with the next plugin release. The plugin
+  READMEs also gained the capabilities each needs, an enable example and an
+  example prompt.
+- **Plugin tool parameters now reach the handler over MCP.** Every plugin tool
+  registered an empty input schema, and the MCP SDK drops each argument a schema
+  does not declare, so `example.echo({ msg })` and the canvas tools ran with `{}`
+  and agents saw no parameters. A plugin can now declare its arguments as a JSON
+  Schema object (no `zod` needed) or a zod shape, and the declared parameters show
+  up on `tools/list`. The four first-party plugins declare theirs. A tool that
+  declares nothing behaves as before.
+- **Plugin capability hints now name `BROWX_CAPABILITIES` with the defaults.**
+  When a plugin's capability is off, `browxai doctor`, `plugins_list` and the
+  refusal on a plugin tool suggested `set_config({capabilities})`, which can only
+  narrow the set. They now say to set `BROWX_CAPABILITIES` (for example
+  `read,navigation,action,human,canvas`, since the variable replaces the default
+  set) and restart.
+- **`browxai plugin install file:<dir>` records the package name and accepts
+  relative paths.** It wrote the directory name, so
+  `file:/abs/packages/plugins/figma` was recorded as `figma` instead of
+  `@browxai/plugin-figma`, and a relative path resolved from
+  `<workspace>/plugins/`. The name now comes from `<dir>/package.json`, a
+  relative path resolves from your shell's working directory, and a directory
+  without a `package.json` name is refused before anything is installed.
+- **`BrowxaiClientWithPlugins` is now exported from `browxai`.** The first-party
+  plugins' `schema.d.ts` files tell consumers to write
+  `import type { BrowxaiClientWithPlugins } from "browxai"`, which failed
+  because only the SDK module defined it.
 
 ## [0.13.0] - 2026-10-22
 

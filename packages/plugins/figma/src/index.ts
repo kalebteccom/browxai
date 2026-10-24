@@ -251,7 +251,11 @@ export function register(api: PluginApi): void {
     {
       description:
         "Set `figma.currentPage.selection` to the node addressed by `nodeId`. Returns `{ok, nodeId}` on success, `{ok:false, code:'node-not-found'|'bad-arg'|'figma-not-loaded'}` otherwise.",
-      inputSchema: {},
+      inputSchema: {
+        type: "object",
+        properties: { nodeId: { type: "string", description: "Id of the node to select." } },
+        required: ["nodeId"],
+      },
     },
     (args) => handlers.select_node(api, args),
   );
@@ -261,7 +265,15 @@ export function register(api: PluginApi): void {
     {
       description:
         "Translate a node by `(dx, dy)` — mutates `node.x` and `node.y` in place. Returns `{ok, nodeId, x, y}` with the post-move position. App-not-loaded / missing-arg / unknown-id surface structured errors.",
-      inputSchema: {},
+      inputSchema: {
+        type: "object",
+        properties: {
+          nodeId: { type: "string", description: "Id of the node to move." },
+          dx: { type: "number", description: "Horizontal offset to add to the node's x." },
+          dy: { type: "number", description: "Vertical offset to add to the node's y." },
+        },
+        required: ["nodeId", "dx", "dy"],
+      },
     },
     (args) => handlers.move_node(api, args),
   );
@@ -271,7 +283,22 @@ export function register(api: PluginApi): void {
     {
       description:
         "Create a rectangle via `figma.createRectangle()` at `(x, y)` with `(width, height)`. Optional `fillColor:{r,g,b}` (0–1 floats — Figma's color convention) sets a solid fill. Returns `{ok, nodeId}`.",
-      inputSchema: {},
+      inputSchema: {
+        type: "object",
+        properties: {
+          x: { type: "number", description: "Left edge, in page coordinates." },
+          y: { type: "number", description: "Top edge, in page coordinates." },
+          width: { type: "number", description: "Width, greater than 0." },
+          height: { type: "number", description: "Height, greater than 0." },
+          fillColor: {
+            type: "object",
+            description: "Solid fill, each channel a 0-1 float.",
+            properties: { r: { type: "number" }, g: { type: "number" }, b: { type: "number" } },
+            required: ["r", "g", "b"],
+          },
+        },
+        required: ["x", "y", "width", "height"],
+      },
     },
     (args) => handlers.create_rectangle(api, args),
   );
