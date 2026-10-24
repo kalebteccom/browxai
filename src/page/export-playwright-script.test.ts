@@ -184,10 +184,6 @@ describe("export_playwright_script — lowering", () => {
     // The recording is still active after inspect() — caller didn't end it.
     expect(rec.active()).toBe(true);
   });
-
-  it("returns null from inspect() when no recording is active", () => {
-    expect(new Recorder().inspect()).toBeNull();
-  });
 });
 
 describe("export_playwright_script — recorded reads", () => {

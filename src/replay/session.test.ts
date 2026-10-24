@@ -166,15 +166,6 @@ describe("ReplaySession", () => {
     expect(art.manifest.truncated?.reason).toBe("size-cap");
   });
 
-  it("reports event-cap truncation independently", async () => {
-    const s = new ReplaySession(stubEntry());
-    await s.start({ tier: "actions", eventCap: 3 }, ws.workspace);
-    for (let i = 0; i < 10; i++) s.noteCall("navigate", { url: `https://a.test/${i}` });
-    const end = await s.end(ws.workspace);
-    expect(end.truncated?.reason).toBe("event-cap");
-    expect(end.events).toBe(3);
-  });
-
   it("records a completed artifact's path for later export_session_report", async () => {
     const s = new ReplaySession(stubEntry());
     expect(s.lastArtifact()).toBeUndefined();

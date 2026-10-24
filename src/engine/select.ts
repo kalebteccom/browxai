@@ -104,7 +104,8 @@ export class UnknownEngineError extends Error {
   readonly value: string;
   constructor(value: string) {
     super(
-      `engine "${value}" is not available; implemented engines: ${IMPLEMENTED_ENGINES.join(", ")}`,
+      `engine "${value}" is not available. Use one of: ${IMPLEMENTED_ENGINES.join(", ")} ` +
+        "(set BROWX_ENGINE or --engine, or pass `engine` to open_session).",
     );
     this.name = "UnknownEngineError";
     this.value = value;

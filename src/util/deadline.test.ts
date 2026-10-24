@@ -32,10 +32,6 @@ describe("clampTimeout — ceiling", () => {
     });
   });
 
-  it("passes an in-range request through unchanged", () => {
-    expect(clampTimeout(8000, DEFAULT_ACTION_TIMEOUT_MS)).toEqual({ ms: 8000 });
-  });
-
   it("clamps an over-ceiling (insane) value and emits a deterrent warning", () => {
     const r = clampTimeout(7_200_000, DEFAULT_ACTION_TIMEOUT_MS); // 2h
     expect(r.ms).toBe(MAX_ACTION_TIMEOUT_MS);

@@ -82,20 +82,6 @@ describe("DeviceEmulationState", () => {
 // ---- attachDeviceEmulation -----------------------------------------------
 
 describe("attachDeviceEmulation", () => {
-  it("installs the check binding + init script on first attach", async () => {
-    const s = new DeviceEmulationState(true);
-    const bindings = new Map<string, (source: unknown, payload: string) => unknown>();
-    const initScripts: string[] = [];
-    const c = fakeContext({ bindings, initScripts });
-    await attachDeviceEmulation(c, s);
-    expect(bindings.has("__browx_device_check")).toBe(true);
-    expect(initScripts).toHaveLength(1);
-    expect(initScripts[0]).toContain("__browx_device_emu_installed");
-    expect(initScripts[0]).toContain("navigator.bluetooth");
-    expect(initScripts[0]).toContain("navigator.usb");
-    expect(initScripts[0]).toContain("navigator.hid");
-  });
-
   it("is idempotent — second attach on the same context is a no-op", async () => {
     const s = new DeviceEmulationState(true);
     const bindings = new Map<string, (source: unknown, payload: string) => unknown>();

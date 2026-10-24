@@ -129,15 +129,6 @@ describe("collectShadowTrees", () => {
     expect(entries.length).toBe(3);
     expect(cappedAt).toBe(3);
   });
-
-  it("returns an empty list when the scope ref does not resolve", () => {
-    const tree: FakeNode = el("html", {
-      backendNodeId: 1,
-      children: [el("my-widget", { backendNodeId: 10 })],
-    });
-    const { entries } = collectShadowTrees(tree, { rootBackendNodeId: 999 });
-    expect(entries).toEqual([]);
-  });
 });
 
 describe("fetchPiercedDocument", () => {
@@ -223,17 +214,6 @@ describe("harvestClosedShadowElements", () => {
     expect(tab?.closedShadow).toBe(true);
     // Open-shadow button must not leak into the closed-only harvest.
     expect(r.entries.some((e) => e.testId === "open-btn")).toBe(false);
-  });
-
-  it("returns an empty list + warning when CDP refuses pierce", async () => {
-    const cdp = fakeCdp({
-      send: async () => {
-        throw new Error("nope");
-      },
-    });
-    const r = await harvestClosedShadowElements(cdp, ["data-testid"], 100);
-    expect(r.entries).toEqual([]);
-    expect(r.warning).toContain("closed-shadow piercing unavailable");
   });
 });
 

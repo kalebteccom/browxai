@@ -1,6 +1,6 @@
 {
   "name": "@browxai/plugin-figma",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Figma canvas-app adapter plugin for browxai: selection, viewport, node move and rectangle create over the `figma.*` page-side global.",
   "author": "Kalebtec",
   "license": "MIT",
@@ -51,7 +51,7 @@
   },
   "browxai": {
     "apiVersion": "1.0.0",
-    "browxaiVersion": ">=0.13.0",
+    "browxaiVersion": ">=0.14.0",
     "namespace": "figma",
     "register": "dist/index.js",
     "capabilities": [

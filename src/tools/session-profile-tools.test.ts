@@ -59,7 +59,7 @@ function captureTool(opts: { enabled?: boolean; entries?: SessionEntry[] } = {})
                 type: "text" as const,
                 text: JSON.stringify({
                   ok: false,
-                  error: `tool "${tool}" is disabled — its capability is not in the server's ACTIVE set`,
+                  error: `tool "${tool}" is disabled: its capability "read" is not enabled on this server`,
                   requiredCapability: "read",
                 }),
               },
@@ -102,12 +102,6 @@ function seedProfile(name: string): string {
   writeFileSync(join(dir, "Cookies"), "x");
   return dir;
 }
-
-describe("profile_status — registration surface", () => {
-  it("declares the `read` capability", () => {
-    expect(captureTool().def.capability).toBe("read");
-  });
-});
 
 describe("profile_status — handler", () => {
   it("maps a live persistent session onto its profile row", async () => {

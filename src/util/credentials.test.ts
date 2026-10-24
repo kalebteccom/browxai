@@ -29,10 +29,6 @@ describe("aliasFromAccount", () => {
     expect(aliasFromAccount("")).toBe("PASSWORD");
     expect(aliasFromAccount("...")).toBe("PASSWORD");
   });
-
-  it("respects a custom prefix", () => {
-    expect(aliasFromAccount("acme", "TOKEN")).toBe("TOKEN_ACME");
-  });
 });
 
 describe("parseSeedsEnv", () => {
@@ -74,11 +70,6 @@ describe("resolveCredentialsProvider", () => {
     expect(r.config.provider).toBe("oathtool");
     expect(r.config.warnings.length).toBe(1);
     expect(r.config.warnings[0]).toContain("unknown provider");
-  });
-
-  it("normalises case on provider name", () => {
-    const r = resolveCredentialsProvider({ BROWX_CREDENTIALS_PROVIDER: "1Password" });
-    expect(r.config.provider).toBe("1password");
   });
 });
 

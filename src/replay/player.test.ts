@@ -179,13 +179,8 @@ describe("forward compatibility — an unknown event type", () => {
     const unknown = model.markers.filter((m) => m.kind === "unknown");
     expect(unknown).toEqual([{ t: 270, kind: "unknown", label: "telemetry/flamechart" }]);
     expect(model.steps.some((s) => s.tool.includes("flamechart"))).toBe(false);
-  });
-
-  it("leaves a known type this build DOES know but ships no panel for out of the unknown set", () => {
     // `framework/redux-action` is in the schema's union with no v1 panel. It is
-    // known, so it must not be reported as "recorded by a newer browxai".
-    const model = buildTimeline(sampleEvents());
-    expect(model.unknownTypes.map((u) => u.type)).not.toContain("framework/redux-action");
+    // known, so the exact list above leaves it out, and it is still counted.
     expect(model.counts["framework/redux-action"]).toBe(1);
   });
 

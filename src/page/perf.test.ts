@@ -54,10 +54,12 @@ describe("PerfTracingState — start/stop lifecycle", () => {
     expect(traceConfig.includedCategories).toEqual(DEFAULT_TRACE_CATEGORIES);
   });
 
-  it("stop returns the buffered events and clears state", async () => {
+  it("stop returns the buffered events, clears state and tears the listeners down", async () => {
     const { cdp } = fakeCdp();
     const state = new PerfTracingState();
     await state.start(cdp as never);
+    expect(cdp._listenerCount("Tracing.dataCollected")).toBe(1);
+    expect(cdp._listenerCount("Tracing.tracingComplete")).toBe(1);
     const stopP = state.stop(cdp as never);
     await cdp._emit("Tracing.dataCollected", { value: [{ name: "A" }, { name: "B" }] });
     await cdp._emit("Tracing.tracingComplete", {});
@@ -65,6 +67,8 @@ describe("PerfTracingState — start/stop lifecycle", () => {
     expect(r.notRunning).toBeUndefined();
     expect(r.events.map((e) => e.name)).toEqual(["A", "B"]);
     expect(state.isRunning()).toBe(false);
+    expect(cdp._listenerCount("Tracing.dataCollected")).toBe(0);
+    expect(cdp._listenerCount("Tracing.tracingComplete")).toBe(0);
   });
 
   it("stop when not running returns notRunning:true (idempotent)", async () => {
@@ -103,19 +107,6 @@ describe("PerfTracingState — start/stop lifecycle", () => {
     });
     await state.closeIfRunning(cdp as never);
     expect(state.isRunning()).toBe(false);
-  });
-
-  it("listeners are torn down after stop (no leak)", async () => {
-    const { cdp } = fakeCdp();
-    const state = new PerfTracingState();
-    await state.start(cdp as never);
-    expect(cdp._listenerCount("Tracing.dataCollected")).toBe(1);
-    expect(cdp._listenerCount("Tracing.tracingComplete")).toBe(1);
-    const stopP = state.stop(cdp as never);
-    await cdp._emit("Tracing.tracingComplete", {});
-    await stopP;
-    expect(cdp._listenerCount("Tracing.dataCollected")).toBe(0);
-    expect(cdp._listenerCount("Tracing.tracingComplete")).toBe(0);
   });
 });
 

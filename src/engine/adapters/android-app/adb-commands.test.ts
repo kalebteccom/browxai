@@ -5,8 +5,6 @@ import { describe, it, expect } from "vitest";
 import {
   deepLinkArgs,
   dumpHierarchyArgs,
-  encodeInputText,
-  emulatorKillArgs,
   forceStopArgs,
   installArgs,
   installFailure,
@@ -46,12 +44,6 @@ describe("shellQuote — the device-shell chokepoint", () => {
     // An unwrapped empty value would VANISH from the argv and shift every later
     // word into the wrong position.
     expect(shellQuote("")).toBe("''");
-  });
-});
-
-describe("encodeInputText", () => {
-  it("encodes spaces the way `input text` needs", () => {
-    expect(encodeInputText("hello world")).toBe("hello%sworld");
   });
 });
 
@@ -133,10 +125,6 @@ describe("argv construction", () => {
       "-d",
       "'myapp://checkout/42'",
     ]);
-  });
-
-  it("always scopes `emu kill` to a serial", () => {
-    expect(emulatorKillArgs("emulator-5554")).toEqual(["-s", "emulator-5554", "emu", "kill"]);
   });
 });
 

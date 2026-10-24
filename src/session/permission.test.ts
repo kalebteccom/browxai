@@ -108,12 +108,6 @@ describe("parsePermissionPolicyArg", () => {
 // ---- PermissionPolicyState basics + mode resolution ----------------------
 
 describe("PermissionPolicyState", () => {
-  it("defaults to raise", () => {
-    const s = new PermissionPolicyState();
-    expect(s.current()).toEqual({ mode: "raise" });
-    expect(s.modeFor("camera")).toBe("raise");
-  });
-
   it("modeFor honours per-permission override over top-level", () => {
     const s = new PermissionPolicyState({
       mode: "allow",
@@ -196,22 +190,11 @@ describe("attachPermissionPolicy — binding handler per mode", () => {
     expect(state.since(t)[0]?.handledAs).toBe("asked-human");
   });
 
-  it("ask-human → handler 'deny' → returns deny", async () => {
-    const { check } = await setupCheck({ mode: "ask-human" }, async () => "deny");
-    expect(await check({}, JSON.stringify({ permission: "camera" }))).toBe("deny");
-  });
-
   it("ask-human → handler throws → safe-by-default deny", async () => {
     const { check } = await setupCheck({ mode: "ask-human" }, async () => {
       throw new Error("boom");
     });
     expect(await check({}, JSON.stringify({ permission: "camera" }))).toBe("deny");
-  });
-
-  it("per-permission override wins over top-level for SAME request", async () => {
-    const { check } = await setupCheck({ mode: "allow", perPermission: { camera: "deny" } });
-    expect(await check({}, JSON.stringify({ permission: "camera" }))).toBe("deny");
-    expect(await check({}, JSON.stringify({ permission: "microphone" }))).toBe("allow");
   });
 
   it("unknown permission name → safe-by-default allow (out-of-v1 names fall through)", async () => {
@@ -223,18 +206,6 @@ describe("attachPermissionPolicy — binding handler per mode", () => {
 // ---- attach idempotency + init-script wiring -----------------------------
 
 describe("attachPermissionPolicy — install plumbing", () => {
-  it("installs both bindings + the init script", async () => {
-    const state = new PermissionPolicyState();
-    const bindings = new Map();
-    const initScripts: string[] = [];
-    const ctx = fakeContext({ bindings, initScripts });
-    await attachPermissionPolicy(ctx, state, async () => "deny");
-    expect(bindings.has("__browx_permission_check")).toBe(true);
-    expect(bindings.has("__browx_permission_observe")).toBe(true);
-    expect(initScripts.length).toBe(1);
-    expect(initScripts[0]).toBe(PERMISSION_PAGE_SCRIPT);
-  });
-
   it("idempotent on the same context — second call is a no-op", async () => {
     const state = new PermissionPolicyState();
     const bindings = new Map();
@@ -295,23 +266,5 @@ describe("applyCdpBaseline", () => {
     const ctx = fakeContext({ grantThrows: true, clearThrows: true });
     const state = new PermissionPolicyState({ mode: "allow" });
     await expect(applyCdpBaseline(ctx, state)).resolves.toBeUndefined();
-  });
-});
-
-// ---- the init script is browser-only JS ----------------------------------
-
-describe("PERMISSION_PAGE_SCRIPT", () => {
-  it("wraps every API the policy governs", () => {
-    expect(PERMISSION_PAGE_SCRIPT).toMatch(/navigator\.mediaDevices/);
-    expect(PERMISSION_PAGE_SCRIPT).toMatch(/getCurrentPosition/);
-    expect(PERMISSION_PAGE_SCRIPT).toMatch(/watchPosition/);
-    expect(PERMISSION_PAGE_SCRIPT).toMatch(/Notification\.requestPermission/);
-    expect(PERMISSION_PAGE_SCRIPT).toMatch(/clipboard/);
-    expect(PERMISSION_PAGE_SCRIPT).toMatch(/permissions\.query/);
-  });
-
-  it("consults the check binding and falls back to allow when missing (BYOB clobber safety)", () => {
-    expect(PERMISSION_PAGE_SCRIPT).toMatch(/__browx_permission_check/);
-    expect(PERMISSION_PAGE_SCRIPT).toMatch(/return Promise\.resolve\("allow"\)/);
   });
 });

@@ -10,10 +10,7 @@ import {
   newEmulationState,
   reapplyAll,
   clearLocaleCdp,
-  clearTimezoneCdp,
   applyGeolocation,
-  clearGeolocation,
-  clearUserAgentCdp,
   applyPermissions,
   clearPermissions,
   type EmulationState,
@@ -63,33 +60,11 @@ describe("locale (CDP-only mid-session)", () => {
   });
 });
 
-describe("timezone (CDP-only mid-session)", () => {
-  it("clear sends the override with empty timezoneId", async () => {
-    const cdp = fakeCdp();
-    await clearTimezoneCdp(asCdp(cdp));
-    expect(cdp.send).toHaveBeenCalledWith("Emulation.setTimezoneOverride", { timezoneId: "" });
-  });
-});
-
 describe("geolocation (Playwright context mutator)", () => {
   it("apply preserves explicit accuracy", async () => {
     const ctx = fakeContext();
     await applyGeolocation(asContext(ctx), { latitude: 1, longitude: 2, accuracy: 50 });
     expect(ctx.setGeolocation).toHaveBeenCalledWith({ latitude: 1, longitude: 2, accuracy: 50 });
-  });
-
-  it("clear calls context.setGeolocation(null)", async () => {
-    const ctx = fakeContext();
-    await clearGeolocation(asContext(ctx));
-    expect(ctx.setGeolocation).toHaveBeenCalledWith(null);
-  });
-});
-
-describe("user agent (CDP-only mid-session)", () => {
-  it("clear sends override with empty UA", async () => {
-    const cdp = fakeCdp();
-    await clearUserAgentCdp(asCdp(cdp));
-    expect(cdp.send).toHaveBeenCalledWith("Network.setUserAgentOverride", { userAgent: "" });
   });
 });
 

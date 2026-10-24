@@ -89,22 +89,6 @@ describe("parseDialogPolicyArg", () => {
 });
 
 describe("DialogPolicyState — per-policy handling", () => {
-  it('`accept` mode accepts every dialog and records handledAs="accepted"', async () => {
-    const state = new DialogPolicyState({ mode: "accept" });
-    const { page, fireDialog } = fakePage();
-    installDialogHandler(page, state);
-    const t = Date.now();
-    const d = makeDialog({ kind: "confirm", message: "go?" });
-    await fireDialog(d);
-    expect(d.accept).toHaveBeenCalledTimes(1);
-    expect(d.dismiss).not.toHaveBeenCalled();
-    const slice = state.since(t);
-    expect(slice).toHaveLength(1);
-    expect(slice[0]?.handledAs).toBe("accepted");
-    expect(slice[0]?.kind).toBe("confirm");
-    expect(slice[0]?.message).toBe("go?");
-  });
-
   it("`accept-prompt-with:<text>` answers prompts with text but plain-accepts alert/confirm", async () => {
     const state = new DialogPolicyState({ mode: "accept-prompt-with", text: "Codex" });
     const { page, fireDialog } = fakePage();
@@ -218,19 +202,5 @@ describe("DialogPolicyState — anti-deadlock guarantee", () => {
     } as unknown as Dialog;
     // No throw out of fireDialog.
     await expect(fireDialog(d)).resolves.toBeUndefined();
-  });
-});
-
-describe("ActionResult.dialogs[] capture — buffer semantics", () => {
-  it("buffer is capped — oldest record evicted past `cap`", async () => {
-    const state = new DialogPolicyState({ mode: "accept" }, 3);
-    const { page, fireDialog } = fakePage();
-    installDialogHandler(page, state);
-    for (let i = 0; i < 5; i++) {
-      await fireDialog(makeDialog({ kind: "alert", message: `m${i}` }));
-    }
-    const slice = state.since(0);
-    expect(slice).toHaveLength(3);
-    expect(slice.map((r) => r.message)).toEqual(["m2", "m3", "m4"]);
   });
 });

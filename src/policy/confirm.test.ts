@@ -83,7 +83,8 @@ describe("confirmByobAction with pre-approval", () => {
     const byob = await confirmByobAction("click", ctx({ bridge }));
     expect(byob).toEqual({
       ok: false,
-      reason: "byob; no human channel on this session to confirm; blocked",
+      reason:
+        "byob: this session has no human channel to confirm on, so the action was blocked. Use a chromium session, or ask the operator to remove the hook from BROWX_CONFIRM_REQUIRED.",
       asked: false,
     });
     const nav = await confirmNavigation(

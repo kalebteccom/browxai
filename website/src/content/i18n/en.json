@@ -1,0 +1,4 @@
+{
+  "search.label": "Search docs",
+  "pagefind.zero_results": "No results for [SEARCH_TERM]. Try a tool name such as click, or an env var such as BROWX_WORKSPACE."
+}

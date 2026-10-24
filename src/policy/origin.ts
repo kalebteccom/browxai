@@ -24,18 +24,18 @@ export interface OriginPattern {
 }
 
 export function resolveOriginPolicy(env: NodeJS.ProcessEnv = process.env): OriginPolicy {
-  const allowed = parseList(env.BROWX_ALLOWED_ORIGINS?.trim() ?? "");
-  const blocked = parseList(env.BROWX_BLOCKED_ORIGINS?.trim() ?? "");
+  const allowed = parseList(env.BROWX_ALLOWED_ORIGINS?.trim() ?? "", "BROWX_ALLOWED_ORIGINS");
+  const blocked = parseList(env.BROWX_BLOCKED_ORIGINS?.trim() ?? "", "BROWX_BLOCKED_ORIGINS");
   return { allowed, blocked };
 }
 
-function parseList(raw: string): OriginPattern[] {
+function parseList(raw: string, variable: string): OriginPattern[] {
   if (!raw) return [];
   return raw
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean)
-    .map(parsePattern);
+    .map((entry) => parsePattern(entry, variable));
 }
 
 const DEFAULT_PORTS: Readonly<Record<string, string>> = {
@@ -58,14 +58,14 @@ function effectivePort(u: URL): string {
   return u.port || DEFAULT_PORTS[u.protocol] || "";
 }
 
-function parsePattern(raw: string): OriginPattern {
+function parsePattern(raw: string, variable: string): OriginPattern {
   // Accept `https://app.example.com`, `https://*.example.com`, `http://localhost:3000`.
   let url: URL;
   try {
     url = new URL(raw);
   } catch {
     throw new Error(
-      `origin policy: invalid URL "${raw}". Expected e.g. "https://app.example.com".`,
+      `${variable}: invalid URL "${raw}". Use full origins separated by commas, e.g. "https://app.example.com" or "https://*.example.com".`,
     );
   }
   const protocol = url.protocol;

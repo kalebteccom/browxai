@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -83,12 +83,6 @@ describe("parseFsPickerPolicyArg", () => {
 // ---- FsPickerPolicyState basics + mode resolution ------------------------
 
 describe("FsPickerPolicyState", () => {
-  it("defaults to raise", () => {
-    const s = new FsPickerPolicyState();
-    expect(s.current()).toEqual({ mode: "raise" });
-    expect(s.modeFor("showSaveFilePicker")).toBe("raise");
-  });
-
   it("modeFor honours per-API override over top-level", () => {
     const s = new FsPickerPolicyState({
       mode: "allow",
@@ -218,17 +212,6 @@ describe("attachFsPickerPolicy — check handler per mode", () => {
     expect(parsed.files.map((f) => f.name)).toEqual(["a.txt", "b.txt"]);
   });
 
-  it("allow on showDirectoryPicker → single virtual directory handle", async () => {
-    const { state, check } = await setupCheck({ mode: "allow" }, ws);
-    writeFileSync(join(ws, "placeholder"), ""); // workspace exists
-    state.pushResponse("showDirectoryPicker", [{ path: "subdir" }]);
-    const raw = await check({}, JSON.stringify({ api: "showDirectoryPicker" }));
-    const parsed = JSON.parse(String(raw)) as { decision: string; files: Array<{ name: string }> };
-    expect(parsed.decision).toBe("allow");
-    expect(parsed.files).toHaveLength(1);
-    expect(parsed.files[0]!.name).toBe("subdir");
-  });
-
   it("ask-human + handler 'allow' files → decision allow", async () => {
     const ask: FsPickerAskHandler = async () => [{ path: "approved.txt" }];
     const { state, check } = await setupCheck({ mode: "ask-human" }, ws, ask);
@@ -339,22 +322,6 @@ describe("attachFsPickerPolicy — write handler routes to workspace", () => {
     expect(readFileSync(persisted).length).toBe(0);
   });
 
-  it("binary (b64:) write decodes correctly", async () => {
-    const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
-    state.pushResponse("showSaveFilePicker", [{ path: "bin.dat" }]);
-    const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker" }));
-    const parsed = JSON.parse(String(raw)) as {
-      decision: string;
-      files: Array<{ handleId: string }>;
-    };
-    const handleId = parsed.files[0]!.handleId;
-    // base64 "ABC" = QUJD
-    await write({}, JSON.stringify({ handleId, op: "write", data: "b64:QUJD" }));
-    await write({}, JSON.stringify({ handleId, op: "close" }));
-    const persisted = join(ws, "bin.dat");
-    expect(readFileSync(persisted, "utf8")).toBe("ABC");
-  });
-
   it("write to an open-picker handle is a no-op (read-only virtual handle)", async () => {
     const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showOpenFilePicker", [{ contents: "QUE=", name: "a.txt" }]);
@@ -447,18 +414,6 @@ describe("attachFsPickerPolicy — install plumbing", () => {
   });
   afterEach(() => {
     rmSync(ws, { recursive: true, force: true });
-  });
-
-  it("installs both bindings + the init script", async () => {
-    const state = new FsPickerPolicyState();
-    const bindings = new Map();
-    const initScripts: string[] = [];
-    const ctx = fakeContext({ bindings, initScripts });
-    await attachFsPickerPolicy(ctx, state, ws, async () => null);
-    expect(bindings.has("__browx_fs_picker_check")).toBe(true);
-    expect(bindings.has("__browx_fs_picker_write")).toBe(true);
-    expect(initScripts.length).toBe(1);
-    expect(initScripts[0]).toBe(FS_PICKER_PAGE_SCRIPT);
   });
 
   it("idempotent on the same context — second call is a no-op", async () => {

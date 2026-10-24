@@ -268,7 +268,7 @@ async function askHuman(
   if (!ctx.bridge || !ctx.bridge.humanChannelAvailable()) {
     return {
       ok: false,
-      reason: `${label}; no human channel on this session to confirm; blocked`,
+      reason: `${label}: this session has no human channel to confirm on, so the action was blocked. Use a chromium session, or ask the operator to remove the hook from BROWX_CONFIRM_REQUIRED.`,
       asked: false,
     };
   }
@@ -288,7 +288,7 @@ async function askHuman(
   } catch (e) {
     return {
       ok: false,
-      reason: `confirm timed out / failed: ${e instanceof Error ? e.message : String(e)}`,
+      reason: `confirm prompt timed out or failed (${e instanceof Error ? e.message : String(e)}), so the action did not run. Ask the operator to answer the prompt, then call again.`,
       asked: true,
     };
   }

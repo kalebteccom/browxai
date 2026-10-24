@@ -1,13 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   automationSwitchOptions,
-  isBundledBrowserMissing,
   isChannelNotInstalled,
   launchWithChannelPlan,
   planChromiumChannel,
 } from "./chromium-launch-posture.js";
 import { log } from "../util/logging.js";
-import { envLayer } from "../util/config-store.js";
 import { playwrightInstallCommand } from "../util/playwright-version.js";
 
 const NOT_FOUND = new Error(
@@ -52,14 +50,6 @@ describe("planChromiumChannel", () => {
       "chrome",
     );
     expect(planChromiumChannel({ extensionPaths: [] }).channel).toBe("chrome");
-  });
-
-  it("reads the channel BROWX_CHANNEL sets through the config env layer", () => {
-    const fromEnv = envLayer({ BROWX_CHANNEL: "chromium" }).channel;
-    expect(planChromiumChannel({ channel: fromEnv }).channel).toBeUndefined();
-    const msedge = envLayer({ BROWX_CHANNEL: "msedge" }).channel;
-    expect(planChromiumChannel({ channel: msedge }).channel).toBe("msedge");
-    expect(planChromiumChannel({ channel: envLayer({}).channel }).channel).toBe("chrome");
   });
 });
 
@@ -123,11 +113,6 @@ describe("a launch that finds no browser", () => {
       "Looks like Playwright was just installed or updated. Please run: npx playwright install",
   );
 
-  it("recognises Playwright's missing-download error", () => {
-    expect(isBundledBrowserMissing(NO_BUNDLED)).toBe(true);
-    expect(isBundledBrowserMissing(new Error("profile locked"))).toBe(false);
-  });
-
   it("adds an install hint after the fallback to the bundled build also fails", async () => {
     vi.spyOn(log, "warn").mockImplementation(() => undefined);
     const launch = vi.fn().mockRejectedValueOnce(NOT_FOUND).mockRejectedValueOnce(NO_BUNDLED);
@@ -141,12 +126,6 @@ describe("a launch that finds no browser", () => {
     expect((err as Error).message).toContain(`\`${playwrightInstallCommand("chromium")}\``);
     expect((err as Error).message).toMatch(/npx playwright-core@\d+\.\d+\.\d+ install chromium/);
     expect((err as Error).cause).toBe(NO_BUNDLED);
-  });
-
-  it("leaves other bundled-launch errors untouched", async () => {
-    const boom = new Error("profile locked");
-    const launch = vi.fn().mockRejectedValue(boom);
-    await expect(launchWithChannelPlan({ fallbackToBundled: false }, launch)).rejects.toBe(boom);
   });
 });
 

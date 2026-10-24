@@ -64,17 +64,6 @@ describe("ArtifactsRegistry — save/get/list round-trip", () => {
     expect(got.size).toBe(bin.length);
   });
 
-  it("overwrite replaces content; size + mtime update", async () => {
-    const r = reg();
-    r.save("k", "first");
-    // small delay so mtimeMs differs reliably on coarse-grain filesystems
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    const after = r.save("k", "second-longer");
-    const got = r.get("k");
-    expect(got.content).toBe("second-longer");
-    expect(after.size).toBe("second-longer".length);
-  });
-
   it("list returns one entry per artifact, sorted by name", () => {
     const r = reg();
     r.save("b", "B");

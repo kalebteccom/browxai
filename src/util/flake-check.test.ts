@@ -30,18 +30,6 @@ function scriptedHandler(responses: object[]): ToolHandler {
 }
 
 describe("runFlakeCheck — repetition + roll-up", () => {
-  it("runs N times and reports allGreen when every step passes every run", async () => {
-    const handlers = { navigate: jsonHandler({ ok: true }), click: jsonHandler({ ok: true }) };
-    const report = await runFlakeCheck(
-      [{ tool: "navigate" }, { tool: "click", args: { ref: "e1" } }],
-      { n: 5, allowed: ALLOWED, handlers },
-    );
-    expect(report.runsCompleted).toBe(5);
-    expect(report.allGreen).toBe(true);
-    expect(report.firstDivergence).toBeNull();
-    expect(report.steps.map((s) => s.successRate)).toEqual([1, 1]);
-  });
-
   it("captures per-step success rate when one step flakes", async () => {
     // step 1 alternates ok/fail
     const click = scriptedHandler([

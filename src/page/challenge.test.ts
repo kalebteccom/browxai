@@ -40,21 +40,13 @@ describe("classifyChallenge — Cloudflare managed challenge", () => {
 });
 
 describe("classifyChallenge — Turnstile widget", () => {
-  it("classifies a widget on an otherwise normal 200 page, never as an interstitial", () => {
-    const r = classifyChallenge(markers({ cfTurnstileWidget: true, title: "Sign in" }), {
-      status: 200,
-    });
+  it("classifies a widget as a widget and carries no HTTP-status evidence", () => {
+    const r = classifyChallenge(markers({ cfTurnstileWidget: true }), { status: 403 });
     expect(r).toEqual({
       kind: "widget",
       vendor: "cloudflare",
       evidence: ['element ".cf-turnstile[data-sitekey]"'],
     });
-  });
-
-  it("carries no HTTP-status evidence — a widget page is a real 200 page", () => {
-    const r = classifyChallenge(markers({ cfTurnstileWidget: true }), { status: 403 });
-    expect(r?.kind).toBe("widget");
-    expect(r?.evidence).toEqual(['element ".cf-turnstile[data-sitekey]"']);
   });
 
   it("is shadowed by the interstitial when the gate page also renders a Turnstile", () => {

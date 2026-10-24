@@ -122,11 +122,11 @@ export async function idbGet(
     `  var req = ${IDB_API}.open(${JSON.stringify(args.dbName)}); ` +
     `  req.onsuccess = function () { resolve(req.result); }; ` +
     `  req.onerror = function () { reject(req.error); }; ` +
-    `  req.onblocked = function () { reject(new Error("${tool}: open blocked")); }; ` +
+    `  req.onblocked = function () { reject(new Error("${tool}: open blocked, another connection holds the database. Close it and retry.")); };` +
     `}); ` +
     `if (!db.objectStoreNames.contains(${JSON.stringify(args.storeName)})) { ` +
     `  db.close(); ` +
-    `  throw new Error("${tool}: object store \\"" + ${JSON.stringify(args.storeName)} + "\\" does not exist in db \\"" + ${JSON.stringify(args.dbName)} + "\\""); ` +
+    `  throw new Error("${tool}: object store \\"" + ${JSON.stringify(args.storeName)} + "\\" does not exist in db \\"" + ${JSON.stringify(args.dbName)} + "\\". Call idb_list_stores to see which stores it has.");` +
     `} ` +
     `var tx = db.transaction(${JSON.stringify(args.storeName)}, "readonly"); ` +
     `var store = tx.objectStore(${JSON.stringify(args.storeName)}); ` +
@@ -169,7 +169,7 @@ export async function idbPut(
     `  var req = ${IDB_API}.open(${JSON.stringify(args.dbName)}); ` +
     `  req.onsuccess = function () { resolve(req.result); }; ` +
     `  req.onerror = function () { reject(req.error); }; ` +
-    `  req.onblocked = function () { reject(new Error("${tool}: open blocked")); }; ` +
+    `  req.onblocked = function () { reject(new Error("${tool}: open blocked, another connection holds the database. Close it and retry.")); };` +
     `}); ` +
     `if (!db.objectStoreNames.contains(${JSON.stringify(args.storeName)})) { ` +
     `  db.close(); ` +
@@ -187,7 +187,7 @@ export async function idbPut(
     `await new Promise(function (resolve, reject) { ` +
     `  tx.oncomplete = function () { resolve(undefined); }; ` +
     `  tx.onerror = function () { reject(tx.error); }; ` +
-    `  tx.onabort = function () { reject(tx.error || new Error("${tool}: transaction aborted")); }; ` +
+    `  tx.onabort = function () { reject(tx.error || new Error("${tool}: transaction aborted before it committed, so nothing was written. Retry the call.")); };` +
     `}); ` +
     `db.close(); ` +
     `return { ok: true, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, key: key, origin: location.origin }; })()`;
@@ -212,11 +212,11 @@ export async function idbDelete(
     `  var req = ${IDB_API}.open(${JSON.stringify(args.dbName)}); ` +
     `  req.onsuccess = function () { resolve(req.result); }; ` +
     `  req.onerror = function () { reject(req.error); }; ` +
-    `  req.onblocked = function () { reject(new Error("${tool}: open blocked")); }; ` +
+    `  req.onblocked = function () { reject(new Error("${tool}: open blocked, another connection holds the database. Close it and retry.")); };` +
     `}); ` +
     `if (!db.objectStoreNames.contains(${JSON.stringify(args.storeName)})) { ` +
     `  db.close(); ` +
-    `  throw new Error("${tool}: object store \\"" + ${JSON.stringify(args.storeName)} + "\\" does not exist in db \\"" + ${JSON.stringify(args.dbName)} + "\\""); ` +
+    `  throw new Error("${tool}: object store \\"" + ${JSON.stringify(args.storeName)} + "\\" does not exist in db \\"" + ${JSON.stringify(args.dbName)} + "\\". Call idb_list_stores to see which stores it has.");` +
     `} ` +
     `var tx = db.transaction(${JSON.stringify(args.storeName)}, "readwrite"); ` +
     `var store = tx.objectStore(${JSON.stringify(args.storeName)}); ` +
@@ -228,7 +228,7 @@ export async function idbDelete(
     `await new Promise(function (resolve, reject) { ` +
     `  tx.oncomplete = function () { resolve(undefined); }; ` +
     `  tx.onerror = function () { reject(tx.error); }; ` +
-    `  tx.onabort = function () { reject(tx.error || new Error("${tool}: transaction aborted")); }; ` +
+    `  tx.onabort = function () { reject(tx.error || new Error("${tool}: transaction aborted before it committed, so nothing was written. Retry the call.")); };` +
     `}); ` +
     `db.close(); ` +
     `return { ok: true, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, key: key, origin: location.origin }; })()`;
@@ -250,11 +250,11 @@ export async function idbClear(
     `  var req = ${IDB_API}.open(${JSON.stringify(args.dbName)}); ` +
     `  req.onsuccess = function () { resolve(req.result); }; ` +
     `  req.onerror = function () { reject(req.error); }; ` +
-    `  req.onblocked = function () { reject(new Error("${tool}: open blocked")); }; ` +
+    `  req.onblocked = function () { reject(new Error("${tool}: open blocked, another connection holds the database. Close it and retry.")); };` +
     `}); ` +
     `if (!db.objectStoreNames.contains(${JSON.stringify(args.storeName)})) { ` +
     `  db.close(); ` +
-    `  throw new Error("${tool}: object store \\"" + ${JSON.stringify(args.storeName)} + "\\" does not exist in db \\"" + ${JSON.stringify(args.dbName)} + "\\""); ` +
+    `  throw new Error("${tool}: object store \\"" + ${JSON.stringify(args.storeName)} + "\\" does not exist in db \\"" + ${JSON.stringify(args.dbName)} + "\\". Call idb_list_stores to see which stores it has.");` +
     `} ` +
     `var tx = db.transaction(${JSON.stringify(args.storeName)}, "readwrite"); ` +
     `var store = tx.objectStore(${JSON.stringify(args.storeName)}); ` +
@@ -266,7 +266,7 @@ export async function idbClear(
     `await new Promise(function (resolve, reject) { ` +
     `  tx.oncomplete = function () { resolve(undefined); }; ` +
     `  tx.onerror = function () { reject(tx.error); }; ` +
-    `  tx.onabort = function () { reject(tx.error || new Error("${tool}: transaction aborted")); }; ` +
+    `  tx.onabort = function () { reject(tx.error || new Error("${tool}: transaction aborted before it committed, so nothing was written. Retry the call.")); };` +
     `}); ` +
     `db.close(); ` +
     `return { ok: true, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, origin: location.origin }; })()`;

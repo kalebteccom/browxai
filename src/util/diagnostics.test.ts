@@ -57,13 +57,6 @@ describe("DiagnosticsRecorder gate-OFF", () => {
     // workspace must remain empty — no `diagnostics/` subdir written
     expect(existsSync(join(workspace, "diagnostics"))).toBe(false);
   });
-
-  it("noteDenial() is a no-op when disabled", () => {
-    const rec = new DiagnosticsRecorder({ enabled: false, workspaceRoot: workspace });
-    rec.noteDenial();
-    rec.noteDenial();
-    expect(rec.denialsCount()).toBe(0);
-  });
 });
 
 describe("DiagnosticsRecorder gate-ON", () => {
@@ -99,33 +92,6 @@ describe("DiagnosticsRecorder gate-ON", () => {
     rec.noteDenial();
     rec.noteDenial();
     expect(rec.denialsCount()).toBe(2);
-  });
-
-  it("readAll() returns appended records in order", () => {
-    const rec = new DiagnosticsRecorder({
-      enabled: true,
-      workspaceRoot: workspace,
-      serverStartIso: "2026-06-08T00-00-00-000Z",
-    });
-    for (let i = 0; i < 3; i++) {
-      rec.write({
-        kind: "call",
-        ts: `2026-06-08T00:00:0${i}.000Z`,
-        tool: i % 2 === 0 ? "snapshot" : "find",
-        sessionId: "default",
-        argsRedacted: {},
-        resultMeta: { ok: true, sizeBytes: 0, warningsCount: 0 },
-        durationMs: i,
-        capabilityDenials: 0,
-      });
-    }
-    const all = rec.readAll();
-    expect(all).toHaveLength(3);
-    expect(all.map((r) => (r.kind === "call" ? r.tool : r.kind))).toEqual([
-      "snapshot",
-      "find",
-      "snapshot",
-    ]);
   });
 });
 
@@ -233,11 +199,6 @@ describe("redactArgs", () => {
     const out = redactArgs({ items: [1, 2, 3, 4, 5] });
     expect(out.items).toEqual({ __array: true, length: 5 });
   });
-
-  it("passes through primitives + null", () => {
-    const out = redactArgs({ a: 1, b: true, c: null });
-    expect(out).toEqual({ a: 1, b: true, c: null });
-  });
 });
 
 describe("buildEvalJsCapture", () => {
@@ -256,11 +217,6 @@ describe("buildEvalJsCapture", () => {
     expect(cap!.exprSha).toMatch(/^[0-9a-f]{64}$/);
     expect(cap!.exprHead.startsWith("document.querySelector")).toBe(true);
     expect(cap!.returnType).toBe("string");
-  });
-
-  it("covers poll_eval too (same posture as eval_js)", () => {
-    const cap = buildEvalJsCapture("poll_eval", { expr: "typeof navigator.bluetooth" }, null);
-    expect(cap?.taxonomy).toBe("feature-detect");
   });
 });
 

@@ -120,14 +120,13 @@ export async function wirePluginRuntime(
           text: JSON.stringify(
             {
               ok: false,
-              error: `plugin tool "${toolName}" is disabled — its declared capability is not in the server's ACTIVE set`,
+              error: `plugin tool "${toolName}" is disabled: its capability "${cap}" is not enabled on this server`,
               requiredCapability: cap,
               activeCapabilities: [...caps.enabled],
               hint:
-                "Plugin-declared capabilities are gated the same way as core tools. Set " +
-                `BROWX_CAPABILITIES=${capabilitiesWith(cap)} ` +
-                "(that variable replaces the default set, so the defaults stay in the list) and RESTART the browxai server. " +
-                "A saved set_config({capabilities}) list can only narrow the start-time set.",
+                "Add the capability to BROWX_CAPABILITIES and restart the browxai server, e.g. " +
+                `BROWX_CAPABILITIES=${capabilitiesWith(cap)}. ` +
+                "`set_config` cannot enable it: a saved list can only narrow the capabilities the server started with.",
             },
             null,
             2,

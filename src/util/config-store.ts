@@ -365,7 +365,7 @@ export class ConfigStore {
   private assertWritable(): void {
     if (this.readonly)
       throw new Error(
-        "config-readonly: BROWX_CONFIG_READONLY is set; the config store refuses writes",
+        "config-readonly: BROWX_CONFIG_READONLY is set, so the config store refuses writes. Unset it and restart the server to change saved config.",
       );
   }
 

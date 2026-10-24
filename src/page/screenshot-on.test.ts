@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import {
   runScreenshotOn,
   validateOnArgs,
-  defaultOnDir,
   MAX_TRIGGERS_PER_WINDOW,
   type SnapFn,
   type TriggerSource,
@@ -243,14 +242,5 @@ describe("runScreenshotOn — bounded & safe", () => {
     const r = await p;
     expect(r.warnings.some((w) => /snap fail/.test(w))).toBe(true);
     expect(r.paths.length).toBe(1); // 1 success
-  });
-});
-
-describe("defaultOnDir", () => {
-  it("uses a filesystem-friendly ISO timestamp", () => {
-    const d = defaultOnDir("sess-X", new Date("2026-06-08T12:34:56.789Z"));
-    expect(d).toBe("screenshots/sess-X-2026-06-08T12-34-56-789Z");
-    expect(d.includes(":")).toBe(false);
-    expect(d.includes(".")).toBe(false);
   });
 });

@@ -161,7 +161,7 @@ describe("composeSnapshot — stats.tier names the tier that carried the snapsho
     expect(out.stats.tier).toBe("dom-walk");
   });
 
-  it("reports the same tier on the second snapshot of an unchanged page", async () => {
+  it("reports the same tier and provenance on the second snapshot of an unchanged page", async () => {
     // The registry is per-session and remembers every snapshot, so keying
     // `domWalkNew` off it made the second snapshot of an identical page report
     // `domWalkNew: 0` and `tier: "empty"` while the DOM walk was still carrying
@@ -175,16 +175,8 @@ describe("composeSnapshot — stats.tier names the tier that carried the snapsho
     expect(second.stats.tier).toBe("dom-walk");
     expect(second.stats.domWalkNew).toBe(1);
     expect(second.stats.domWalkCombined).toBe(0);
-  });
-
-  it("keeps a DOM-walk node marked [from-dom] across re-snapshots", async () => {
-    // Same reading of the registry flipped the provenance marker: identical
-    // page, and the second snapshot said `[from-both]` — "both tiers found
-    // this" — about a node only the DOM walk ever saw.
-    const refs = new RefRegistry();
-    const cdp = domWalkOnlyCdp();
-    const first = await composeSnapshot(cdp, refs, ["data-testid"]);
-    const second = await composeSnapshot(cdp, refs, ["data-testid"]);
+    // The same reading of the registry flipped the provenance marker: the second
+    // snapshot said `[from-both]` about a node only the DOM walk ever saw.
     expect(serialise(first.tree!)).toContain("[from-dom]");
     expect(serialise(second.tree!)).toBe(serialise(first.tree!));
   });

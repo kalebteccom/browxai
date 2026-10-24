@@ -214,7 +214,11 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
             {
               type: "text" as const,
               text: JSON.stringify(
-                { found: false, error: "inspect requires ref/selector/named, not coords" },
+                {
+                  found: false,
+                  error:
+                    "inspect requires a ref, selector or named ref. For a point on the page, use point_probe.",
+                },
                 null,
                 2,
               ),

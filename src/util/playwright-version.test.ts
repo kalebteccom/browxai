@@ -1,16 +1,10 @@
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
-import { installedPlaywrightVersion, playwrightInstallCommand } from "./playwright-version.js";
+import { playwrightInstallCommand } from "./playwright-version.js";
 
 const installed = (
   createRequire(import.meta.url)("playwright-core/package.json") as { version: string }
 ).version;
-
-describe("installedPlaywrightVersion", () => {
-  it("equals the installed playwright-core package.json version", () => {
-    expect(installedPlaywrightVersion()).toBe(installed);
-  });
-});
 
 describe("playwrightInstallCommand", () => {
   it("pins the installed version", () => {

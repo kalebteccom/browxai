@@ -44,15 +44,9 @@ describe("profileAttachedBrowser — which app is on the other end", () => {
     expect(profile.engine).toBe("electron");
     expect(profile.detail.electron).toBe("39.8.8");
     expect(profile.detail.app).toBe("Code/1.122.1");
-  });
-
-  it("declares Electron cannot create targets, so the pool refuses instead of calling", async () => {
-    const profile = await profileAttachedBrowser(fakeBrowser({ userAgent: VSCODE_UA }));
+    // Electron cannot create targets, so the pool refuses instead of calling.
     expect(profile.canCreateTargets).toBe(false);
-  });
-
-  it("warns about the live logged-in app and the EDR signature, naming the app", async () => {
-    const profile = await profileAttachedBrowser(fakeBrowser({ userAgent: VSCODE_UA }));
+    // The warning names the app, the live logged-in session and the EDR signature.
     expect(profile.warning).toContain("Code/1.122.1");
     expect(profile.warning).toContain("T1539");
     expect(profile.warning).toMatch(/navigate. is REFUSED/);

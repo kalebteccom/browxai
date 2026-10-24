@@ -89,7 +89,10 @@ export function registerFormsRefsTools(
             {
               type: "text",
               text: JSON.stringify(
-                { ok: false, error: `ref "${ref}" not in the registry` },
+                {
+                  ok: false,
+                  error: `unknown ref "${ref}". Refs reset when the page changes: call snapshot() or find() for fresh ones.`,
+                },
                 null,
                 2,
               ),

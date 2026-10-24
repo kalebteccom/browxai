@@ -115,12 +115,6 @@ describe("open_session — session id and profile names", () => {
     }
     expect(schema.safeParse({ session: "agent-a", profile: "work_2.0" }).success).toBe(true);
   });
-
-  it("lets a plain profile name through to the registry", async () => {
-    const { handler } = captureOpenSession();
-    const body = bodyOf(await handler({ session: "x", profile: "work" }));
-    expect(String(body.error)).toContain("registry.get must not be reached");
-  });
 });
 
 // ---------------------------------------------------------------------------

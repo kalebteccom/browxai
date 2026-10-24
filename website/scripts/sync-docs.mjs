@@ -10,16 +10,34 @@
 // source in docs/, never the generated file. The agent-only page
 // (agent-guidance) is NOT generated here - it is served only as plaintext .md.
 import { writeFileSync, mkdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { htmlPages, transformBody, q } from "./doc-pipeline.mjs";
+import { htmlPages, transformBody, q, SRC } from "./doc-pipeline.mjs";
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "content", "docs");
+
+// The generated files are git-ignored, so Starlight finds no git date for them.
+// Use the last commit that touched the source docs/*.md instead. An empty
+// answer (shallow clone, untracked file) leaves the date out.
+const sourceDate = (src) => {
+  try {
+    const iso = execFileSync("git", ["log", "-1", "--format=%cI", "--", join(SRC, src)], {
+      cwd: SRC,
+      encoding: "utf8",
+    }).trim();
+    return iso ? iso.slice(0, 10) : "";
+  } catch {
+    return "";
+  }
+};
 
 for (const p of htmlPages) {
   const body = transformBody(p);
   const banner = `<!-- AUTO-GENERATED from docs/${p.src} by website/scripts/sync-docs.mjs. Edit the source, not this file. -->`;
-  const fm = `---\ntitle: ${q(p.title)}\ndescription: ${q(p.description)}\n---\n\n${banner}\n\n`;
+  const date = sourceDate(p.src);
+  const updated = date ? `lastUpdated: ${date}\n` : "";
+  const fm = `---\ntitle: ${q(p.title)}\ndescription: ${q(p.description)}\n${updated}---\n\n${banner}\n\n`;
   const dest = join(OUT, p.out);
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, fm + body);

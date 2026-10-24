@@ -158,6 +158,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log.error("fatal", { error: err instanceof Error ? err.message : String(err) });
+  log.error("browxai could not start. Run `browxai doctor` to check this machine.", {
+    error: err instanceof Error ? err.message : String(err),
+  });
   process.exit(1);
 });

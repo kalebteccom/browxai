@@ -36,7 +36,7 @@ no class hierarchy. The minimum viable plugin is one file plus a
   "version": "0.1.0",
   "browxai": {
     "apiVersion": "1.0.0",
-    "browxaiVersion": ">=0.13.0",
+    "browxaiVersion": ">=0.14.0",
     "namespace": "hello",
     "register": "dist/index.js",
     "capabilities": [],

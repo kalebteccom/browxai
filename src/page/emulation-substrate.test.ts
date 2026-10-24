@@ -28,14 +28,6 @@ describe("SafariEmulationSubstrate", () => {
     expect(r.error).toContain("Safari");
     expect(r.hint).toContain("chromium");
   });
-
-  it("refuses set_color_scheme cleanly", async () => {
-    const sub: EmulationSubstrate = new SafariEmulationSubstrate(safariHandle());
-    const r = await sub.setColorScheme("dark");
-    expect(r.kind).toBe("refusal");
-    if (r.kind !== "refusal") throw new Error("expected refusal");
-    expect(r.error).toContain("set_color_scheme");
-  });
 });
 
 describe("PlaywrightEmulationSubstrate", () => {

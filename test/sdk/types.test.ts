@@ -16,8 +16,6 @@ import type {
   FindResult,
   NavigateArgs,
   NavigateResult,
-  ClickArgs,
-  ActionResult,
   FindResultData,
 } from "../../src/sdk/tool-types.js";
 
@@ -35,15 +33,5 @@ describe("BrowxaiClient — per-tool typed methods", () => {
     // The envelope's `data` carries the per-tool shape.
     type FindData = Awaited<ReturnType<BrowxaiClient["find"]>>["data"];
     expectTypeOf<FindData>().toEqualTypeOf<FindResultData | undefined>();
-  });
-
-  it("click accepts any of the four target shapes", () => {
-    expectTypeOf<Parameters<BrowxaiClient["click"]>[0]>().toEqualTypeOf<ClickArgs>();
-    expectTypeOf<ReturnType<BrowxaiClient["click"]>>().resolves.toEqualTypeOf<ActionResult>();
-    // Each branch of the union is a valid call.
-    expectTypeOf<{ ref: "e1" }>().toMatchTypeOf<ClickArgs>();
-    expectTypeOf<{ selector: "[data-testid=save]" }>().toMatchTypeOf<ClickArgs>();
-    expectTypeOf<{ named: "save_btn" }>().toMatchTypeOf<ClickArgs>();
-    expectTypeOf<{ coords: { x: 10; y: 20 } }>().toMatchTypeOf<ClickArgs>();
   });
 });

@@ -238,7 +238,7 @@ export function registerReadObserveCaptureTools(
       const g = gateCheck(
         "screenshot",
         args.path !== undefined ? ["file-io"] : undefined,
-        "screenshot: `path` mode writes to disk and needs the `file-io` capability. Drop the `path` arg to get the screenshot inline as base64, which needs no extra capability.",
+        "screenshot: `path` writes a file, which needs the `file-io` capability. Add `file-io` to BROWX_CAPABILITIES and restart the server, or drop `path` to get the image inline, which needs no extra capability.",
       );
       if (g) return g;
       const e = await entryFor(args.session);

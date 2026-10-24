@@ -70,7 +70,7 @@ describe("replay capability gate", () => {
       // Compound refusal rides the same shape as the primary gate — the
       // classifier keys on `requiredCapability`, not on error-string content.
       expect(denied.requiredCapability).toBe("replay");
-      expect(denied.error).toMatch(/capability is not in the server's ACTIVE set/);
+      expect(denied.error).toMatch(/capability "replay" is not enabled on this server/);
     },
     KEYSTONE_TIMEOUT,
   );

@@ -39,8 +39,10 @@ export default defineConfig({
       },
       components: {
         Footer: "./src/components/Footer.astro",
+        Head: "./src/components/Head.astro",
         Sidebar: "./src/components/Sidebar.astro",
       },
+      routeMiddleware: "./src/route-data.ts",
       favicon: "/favicon.svg",
       head: [
         { tag: "meta", attrs: { property: "og:image", content: "https://browxai.com/og.png" } },

@@ -172,9 +172,12 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
           liveConnections.delete(conn);
         });
       } catch (err) {
-        log.error("browxai serve: connection setup failed", {
-          error: err instanceof Error ? err.message : String(err),
-        });
+        log.error(
+          "browxai serve: could not set up this client connection, so it was closed. The server is still running.",
+          {
+            error: err instanceof Error ? err.message : String(err),
+          },
+        );
         socket.destroy();
       }
     })();

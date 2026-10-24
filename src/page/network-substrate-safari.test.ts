@@ -1,25 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { networkSubstrateFor } from "./network-substrate-select.js";
 import { SafariNoopNetworkSubstrate } from "./network-substrate.js";
 
 // Safari has no network substrate at all (no CDP tap, no BiDi network domain).
-// The selector returns the empty no-op without ever touching page(), and the
-// no-op reports zero traffic + a structured network_body refusal.
+// The no-op reports zero traffic + a structured network_body refusal. (The
+// selector choosing it without touching page() is asserted in
+// substrate-select-declaration.test.ts.)
 
 describe("Safari network substrate (no-op, gated)", () => {
-  it("selector returns the no-op for safari without calling page()", () => {
-    let pageCalled = false;
-    const sub = networkSubstrateFor({
-      engine: "safari",
-      page: () => {
-        pageCalled = true;
-        throw new Error("safari-no-playwright-page");
-      },
-    });
-    expect(sub).toBeInstanceOf(SafariNoopNetworkSubstrate);
-    expect(pageCalled).toBe(false);
-  });
-
   it("reports empty rings and a zero-traffic action tap", async () => {
     const sub = new SafariNoopNetworkSubstrate();
     await sub.attach();

@@ -81,6 +81,7 @@ export {
   SafariRemoteAutomationDisabledError,
 } from "./adapters/safaridriver-hybrid.js";
 export type { SafariSessionHandle, SafariAdapterDeps } from "./adapters/safaridriver-hybrid.js";
+export { assertSafariAvailable, SAFARIDRIVER_PATH } from "./adapters/safari/launch.js";
 export {
   CHROME_ANDROID_SOCKET,
   AdbNotInstalledError,

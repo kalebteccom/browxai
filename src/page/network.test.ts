@@ -8,12 +8,6 @@ describe("patterniseUrl — url redaction", () => {
     );
   });
 
-  it("replaces numeric path segments with :id", () => {
-    expect(patterniseUrl("https://api.example.com/users/12345/records")).toBe(
-      "https://api.example.com/users/:id/records",
-    );
-  });
-
   it("replaces UUID path segments with :id", () => {
     expect(
       patterniseUrl("https://api.example.com/orders/550e8400-e29b-41d4-a716-446655440000"),

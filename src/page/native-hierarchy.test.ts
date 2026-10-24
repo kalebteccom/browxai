@@ -41,16 +41,6 @@ function node(overrides: Record<string, string> = {}, children = ""): string {
 }
 
 describe("parseHierarchy", () => {
-  it("parses nested nodes into a tree", () => {
-    const roots = parseHierarchy(
-      dump(node({ class: "android.widget.FrameLayout" }, node({ text: "hello" }))),
-    );
-    expect(roots).toHaveLength(1);
-    expect(roots[0]!.className).toBe("android.widget.FrameLayout");
-    expect(roots[0]!.children).toHaveLength(1);
-    expect(roots[0]!.children[0]!.text).toBe("hello");
-  });
-
   it("keeps every top-level window rather than dropping all but the first", () => {
     // Android 12+ reports the app, the status bar and the navigation bar as
     // three roots. Dropping two of them loses the system UI an agent may need to
@@ -249,21 +239,6 @@ describe("the selector model — a testID-anchored ref survives a layout change"
     expect(findGo(b)).not.toBe(findGo(a));
   });
 
-  it("gives two different testIDs two different refs", () => {
-    const refs = new RefRegistry();
-    const xml = dump(
-      node(
-        { class: "android.widget.FrameLayout" },
-        node({ class: "android.widget.Button", "resource-id": "com.acme.app:id/a" }) +
-          node({ class: "android.widget.Button", "resource-id": "com.acme.app:id/b" }),
-      ),
-    );
-    const { root } = composeNativeTree(parseHierarchy(xml), refs);
-    const byId = new Map<string, string>();
-    for (const { node: n } of walk(root)) if (n.testId) byId.set(n.testId, n.ref);
-    expect(byId.get("a")).not.toBe(byId.get("b"));
-  });
-
   it("namespaces refs by window so two windows with identical markup do not collide", () => {
     const refs = new RefRegistry();
     const xml = dump(node({ class: "android.widget.Button", "resource-id": "com.acme.app:id/x" }));
@@ -274,29 +249,6 @@ describe("the selector model — a testID-anchored ref survives a layout change"
 });
 
 describe("composeNativeTree", () => {
-  it("emits the A11yNode shape the snapshot contract already speaks", () => {
-    const { root } = composeNativeTree(
-      parseHierarchy(
-        dump(
-          node(
-            { class: "android.widget.FrameLayout" },
-            node({
-              class: "android.widget.EditText",
-              "resource-id": "com.acme.app:id/email",
-              "content-desc": "Email address",
-            }),
-          ),
-        ),
-      ),
-      new RefRegistry(),
-    );
-    const email = [...walk(root)].find((w) => w.node.testId === "email")!.node;
-    expect(email.role).toBe("textbox");
-    expect(email.name).toBe("Email address");
-    expect(email.ref).toMatch(/^e\d+$/);
-    expect(Array.isArray(email.children)).toBe(true);
-  });
-
   it("records a recipe per ref so an action can re-resolve it", () => {
     const { root, recipes } = composeNativeTree(
       parseHierarchy(

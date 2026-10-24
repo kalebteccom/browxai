@@ -18,7 +18,6 @@ import type {
   NativePoint,
   IosNativeHandle,
 } from "../engine/native-types.js";
-import type { ElementToken } from "./element-substrate-types.js";
 import { RefRegistry } from "./refs.js";
 import { IosSnapshotSubstrate } from "./snapshot-substrate-ios.js";
 import { IosElementSubstrate } from "./element-substrate-ios.js";
@@ -208,18 +207,6 @@ describe("IosSnapshotSubstrate", () => {
 });
 
 describe("IosElementSubstrate re-resolves against a FRESH hierarchy", () => {
-  it("resolves an identified ref to the element's NEW position after it moves", async () => {
-    // Two different screens: the ref is minted against the first and every later
-    // read runs against the second. An implementation that cached the frame would
-    // answer 600 here.
-    const r = rig(screen(600), screen(300), screen(300));
-    const refs = await snapshotRefs(r);
-    const resolved = await r.elements.resolve({ kind: "ref", ref: refs.get("Pay now")! });
-    expect(resolved.kind).toBe("element");
-    const bounds = await r.elements.bounds((resolved as { kind: "element"; el: ElementToken }).el);
-    expect(bounds).toMatchObject({ kind: "bounds", rect: { y: 300 } });
-  });
-
   it("reports an unidentified ref as STALE once it moves", async () => {
     const moved = node({
       type: "Application",

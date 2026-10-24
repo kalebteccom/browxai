@@ -41,7 +41,10 @@ export async function openStdioChildTransport(opts: StdioChildOptions = {}): Pro
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<BrowxaiResult> => {
-    if (closed) throw new Error(`browxai-sdk: dispatch on a closed transport (tool=${toolName})`);
+    if (closed)
+      throw new Error(
+        `browxai-sdk: cannot call ${toolName}, the transport is closed. Create a new client.`,
+      );
     const res = await client.callTool({ name: toolName, arguments: args });
     const content = (res.content as BrowxaiContentItem[]) ?? [];
     return parseEnvelope(content);

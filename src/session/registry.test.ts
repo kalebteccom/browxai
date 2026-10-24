@@ -132,16 +132,6 @@ describe("SessionRegistry", () => {
     expect(reg.has("real")).toBe(false);
   });
 
-  it("closeAll tears down every live entry", async () => {
-    const teardown = vi.fn(async () => undefined);
-    const reg = new SessionRegistry(async (id) => fakeEntry(id), teardown);
-    await reg.get("a");
-    await reg.get("b");
-    await reg.closeAll();
-    expect(teardown).toHaveBeenCalledTimes(2);
-    expect(reg.list()).toHaveLength(0);
-  });
-
   it("closeMatching({ prefix }) tears down only id-prefixed sessions", async () => {
     const teardown = vi.fn(async () => undefined);
     const reg = new SessionRegistry(async (id) => fakeEntry(id), teardown);

@@ -35,7 +35,9 @@ function assertLoopback(endpoint: string): URL {
   try {
     url = new URL(endpoint);
   } catch {
-    throw new Error(`BROWX_ATTACH_CDP: invalid URL "${endpoint}"`);
+    throw new Error(
+      `BROWX_ATTACH_CDP: invalid URL "${endpoint}". Use a loopback endpoint such as http://127.0.0.1:9222.`,
+    );
   }
   if (!LOOPBACK_HOSTS.has(url.hostname)) {
     throw new Error(
@@ -206,8 +208,8 @@ export async function openAndroidByobSession(opts: SessionOptions = {}): Promise
 export function assertByobAttach(opts: SessionOptions & { attachCdp?: string }): string {
   if (!opts.attachCdp) {
     throw new Error(
-      "session.byob: the CDP-attach lane requires BROWX_ATTACH_CDP (a loopback CDP endpoint). " +
-        'For the android engine use browserType:"android" (endpoint discovered over adb).',
+      "Attached sessions need BROWX_ATTACH_CDP set to a loopback CDP endpoint, such as http://127.0.0.1:9222. " +
+        'For Chrome on Android use browserType:"android" instead (it finds the endpoint over adb).',
     );
   }
   return assertLoopback(opts.attachCdp).toString();

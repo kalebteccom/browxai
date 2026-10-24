@@ -56,7 +56,9 @@ function snapshotKey(workspaceRoot: string): Buffer {
   }
   const key = readFileSync(p);
   if (key.length < 32)
-    throw new Error("profile snapshot key is corrupt; remove it and re-snapshot");
+    throw new Error(
+      `the profile snapshot key (${SNAPSHOT_KEY_FILE} in the workspace) is corrupt. Delete it and take the snapshot again. Older snapshots cannot be restored after that.`,
+    );
   return key;
 }
 
@@ -85,7 +87,10 @@ export function treeDigest(dir: string, maxEntries = MAX_ENTRIES): string {
     for (const name of readdirSync(join(dir, rel)).sort()) {
       const r = rel ? `${rel}/${name}` : name;
       if (r === MANIFEST) continue;
-      if (entries.length >= maxEntries) throw new Error("profile snapshot has too many entries");
+      if (entries.length >= maxEntries)
+        throw new Error(
+          `profile snapshot has too many entries (limit ${maxEntries}). Remove files from the profile and try again.`,
+        );
       entries.push(r);
       const st = lstatSync(join(dir, r));
       if (st.isSymbolicLink()) h.update(`L\0${r}\0${readlinkSync(join(dir, r))}\0`);
@@ -95,7 +100,10 @@ export function treeDigest(dir: string, maxEntries = MAX_ENTRIES): string {
       } else if (st.isFile()) {
         h.update(`F\0${r}\0${st.size}\0`);
         hashFile(h, join(dir, r));
-      } else throw new Error(`profile snapshot holds an unsupported entry: ${r}`);
+      } else
+        throw new Error(
+          `profile snapshot holds an unsupported entry: "${r}" is not a file, directory or symlink. Remove it from the profile and try again.`,
+        );
     }
   };
   walk("");
@@ -222,9 +230,13 @@ function replaceWithSnapshot(src: string, dest: string, digest: string, snapshot
   if (existsSync(dest) || isLink(dest)) {
     const st = lstatSync(dest);
     if (st.isSymbolicLink())
-      throw new Error(`profile_restore: the profile directory "${dest}" is a symlink; refusing`);
+      throw new Error(
+        `profile_restore: the profile directory "${dest}" is a symlink, so nothing was restored. Remove the link or restore into another profile.`,
+      );
     if (!st.isDirectory())
-      throw new Error(`profile_restore: "${dest}" exists and is not a directory; refusing`);
+      throw new Error(
+        `profile_restore: "${dest}" exists and is not a directory, so nothing was restored. Remove it or restore into another profile.`,
+      );
     mode = st.mode & 0o777;
   }
   const tag = `${process.pid}-${Date.now().toString(36)}`;
@@ -240,7 +252,7 @@ function replaceWithSnapshot(src: string, dest: string, digest: string, snapshot
     });
     if (treeDigest(tmp) !== digest)
       throw new Error(
-        `profile_restore: snapshot "${snapshot}" changed while it was being restored; refusing`,
+        `profile_restore: snapshot "${snapshot}" changed while it was being restored, so nothing was replaced. Retry once nothing else is writing to it.`,
       );
     chmodSync(tmp, mode);
   } catch (e) {

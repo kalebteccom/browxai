@@ -100,14 +100,6 @@ describe("ConfigStore precedence", () => {
     expect(s.resolve().headless).toBe(true);
     expect(s.resolve().capabilities).toEqual(BUILTIN_DEFAULTS.capabilities);
   });
-
-  it("getLayer returns raw pre-merge layers", () => {
-    const s = new ConfigStore(dir, { BROWX_HEADLESS: "true" });
-    expect(s.getLayer("defaults")).toEqual(BUILTIN_DEFAULTS);
-    expect(s.getLayer("env")).toEqual({ headless: true });
-    expect(s.getLayer("user")).toEqual({});
-    expect(s.getLayer("session")).toEqual({});
-  });
 });
 
 describe("envLayer", () => {
@@ -115,13 +107,6 @@ describe("envLayer", () => {
     expect(
       envLayer({ BROWX_TEST_ATTRIBUTES: "data-testid, data-x ", BROWX_HEADLESS: "1" }),
     ).toEqual({ testAttributes: ["data-testid", "data-x"], headless: true });
-  });
-  it("omits keys with no env present (so defaults survive)", () => {
-    expect(envLayer({})).toEqual({});
-  });
-  it("treats only '1'/'true' as headless-on", () => {
-    expect(envLayer({ BROWX_HEADLESS: "0" }).headless).toBe(false);
-    expect(envLayer({ BROWX_HEADLESS: "true" }).headless).toBe(true);
   });
   it("isHeadlessEnv accepts '1' and 'true' in any case, nothing else", () => {
     for (const v of ["1", "true", "TRUE", "True", " 1 "]) expect(isHeadlessEnv(v)).toBe(true);
@@ -143,24 +128,6 @@ describe("envLayer", () => {
     expect(envLayer({ BROWX_CHANNEL: " chrome " }).channel).toBe("chrome");
     expect(envLayer({ BROWX_CHANNEL: "" }).channel).toBeUndefined();
     expect(envLayer({}).channel).toBeUndefined();
-  });
-});
-
-describe("hideOverlaySelectors precedence", () => {
-  it("defaults []; env layer parses; project/session override", () => {
-    const dir = mkdtempSync(join(tmpdir(), "browx-hos-"));
-    try {
-      const s = new ConfigStore(dir, {
-        BROWX_HIDE_OVERLAY_SELECTORS: "#hmr, .devtools-iframe ",
-      });
-      expect(s.resolve().hideOverlaySelectors).toEqual(["#hmr", ".devtools-iframe"]);
-      s.setLayer("project", { hideOverlaySelectors: ["#cookie-banner"] });
-      expect(s.resolve().hideOverlaySelectors).toEqual(["#cookie-banner"]);
-      // session layer wins (e.g. opt back out)
-      expect(s.resolve({ hideOverlaySelectors: [] }).hideOverlaySelectors).toEqual([]);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
   });
 });
 

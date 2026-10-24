@@ -99,7 +99,9 @@ export function readStorageStateFile(
 ): StorageStateBlob {
   const resolved = resolveWorkspaceReadPath(workspaceRoot, p, tool);
   if (!existsSync(resolved)) {
-    throw new Error(`${tool}: storage-state file not found at "${resolved}"`);
+    throw new Error(
+      `${tool}: storage-state file not found at "${resolved}". Check the path, or write one first with dump_storage_state({ path }).`,
+    );
   }
   const raw = readFileSync(resolved, "utf8");
   let parsed: unknown;
@@ -117,7 +119,7 @@ export function readStorageStateFile(
 function validateStorageStateShape(value: unknown, tool: string): void {
   if (!value || typeof value !== "object") {
     throw new Error(
-      `${tool}: storage-state must be an object with \`cookies\` and \`origins\` arrays`,
+      `${tool}: storage-state must be an object with \`cookies\` and \`origins\` arrays, the shape dump_storage_state writes`,
     );
   }
   const v = value as Record<string, unknown>;
@@ -244,7 +246,9 @@ export async function cookiesDelete(
       // delete filter of the raw pathname "/storage" would match nothing.
       filter.path = filter.path ?? urlCookiePath(u.pathname);
     } catch {
-      throw new Error(`cookies_delete: invalid url "${args.url}"`);
+      throw new Error(
+        `cookies_delete: invalid url "${args.url}". Pass a full URL such as "https://app.example.com/".`,
+      );
     }
   }
   await context.clearCookies(filter);
@@ -413,7 +417,7 @@ export function authLoad(workspaceRoot: string, name: string): StorageStateBlob 
     parsed = JSON.parse(raw);
   } catch (err) {
     throw new Error(
-      `auth_load: named state "${name}" is corrupt JSON (${err instanceof Error ? err.message : String(err)})`,
+      `auth_load: named state "${name}" is corrupt JSON (${err instanceof Error ? err.message : String(err)}). Save it again with auth_save, or remove it with auth_delete.`,
     );
   }
   validateStorageStateShape(parsed, "auth_load");

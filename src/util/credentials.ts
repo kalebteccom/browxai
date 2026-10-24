@@ -65,7 +65,8 @@ export function applyCredentialToRegistry(
     return {
       ok: false,
       provider: result.provider,
-      error: "provider returned incomplete credential (missing username or password)",
+      error:
+        "provider returned an incomplete credential (missing username or password). Check that the vault item has both fields.",
     };
   }
   if (!registry) {
@@ -98,7 +99,7 @@ export function applyCredentialToRegistry(
     return {
       ok: false,
       provider: result.provider,
-      error: `could not register password into secrets registry: ${e instanceof Error ? e.message : String(e)}`,
+      error: `could not register the password as a secret, which is needed to mask it: ${e instanceof Error ? e.message : String(e)}`,
     };
   }
   return {

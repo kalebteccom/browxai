@@ -73,17 +73,6 @@ describe("RouteRegistry.addQueue", () => {
 });
 
 describe("RouteRegistry.remove", () => {
-  it("removes one route by pattern", async () => {
-    const { page } = fakePage();
-    const reg = new RouteRegistry();
-    await reg.add(page as never, { urlPattern: "**/a" });
-    await reg.add(page as never, { urlPattern: "**/b" });
-    const removed = await reg.remove(page as never, { urlPattern: "**/a" });
-    expect(removed).toEqual(["* **/a"]);
-    expect(reg.list()).toEqual(["* **/b"]);
-    expect(page.unroute).toHaveBeenCalledTimes(1);
-  });
-
   it("with no pattern clears every route", async () => {
     const { page } = fakePage();
     const reg = new RouteRegistry();

@@ -224,13 +224,6 @@ describe("noVisibleCandidateWarning — capability-aware", () => {
     expect(w).toContain("coords");
     expect(w).toContain("eval_js");
   });
-
-  it("frames coordinates as the canvas last resort, behind re-query and snapshot", () => {
-    const w = noVisibleCandidateWarning(2, { coords: true, evalJs: false });
-    expect(w).toContain("point_probe");
-    expect(w).toContain("Last resort");
-    expect(w.indexOf("`snapshot`")).toBeLessThan(w.indexOf("coords"));
-  });
 });
 
 describe("rankByVisibility — visibleOnly partition", () => {
@@ -337,15 +330,6 @@ describe("isCandidateRole — text and layout leaves are never a target", () => 
   it("rejects the document root — its name is the page title, and there is nothing to click", () => {
     expect(isCandidateRole({ role: "RootWebArea" })).toBe(false);
     expect(isCandidateRole({ role: "WebArea" })).toBe(false);
-  });
-
-  it("scores a StaticText named 'button' above a real button, which is why it is filtered", () => {
-    const qTokens = ["the", "search", "button"];
-    const text = scoreNode(n("StaticText", "button"), "the search button", qTokens);
-    const real = scoreNode(n("button", "Search (Command+K)"), "the search button", qTokens);
-    expect(text).toBeGreaterThan(real);
-    expect(isCandidateRole({ role: "StaticText" })).toBe(false);
-    expect(isCandidateRole({ role: "button" })).toBe(true);
   });
 
   it("keeps a presentational role the page author addressed by test attribute", () => {

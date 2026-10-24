@@ -475,6 +475,45 @@ describe("open_session reopening an ask-human session name", () => {
   );
 
   it(
+    "refuses a lazily created session on the held profile with the same envelope",
+    async () => {
+      const { call, callText } = await startWithText(DEFAULT_CAPS);
+      // No `profile`: the held session ran on the workspace's default profile,
+      // which a lazily created session of another name launches on too.
+      const opened = await call<Refusal>("open_session", {
+        session: "ks-lazy-held",
+        mode: "persistent",
+        permissionPolicy: "ask-human",
+      });
+      expect(opened.ok).not.toBe(false);
+      await call("close_session", { session: "ks-lazy-held" });
+
+      const viaOpen = await call<Refusal>("open_session", {
+        session: "ks-lazy-open",
+        mode: "persistent",
+      });
+      expect(viaOpen.requiredCapability).toBe("human-gate-override");
+
+      const lazy = JSON.parse(await callText("snapshot", { session: "ks-lazy-thief" })) as Refusal;
+      expect(lazy.ok).toBe(false);
+      expect(lazy.requiredCapability).toBe("human-gate-override");
+      expect(lazy.error).toBe(viaOpen.error);
+      expect(lazy.reason).toMatch(/profile/);
+      expect(lazy.reason).toMatch(/off "ask-human"/);
+
+      // The batch path leaves with the same envelope.
+      const batched = await call<{ results: Array<{ ok: boolean }> }>("batch", {
+        calls: [{ tool: "snapshot", args: { session: "ks-lazy-batch" } }],
+      });
+      expect(batched.results[0]!.ok).toBe(false);
+
+      const listed = await call<{ sessions: Array<{ id: string }> }>("list_sessions", {});
+      expect(listed.sessions.map((s) => s.id)).toEqual([]);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
     "lets another name use the held profile when the operator enabled human-gate-override",
     async () => {
       const call = await start(`${DEFAULT_CAPS},human-gate-override`);

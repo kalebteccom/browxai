@@ -79,9 +79,9 @@ function assertEngineGateBootstrapped(): void {
   if (DEEP_TOOLS_SET.size > 0 || deepToolsCollecting) return;
   throw new Error(
     "browxai engine gate read before the tool-metadata bootstrap ran: the derived " +
-      "DEEP_TOOLS set is empty and no collector was installed. Refusing to fail OPEN " +
-      "(which would let every CDP-deep tool run on a non-deep engine). Import the package " +
-      'entry ("browxai") or call createServer before reading the engine gate. (RFC 0004 P2 / D1.)',
+      "DEEP_TOOLS set is empty and no collector was installed. Refusing to continue, " +
+      "because an empty set would let every CDP-deep tool run on an engine without CDP. Import the package " +
+      'entry ("browxai") or call createServer before reading the engine gate.',
   );
 }
 
@@ -152,7 +152,7 @@ const TOOL_REASON: Readonly<Record<string, string>> = {
 const GENERIC_REASON =
   "This tool needs the raw-CDP escape hatch (perf / coverage / heap / CPU+network " +
   "throttle / SW interception / virtual clock / extensions / CDP input dispatch), which " +
-  "exists only on chromium. These tools are gated, not ported, per engine.";
+  "exists only on chromium, so other engines refuse it.";
 
 /** The structured refusal envelope an engine-gated tool returns. Mirrors
  *  `assertPdfSupported`'s `{error, hint} | null` shape so handlers splice it in

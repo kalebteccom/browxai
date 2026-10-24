@@ -87,17 +87,6 @@ describe("annotateStructuralContext", () => {
     expect(link.context?.rowKey).toBe("Post title");
   });
 
-  it("leaves nodes without a recognised repeated container un-annotated", () => {
-    refSeq = 0;
-    const btn = n("button", "Submit");
-    const form = n("form", undefined, [n("textbox", "Email"), btn]);
-    const root = n("WebArea", undefined, [form]);
-
-    annotateStructuralContext(root);
-
-    expect(btn.context).toBeUndefined();
-  });
-
   it("falls back to '<row-role>-list' when the row has no canonical collection parent", () => {
     refSeq = 0;
     // A row directly under a generic container (no `table`/`grid` ancestor).

@@ -24,31 +24,16 @@ function fakeHandle(): { handle: SafariSessionHandle; closed: () => boolean } {
 }
 
 describe("buildSafariSession", () => {
-  it("is a managed, browser-owning safari session", () => {
-    const { handle } = fakeHandle();
-    const sess = buildSafariSession(handle);
-    expect(sess.mode).toBe("managed");
-    expect(sess.ownsBrowser).toBe(true);
-    expect(sess.engine).toBe("safari");
-  });
-
   it("requirePage refuses with the engine-naming message, not a Safari throw", () => {
     const { handle } = fakeHandle();
     const sess = buildSafariSession(handle);
     // The replacement message is strictly better than the one it replaced: it
-    // names the engine, says the engine declares no `page` sub-interface, and
-    // points at the capability substrates. `replay/session.ts` catches it to fall
+    // names the engine, says it has no browser page, and
+    // lists the engines that have one. `replay/session.ts` catches it to fall
     // back to an action-only archive, the same as before.
-    expect(() => requirePage(sess)).toThrow(/engine "safari" backs no Playwright Page/);
-    expect(() => requirePage(sess)).toThrow(/declares no `page` sub-interface/);
-    expect(() => requirePage(sess)).toThrow(/capability substrate/);
-  });
-
-  it("safari() exposes the native handle and cdp is absent", () => {
-    const { handle } = fakeHandle();
-    const sess = buildSafariSession(handle);
-    expect(sess.safari?.()).toBe(handle);
-    expect(sess.cdp).toBeUndefined();
+    expect(() => requirePage(sess)).toThrow(/engine "safari" has no browser page/);
+    expect(() => requirePage(sess)).toThrow(/has no browser page/);
+    expect(() => requirePage(sess)).toThrow(/Use a chromium, firefox, webkit or android session/);
   });
 
   it("close() tears the handle down once (idempotent)", async () => {

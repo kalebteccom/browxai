@@ -1,6 +1,7 @@
 // THE authoritative tool -> exercise registry. One row per browxai handler:
-// 189 capability-gated tools + 10 control-plane tools = 199. Generated against
-// the live registry (toolCapabilityMap() + server handler names) at scaffold
+// 189 capability-gated tools + 10 control-plane tools = 199. The registry holds
+// 209: the ten native-device tools (`device_*`, `app_*`) have no row because
+// this web-surface harness starts no emulator. Generated against the live registry (toolCapabilityMap() + server handler names) at scaffold
 // time; keep it in sync if the tool surface changes (the run-report driver
 // asserts every manifest tool has an exercise OR is reported `pending`, and
 // warns if a live tool is missing from the manifest).

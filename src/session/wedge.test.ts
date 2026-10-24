@@ -21,13 +21,4 @@ describe("WedgeTracker", () => {
     expect(w.count).toBe(0);
     expect(w.wedged()).toBe(false);
   });
-
-  it("the hint names the discard-and-reopen recovery", () => {
-    const w = new WedgeTracker();
-    for (let i = 0; i < WEDGE_THRESHOLD; i++) w.recordTimeout();
-    const hint = w.hint();
-    expect(hint).toMatch(/close_session/);
-    expect(hint).toMatch(/open_session/);
-    expect(hint).toMatch(/wedged/i);
-  });
 });

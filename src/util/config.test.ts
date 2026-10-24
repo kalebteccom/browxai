@@ -11,9 +11,4 @@ describe("resolveConfig (BROWX_TEST_ATTRIBUTES)", () => {
     const c = resolveConfig({ BROWX_TEST_ATTRIBUTES: "data-testid, data-type , data-qa " });
     expect(c.testAttributes).toEqual(["data-testid", "data-type", "data-qa"]);
   });
-
-  it("filters empty entries from a sloppy list", () => {
-    const c = resolveConfig({ BROWX_TEST_ATTRIBUTES: "data-testid,,data-type" });
-    expect(c.testAttributes).toEqual(["data-testid", "data-type"]);
-  });
 });

@@ -67,8 +67,8 @@ export function resolveDefaultProfileDir(env: NodeJS.ProcessEnv = process.env): 
   const expanded = raw.replace(/^~(?=$|\/)/, homedir());
   if (!isAbsolute(expanded)) fail("must be an absolute path or start with ~/");
   const dir = resolve(expanded);
-  if (dir === parse(dir).root) fail("refuses the filesystem root");
-  if (dir === resolve(homedir())) fail("refuses the home directory itself; name a subdirectory");
+  if (dir === parse(dir).root) fail("cannot be the filesystem root; name a subdirectory");
+  if (dir === resolve(homedir())) fail("cannot be the home directory itself; name a subdirectory");
   if (existsSync(dir) || isDanglingLink(dir)) {
     const st = lstatSync(dir);
     if (st.isSymbolicLink()) fail("is a symlink; point it at the real directory");
@@ -132,8 +132,8 @@ export function isSafeName(name: string): boolean {
 export function assertSafeName(kind: string, name: string): void {
   if (!isSafeName(name)) {
     throw new Error(
-      `${kind} "${name}" invalid — use only letters, digits, '.', '_', '-' ` +
-        `(no path separators, no "..")`,
+      `${kind} "${name}" is an invalid name. Use only letters, digits, '.', '_' and '-', ` +
+        `with no path separators and no ".."`,
     );
   }
 }
@@ -145,8 +145,8 @@ export function resolveWorkspacePath(workspaceRoot: string, p: string, tool: str
   const resolved = resolve(workspaceRoot, p);
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
     throw new Error(
-      `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}". ` +
-        `Use a workspace-relative path (or call \`auth_save\` for the named-state path).`,
+      `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE, got "${p}". ` +
+        `Use a path relative to the workspace root.`,
     );
   }
   return resolved;

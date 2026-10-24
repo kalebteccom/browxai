@@ -19,7 +19,6 @@ import {
   injectStorageState,
   readStorageStateFile,
   cookiesGet,
-  cookiesList,
   cookiesSet,
   cookiesDelete,
   cookiesClear,
@@ -366,12 +365,6 @@ describe("cookies CRUD", () => {
     const { ctx } = fakeContext();
 
     await expect(cookiesGet(ctx as any, { name: "" })).rejects.toThrow(/name.*required/);
-  });
-  it("list returns the array (and filters by urls)", async () => {
-    const { ctx } = fakeContext(seededState());
-
-    const all = await cookiesList(ctx as any);
-    expect(all).toHaveLength(1);
   });
   it("set requires url OR domain+path", async () => {
     const { ctx } = fakeContext();

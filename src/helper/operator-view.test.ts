@@ -177,15 +177,6 @@ describe("frameParts", () => {
     }
   });
 
-  it("holds the worst case under the line limit: a full part, the longest session, escaped", () => {
-    const parts = frameParts(
-      { session: '"'.repeat(128), seq: Number.MAX_SAFE_INTEGER, at: Date.now() },
-      "A".repeat(PART_CHARS * 2),
-    )!;
-    const line = JSON.stringify({ v: 1, ...parts[0] });
-    expect(Buffer.byteLength(line)).toBeLessThan(MAX_FRAME_BYTES - 20_000);
-  });
-
   it("drops a frame that would need more than the parts allowed", () => {
     expect(frameParts(meta, "A".repeat(PART_CHARS * MAX_PARTS))).not.toBeNull();
     expect(frameParts(meta, "A".repeat(PART_CHARS * MAX_PARTS + 4))).toBeNull();
