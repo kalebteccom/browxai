@@ -23,8 +23,16 @@ export default defineConfig({
   // guidance stays in the page source and is served from the plaintext .md
   // endpoint, so the human site stays end-user-focused while agents still get
   // it via llms.txt.
+  //
+  // Smartypants stays on for quotes, but not for dashes: it turns a `--` in
+  // plain text, including the text inside the landing page's JSX `<code>`
+  // elements, into a typographic dash, which breaks a copied CLI flag such as
+  // `--remote-debugging-port`.
   markdown: {
-    processor: unified({ rehypePlugins: [rehypeStripAgentAsides, rehypeTableWrap] }),
+    processor: unified({
+      rehypePlugins: [rehypeStripAgentAsides, rehypeTableWrap],
+      smartypants: { dashes: false },
+    }),
   },
   integrations: [
     starlight({
