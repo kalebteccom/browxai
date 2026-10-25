@@ -116,12 +116,15 @@ export function planUserConfig(
  *  the target. The new file keeps the old one's mode, 0600 when there was none.
  *  A symlinked config stays a symlink: the file it points at is replaced. The
  *  previous contents are kept in `<config>.browxai-bak`. */
-export function applyUserConfig(plan: Extract<UserConfigPlan, { kind: "add" }>): void {
+export function applyUserConfig(
+  plan: Extract<UserConfigPlan, { kind: "add" }>,
+  rename: typeof renameSync = renameSync,
+): void {
   mkdirSync(dirname(plan.path), { recursive: true });
   const target = realTarget(plan.path);
   const mode = existingMode(target);
-  if (mode !== undefined) replaceVia(`${target}.browxai-bak`, readFileSync(target), mode);
-  replaceVia(target, plan.after, mode ?? 0o600);
+  if (mode !== undefined) replaceVia(`${target}.browxai-bak`, readFileSync(target), mode, rename);
+  replaceVia(target, plan.after, mode ?? 0o600, rename);
 }
 
 /** The file a write to `path` should replace: the path itself, or the end of
@@ -145,11 +148,16 @@ function realTarget(path: string): string {
 
 /** Write `data` to a new temp file next to `path`, then rename it over `path`.
  *  The temp file is removed if anything fails. */
-function replaceVia(path: string, data: string | Buffer, mode: number): void {
+function replaceVia(
+  path: string,
+  data: string | Buffer,
+  mode: number,
+  rename: typeof renameSync,
+): void {
   const tmp = join(dirname(path), `.${basename(path)}.${randomBytes(6).toString("hex")}.tmp`);
   try {
     writeNew(tmp, data, mode);
-    renameSync(tmp, path);
+    rename(tmp, path);
   } catch (e) {
     rmSync(tmp, { force: true });
     throw e;

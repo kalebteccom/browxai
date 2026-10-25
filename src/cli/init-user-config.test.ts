@@ -286,6 +286,20 @@ describe("applyUserConfig", () => {
     expect(readdirSync(join(home, ".cursor"))).toEqual(["mcp.json"]);
   });
 
+  it("removes its temp file and keeps the old config when the rename fails with EROFS", () => {
+    const path = join(home, ".cursor", "mcp.json");
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(path, '{ "mcpServers": {} }\n');
+    const plan = planUserConfig("cursor", ENTRY, sys);
+    if (plan.kind !== "add") throw new Error("expected add");
+    const rename = (): void => {
+      throw Object.assign(new Error("EROFS: read-only file system"), { code: "EROFS" });
+    };
+    expect(() => applyUserConfig(plan, rename)).toThrow(/EROFS/);
+    expect(readFileSync(path, "utf8")).toBe('{ "mcpServers": {} }\n');
+    expect(readdirSync(join(home, ".cursor"))).toEqual(["mcp.json"]);
+  });
+
   it("replaces an existing file", () => {
     const path = join(home, ".cursor", "mcp.json");
     mkdirSync(join(home, ".cursor"));

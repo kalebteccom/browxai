@@ -14,16 +14,23 @@ import { fileURLToPath } from "node:url";
 import { capabilitiesAssignment, capabilitiesWith } from "../util/capabilities.js";
 import {
   CLIENT_IDS,
+  clientInstructions,
   clientsReport,
   detectClients,
   realSystem,
   shellWord,
+  userConfigPath,
   type ClientId,
   type ClientSystem,
   type ServerEntry,
 } from "./init-clients.js";
 import { runSmoke, type SmokeOptions, type SmokeResult } from "./init-smoke.js";
-import { applyUserConfig, lineDiff, planUserConfig } from "./init-user-config.js";
+import {
+  applyUserConfig,
+  lineDiff,
+  planUserConfig,
+  type UserConfigPlan,
+} from "./init-user-config.js";
 
 interface InitOpts {
   workspace: string;
@@ -37,6 +44,10 @@ interface InitOpts {
 export interface InitDeps {
   system?: ClientSystem;
   smoke?: (opts: SmokeOptions) => Promise<SmokeResult>;
+  /** Reads a user-level config file; undefined when it does not exist. */
+  readConfig?: (path: string) => string | undefined;
+  /** Writes a planned user-level config file. */
+  applyConfig?: typeof applyUserConfig;
 }
 
 export async function runInit(args: string[], deps: InitDeps = {}): Promise<number> {
@@ -146,7 +157,7 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   const system = deps.system ?? realSystem();
   process.stdout.write(clientsReport(detectClients(system), userEntry, system) + "\n");
   const userConfigOk = opts.writeUserConfig
-    ? writeUserConfigStep(opts.writeUserConfig, userEntry, system, !!opts.noWrite)
+    ? writeUserConfigStep(opts.writeUserConfig, userEntry, system, !!opts.noWrite, deps)
     : true;
   process.stdout.write(
     `next steps:\n  1) open Claude Code with cwd=${workspace} so this .mcp.json is picked up\n` +
@@ -173,8 +184,25 @@ function writeUserConfigStep(
   entry: ServerEntry,
   system: ClientSystem,
   dryRun: boolean,
+  deps: InitDeps,
 ): boolean {
-  const plan = planUserConfig(id, entry, system);
+  let plan: UserConfigPlan;
+  try {
+    plan = planUserConfig(id, entry, system, deps.readConfig);
+  } catch (e) {
+    const path = userConfigPath(id, system) ?? "the config file";
+    const code = (e as NodeJS.ErrnoException).code;
+    const why =
+      code === "EISDIR"
+        ? "it is a folder"
+        : code === "EACCES" || code === "EPERM"
+          ? "permission denied"
+          : `read failed${code ? `, ${code}` : ""}`;
+    process.stdout.write(
+      `  ✗ ${path} can't be read (${why}): add the entry by hand with:\n${clientInstructions(id, entry, system)}\n\n`,
+    );
+    return false;
+  }
   if (plan.kind === "refuse") {
     process.stdout.write(`  ✗ ${plan.message}\n\n`);
     return false;
@@ -188,10 +216,10 @@ function writeUserConfigStep(
       process.stdout.write("  not written (--no-write)\n\n");
     } else {
       try {
-        applyUserConfig(plan);
+        (deps.applyConfig ?? applyUserConfig)(plan);
       } catch (e) {
         process.stdout.write(
-          `  ✗ could not write ${plan.path}: ${e instanceof Error ? e.message : String(e)}\n\n`,
+          `  ✗ could not write ${plan.path} (${(e as NodeJS.ErrnoException).code ?? "write failed"}): add the entry by hand with:\n${clientInstructions(id, entry, system)}\n\n`,
         );
         return false;
       }

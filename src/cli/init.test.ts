@@ -301,6 +301,61 @@ describe("browxai init --write-user-config", () => {
     expect(readFileSync(file, "utf8")).toBe('{ "mcpServers": {} }\n');
   });
 
+  it.each([
+    ["cursor", [".cursor", "mcp.json"]],
+    ["codex", [".codex", "config.toml"]],
+    ["claude-desktop", ["Library", "Application Support", "Claude", "claude_desktop_config.json"]],
+  ] as const)("refuses plainly when the %s config path is a folder", async (client, parts) => {
+    const file = join(home, ...parts);
+    mkdirSync(file, { recursive: true });
+    const code = await runInit([dir, ...BASE, "--write-user-config", client], {
+      system: homeSystem(home),
+    });
+    expect(code).toBe(1);
+    expect(out).toContain(`${file} can't be read (it is a folder): add the entry by hand with:`);
+    expect(out).not.toContain("EISDIR");
+    expect(out).not.toContain("    at ");
+    expect(readdirSync(file)).toEqual([]);
+    expect(existsSync(join(dir, ".mcp.json"))).toBe(true);
+  });
+
+  it("refuses plainly on a permission error and never prints file contents", async () => {
+    const file = join(home, ".cursor", "mcp.json");
+    const readConfig = (): string => {
+      throw Object.assign(new Error(`EACCES: permission denied, open '${file}' SECRET`), {
+        code: "EACCES",
+      });
+    };
+    const code = await runInit([dir, ...BASE, "--write-user-config", "cursor"], {
+      system: homeSystem(home),
+      readConfig,
+    });
+    expect(code).toBe(1);
+    expect(out).toContain(`${file} can't be read (permission denied): add the entry by hand with:`);
+    expect(out).not.toContain("SECRET");
+    expect(out).not.toContain("Change to");
+    expect(existsSync(file)).toBe(false);
+    expect(existsSync(join(dir, ".mcp.json"))).toBe(true);
+  });
+
+  it("refuses plainly when the write hits a read-only file system", async () => {
+    const file = join(home, ".cursor", "mcp.json");
+    const applyConfig = (): void => {
+      throw Object.assign(new Error(`EROFS: read-only file system, open '${file}' SECRET`), {
+        code: "EROFS",
+      });
+    };
+    const code = await runInit([dir, ...BASE, "--write-user-config", "cursor"], {
+      system: homeSystem(home),
+      applyConfig,
+    });
+    expect(code).toBe(1);
+    expect(out).toContain(`could not write ${file} (EROFS): add the entry by hand with:`);
+    expect(out).not.toContain("SECRET");
+    expect(out).not.toContain("Restart the client");
+    expect(existsSync(file)).toBe(false);
+  });
+
   it("keeps the old file as a backup and says to restart the client", async () => {
     const file = join(home, ".cursor", "mcp.json");
     mkdirSync(join(home, ".cursor"));
