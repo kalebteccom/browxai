@@ -118,7 +118,15 @@ function wrapsText(role: string): boolean {
 
 /** Cut `text` to `max` characters, ending in an ellipsis when it was cut. */
 export function clipText(text: string, max: number): string {
-  return text.length <= max ? text : text.slice(0, Math.max(0, max - 1)) + "…";
+  return text.length <= max ? text : sliceUnits(text, Math.max(0, max - 1)) + "…";
+}
+
+/** The first `n` UTF-16 units of `text`, one fewer when the cut would leave a
+ *  lone high surrogate at the end. */
+export function sliceUnits(text: string, n: number): string {
+  const code = text.charCodeAt(n - 1);
+  const end = n > 0 && n < text.length && code >= 0xd800 && code <= 0xdbff ? n - 1 : n;
+  return text.slice(0, end);
 }
 
 /** Line breaks and tabs, including the ones `\s` misses (NEL, U+2028, U+2029). */

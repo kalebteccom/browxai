@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { serialise } from "./snapshot.js";
-import { canCarryText, cleanPageText, clipText, ownText, MAX_ROW_TEXT } from "./snapshot-text.js";
+import {
+  canCarryText,
+  cleanPageText,
+  clipText,
+  ownText,
+  sliceUnits,
+  MAX_ROW_TEXT,
+} from "./snapshot-text.js";
 import type { A11yNode } from "./a11y.js";
 import { SecretRegistry } from "../util/secrets.js";
 
@@ -290,14 +297,14 @@ describe("serialise masks normalised text and text split across nodes", () => {
   });
 
   it("masks a secret with a zero-width space inside it on a clipped row", () => {
-    const words = "x".repeat(110) + "Super​SecretToken123";
+    const words = "x".repeat(110) + "Super\u200bSecretToken123";
     const out = serialise(doc(para(text(words))), { maskText });
     expect(out).toContain("<TOKEN>");
     expect(out).not.toContain("Supe");
   });
 
   it("masks a name with a zero-width space inside the secret", () => {
-    const out = serialise(doc(node("button", "id Super​SecretToken123", "e2")), { maskText });
+    const out = serialise(doc(node("button", "id Super\u200bSecretToken123", "e2")), { maskText });
     expect(out).toContain("<TOKEN>");
   });
 
@@ -318,5 +325,31 @@ describe("serialise masks normalised text and text split across nodes", () => {
     const out = serialise(doc(p), { maskText });
     expect(out).toContain("<TOKEN>");
     expect(out).not.toContain("row text withheld");
+  });
+});
+
+describe("cuts keep surrogate pairs whole", () => {
+  const EMOJI = "\u{1F600}";
+
+  it("backs off one unit when a cut lands inside a pair", () => {
+    expect(sliceUnits("ab" + EMOJI, 3)).toBe("ab");
+    expect(sliceUnits("ab" + EMOJI, 4)).toBe("ab" + EMOJI);
+  });
+
+  it("never leaves a lone high surrogate on a clipped row", () => {
+    const out = serialise(
+      doc(node("paragraph", undefined, "e2", [text("x".repeat(118) + EMOJI + "tail")])),
+    );
+    expect(out).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
+
+  it("never leaves a lone high surrogate on a cut name", () => {
+    const out = serialise(doc(node("button", "a".repeat(78) + EMOJI + "tail", "e2")));
+    expect(out).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
+
+  it("never leaves a lone high surrogate on a cut value", () => {
+    const box = node("textbox", "F", "e2", [], { value: "v".repeat(59) + EMOJI + "tail" });
+    expect(serialise(doc(box))).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
   });
 });

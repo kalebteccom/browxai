@@ -10,6 +10,7 @@ import {
   cleanPageText,
   clipText,
   escapeQuoted,
+  sliceUnits,
   isDocumentRoot,
   maskRowText,
   ownRawText,
@@ -320,7 +321,7 @@ export function fmtState(n: A11yNode, maskText: (text: string) => string = ident
   if (n.expanded !== undefined) bits.push(`expanded=${n.expanded}`);
   if (n.focused) bits.push("focused");
   if (n.value !== undefined && n.value !== "") {
-    bits.push(`value=${JSON.stringify(cleanPageText(maskText(String(n.value))).slice(0, 60))}`);
+    bits.push(`value=${JSON.stringify(sliceUnits(cleanPageText(maskText(String(n.value))), 60))}`);
   }
   return bits.length ? ` [${bits.join(", ")}]` : "";
 }
@@ -330,5 +331,5 @@ function identity(s: string): string {
 }
 
 function truncate(s: string, n: number): string {
-  return s.length <= n ? s : s.slice(0, n - 1) + "…";
+  return s.length <= n ? s : sliceUnits(s, n - 1) + "…";
 }
