@@ -121,4 +121,112 @@ describe("doctor summary", () => {
     expect(text).toContain("fix: upgrade");
     expect(text).toContain("fix the ✗ items above");
   });
+  it("orders areas failures, then warnings, then ticks, each group in display order", () => {
+    const checks: Check[] = [
+      ...OK.filter((c) => !["node", "origins", "capabilities"].includes(c.name)),
+      { name: "newthing", ok: false, detail: "broken", fix: "mend" },
+      { name: "origins", ok: false, detail: "blocked" },
+      { name: "capabilities", ok: true, warn: true, detail: "missing: action", fix: "add it" },
+      { name: "node", ok: false, detail: "v20.0.0" },
+    ];
+    const { text, allOk } = formatDoctor(checks, OPTS);
+    expect(allOk).toBe(false);
+    const heads = text
+      .split("\n")
+      .map((l) => /^ {2}(\S) (\S+)/.exec(l))
+      .filter((m) => m !== null)
+      .map((m) => `${m[1]} ${m[2]}`);
+    expect(heads).toEqual([
+      "✗ node",
+      "✗ settings",
+      "✗ newthing",
+      "⚠ capabilities",
+      "✓ install",
+      "✓ workspace",
+      "✓ browser",
+      "✓ attach",
+    ]);
+    expect(text).toContain("3 areas need a fix. Fix them, then run `browxai doctor` again.");
+    expect(text).not.toContain("next: undefined");
+    expect(text).not.toMatch(/node +v20\.0\.0\n {4}next:/);
+  });
+
+  it("says one area needs a fix in the singular", () => {
+    const checks = OK.map((c) => (c.name === "node" ? { ...c, ok: false, fix: "upgrade" } : c));
+    const { text } = formatDoctor(checks, OPTS);
+    expect(text).toContain("1 area needs a fix. Fix it, then run `browxai doctor` again.");
+  });
+
+  it("lists each failing row of one area under its own name", () => {
+    const checks: Check[] = OK.map((c) => {
+      if (c.name === "chrome") return { ...c, ok: false, detail: "no chrome", fix: "get chrome" };
+      if (c.name === "chromium") return { ...c, ok: false, detail: "no chromium", fix: "get it" };
+      return c;
+    });
+    const { text } = formatDoctor(checks, OPTS);
+    expect(text).toMatch(
+      /✗ browser +no chrome\n {4}next: get chrome\n {4}chromium: no chromium\n {4}next: get it\n/,
+    );
+  });
+
+  it("shows only the failing rows of an area that has a failure and a warning", () => {
+    const checks: Check[] = [
+      ...OK.filter((c) => c.name !== "capabilities"),
+      { name: "capabilities", ok: false, detail: "unknown capability", fix: "fix the list" },
+      { name: "byob-attach", ok: true, warn: true, detail: "attach refused", fix: "add it" },
+    ];
+    const { text } = formatDoctor(checks, OPTS);
+    expect(text).toMatch(/✗ capabilities +unknown capability\n {4}next: fix the list\n/);
+    expect(text).not.toContain("attach refused");
+  });
+
+  it("groups the byob-attach warning under capabilities", () => {
+    const checks: Check[] = [
+      ...OK,
+      { name: "byob-attach", ok: true, warn: true, detail: "attach refused", fix: "add it" },
+    ];
+    const { text, allOk } = formatDoctor(checks, OPTS);
+    expect(allOk).toBe(true);
+    expect(text).toMatch(/⚠ capabilities +attach refused\n {4}next: add it\n/);
+    expect(text.match(/capabilities/g)).toHaveLength(1);
+  });
+
+  it("puts a multi-line detail on one line", () => {
+    const checks = OK.map((c) =>
+      c.name === "node" ? { ...c, ok: false, detail: "line one\n   line two\n" } : c,
+    );
+    expect(formatDoctor(checks, OPTS).text).toContain("line one line two\n");
+  });
+
+  it("verbose keeps the input order and prints fix lines only for failures and warnings", () => {
+    const checks: Check[] = [
+      { name: "a", ok: true, detail: "fine", fix: "hidden" },
+      { name: "b", ok: true, warn: true, detail: "careful", fix: "do x" },
+      { name: "c", ok: false, detail: "broken", fix: "do y" },
+      { name: "d", ok: true, info: true, detail: "off", fix: "hidden too", enable: "turn on" },
+    ];
+    const { text, allOk } = formatDoctor(checks, { ...OPTS, verbose: true });
+    expect(allOk).toBe(false);
+    const row = (glyph: string, name: string, detail: string) =>
+      `  ${glyph} ${name.padEnd(12)} ${detail}\n`;
+    expect(text).toBe(
+      "browxai doctor (v9.9.9) — environment & connectivity\n\n" +
+        row("✓", "a", "fine") +
+        row("⚠", "b", "careful") +
+        "    fix: do x\n" +
+        row("✗", "c", "broken") +
+        "    fix: do y\n" +
+        row("−", "d", "off") +
+        "    enable with: turn on\n" +
+        "\nfix the ✗ items above, then run `browxai doctor` again\n",
+    );
+  });
+
+  it("verbose passes a warning without failing", () => {
+    const checks: Check[] = [{ name: "b", ok: true, warn: true, detail: "careful", fix: "do x" }];
+    const { text, allOk } = formatDoctor(checks, { ...OPTS, verbose: true });
+    expect(allOk).toBe(true);
+    expect(text).toContain("⚠ b");
+    expect(text).toContain("all checks passed.");
+  });
 });
