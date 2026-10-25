@@ -43,6 +43,18 @@ export async function runSmoke(opts: SmokeOptions): Promise<SmokeResult> {
     env: { BROWX_WORKSPACE: workspace, BROWX_HEADLESS: "1" },
     stderr: "pipe",
   });
+  // Ctrl+C while the check runs: stop the server and remove the temp workspace.
+  const offSignal = onInterrupt(() => {
+    const pid = transport.pid;
+    if (pid !== null) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        /* already gone */
+      }
+    }
+    removeDir(workspace);
+  });
   let stderrTail = "";
   transport.stderr?.on("data", (chunk: Buffer) => {
     stderrTail = (stderrTail + chunk.toString("utf8")).slice(-1500);
@@ -86,8 +98,47 @@ export async function runSmoke(opts: SmokeOptions): Promise<SmokeResult> {
   } catch (e) {
     return { ok: false, message: `error: ${errText(e)}. ${NEXT}` };
   } finally {
+    offSignal();
     await client.close().catch(() => undefined);
-    rmSync(workspace, { recursive: true, force: true });
+    removeDir(workspace);
+  }
+}
+
+/** The part of `process` that `onInterrupt` uses, so a test can supply its own. */
+export interface SignalHost {
+  on(event: "SIGINT" | "SIGTERM", listener: (signal: NodeJS.Signals) => void): unknown;
+  off(event: "SIGINT" | "SIGTERM", listener: (signal: NodeJS.Signals) => void): unknown;
+  exit(code: number): void;
+}
+
+/** Run `cleanup` and exit on SIGINT or SIGTERM until the returned function is
+ *  called. Exits 130 for SIGINT and 143 for SIGTERM, as a shell would. */
+export function onInterrupt(cleanup: () => void, host: SignalHost = process): () => void {
+  const off = () => {
+    host.off("SIGINT", handler);
+    host.off("SIGTERM", handler);
+  };
+  const handler = (signal: NodeJS.Signals) => {
+    off();
+    try {
+      cleanup();
+    } finally {
+      host.exit(signal === "SIGINT" ? 130 : 143);
+    }
+  };
+  host.on("SIGINT", handler);
+  host.on("SIGTERM", handler);
+  return off;
+}
+
+/** Remove a temp dir. A dir still held open (EBUSY or EPERM on Windows while the
+ *  child exits) is left for the OS to clear. */
+export function removeDir(dir: string, rm: typeof rmSync = rmSync): void {
+  try {
+    rm(dir, { recursive: true, force: true, maxRetries: 3 });
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== "EBUSY" && code !== "EPERM" && code !== "ENOTEMPTY") throw e;
   }
 }
 
