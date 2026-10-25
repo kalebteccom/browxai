@@ -10,7 +10,7 @@ surface" covers.
 
 ### Added
 
-- **`browxai init` is the one-command start.** It finds Claude Code, Cursor, Codex and Claude Desktop on the machine and prints the exact command or snippet for each. It still writes only the project `.mcp.json`. `--write-user-config <client>` (`cursor`, `codex` or `claude-desktop`) adds browxai to that client's user-level config, after showing the diff. It ends with a smoke test: a headless private session on `about:blank`, one snapshot, then `ok: first snapshot in N ms` or a plain error with the next step (exit 1). `--no-smoke` skips it, and `--no-write` skips it too.
+- **`browxai init` is the one-command start.** It finds Claude Code, Cursor, Codex and Claude Desktop on the machine and prints the exact command or snippet for each. It still writes only the project `.mcp.json`. `--write-user-config <client>` (`cursor`, `codex` or `claude-desktop`) adds browxai to that client's user-level config. It prints the diff, then writes it without asking. `--no-write` only prints it. It ends with a smoke test: a headless private session on `about:blank`, one snapshot, then `ok: first snapshot in N ms` or a plain error with the next step (exit 1). `--no-smoke` skips it, and `--no-write` skips it too.
 
 ### Changed
 

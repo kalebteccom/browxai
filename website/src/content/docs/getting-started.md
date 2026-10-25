@@ -69,8 +69,8 @@ It writes a `.mcp.json` in that directory, finds the MCP clients on your machine
 (Claude Code, Cursor, Codex and Claude Desktop) and prints the exact command or
 snippet for each one. It changes nothing outside the project. To have it add
 browxai to a client's user-level config, run it again with
-`--write-user-config cursor` (or `codex`, `claude-desktop`). It shows the change
-before it writes. At the end it opens a headless private session on a blank page,
+`--write-user-config cursor` (or `codex`, `claude-desktop`). It prints the change,
+then writes it without asking. Add `--no-write` to only print it. At the end it opens a headless private session on a blank page,
 takes a snapshot and closes it, then prints `ok: first snapshot in N ms`. Add
 `--no-smoke` to skip that check.
 

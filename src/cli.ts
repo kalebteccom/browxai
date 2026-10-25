@@ -45,8 +45,8 @@ const USAGE = `Usage: browxai [subcommand]
                                 setup line for each MCP client it finds (Claude Code,
                                 Cursor, Codex, Claude Desktop), then checks that a
                                 headless session can take a snapshot.
-                                --write-user-config <client> adds browxai to that client's
-                                user-level config after showing the change.
+                                --write-user-config <client> prints the change to that
+                                client's user-level config, then writes it.
                                 --no-smoke skips the snapshot check, --no-write prints only.
   browxai serve --socket <p>    long-running server on a Unix socket / named pipe
                                 — accepts MCP-over-socket connections from SDK clients

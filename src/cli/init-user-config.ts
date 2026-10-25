@@ -1,5 +1,5 @@
 // `browxai init --write-user-config <client>`: add the browxai entry to a client's
-// user-level config file, after showing the change. This is the only code in init
+// user-level config file. It prints the change, then writes it. This is the only code in init
 // that touches a file outside the project, and it runs only on that flag.
 
 import { randomBytes } from "node:crypto";

@@ -159,7 +159,7 @@ export function clientsReport(
   const blocks = found.map((id) => clientInstructions(id, entry, sys));
   const writable = found.filter((id) => userConfigPath(id, sys) !== undefined);
   const tail = writable.length
-    ? `\nTo have browxai edit a user-level config for you, run again with --write-user-config <client> (${writable.join(", ")}). It shows the change first.\n`
+    ? `\nTo have browxai edit a user-level config for you, run again with --write-user-config <client> (${writable.join(", ")}). It prints the change, then writes it. Add --no-write to only print it.\n`
     : "";
   return `MCP clients found on this machine:\n\n${blocks.join("\n\n")}\n${tail}`;
 }

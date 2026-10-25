@@ -47,8 +47,9 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
         "                          [--write-user-config <client>] [--no-smoke]\n" +
         "  <workspace>                 per-app dir to host browxai state (e.g. ~/site-docs/<app>)\n" +
         "  --no-write                  print the .mcp.json snippet without creating files\n" +
-        "  --write-user-config <client>  add browxai to that client's user-level config after\n" +
-        `                              showing the change. <client> is one of: ${CLIENT_IDS.join(", ")}\n` +
+        "  --write-user-config <client>  print the change to that client's user-level config,\n" +
+        "                              then write it. Add --no-write to only print it.\n" +
+        `                              <client> is one of: ${CLIENT_IDS.join(", ")}\n` +
         "  --no-smoke                  skip the headless first-snapshot check at the end\n" +
         "                              (also skipped under --no-write)\n",
     );
@@ -164,7 +165,7 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   return userConfigOk && smokeOk ? 0 : 1;
 }
 
-/** Show the change to a client's user-level config, then make it. */
+/** Print the change to a client's user-level config, then write it unless dryRun. */
 function writeUserConfigStep(
   id: ClientId,
   entry: ServerEntry,
