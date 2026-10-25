@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -162,5 +170,277 @@ describe("browxai init", () => {
       expect(await runInit([dir, ...ARGS], { smoke })).toBe(0);
       expect(smoke).not.toHaveBeenCalled();
     });
+  });
+});
+
+function homeSystem(home: string, over: Partial<ClientSystem> = {}): ClientSystem {
+  return { platform: "darwin", home, env: { PATH: "" }, exists: existsSync, ...over };
+}
+
+describe("browxai init --write-user-config", () => {
+  const BASE = ["--test-attrs", "data-testid", "--no-smoke"];
+  let home: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "browxai-home-"));
+  });
+
+  afterEach(() => rmSync(home, { recursive: true, force: true }));
+
+  it("leaves a config that already has a browxai entry as it is", async () => {
+    const file = join(home, ".cursor", "mcp.json");
+    const original = JSON.stringify({ mcpServers: { browxai: { command: "mine" } } });
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(file, original);
+    const code = await runInit([dir, ...BASE, "--write-user-config", "cursor"], {
+      system: homeSystem(home),
+    });
+    expect(code).toBe(0);
+    expect(out).toContain(`${file} already has a browxai entry, left as it is`);
+    expect(readFileSync(file, "utf8")).toBe(original);
+    expect(readdirSync(join(home, ".cursor"))).toEqual(["mcp.json"]);
+  });
+
+  it("exits 1 and leaves a file that is not plain JSON untouched", async () => {
+    const file = join(home, ".cursor", "mcp.json");
+    const original = '{ // mine\n  "mcpServers": {}\n}\n';
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(file, original);
+    const code = await runInit([dir, ...BASE, "--write-user-config", "cursor"], {
+      system: homeSystem(home),
+    });
+    expect(code).toBe(1);
+    expect(out).toContain("is not plain JSON");
+    expect(readFileSync(file, "utf8")).toBe(original);
+    expect(readdirSync(join(home, ".cursor"))).toEqual(["mcp.json"]);
+  });
+
+  it("exits 1 for a JSON array and leaves the file alone", async () => {
+    const file = join(home, ".cursor", "mcp.json");
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(file, "[]\n");
+    const code = await runInit([dir, ...BASE, "--write-user-config", "cursor"], {
+      system: homeSystem(home),
+    });
+    expect(code).toBe(1);
+    expect(readFileSync(file, "utf8")).toBe("[]\n");
+  });
+
+  it("fills an empty config file", async () => {
+    const file = join(home, ".cursor", "mcp.json");
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(file, "");
+    const code = await runInit([dir, ...BASE, "--write-user-config", "cursor"], {
+      system: homeSystem(home),
+    });
+    expect(code).toBe(0);
+    expect(JSON.parse(readFileSync(file, "utf8")).mcpServers.browxai.command).toBe(
+      process.execPath,
+    );
+  });
+
+  it("writes Codex's config.toml under CODEX_HOME", async () => {
+    const codexHome = join(home, "codex-home");
+    const system = homeSystem(home, { env: { PATH: "", CODEX_HOME: codexHome } });
+    const code = await runInit([dir, ...BASE, "--write-user-config", "codex"], { system });
+    expect(code).toBe(0);
+    const file = join(codexHome, "config.toml");
+    const text = readFileSync(file, "utf8");
+    expect(text.startsWith("[mcp_servers.browxai]\n")).toBe(true);
+    expect(text).toContain(`command = ${JSON.stringify(process.execPath)}`);
+    expect(out).toContain("--- (new file)");
+    expect(out).toContain("+ [mcp_servers.browxai]");
+  });
+
+  it("writes Claude Desktop's config under Application Support on macOS", async () => {
+    const code = await runInit([dir, ...BASE, "--write-user-config", "claude-desktop"], {
+      system: homeSystem(home),
+    });
+    expect(code).toBe(0);
+    const file = join(
+      home,
+      "Library",
+      "Application Support",
+      "Claude",
+      "claude_desktop_config.json",
+    );
+    expect(JSON.parse(readFileSync(file, "utf8")).mcpServers.browxai.env.BROWX_WORKSPACE).toBe(
+      join(dir, ".browxai"),
+    );
+  });
+
+  it("exits 1 for a relative CODEX_HOME and writes nothing", async () => {
+    const system = homeSystem(home, { env: { PATH: "", CODEX_HOME: "codex-home" } });
+    const code = await runInit([dir, ...BASE, "--write-user-config", "codex"], { system });
+    expect(code).toBe(1);
+    expect(out).toContain("CODEX_HOME is a relative path (codex-home)");
+    expect(readdirSync(home)).toEqual([]);
+  });
+
+  it("exits 1 for Claude Desktop on Linux and writes nothing", async () => {
+    const system = homeSystem(home, { platform: "linux" });
+    const code = await runInit([dir, ...BASE, "--write-user-config", "claude-desktop"], {
+      system,
+    });
+    expect(code).toBe(1);
+    expect(out).toContain("No user-level config location is known for Claude Desktop");
+    expect(readdirSync(home)).toEqual([]);
+  });
+
+  it("exits 1 and names the file when the write fails", async () => {
+    const file = join(home, ".cursor", "mcp.json");
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(file, '{ "mcpServers": {} }\n');
+    mkdirSync(`${file}.browxai-bak`);
+    writeFileSync(join(`${file}.browxai-bak`, "x"), "");
+    const code = await runInit([dir, ...BASE, "--write-user-config", "cursor"], {
+      system: homeSystem(home),
+    });
+    expect(code).toBe(1);
+    expect(out).toContain(`could not write ${file}`);
+    expect(readFileSync(file, "utf8")).toBe('{ "mcpServers": {} }\n');
+  });
+
+  it("keeps the old file as a backup and says to restart the client", async () => {
+    const file = join(home, ".cursor", "mcp.json");
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(file, '{ "mcpServers": {} }\n');
+    const code = await runInit([dir, ...BASE, "--write-user-config", "cursor"], {
+      system: homeSystem(home),
+    });
+    expect(code).toBe(0);
+    expect(readFileSync(`${file}.browxai-bak`, "utf8")).toBe('{ "mcpServers": {} }\n');
+    expect(out).toContain(`wrote ${file}. Restart the client to pick it up.`);
+  });
+
+  it.each([
+    ["cursor", ".cursor"],
+    ["codex", ".codex"],
+    ["claude-desktop", "Library"],
+  ])("prints the %s change and creates nothing under --no-write", async (client, created) => {
+    const code = await runInit([dir, ...ARGS, "--write-user-config", client], {
+      system: homeSystem(home),
+    });
+    expect(code).toBe(0);
+    expect(out).toContain("not written (--no-write)");
+    expect(existsSync(join(home, created))).toBe(false);
+    expect(readdirSync(home)).toEqual([]);
+  });
+
+  it("creates neither the workspace nor .mcp.json under --no-write --no-smoke", async () => {
+    const smoke = vi.fn();
+    const code = await runInit([dir, ...ARGS, "--no-smoke"], { smoke });
+    expect(code).toBe(0);
+    expect(smoke).not.toHaveBeenCalled();
+    expect(existsSync(join(dir, ".browxai"))).toBe(false);
+    expect(existsSync(join(dir, ".mcp.json"))).toBe(false);
+  });
+
+  it("prints the change before it writes, and both before the smoke test", async () => {
+    const smoke = vi.fn().mockResolvedValue({ ok: true, message: "ok: smoke" });
+    const code = await runInit(
+      [dir, "--test-attrs", "data-testid", "--write-user-config", "cursor"],
+      { system: homeSystem(home), smoke },
+    );
+    expect(code).toBe(0);
+    const wrote = `wrote ${join(home, ".cursor", "mcp.json")}`;
+    expect(out.indexOf("Change to")).toBeLessThan(out.indexOf(wrote));
+    expect(out.indexOf(wrote)).toBeLessThan(out.indexOf("next steps:"));
+    expect(out.indexOf("next steps:")).toBeLessThan(out.indexOf("checking that a headless"));
+  });
+
+  it("still runs the smoke test after a refusal, and exits 1", async () => {
+    const smoke = vi.fn().mockResolvedValue({ ok: true, message: "ok: smoke" });
+    const code = await runInit(
+      [dir, "--test-attrs", "data-testid", "--write-user-config", "claude-code"],
+      { system: homeSystem(home), smoke },
+    );
+    expect(code).toBe(1);
+    expect(smoke).toHaveBeenCalledOnce();
+    expect(out.trimEnd().endsWith("ok: smoke")).toBe(true);
+  });
+
+  it("exits 1 when the config was written and the smoke test failed", async () => {
+    const smoke = vi.fn().mockResolvedValue({ ok: false, message: "error: no browser" });
+    const code = await runInit(
+      [dir, "--test-attrs", "data-testid", "--write-user-config", "cursor"],
+      { system: homeSystem(home), smoke },
+    );
+    expect(code).toBe(1);
+    expect(existsSync(join(home, ".cursor", "mcp.json"))).toBe(true);
+    expect(out).toContain("error: no browser");
+  });
+});
+
+describe("browxai init client report", () => {
+  it("says so when no client is installed", async () => {
+    const system: ClientSystem = {
+      platform: "darwin",
+      home: "/h",
+      env: { PATH: "/bin" },
+      exists: () => false,
+    };
+    expect(await runInit([dir, ...ARGS], { system })).toBe(0);
+    expect(out).toContain("No MCP client found on this machine");
+    expect(out).not.toContain("--write-user-config <client>");
+  });
+
+  it("lists every client it finds and which of them it can write", async () => {
+    const present = new Set([
+      "/bin/claude",
+      "/h/.cursor",
+      "/h/.codex",
+      "/h/Library/Application Support/Claude",
+    ]);
+    const system: ClientSystem = {
+      platform: "darwin",
+      home: "/h",
+      env: { PATH: "/bin" },
+      exists: (p) => present.has(p),
+    };
+    expect(await runInit([dir, ...ARGS], { system })).toBe(0);
+    for (const label of ["Claude Code", "Cursor", "Codex", "Claude Desktop"]) {
+      expect(out).toContain(label);
+    }
+    expect(out).toContain("--write-user-config <client> (cursor, codex, claude-desktop)");
+  });
+});
+
+describe("browxai init arguments", () => {
+  let err = "";
+
+  beforeEach(() => {
+    err = "";
+    vi.spyOn(process.stderr, "write").mockImplementation((s) => ((err += String(s)), true));
+  });
+
+  it.each([
+    ["no arguments", []],
+    ["--help", ["--help"]],
+    ["-h", ["-h"]],
+    ["only flags", ["--no-write"]],
+    ["two workspaces", ["a", "b"]],
+    ["a flag with a typo", ["w", "--no-writes"]],
+    ["--test-attrs=value", ["w", "--test-attrs=data-testid"]],
+    ["--write-user-config with no client", ["w", "--write-user-config"]],
+    ["--write-user-config followed by a flag", ["w", "--write-user-config", "--no-smoke"]],
+    ["an unknown client", ["w", "--write-user-config", "vim"]],
+  ])("prints usage and exits 2 for %s", async (_name, args) => {
+    expect(await runInit(args)).toBe(2);
+    expect(err).toContain("usage: browxai init <workspace>");
+    expect(err).toContain("claude-code, cursor, codex, claude-desktop");
+    expect(out).toBe("");
+  });
+
+  it("creates nothing when it prints usage", async () => {
+    expect(await runInit([join(dir, "ws"), "--nope"])).toBe(2);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("does not overwrite an existing .mcp.json", async () => {
+    writeFileSync(join(dir, ".mcp.json"), "mine\n");
+    expect(await runInit([dir, "--test-attrs", "data-testid", "--no-smoke"])).toBe(0);
+    expect(readFileSync(join(dir, ".mcp.json"), "utf8")).toBe("mine\n");
+    expect(out).toContain("exists — printing snippet below");
   });
 });
