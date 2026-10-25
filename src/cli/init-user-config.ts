@@ -2,18 +2,22 @@
 // user-level config file, after showing the change. This is the only code in init
 // that touches a file outside the project, and it runs only on that flag.
 
+import { randomBytes } from "node:crypto";
 import {
   closeSync,
   fchmodSync,
   fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  realpathSync,
   renameSync,
+  rmSync,
   statSync,
   writeSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   CLIENT_LABELS,
   codexToml,
@@ -93,14 +97,48 @@ export function planUserConfig(
   return { kind: "add", path, before, after: JSON.stringify(doc, null, 2) + "\n" };
 }
 
-/** Write the planned file: to a sibling temp file first, then rename over the
- *  target. The new file keeps the old one's mode, 0600 when there was none. */
+/** Write the planned file: to a random sibling temp file first, then rename over
+ *  the target. The new file keeps the old one's mode, 0600 when there was none.
+ *  A symlinked config stays a symlink: the file it points at is replaced. The
+ *  previous contents are kept in `<config>.browxai-bak`. */
 export function applyUserConfig(plan: Extract<UserConfigPlan, { kind: "add" }>): void {
   mkdirSync(dirname(plan.path), { recursive: true });
-  const mode = existingMode(plan.path) ?? 0o600;
-  const tmp = `${plan.path}.browxai-tmp`;
-  writeNew(tmp, plan.after, mode);
-  renameSync(tmp, plan.path);
+  const target = realTarget(plan.path);
+  const mode = existingMode(target);
+  if (mode !== undefined) replaceVia(`${target}.browxai-bak`, readFileSync(target), mode);
+  replaceVia(target, plan.after, mode ?? 0o600);
+}
+
+/** The file a write to `path` should replace: the path itself, or the end of
+ *  its symlink chain. A symlink to nothing is refused. */
+function realTarget(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+  // Nothing resolves at `path`. Either there is no file, or a symlink to nothing.
+  let dangling = false;
+  try {
+    dangling = lstatSync(path).isSymbolicLink();
+  } catch {
+    /* no entry at all */
+  }
+  if (dangling) throw new Error(`${path} is a symlink to a file that does not exist`);
+  return join(realpathSync(dirname(path)), basename(path));
+}
+
+/** Write `data` to a new temp file next to `path`, then rename it over `path`.
+ *  The temp file is removed if anything fails. */
+function replaceVia(path: string, data: string | Buffer, mode: number): void {
+  const tmp = join(dirname(path), `.${basename(path)}.${randomBytes(6).toString("hex")}.tmp`);
+  try {
+    writeNew(tmp, data, mode);
+    renameSync(tmp, path);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw e;
+  }
 }
 
 /** Permission bits of an existing file, or undefined when there is none. */

@@ -2,10 +2,14 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  lstatSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
+  readlinkSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -92,7 +96,7 @@ describe("applyUserConfig", () => {
     if (plan.kind !== "add") throw new Error("expected add");
     applyUserConfig(plan);
     expect(JSON.parse(readFileSync(plan.path, "utf8")).mcpServers.browxai).toEqual(ENTRY);
-    expect(existsSync(`${plan.path}.browxai-tmp`)).toBe(false);
+    expect(readdirSync(join(home, ".cursor"))).toEqual(["mcp.json"]);
   });
 
   it("replaces an existing file", () => {
@@ -115,6 +119,68 @@ describe("applyUserConfig", () => {
     applyUserConfig(plan);
     expect(statSync(path).mode & 0o777).toBe(0o600);
     expect(JSON.parse(readFileSync(path, "utf8")).mcpServers.other.env.TOKEN).toBe("x");
+  });
+
+  it("keeps the previous contents as a backup", () => {
+    const path = join(home, ".cursor", "mcp.json");
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(path, '{ "mcpServers": {} }\n');
+    const plan = planUserConfig("cursor", ENTRY, sys);
+    if (plan.kind !== "add") throw new Error("expected add");
+    applyUserConfig(plan);
+    expect(readFileSync(`${path}.browxai-bak`, "utf8")).toBe('{ "mcpServers": {} }\n');
+    expect(readdirSync(join(home, ".cursor")).sort()).toEqual(["mcp.json", "mcp.json.browxai-bak"]);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "does not write through a symlink at the old temp name",
+    () => {
+      const path = join(home, ".cursor", "mcp.json");
+      mkdirSync(join(home, ".cursor"));
+      const other = join(home, "other.txt");
+      writeFileSync(other, "keep me\n");
+      symlinkSync(other, `${path}.browxai-tmp`);
+      const plan = planUserConfig("cursor", ENTRY, sys);
+      if (plan.kind !== "add") throw new Error("expected add");
+      applyUserConfig(plan);
+      expect(readFileSync(other, "utf8")).toBe("keep me\n");
+      expect(JSON.parse(readFileSync(path, "utf8")).mcpServers.browxai).toEqual(ENTRY);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "keeps a symlinked config a symlink and replaces its file",
+    () => {
+      const real = join(home, "dotfiles", "mcp.json");
+      mkdirSync(join(home, "dotfiles"));
+      mkdirSync(join(home, ".cursor"));
+      writeFileSync(real, '{ "mcpServers": {} }\n');
+      chmodSync(real, 0o600);
+      const link = join(home, ".cursor", "mcp.json");
+      symlinkSync(real, link);
+      const plan = planUserConfig("cursor", ENTRY, sys);
+      if (plan.kind !== "add") throw new Error("expected add");
+      applyUserConfig(plan);
+      expect(lstatSync(link).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(link)).toBe(real);
+      expect(JSON.parse(readFileSync(real, "utf8")).mcpServers.browxai).toEqual(ENTRY);
+      expect(statSync(real).mode & 0o777).toBe(0o600);
+      expect(readdirSync(join(home, ".cursor"))).toEqual(["mcp.json"]);
+    },
+  );
+
+  it("removes its temp file and leaves the config alone when the write fails", () => {
+    const path = join(home, ".cursor", "mcp.json");
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(path, '{ "mcpServers": {} }\n');
+    // A non-empty directory where the backup goes makes the rename fail.
+    mkdirSync(`${path}.browxai-bak`);
+    writeFileSync(join(`${path}.browxai-bak`, "x"), "");
+    const plan = planUserConfig("cursor", ENTRY, sys);
+    if (plan.kind !== "add") throw new Error("expected add");
+    expect(() => applyUserConfig(plan)).toThrow();
+    expect(readFileSync(path, "utf8")).toBe('{ "mcpServers": {} }\n');
+    expect(readdirSync(join(home, ".cursor")).sort()).toEqual(["mcp.json", "mcp.json.browxai-bak"]);
   });
 
   it.skipIf(process.platform === "win32")("creates a new file as 0600", () => {
