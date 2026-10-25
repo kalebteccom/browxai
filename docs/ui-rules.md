@@ -80,3 +80,36 @@ Source: Rowin 2026-10-24 (orders 29, 30, 31, 32, 33).
 - 2026-10-24: (trackxai) audits read from real main via git archive, not a working tree.
 - 2026-10-24: (browxai) layout script lives in the repo and runs the width matrix.
 - 2026-10-24: (kw) verify computed style on prod; eager-loading perf changes never load the hidden theme variant.
+- 2026-10-24: (kw, order 35) a card and its shadow fit the viewport at 320, gutter at least the shadow spread.
+- 2026-10-24: (kw, order 35) fixed or last-in-page controls pad with env(safe-area-inset-bottom) and the page uses dvh with viewport-fit.
+- 2026-10-24: (kw, order 35) input:-webkit-autofill is overridden to the field tokens in every theme.
+- 2026-10-24: (kw, order 35) a pending button state always has a timeout and a failure path that restores the label and announces the error.
+- 2026-10-24: (remotxai, order 35) a default entity name ("New host") is a bug: name from the source at creation.
+- 2026-10-24: (remotxai, order 35) auth prompts never auto-fire on arrival and never show an error before a user action.
+- 2026-10-24: (remotxai, order 35) a connect screen reaches a terminal failure state in under 30 s and names the cause.
+- 2026-10-24: (remotxai, order 35) a queued label on a message clears the moment its turn starts.
+- 2026-10-24: (docsxai) a public repo gets a sanitized copy of the rules file: no orders, tool names or sibling-product anecdotes.
+- 2026-10-24: (docsxai) a green gate can hide Chromium-only regressions when CI skips browser tests: keep the browser keystones in the loop on the CI box.
+- 2026-10-24: (docsxai) secret-scan runs per commit: build credential-looking test literals from pieces.
+- 2026-10-24: (Rowin, order 36) status, helper, error and progress lines never shift layout: reserve their space before they appear; verify element top and height are identical across idle, pending, slow, failed and done.
+- 2026-10-24: (Rowin, order 36) while one action is pending, conflicting actions are disabled and the inputs it uses are read-only; one pending action at a time, no double submit, the state returns on failure.
+- 2026-10-24: (trackxai) agents cut off by a spend limit or hook outage are marked PARTIAL and resumed, never counted as done.
+- 2026-10-24: (docsxai) session-limit kills delete subagent transcripts, so write findings files early and respawn reading them. Public-copy lints parse string literals (AST) and strip allowed tokens before testing forbidden ones.
+- 2026-10-24: (browxai) read audit inputs via git archive of the fetched origin ref.
+- 2026-10-24: (trackxai) check every cut-list item for inbound users before it goes on a plan (MCP-parity pages, one-time plaintext blocks, build-contract strings, externally held artifacts). A collapse-empty-groups change keeps an add control mounted, or the keyboard chord and palette action do nothing.
+- 2026-10-24: (kw) a redirect that doesn't leave the page releases its lock. Enter must not fire the wrong submit when two submit buttons share a form. A block that mounts after an async check (passkey) is reserved until the check finishes. Use aria-disabled with a guard, not disabled, on buttons a keyboard user may be on. iOS zooms on focus for inputs under 16px: --text-field max(16px,1rem).
+- 2026-10-24: (trackxai) a branch cut from an unmerged parent that later squash-merged: cherry-pick its own commits (git log parent..branch), don't merge, or the squashed history conflicts.
+- docsxai: never edit .woodpecker from a copy sweep (config hashes are guarded); infra-detail removal there is an owner decision.
+- trackxai: a test written by a builder that cannot run vitest must pass CI before it is trusted. Run prettier --check and check-size locally before push.
+- remotxai: composer dock never double-adds safe-area on top of the keyboard inset.
+- kw: an a11y name must start with the visible text (label-content-name-mismatch); don't override a card link with an aria-label.
+- kw: reveal animations that stagger cards past 0.5 s make contrast checks read mid-fade colours; cap the stagger.
+- kw: a new Playwright spec must run once on the CI box before it enters a gate batch.
+- browxai: rebase stacked layout and lock branches in one order to avoid CSS/component conflicts.
+- docsxai: when the hook service is down agents stop and wait; uncommitted work survives in worktrees, so respawn with 'commit what exists first'.
+- browxai: when a status slot replaces a hidden element, tests that matched the old class (empty:hidden) must move to the slot contract. Run cargo fmt before pushing test edits.
+- kw: neutralise hover transforms in layout-stability specs (move the pointer away); a busy button's accessible name changes, find it by the busy name.
+- trackxai: run check:readme and the size cap locally before push (three PRs failed the static step on them). Use bash, not zsh, for CI log helpers (zsh doesn't word-split).
+- trackxai: queued push waiters must be chained, not parallel (several waiters fire several gates when the queue empties).
+- browxai: run pnpm lint on new scripts before pushing (browser globals in page.evaluate fail the gate). The commit hook rejects git commit --amend --no-edit: use a new commit.
+- trackxai/remotxai: a killed pipeline cannot be approved or restarted into a deploy; fix is a fresh push to main (deploy guards want parent 0).
