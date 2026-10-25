@@ -2,7 +2,17 @@
 // user-level config file, after showing the change. This is the only code in init
 // that touches a file outside the project, and it runs only on that flag.
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  fchmodSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeSync,
+} from "node:fs";
 import { dirname } from "node:path";
 import {
   CLIENT_LABELS,
@@ -83,12 +93,37 @@ export function planUserConfig(
   return { kind: "add", path, before, after: JSON.stringify(doc, null, 2) + "\n" };
 }
 
-/** Write the planned file: to a sibling temp file first, then rename over the target. */
+/** Write the planned file: to a sibling temp file first, then rename over the
+ *  target. The new file keeps the old one's mode, 0600 when there was none. */
 export function applyUserConfig(plan: Extract<UserConfigPlan, { kind: "add" }>): void {
   mkdirSync(dirname(plan.path), { recursive: true });
+  const mode = existingMode(plan.path) ?? 0o600;
   const tmp = `${plan.path}.browxai-tmp`;
-  writeFileSync(tmp, plan.after, "utf8");
+  writeNew(tmp, plan.after, mode);
   renameSync(tmp, plan.path);
+}
+
+/** Permission bits of an existing file, or undefined when there is none. */
+function existingMode(path: string): number | undefined {
+  try {
+    return statSync(path).mode & 0o777;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw e;
+  }
+}
+
+/** Create `path`, which must not exist yet, with exactly `mode`. */
+function writeNew(path: string, data: string | Buffer, mode: number): void {
+  const fd = openSync(path, "wx", mode);
+  try {
+    writeSync(fd, typeof data === "string" ? Buffer.from(data, "utf8") : data);
+    // The umask can strip bits from the mode given to open; set it exactly.
+    fchmodSync(fd, mode);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 function readIfExists(path: string): string | undefined {

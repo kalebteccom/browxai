@@ -1,4 +1,13 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -94,6 +103,25 @@ describe("applyUserConfig", () => {
     if (plan.kind !== "add") throw new Error("expected add");
     applyUserConfig(plan);
     expect(readFileSync(path, "utf8")).toContain('"browxai"');
+  });
+
+  it.skipIf(process.platform === "win32")("keeps the mode of the file it replaces", () => {
+    const path = join(home, ".cursor", "mcp.json");
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(path, '{ "mcpServers": { "other": { "env": { "TOKEN": "x" } } } }\n');
+    chmodSync(path, 0o600);
+    const plan = planUserConfig("cursor", ENTRY, sys);
+    if (plan.kind !== "add") throw new Error("expected add");
+    applyUserConfig(plan);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(readFileSync(path, "utf8")).mcpServers.other.env.TOKEN).toBe("x");
+  });
+
+  it.skipIf(process.platform === "win32")("creates a new file as 0600", () => {
+    const plan = planUserConfig("cursor", ENTRY, sys);
+    if (plan.kind !== "add") throw new Error("expected add");
+    applyUserConfig(plan);
+    expect(statSync(plan.path).mode & 0o777).toBe(0o600);
   });
 });
 
