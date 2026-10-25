@@ -19,6 +19,7 @@ surface" covers.
 ### Fixed
 
 - **`--help` and `-h` print usage on every subcommand.** `browxai chrome start --help` used to launch Chrome and `browxai doctor --help` ran the check. Both now print usage and exit 0 without running anything. `browxai help` works too.
+- **`browxai chrome` rejects an argument it does not know.** `browxai chrome start --hlep` used to launch Chrome. Any unknown flag or extra word now prints usage and exits 2.
 - **A mistyped capability name no longer prints a stack trace.** `browxai doctor` (and every other subcommand) used to crash on a name such as `evall` in `BROWX_CAPABILITIES`. `doctor` now shows a failing `capabilities` row that names the bad value and lists the valid names, and exits 1.
 - **`doctor` warns when `BROWX_CAPABILITIES` drops the defaults.** A list such as `eval` replaces `read,navigation,action,human`. The `capabilities` row shows a warning, not a green tick, and prints the list with the defaults added back.
 - **`browxai init` next steps keep the workspace on `chrome login` and `chrome start`.** The generated `.mcp.json` sets `BROWX_WORKSPACE` to `<dir>/.browxai`, so a login made in a shell without it went to `~/.browxai/profile` and the `browxai` entry never saw it. The next steps now print both commands with `BROWX_WORKSPACE` set, and say why.

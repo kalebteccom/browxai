@@ -129,6 +129,20 @@ describe("browxai chrome start", () => {
     expect(err).toContain("invalid --port");
   });
 
+  it.each([
+    ["start", "--hlep"],
+    ["start", "--port=9333"],
+    ["start", "extra"],
+    ["login", "--insecure"],
+    ["stop", "--force"],
+    ["status", "now"],
+  ])("rejects chrome %s %s with usage and exit 2, launching nothing", async (sub, arg) => {
+    expect(await runChrome([sub, arg])).toBe(2);
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(err).toContain(`unknown argument "${arg}"`);
+    expect(err).toContain("usage: browxai chrome");
+  });
+
   it("rejects a --profile that is a path", async () => {
     expect(await runChrome(["start", "--profile", "../escape"])).toBe(1);
     expect(spawnMock).not.toHaveBeenCalled();
