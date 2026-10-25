@@ -272,3 +272,51 @@ describe("serialise masks values before cutting them", () => {
     expect(out).not.toContain("kkkkk");
   });
 });
+
+describe("serialise masks normalised text and text split across nodes", () => {
+  const TOKEN = "SuperSecretToken123";
+  const PEM =
+    "MIIBOgIBAAJBAKj34  GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4\nWGeKLs1Pt8QuKUpRKfFLfRYC9AIKjb";
+  const registry = new SecretRegistry();
+  registry.register({ name: "TOKEN", value: TOKEN });
+  registry.register({ name: "PEM", value: PEM });
+  const maskText = (t: string): string => registry.applyMaskInText(t);
+  const para = (...children: A11yNode[]): A11yNode => node("paragraph", undefined, "e2", children);
+
+  it("masks a secret written with double spaces and a newline (PEM in a pre)", () => {
+    const out = serialise(doc(para(text("x".repeat(50) + PEM))), { maskText });
+    expect(out).toContain("<PEM>");
+    expect(out).not.toContain("MIIBOg");
+  });
+
+  it("masks a secret with a zero-width space inside it on a clipped row", () => {
+    const words = "x".repeat(110) + "Super​SecretToken123";
+    const out = serialise(doc(para(text(words))), { maskText });
+    expect(out).toContain("<TOKEN>");
+    expect(out).not.toContain("Supe");
+  });
+
+  it("masks a name with a zero-width space inside the secret", () => {
+    const out = serialise(doc(node("button", "id Super​SecretToken123", "e2")), { maskText });
+    expect(out).toContain("<TOKEN>");
+  });
+
+  it("withholds row text when a secret is split by <mark>", () => {
+    const p = para(
+      text("key: SuperSecr"),
+      node("mark", undefined, "e3", [text("etTok")]),
+      text("en123"),
+    );
+    const out = serialise(doc(p), { maskText });
+    expect(out).not.toContain("SuperSecr");
+    expect(out).not.toContain("etTok");
+    expect(out).toContain("row text withheld");
+  });
+
+  it("keeps row text when no secret is split", () => {
+    const p = para(text("key: "), node("mark", undefined, "e3", [text(TOKEN)]));
+    const out = serialise(doc(p), { maskText });
+    expect(out).toContain("<TOKEN>");
+    expect(out).not.toContain("row text withheld");
+  });
+});

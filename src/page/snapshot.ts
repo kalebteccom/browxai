@@ -11,8 +11,10 @@ import {
   clipText,
   escapeQuoted,
   isDocumentRoot,
-  ownText,
+  maskRowText,
+  ownRawText,
   ownsItsText,
+  secretSpansRows,
 } from "./snapshot-text.js";
 
 export interface SerialiseOptions {
@@ -47,8 +49,8 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
   const pruneGeneric = opts.pruneGeneric ?? true;
   const maxNodes = opts.maxNodes ?? Infinity;
   const omitPatterns = (opts.omit ?? []).map((p) => p.toLowerCase());
-  const text = newTextState(opts);
   const maskText = opts.maskText ?? identity;
+  const text = newTextState(opts, maskText !== identity && secretSpansRows(root, maskText));
 
   const lines: string[] = [];
   let emitted = 0;
@@ -115,12 +117,16 @@ function trailerLines(t: {
       `... [text left off ${t.text.omittedRows} row(s) past the ${t.text.budgetTotal} character text budget; use text_search or extract to read it]`,
     );
   }
+  if (t.text.withheld) {
+    out.push("... [row text withheld: a registered secret spans more than one text node]");
+  }
   return out;
 }
 
-function newTextState(opts: SerialiseOptions): TextState {
+function newTextState(opts: SerialiseOptions, withheld: boolean): TextState {
   const budget = opts.textBudget ?? TEXT_BUDGET;
   return {
+    withheld,
     maxRowLen: opts.maxTextLen ?? MAX_ROW_TEXT,
     budget,
     budgetTotal: budget,
@@ -156,6 +162,8 @@ interface TextState {
   budget: number;
   /** The budget the call started with, for the trailer line. */
   budgetTotal: number;
+  /** No row carries text in this call: a secret spans text nodes. */
+  withheld: boolean;
   omittedRows: number;
 }
 
@@ -195,7 +203,8 @@ function visitForSerialise(node: A11yNode, depth: number, o: VisitOpts): VisitRe
       truncated: false,
     };
   }
-  const candidate = o.pruneGeneric && !o.underOwner ? candidateText(node, o.parentRole) : "";
+  const raw = o.pruneGeneric && !o.underOwner ? candidateText(node, o.parentRole) : "";
+  const candidate = raw ? maskRowText(raw, o.maskText) : "";
   const noise = o.pruneGeneric && isGenericNoise(node);
   if (noise && !candidate) return SILENT;
   if (o.emitted >= o.maxNodes) {
@@ -208,7 +217,7 @@ function visitForSerialise(node: A11yNode, depth: number, o: VisitOpts): VisitRe
       truncated: true,
     };
   }
-  const text = candidate ? spendText(o.maskText(candidate), o.text) : undefined;
+  const text = candidate ? spendText(candidate, o.text) : undefined;
   if (noise && text === undefined) return SILENT;
   return {
     line: formatNode(node, depth, o, text),
@@ -227,20 +236,21 @@ const SILENT: VisitResult = {
   truncated: false,
 };
 
-/** The text this node would put on its row, before the budget. A nameless
+/** The raw text this node would put on its row, before masking. A nameless
  *  container reads its own `StaticText` children. A `StaticText` directly under
  *  the document root has no container to ride on, so it is a row itself. */
 function candidateText(node: A11yNode, parentRole: string): string {
   if (node.role === "StaticText") {
     if (node.testId || !isDocumentRoot(parentRole)) return "";
-    return (node.name ?? "").replace(/\s+/g, " ").trim();
+    return node.name ?? "";
   }
-  return canCarryText(node) ? ownText(node) : "";
+  return canCarryText(node) ? ownRawText(node) : "";
 }
 
 /** Clip `candidate` to the row cap and what is left of the budget. Returns
  *  undefined, and counts the row, when the budget is spent. */
 function spendText(candidate: string, state: TextState): string | undefined {
+  if (state.withheld) return undefined;
   if (state.budget <= 0) {
     state.omittedRows++;
     return undefined;
@@ -287,7 +297,7 @@ function formatNode(
     text !== undefined
       ? cleanPageText(text)
       : node.name
-        ? truncate(cleanPageText(o.maskText(node.name)), o.maxNameLen)
+        ? truncate(cleanPageText(maskRowText(node.name, o.maskText)), o.maxNameLen)
         : undefined;
   const nm = quoted !== undefined ? ` "${escapeQuoted(quoted)}"` : "";
   // Emit the actual attribute name (e.g. `[data-testid="…"]` or `[data-type="…"]`) so

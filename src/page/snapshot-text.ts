@@ -5,7 +5,7 @@
 //
 // Pure: no CDP, no Playwright. The serialiser owns the budget and the output.
 
-import { PRESENTATIONAL_ROLES, type A11yNode } from "./a11y-types.js";
+import { PRESENTATIONAL_ROLES, walk, type A11yNode } from "./a11y-types.js";
 
 /** Longest text kept on one row. Longer text is cut with an ellipsis. */
 export const MAX_ROW_TEXT = 120;
@@ -81,6 +81,12 @@ export function canCarryText(node: Pick<A11yNode, "role" | "name" | "testId">): 
  * characters are collected, so a huge paragraph costs a bounded amount of work.
  */
 export function ownText(node: A11yNode, limit: number = MAX_ROW_TEXT * 2): string {
+  return ownRawText(node, limit).replace(/\s+/g, " ").trim();
+}
+
+/** `ownText` before whitespace is collapsed, so a secret registered with runs
+ *  of whitespace (a PEM block in a `<pre>`) can still be masked. */
+export function ownRawText(node: A11yNode, limit: number = MAX_ROW_TEXT * 2): string {
   const parts: string[] = [];
   let length = 0;
   const stack: A11yNode[] = [];
@@ -101,7 +107,7 @@ export function ownText(node: A11yNode, limit: number = MAX_ROW_TEXT * 2): strin
       for (let i = n.children.length - 1; i >= 0; i--) stack.push(n.children[i]!);
     }
   }
-  return parts.join("").replace(/\s+/g, " ").trim();
+  return parts.join("");
 }
 
 /** Text wrappers only: a layout table cell is a row of its own, so it is not
@@ -127,11 +133,41 @@ const REF_OPENER = /\[(?=\s*ref\s*=)/gi;
  *  control and format characters are dropped, and the `[` of any `[ref=` turns
  *  into `(`, so page text cannot put a ref on a row. Never lengthens the text. */
 export function cleanPageText(text: string): string {
-  return text.replace(LINE_BREAKS, " ").replace(CONTROL_OR_FORMAT, "").replace(REF_OPENER, "(");
+  return stripControls(text).replace(REF_OPENER, "(");
 }
 
 /** Escape `\` and `"` the way JSON does, so text inside a row's quotes cannot
  *  close them. Run after any cut, so a cut never splits an escape. */
 export function escapeQuoted(text: string): string {
   return text.replace(/[\\"]/g, (c) => `\\${c}`);
+}
+
+/** Strip control and format characters (line breaks become spaces). */
+function stripControls(text: string): string {
+  return text.replace(LINE_BREAKS, " ").replace(CONTROL_OR_FORMAT, "");
+}
+
+/** Whitespace collapsed and control and format characters dropped. */
+function normaliseText(text: string): string {
+  return stripControls(text).replace(/\s+/g, " ");
+}
+
+/** Row text ready for the budget: masked raw, normalised, masked again, so a
+ *  secret is masked whether the page wrote it with extra whitespace or with a
+ *  zero-width character inside it. */
+export function maskRowText(raw: string, maskText: (text: string) => string): string {
+  return maskText(normaliseText(maskText(raw)).trim());
+}
+
+/** True when a registered secret spans more than one `StaticText` node under
+ *  `root`, for example a key split by `<mark>` or `<code>`. Each node is masked
+ *  on its own row, so such a secret would print in pieces. One pass over the
+ *  tree, one mask over the joined text. */
+export function secretSpansRows(root: A11yNode, maskText: (text: string) => string): boolean {
+  const pieces: string[] = [];
+  for (const { node } of walk(root)) {
+    if (node.role === "StaticText" && node.name) pieces.push(normaliseText(node.name));
+  }
+  if (pieces.length < 2) return false;
+  return pieces.map(maskText).join("") !== maskText(pieces.join(""));
 }
