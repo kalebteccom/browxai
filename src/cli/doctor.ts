@@ -18,7 +18,7 @@ import { PACKAGE_VERSION } from "../util/version.js";
 import { ConfigStore } from "../util/config-store.js";
 import { pluginChecks } from "./doctor-plugins.js";
 import { probeCdp } from "./doctor-cdp.js";
-import { attachCapabilityCheck } from "./doctor-attach.js";
+import { attachCapabilityCheck, cdpAttachRow } from "./doctor-attach.js";
 import { capabilitiesRow } from "./doctor-capabilities.js";
 import {
   chromeCheck,
@@ -135,17 +135,7 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
   // 4. BROWX_ATTACH_CDP — if set, can we reach it?
   const cdpEnv = process.env.BROWX_ATTACH_CDP?.trim();
   if (cdpEnv) {
-    const reachable = await probeCdp(cdpEnv);
-    checks.push({
-      name: "cdp-attach",
-      ok: reachable.ok,
-      detail: reachable.ok
-        ? `${cdpEnv} reachable — ${reachable.version}`
-        : `${cdpEnv} unreachable (${reachable.error})`,
-      fix: reachable.ok
-        ? undefined
-        : "start a Chrome at this port — `browxai chrome start` or `chrome --remote-debugging-port=9222 …`",
-    });
+    checks.push(cdpAttachRow(cdpEnv, await probeCdp(cdpEnv)));
   } else {
     // Not configured. Probe the default port anyway — adopters with a Chrome
     // already running may want to be told "you could attach to that, you know."
