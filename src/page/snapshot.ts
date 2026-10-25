@@ -211,7 +211,7 @@ function visitForSerialise(node: A11yNode, depth: number, o: VisitOpts): VisitRe
   const text = candidate ? spendText(o.maskText(candidate), o.text) : undefined;
   if (noise && text === undefined) return SILENT;
   return {
-    line: formatNode(node, depth, o.indent, o.maxNameLen, text, o.maskText),
+    line: formatNode(node, depth, o, text),
     skipSubtree: false,
     elided: 0,
     elidedBranches: 0,
@@ -276,12 +276,10 @@ export function findByRef(root: A11yNode, ref: string): A11yNode | null {
 function formatNode(
   node: A11yNode,
   depth: number,
-  indent: string,
-  maxNameLen: number,
+  o: Pick<VisitOpts, "indent" | "maxNameLen" | "maskText">,
   text: string | undefined,
-  maskText: (text: string) => string,
 ): string {
-  const pad = indent.repeat(depth);
+  const pad = o.indent.repeat(depth);
   // Carried text rides where a name would. A node that has a name never gets
   // text (see `canCarryText`), so the two cannot collide. Both are page text:
   // masked before the cut, cleaned and escaped after it.
@@ -289,7 +287,7 @@ function formatNode(
     text !== undefined
       ? cleanPageText(text)
       : node.name
-        ? truncate(cleanPageText(maskText(node.name)), maxNameLen)
+        ? truncate(cleanPageText(o.maskText(node.name)), o.maxNameLen)
         : undefined;
   const nm = quoted !== undefined ? ` "${escapeQuoted(quoted)}"` : "";
   // Emit the actual attribute name (e.g. `[data-testid="…"]` or `[data-type="…"]`) so

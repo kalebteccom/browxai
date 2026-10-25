@@ -86,19 +86,19 @@ describe("buildSnapshotDelta page text", () => {
   };
 
   it("masks before clipping in the full tree", () => {
-    const d = buildSnapshotDelta("full", tree, 600, [], [], maskText);
+    const d = buildSnapshotDelta("full", tree, 600, [], { maskText });
     expect(d?.tree).toContain("<TOKEN>");
     expect(d?.tree).not.toContain("Supe");
   });
 
   it("masks before clipping in a scoped subtree", () => {
-    const d = buildSnapshotDelta("scoped_snapshot", tree, 600, [], ["e2"], maskText);
+    const d = buildSnapshotDelta("scoped_snapshot", tree, 600, [], { refs: ["e2"], maskText });
     expect(d?.tree).toContain("<TOKEN>");
     expect(d?.tree).not.toContain("Supe");
   });
 
   it("escapes page text so it cannot add a ref to a row", () => {
-    const d = buildSnapshotDelta("full", tree, 600, [], []);
+    const d = buildSnapshotDelta("full", tree, 600, []);
     expect(d?.tree).not.toContain("[ref=e12]");
     expect(d?.tree).toContain("[ref=e3]");
   });

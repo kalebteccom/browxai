@@ -160,12 +160,16 @@ export function buildSnapshotDelta(
   tree: A11yNode | null,
   maxTokens: number,
   warnings: string[],
-  /** refs to scope the delta to (action's ref + appeared regions).
-   *  When empty + mode=scoped_snapshot, falls back to the full tree as before. */
-  scopeRefs: string[] = [],
-  /** Masks registered secrets in page text before rows are clipped. */
-  maskText?: SerialiseOptions["maskText"],
+  delta: {
+    /** refs to scope the delta to (action's ref + appeared regions).
+     *  When empty + mode=scoped_snapshot, falls back to the full tree as before. */
+    refs?: string[];
+    /** Masks registered secrets in page text before rows are clipped. */
+    maskText?: SerialiseOptions["maskText"];
+  } = {},
 ): SnapshotDeltaInfo | undefined {
+  const scopeRefs = delta.refs ?? [];
+  const maskText = delta.maskText;
   if (mode === "none") return undefined;
   if (!tree) return { mode, scope: "(no tree)", truncated: false };
   let renderMode: SnapshotMode = mode;

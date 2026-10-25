@@ -524,12 +524,8 @@ function computeSnapshotDelta(args: {
   const scopeRefs: string[] = [];
   if (args.descriptor.ref) scopeRefs.push(args.descriptor.ref);
   for (const r of args.structure.appeared) scopeRefs.push(r.ref);
-  return buildSnapshotDelta(
-    effectiveMode,
-    args.postTree,
-    args.maxTokens,
-    args.warnings,
-    scopeRefs,
-    args.maskText,
-  );
+  return buildSnapshotDelta(effectiveMode, args.postTree, args.maxTokens, args.warnings, {
+    refs: scopeRefs,
+    maskText: args.maskText,
+  });
 }
