@@ -111,9 +111,9 @@ Defenses:
   `eval`, `network-read`, `file-io`, `byob-attach`); each is independently enable/disable-able
   at server start. The default set is _restrictive_: `eval_js` and `byob-attach` are
   off-by-default-with-warnings.
-- **Confirmation hooks.** A `confirm_required` policy item names actions that always block
-  on `await_human` first: irreversible operations (file downloads, form submissions on
-  authed pages), BYOB-mode actions, navigation off allowlist.
+- **Confirmation hooks.** The `confirmRequired` config key (`BROWX_CONFIRM_REQUIRED`) names
+  actions that block on `await_human` first: file downloads, file uploads, BYOB-mode
+  actions and navigation off the allowlist.
 - **Loud one-time warnings.** Anything that crosses a known-dangerous threshold
   (`BROWX_ATTACH_CDP` set, `--insecure` chrome, `eval_js` enabled) prints a stderr warning
   naming what's exposed before the first tool call goes out.
@@ -699,7 +699,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
   Session-replay artifact capture. When `start_recording({replay})` engages the writer, browxai emits a `.browx` archive holding the DOM stream (rrweb), network + WS metadata (bodies at the `reexecutable` tier), console output and the agent's tool timeline on one clock. **The archive carries real page content and is as sensitive as the session it recorded.** Store artifacts under `$BROWX_WORKSPACE` and treat them as production data — retention, sharing, and downstream access should match the session's own trust posture. Registered secrets are masked at capture time before anything reaches disk: every source adapter passes through the `SecretRegistry.applyMaskDeep` chokepoint in `src/util/secrets.ts`, and header-drop / body-path redaction runs at the same seam. The artifact records **that** something was removed (as a `Redacted` marker), never the value. `manifest.truncated` names the reason a short log is short — `size-cap`, `event-cap`, or `backpressure`; backpressure is distinct on purpose (it does not stop capture, so the log carries dropped events and runs to the end of the session). Loud one-time warning at server boot. Same posture class as `network-body` / `secrets` / `diagnostics`.
 
-- `native-device`, default **off**. Tools: `device_list`, `device_boot`, `device_shutdown`, `app_list`, `app_install`, `app_uninstall`, `app_launch`, `app_terminate`, `app_reset`, `app_foreground` — **and `open_session({browserType:"ios-app"})` / `open_session({browserType:"android-app"})` themselves**, which refuse with `capability-required` when it is not granted.
+- `native-device`, default **off**. Tools: `device_list`, `device_boot`, `device_shutdown`, `app_list`, `app_install`, `app_uninstall`, `app_launch`, `app_terminate`, `app_reset`, `app_foreground` — **and `open_session({engine:"ios-app"})` / `open_session({engine:"android-app"})` themselves**, which refuse with `capability-required` when it is not granted.
 
   Native application control on an **iOS Simulator** and on an **Android emulator** (RFC 0008). **This capability broadens posture more than any browser capability does, and the gate sits at SESSION CREATION as well as per-tool** — every native tool needs a native session first, so one check closes the whole surface and there is no second door. Opening a session boots or leases a device, optionally installs an application bundle, launches an application, attaches an OS-level input pipeline and photographs the screen, all before a single tool call. A per-tool gate alone would have to be repeated on every tool the engines serve and would still leave session creation ungated.
 
@@ -868,7 +868,7 @@ another user. A missing directory is created `0700`, re-checked after creation
 (a path that turned into a symlink in between is refused), and chmodded through a
 descriptor opened with `O_NOFOLLOW`.
 
-A `confirm_required` set lists actions that always block on `await_human` before
+The `confirmRequired` set lists actions that block on `await_human` before
 executing, regardless of capability:
 
 ```
