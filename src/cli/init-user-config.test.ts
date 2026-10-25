@@ -80,6 +80,20 @@ describe("planUserConfig", () => {
     expect(planUserConfig("codex", ENTRY, sys, () => before).kind).toBe("present");
   });
 
+  it("uses an absolute CODEX_HOME", () => {
+    const codexHome = join(home, "codex-home");
+    const plan = planUserConfig("codex", ENTRY, { ...sys, env: { CODEX_HOME: codexHome } });
+    if (plan.kind !== "add") throw new Error("expected add");
+    expect(plan.path).toBe(join(codexHome, "config.toml"));
+  });
+
+  it("refuses a relative CODEX_HOME", () => {
+    const plan = planUserConfig("codex", ENTRY, { ...sys, env: { CODEX_HOME: "codex-home" } });
+    expect(plan.kind).toBe("refuse");
+    if (plan.kind !== "refuse") return;
+    expect(plan.message).toContain("CODEX_HOME");
+  });
+
   it("does not edit Claude Code settings", () => {
     expect(planUserConfig("claude-code", ENTRY, sys).kind).toBe("refuse");
   });

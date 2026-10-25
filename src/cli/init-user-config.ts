@@ -49,6 +49,12 @@ export function planUserConfig(
     };
   }
   const path = userConfigPath(id, sys);
+  if (!path && id === "codex") {
+    return {
+      kind: "refuse",
+      message: `CODEX_HOME is a relative path (${sys.env.CODEX_HOME?.trim() ?? ""}). Set it to an absolute path, or add the entry by hand.`,
+    };
+  }
   if (!path) {
     return {
       kind: "refuse",

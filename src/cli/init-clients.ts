@@ -4,7 +4,7 @@
 
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 
 export type ClientId = "claude-code" | "cursor" | "codex" | "claude-desktop";
 
@@ -52,8 +52,13 @@ export function userConfigPath(id: ClientId, sys: ClientSystem): string | undefi
   switch (id) {
     case "cursor":
       return join(sys.home, ".cursor", "mcp.json");
-    case "codex":
-      return join(sys.env.CODEX_HOME?.trim() || join(sys.home, ".codex"), "config.toml");
+    case "codex": {
+      // A relative CODEX_HOME depends on the directory Codex starts in, so there
+      // is no one file to name.
+      const codexHome = sys.env.CODEX_HOME?.trim();
+      if (codexHome && !isAbsolute(codexHome)) return undefined;
+      return join(codexHome || join(sys.home, ".codex"), "config.toml");
+    }
     case "claude-desktop":
       if (sys.platform === "darwin") {
         return join(
