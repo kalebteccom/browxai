@@ -3505,7 +3505,7 @@ JSONL records the redacted form, never the raw value.
 
 ### `await_human({ kind?, prompt, choices?, timeoutMs? })`
 
-Blocks the calling agent until the human responds. The `prompt` is logged to stderr. The prompt names the session's isolated world (`browxai-<random>`) and a short ticket. The operator answers from DevTools after switching the console's context dropdown from `top` to that world, which the page's own scripts cannot reach, and passes the ticket as the last argument. An answer without the current ticket, or after its prompt ended, is dropped. The supported kinds:
+Blocks the calling agent until the human responds. `kind` defaults to `acknowledge`. `timeoutMs` defaults to 300000 (5 minutes) and is capped at 3600000; an unanswered prompt is denied at the timeout. The `prompt` is logged to stderr. The prompt names the session's isolated world (`browxai-<random>`) and a short ticket. The operator answers from DevTools after switching the console's context dropdown from `top` to that world, which the page's own scripts cannot reach, and passes the ticket as the last argument. An answer without the current ticket, or after its prompt ended, is dropped. The supported kinds:
 
 - `acknowledge` → `__browx.proceed(ticket)` (the original site-docs `manual-capture` use case)
 - `confirm` → `__browx.confirm(true, ticket)` or `__browx.confirm(false, ticket)`
