@@ -760,7 +760,7 @@ console_read({ limit: 20 })
 
 ### `network_read`
 
-Session-wide ring buffer of recent network requests (cap: 500). For per-action attribution use `ActionResult.network` from any action tool, still the primary surface. This is the "what happened across the session" view; useful when an XHR isn't tied to a specific action. Same noise-folding rules as the action-window tap (Image/Font/Stylesheet/Media/beacons → `summary.byType.other`).
+Session-wide ring buffer of recent network requests (cap: 500). `network_read({ limit?, session? })` returns the most recent `limit` requests (default 50, max 500). For per-action attribution use `ActionResult.network` from any action tool, still the primary surface. This is the "what happened across the session" view; useful when an XHR isn't tied to a specific action. Same noise-folding rules as the action-window tap (Image/Font/Stylesheet/Media/beacons → `summary.byType.other`).
 
 ### `sample`
 
@@ -3503,7 +3503,7 @@ JSONL records the redacted form, never the raw value.
 
 ## Human and agent helper
 
-### `await_human({ kind, prompt, choices?, timeoutMs? })`
+### `await_human({ kind?, prompt, choices?, timeoutMs? })`
 
 Blocks the calling agent until the human responds. The `prompt` is logged to stderr. The prompt names the session's isolated world (`browxai-<random>`) and a short ticket. The operator answers from DevTools after switching the console's context dropdown from `top` to that world, which the page's own scripts cannot reach, and passes the ticket as the last argument. An answer without the current ticket, or after its prompt ended, is dropped. The supported kinds:
 
