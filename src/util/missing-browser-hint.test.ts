@@ -23,4 +23,13 @@ describe("withInstallHint", () => {
     expect(withInstallHint("firefox", err)).toBe(err);
     expect(withInstallHint("firefox", "text")).toBe("text");
   });
+  it("leaves a non-Error that names the missing executable alone", () => {
+    const like = { message: "Executable doesn't exist at /x" };
+    expect(withInstallHint("firefox", like)).toBe(like);
+  });
+
+  it("keeps the original error as the cause", () => {
+    const err = new Error(BANNER);
+    expect((withInstallHint("firefox", err) as Error).cause).toBe(err);
+  });
 });
