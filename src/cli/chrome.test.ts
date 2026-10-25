@@ -40,7 +40,7 @@ vi.mock("./chrome-process.js", async (orig) => ({
   },
 }));
 
-import { runChrome } from "./chrome.js";
+import { runChrome, unknownChromeArg } from "./chrome.js";
 
 let root: string;
 let saved: string | undefined;
@@ -261,5 +261,95 @@ describe("browxai chrome stop", () => {
     expect(signals).toContain("SIGTERM");
     expect(signals).not.toContain("SIGKILL");
     expect(err).toMatch(/not sending SIGKILL/);
+  });
+});
+
+describe("browxai chrome arguments", () => {
+  it.each([[[]], [["bogus"]], [["bogus", "--force"]]])(
+    "prints usage and exits 2 for a missing or unknown subcommand %j",
+    async (args) => {
+      expect(await runChrome(args)).toBe(2);
+      expect(spawnMock).not.toHaveBeenCalled();
+      expect(err).toContain("usage: browxai chrome <start");
+      expect(err).not.toContain("unknown argument");
+    },
+  );
+
+  it("rejects a flag that belongs to another subcommand", async () => {
+    expect(await runChrome(["login", "--disable-background-throttling"])).toBe(2);
+    expect(await runChrome(["login", "--port", "9222"])).toBe(2);
+    expect(await runChrome(["start", "--url", "https://example.com/"])).toBe(2);
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(err).toContain(
+      'browxai chrome login: unknown argument "--disable-background-throttling"',
+    );
+    expect(err).toContain('browxai chrome login: unknown argument "--port"');
+    expect(err).toContain('browxai chrome start: unknown argument "--url"');
+  });
+
+  it("names the first unknown argument and checks it before the port", async () => {
+    expect(await runChrome(["start", "--port", "99999", "--nope", "--also"])).toBe(2);
+    expect(err).toContain('unknown argument "--nope"');
+    expect(err).not.toContain("invalid --port");
+  });
+
+  it("starts with every start flag at once", async () => {
+    const args = [
+      "start",
+      "--port",
+      "9333",
+      "--profile",
+      "work",
+      "--force",
+      "--insecure",
+      "--disable-background-throttling",
+    ];
+    expect(await runChrome(args)).toBe(0);
+    expect(spawnMock).toHaveBeenCalledOnce();
+    expect(spawnedArgs()).toContain("--remote-debugging-port=9333");
+  });
+
+  it("tells a started Chrome's user where the attach entry comes from", async () => {
+    expect(await runChrome(["start"])).toBe(0);
+    expect(out).toContain("`browxai init <dir>` writes one as `browxai-attached`");
+    expect(out).toContain("Stop with: browxai chrome stop");
+  });
+});
+
+describe("unknownChromeArg", () => {
+  it("accepts each subcommand's own flags", () => {
+    expect(
+      unknownChromeArg("start", ["--port", "9222", "--profile", "p", "--force"]),
+    ).toBeUndefined();
+    expect(
+      unknownChromeArg("start", ["--insecure", "--disable-background-throttling"]),
+    ).toBeUndefined();
+    expect(
+      unknownChromeArg("login", ["--url", "https://x/", "--profile", "p", "--force"]),
+    ).toBeUndefined();
+    expect(unknownChromeArg("stop", [])).toBeUndefined();
+    expect(unknownChromeArg("status", [])).toBeUndefined();
+  });
+
+  it("returns the first argument the subcommand does not take", () => {
+    expect(unknownChromeArg("start", ["a", "b"])).toBe("a");
+    expect(unknownChromeArg("start", ["--port", "9222", "extra"])).toBe("extra");
+    expect(unknownChromeArg("login", ["--port", "1"])).toBe("--port");
+    expect(unknownChromeArg("stop", ["--force"])).toBe("--force");
+  });
+
+  it("leaves a value flag with no value to the subcommand", () => {
+    expect(unknownChromeArg("start", ["--port"])).toBeUndefined();
+    expect(unknownChromeArg("start", ["--port", "--force"])).toBeUndefined();
+    expect(unknownChromeArg("start", ["--port", "--bogus"])).toBe("--bogus");
+    expect(unknownChromeArg("login", ["--url", "--insecure"])).toBe("--insecure");
+  });
+
+  it("takes a value that starts with one dash", () => {
+    expect(unknownChromeArg("start", ["--profile", "-x"])).toBeUndefined();
+  });
+
+  it("does not judge a subcommand it does not know", () => {
+    expect(unknownChromeArg("nope", ["--x"])).toBeUndefined();
   });
 });
