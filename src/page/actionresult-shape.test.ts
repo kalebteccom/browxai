@@ -96,4 +96,10 @@ describe("buildSnapshotDelta page text", () => {
     expect(d?.tree).toContain("<TOKEN>");
     expect(d?.tree).not.toContain("Supe");
   });
+
+  it("escapes page text so it cannot add a ref to a row", () => {
+    const d = buildSnapshotDelta("full", tree, 600, [], []);
+    expect(d?.tree).not.toContain("[ref=e12]");
+    expect(d?.tree).toContain("[ref=e3]");
+  });
 });

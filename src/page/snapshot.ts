@@ -7,7 +7,9 @@ import {
   MAX_ROW_TEXT,
   TEXT_BUDGET,
   canCarryText,
+  cleanPageText,
   clipText,
+  escapeQuoted,
   isDocumentRoot,
   ownText,
   ownsItsText,
@@ -281,18 +283,20 @@ function formatNode(
 ): string {
   const pad = indent.repeat(depth);
   // Carried text rides where a name would. A node that has a name never gets
-  // text (see `canCarryText`), so the two cannot collide.
-  const nm =
+  // text (see `canCarryText`), so the two cannot collide. Both are page text:
+  // masked before the cut, cleaned and escaped after it.
+  const quoted =
     text !== undefined
-      ? ` "${text}"`
+      ? cleanPageText(text)
       : node.name
-        ? ` "${truncate(maskText(node.name), maxNameLen)}"`
-        : "";
+        ? truncate(cleanPageText(maskText(node.name)), maxNameLen)
+        : undefined;
+  const nm = quoted !== undefined ? ` "${escapeQuoted(quoted)}"` : "";
   // Emit the actual attribute name (e.g. `[data-testid="…"]` or `[data-type="…"]`) so
   // the agent can transcribe it directly. Falls back to `data-testid` when the source
   // didn't tell us which attr matched.
   const tid = node.testId
-    ? ` [${node.testIdAttr ?? "data-testid"}=${JSON.stringify(node.testId)}]`
+    ? ` [${node.testIdAttr ?? "data-testid"}=${JSON.stringify(cleanPageText(node.testId))}]`
     : "";
   const src = node.source === "dom" ? " [from-dom]" : node.source === "both" ? " [from-both]" : "";
   return `${pad}${node.role}${nm} [ref=${node.ref}]${tid}${src}${fmtState(node)}`;
@@ -307,7 +311,7 @@ export function fmtState(n: A11yNode): string {
   if (n.expanded !== undefined) bits.push(`expanded=${n.expanded}`);
   if (n.focused) bits.push("focused");
   if (n.value !== undefined && n.value !== "") {
-    bits.push(`value=${JSON.stringify(String(n.value).slice(0, 60))}`);
+    bits.push(`value=${JSON.stringify(cleanPageText(String(n.value)).slice(0, 60))}`);
   }
   return bits.length ? ` [${bits.join(", ")}]` : "";
 }

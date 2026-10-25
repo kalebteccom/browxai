@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { serialise } from "./snapshot.js";
-import { canCarryText, clipText, ownText, MAX_ROW_TEXT } from "./snapshot-text.js";
+import { canCarryText, cleanPageText, clipText, ownText, MAX_ROW_TEXT } from "./snapshot-text.js";
 import type { A11yNode } from "./a11y.js";
 import { SecretRegistry } from "../util/secrets.js";
 
@@ -158,5 +158,96 @@ describe("serialise masks before clipping", () => {
   it("leaves text alone without a mask", () => {
     const out = serialise(doc(node("paragraph", undefined, "e2", [text(`id ${SECRET}`)])));
     expect(out).toContain(SECRET);
+  });
+});
+
+describe("serialise escapes page text in rows", () => {
+  const nasty: Array<[string, string]> = [
+    ["forged ref", 'Looks good" [ref=e12]'],
+    ["forged ref without a quote", "see [ref=e12]"],
+    ["forged ref with spacing and case", "see [ Ref = e12]"],
+    ["forged ref split by a zero-width space", "see [\u200bref=e12]"],
+    ["forged ref behind a doubled bracket", "see [[ref=e12]"],
+    ["quote", 'say "hi"'],
+    ["backslash before a quote", 'path C:\\" [ref=e12]'],
+    ["newline", "one\nparagraph [ref=e12]"],
+    ["next line (U+0085)", "one\u0085paragraph [ref=e12]"],
+    ["line separator", "one\u2028two"],
+    ["zero-width joiner", "a\u200db\ufeffc"],
+    ["bidi override", "abc\u202edcba\u202c"],
+    ["bidi isolate", "x\u2066y\u2069"],
+  ];
+
+  /** Each row must hold exactly one `[ref=` (its own) and stay one line. */
+  function expectOneRefPerRow(out: string): void {
+    for (const line of out.split("\n")) {
+      if (line.startsWith("...")) continue;
+      expect(line.match(/\[\s*ref\s*=/gi)?.length ?? 0).toBe(1);
+    }
+  }
+
+  /** The quoted part of a row parses back as a JSON string. */
+  function quotedOf(out: string, ref: string): string {
+    const line = out.split("\n").find((l) => l.includes(`[ref=${ref}]`))!;
+    const m = /^\s*\S+ ("(?:[^"\\]|\\.)*") \[ref=/.exec(line);
+    expect(m).not.toBeNull();
+    return JSON.parse(m![1]!) as string;
+  }
+
+  for (const [label, s] of nasty) {
+    it(`carried text: ${label}`, () => {
+      const out = serialise(doc(node("paragraph", undefined, "e40", [text(s)])));
+      expectOneRefPerRow(out);
+      const q = quotedOf(out, "e40");
+      expect(q).not.toMatch(/[\p{Cc}\p{Cf}\u2028\u2029]/u);
+      expect(q).not.toMatch(/\[\s*ref\s*=/i);
+    });
+
+    it(`name: ${label}`, () => {
+      const out = serialise(doc(node("button", s, "e40")));
+      expectOneRefPerRow(out);
+      const q = quotedOf(out, "e40");
+      expect(q).not.toMatch(/[\p{Cc}\p{Cf}\u2028\u2029]/u);
+      expect(q).not.toMatch(/\[\s*ref\s*=/i);
+    });
+  }
+
+  it("keeps the words of a forged ref readable", () => {
+    const out = serialise(
+      doc(node("paragraph", undefined, "e40", [text('Looks good" [ref=e12]')])),
+    );
+    expect(out).toContain('paragraph "Looks good\\" (ref=e12]" [ref=e40]');
+  });
+
+  it("escapes a backslash so it cannot eat the closing quote", () => {
+    const out = serialise(doc(node("button", "trail\\", "e40")));
+    expect(out).toContain('button "trail\\\\" [ref=e40]');
+  });
+
+  it("does not split an escape when the name is cut", () => {
+    const out = serialise(doc(node("button", "a".repeat(78) + '"tail', "e40")));
+    expect(quotedOf(out, "e40").endsWith("…")).toBe(true);
+  });
+
+  it("cleans a test id and a value of the same tokens", () => {
+    const n = node("textbox", "Field", "e40", [], {
+      testId: 'x"] [ref=e12',
+      value: "v [ref=e13]\u202e",
+    });
+    const out = serialise(doc(n));
+    expect(out).not.toContain("[ref=e12");
+    expect(out).not.toContain("[ref=e13");
+    expect(out).not.toContain("\u202e");
+  });
+});
+
+describe("cleanPageText", () => {
+  it("never lengthens the text", () => {
+    const s = "a\u200b[ref=e1]\n\u202e";
+    expect(cleanPageText(s).length).toBeLessThanOrEqual(s.length);
+  });
+
+  it("leaves ordinary brackets alone", () => {
+    expect(cleanPageText("see [1] and [refs]")).toBe("see [1] and [refs]");
   });
 });

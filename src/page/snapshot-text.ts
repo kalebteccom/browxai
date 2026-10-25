@@ -114,3 +114,24 @@ function wrapsText(role: string): boolean {
 export function clipText(text: string, max: number): string {
   return text.length <= max ? text : text.slice(0, Math.max(0, max - 1)) + "…";
 }
+
+/** Line breaks and tabs, including the ones `\s` misses (NEL, U+2028, U+2029). */
+const LINE_BREAKS = /[\t\n\v\f\r\u0085\u2028\u2029]/g;
+/** Control and format characters: C0/C1 controls, zero-width characters, bidi
+ *  overrides and isolates, soft hyphens. */
+const CONTROL_OR_FORMAT = /[\p{Cc}\p{Cf}]/gu;
+/** A `[` that would open a `[ref=` token, with any case and spacing. */
+const REF_OPENER = /\[(?=\s*ref\s*=)/gi;
+
+/** Page text made safe to sit on a snapshot row: line breaks become spaces,
+ *  control and format characters are dropped, and the `[` of any `[ref=` turns
+ *  into `(`, so page text cannot put a ref on a row. Never lengthens the text. */
+export function cleanPageText(text: string): string {
+  return text.replace(LINE_BREAKS, " ").replace(CONTROL_OR_FORMAT, "").replace(REF_OPENER, "(");
+}
+
+/** Escape `\` and `"` the way JSON does, so text inside a row's quotes cannot
+ *  close them. Run after any cut, so a cut never splits an escape. */
+export function escapeQuoted(text: string): string {
+  return text.replace(/[\\"]/g, (c) => `\\${c}`);
+}
