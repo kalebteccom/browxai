@@ -80,6 +80,25 @@ describe("planUserConfig", () => {
     expect(planUserConfig("codex", ENTRY, sys, () => before).kind).toBe("present");
   });
 
+  it.each([
+    ["an inline table", '[mcp_servers]\nbrowxai = { command = "x" }\n'],
+    ["a dotted key", 'mcp_servers.browxai.command = "x"\n'],
+    ["a quoted table name", "[mcp_servers.'browxai']\ncommand = \"x\"\n"],
+    ["an inline mcp_servers", 'mcp_servers = { other = { command = "x" } }\n'],
+    ["a quoted inline mcp_servers", '"mcp_servers" = {}\n'],
+  ])("refuses a Codex config with %s and prints the table to add", (_name, before) => {
+    const plan = planUserConfig("codex", ENTRY, sys, () => before);
+    expect(plan.kind).toBe("refuse");
+    if (plan.kind !== "refuse") return;
+    expect(plan.message).toContain("[mcp_servers.browxai]");
+    expect(plan.message).toContain('command = "node"');
+  });
+
+  it("appends to a Codex config with other mcp_servers tables", () => {
+    const before = '[mcp_servers.other]\ncommand = "x"\n';
+    expect(planUserConfig("codex", ENTRY, sys, () => before).kind).toBe("add");
+  });
+
   it("uses an absolute CODEX_HOME", () => {
     const codexHome = join(home, "codex-home");
     const plan = planUserConfig("codex", ENTRY, { ...sys, env: { CODEX_HOME: codexHome } });

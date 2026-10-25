@@ -71,6 +71,15 @@ export function planUserConfig(
   if (id === "codex") {
     if (/^\s*\[\s*mcp_servers\s*\.\s*"?browxai"?\s*[\].]/m.test(before))
       return { kind: "present", path };
+    // Any other mention of browxai (an inline table, a dotted key, a comment) or
+    // an inline `mcp_servers = {...}` can make an appended table a duplicate key.
+    // This is a line scan, not a TOML parser, so those files are left to the user.
+    if (/browxai/i.test(before) || /^\s*["']?mcp_servers["']?\s*=/m.test(before)) {
+      return {
+        kind: "refuse",
+        message: `${path} already mentions browxai or sets mcp_servers inline. Add this by hand:\n\n${codexToml(entry)}`,
+      };
+    }
     const sep = before === "" ? "" : before.endsWith("\n") ? "\n" : "\n\n";
     return { kind: "add", path, before, after: `${before}${sep}${codexToml(entry)}\n` };
   }
