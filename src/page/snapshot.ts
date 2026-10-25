@@ -294,13 +294,14 @@ function formatNode(
   // the agent can transcribe it directly. Falls back to `data-testid` when the source
   // didn't tell us which attr matched.
   const tid = node.testId
-    ? ` [${node.testIdAttr ?? "data-testid"}=${JSON.stringify(cleanPageText(node.testId))}]`
+    ? ` [${node.testIdAttr ?? "data-testid"}=${JSON.stringify(cleanPageText(o.maskText(node.testId)))}]`
     : "";
   const src = node.source === "dom" ? " [from-dom]" : node.source === "both" ? " [from-both]" : "";
-  return `${pad}${node.role}${nm} [ref=${node.ref}]${tid}${src}${fmtState(node)}`;
+  return `${pad}${node.role}${nm} [ref=${node.ref}]${tid}${src}${fmtState(node, o.maskText)}`;
 }
 
-export function fmtState(n: A11yNode): string {
+/** The `[state]` suffix of a row. `maskText` masks a value before it is cut. */
+export function fmtState(n: A11yNode, maskText: (text: string) => string = identity): string {
   const bits: string[] = [];
   if (n.disabled) bits.push("disabled");
   if (n.checked !== undefined) bits.push(`checked=${n.checked}`);
@@ -309,7 +310,7 @@ export function fmtState(n: A11yNode): string {
   if (n.expanded !== undefined) bits.push(`expanded=${n.expanded}`);
   if (n.focused) bits.push("focused");
   if (n.value !== undefined && n.value !== "") {
-    bits.push(`value=${JSON.stringify(cleanPageText(String(n.value)).slice(0, 60))}`);
+    bits.push(`value=${JSON.stringify(cleanPageText(maskText(String(n.value))).slice(0, 60))}`);
   }
   return bits.length ? ` [${bits.join(", ")}]` : "";
 }

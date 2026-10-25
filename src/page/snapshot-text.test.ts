@@ -251,3 +251,24 @@ describe("cleanPageText", () => {
     expect(cleanPageText("see [1] and [refs]")).toBe("see [1] and [refs]");
   });
 });
+
+describe("serialise masks values before cutting them", () => {
+  const KEY = "k".repeat(30) + "-registered-long-api-key-xyz-12"; // 61+ chars
+  const registry = new SecretRegistry();
+  registry.register({ name: "API_KEY", value: KEY });
+  const maskText = (t: string): string => registry.applyMaskInText(t);
+
+  it("masks a long registered value in a readonly textbox", () => {
+    const box = node("textbox", "Key", "e2", [], { value: KEY });
+    const out = serialise(doc(box), { maskText });
+    expect(KEY.length).toBeGreaterThan(60);
+    expect(out).toContain('value="<API_KEY>"');
+    expect(out).not.toContain("kkkkk");
+  });
+
+  it("masks a registered value in a test id", () => {
+    const n = node("generic", "x", "e2", [], { testId: `row-${KEY}` });
+    const out = serialise(doc(n), { maskText });
+    expect(out).not.toContain("kkkkk");
+  });
+});
