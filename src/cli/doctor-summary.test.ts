@@ -39,7 +39,8 @@ describe("doctor summary", () => {
       "  ✓ settings",
     ]);
     expect(text).not.toContain("firefox");
-    expect(text).toContain("claude mcp add browxai -- browxai");
+    expect(text).toContain("claude mcp add browxai -- npx -y browxai");
+    expect(text).toContain("npx browxai init <dir>");
     expect(text).toContain("browxai doctor --verbose");
   });
 

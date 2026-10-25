@@ -94,9 +94,10 @@ describe("browxai init", () => {
       const file = join(home, ".cursor", "mcp.json");
       expect(out).toContain(`Change to ${file}`);
       expect(out.indexOf("Change to")).toBeLessThan(out.indexOf("wrote " + file));
-      expect(JSON.parse(readFileSync(file, "utf8")).mcpServers.browxai.env.BROWX_WORKSPACE).toBe(
-        join(dir, ".browxai"),
-      );
+      const written = JSON.parse(readFileSync(file, "utf8")).mcpServers.browxai;
+      expect(written.env.BROWX_WORKSPACE).toBe(join(dir, ".browxai"));
+      // An absolute node path: a desktop client does not get the shell's PATH.
+      expect(written.command).toBe(process.execPath);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

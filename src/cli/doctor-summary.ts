@@ -117,8 +117,8 @@ function brief(checks: readonly Check[], version: string, allOk: boolean): strin
       ? "Nothing failed, but read the ⚠ above."
       : "All good.";
     out +=
-      `${lead} To add browxai to Claude Code: claude mcp add browxai -- browxai\n` +
-      "For another client, run `browxai init <dir>`. Every row: `browxai doctor --verbose`.\n";
+      `${lead} To add browxai to Claude Code: claude mcp add browxai -- npx -y browxai\n` +
+      "For another client, run `npx browxai init <dir>`. Every row: `browxai doctor --verbose`.\n";
   } else {
     out +=
       `${failed} ${failed === 1 ? "area needs" : "areas need"} a fix. Fix ${failed === 1 ? "it" : "them"}, then run \`browxai doctor\` again.\n` +

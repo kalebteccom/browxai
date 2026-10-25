@@ -133,12 +133,14 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   }
   const ws = shellWord(browxDir);
   // The entry a user-level client config gets. Same server as the project file,
-  // minus the attach entry, and never a path inside the npx cache.
+  // minus the attach entry, and never a path inside the npx cache. The command is
+  // the absolute path of this node: a client started from the desktop (Claude
+  // Desktop under launchd) does not get the shell's PATH, so a bare `node` fails.
   const inNpxCache = /[\\/]_npx[\\/]/.test(distCli);
   const userEntry: ServerEntry = {
     ...(inNpxCache
       ? { command: "npx", args: ["-y", "browxai"] }
-      : { command: "node", args: [distCli] }),
+      : { command: process.execPath, args: [distCli] }),
     env: { BROWX_WORKSPACE: browxDir, BROWX_TEST_ATTRIBUTES: testAttrs },
   };
   const system = deps.system ?? realSystem();
