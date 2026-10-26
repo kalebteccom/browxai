@@ -120,10 +120,20 @@ h1#_top,
 
 /* ---- Landing page (splash) ---------------------------------------------- */
 
-/* On the splash, our custom hero / 404 replaces Starlight's page-title block. */
+/* On the splash, our custom hero / 404 replaces Starlight's page-title block. The panel holds the
+   page's only h1, so it is visually hidden (out of flow, still in the accessibility tree), never
+   display:none. */
 main:has(.browx-hero) > .content-panel:first-of-type,
 main:has(.browx-404) > .content-panel:first-of-type {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 main:has(.browx-hero) > .content-panel,
 main:has(.browx-404) > .content-panel {
