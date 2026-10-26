@@ -68,7 +68,11 @@ Off by default, each opted in deliberately:
   `caches_get`, and HAR `embed` and `attach`.
 - `clipboard` enables the OS-clipboard side effect of the `shortcut` tool.
   Observation still works without it.
-- `file-io` enables `upload_file` and the file-picker write path.
+- `file-io` enables the tools that read a file into the page or write page data to
+  the workspace: `upload_file`, `drop_files`, `download_get`, `downloads_capture`,
+  `fs_picker_respond`, `page_archive`, `asset_export`, `dom_export`,
+  `element_export`, `get_video`, `stop_video`, `screenshot_on` and
+  `screenshot_schedule`, plus the `path` argument of `screenshot`.
 - `secrets` enables the per-session sensitive-data registry and egress masking.
 - `extensions` enables per-session unpacked-extension management (headed and
   persistent only).
