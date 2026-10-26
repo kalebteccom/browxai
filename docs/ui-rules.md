@@ -5,6 +5,7 @@ Seed copy, owned by the orchestrator. The rules live IN each repository, in its 
 Source: Rowin 2026-10-24 (orders 29, 30, 31, 32, 33).
 
 ## 1. Public and user-facing copy
+
 - No operator or private info on any user-visible surface: env var names, config keys, internal ids, hostnames, ticket ids, procedures, infra detail, internal tool names, confidentiality framing. Legal minimum, plus GTM copy that doesn't leak procedures.
 - Developer-facing products keep documented env vars, flags and tool names that a user is meant to set. Operator or maintainer-only detail never appears.
 - Empty states and errors say what the user does next, never what the operator configures.
@@ -15,6 +16,7 @@ Source: Rowin 2026-10-24 (orders 29, 30, 31, 32, 33).
 - Tool descriptions, refusal text and error messages shown to users or models never cite ARD, ticket or internal ids.
 
 ## 2. Design system
+
 - One spacing scale, one radius scale, one type scale per product, sharing token names across products.
 - One component per pattern (page, sheet, section, list row, card, badge, button, code block, carousel, chip, property row). A pattern in 2 or more places is a shared component. Extend before extracting.
 - No raw padding, margin or font classes outside the primitives. A guard in CI enforces it.
@@ -24,6 +26,7 @@ Source: Rowin 2026-10-24 (orders 29, 30, 31, 32, 33).
 - Touch targets at least 44px. Visible focus. Reduced motion respected.
 
 ## 3. Geometry, responsiveness and overflow (checked on every screen, sheet and component)
+
 - Centering: icon in button, button in row, badge on icon. Child centre within 1px of parent centre where centred.
 - Equal insets left and right. Sheet gutter on every block, no block flush to the screen edge unless it is intentionally full bleed.
 - No horizontal scroll, no clipped or covered content, no text past its container, no overlapping fixed elements.
@@ -34,6 +37,7 @@ Source: Rowin 2026-10-24 (orders 29, 30, 31, 32, 33).
 - Verify computed style on production, not only in source: a CSS declaration can vanish from the production bundle (cookie banner padding).
 
 ## 4. Interaction and mobile-friendly controls
+
 - Every pattern ships with its mobile-native control, not only the desktop one. A pattern is not done until it works by touch.
 - Carousels, galleries, lightboxes, tab strips and steppers: touch swipe with snap and rubber-band, drag, keyboard arrows, counter or dots inside the frame, safe-area aware, one shared component. Every carousel in every product uses it.
 - Sheets, drawers, modals and popovers: swipe or drag down to dismiss, drag handle where it applies, tap outside to close, Escape, focus trap and return, bottom placement on mobile.
@@ -50,6 +54,7 @@ Source: Rowin 2026-10-24 (orders 29, 30, 31, 32, 33).
 - Generated strings never carry env var names unless users set them. Tool-string cuts update their pinned tests in the same PR (ship as their own PR when many tests pin them).
 
 ## 5. Proof before push
+
 - Real screenshots at 390 and 1280 via browxai before each push. Before/after pairs for UI changes, attached to Rowin through expose_artifact when a batch lands.
 - One gate and one deploy per integration batch (order 23).
 
@@ -59,16 +64,19 @@ Source: Rowin 2026-10-24 (orders 29, 30, 31, 32, 33).
 - Reviewer and audit agents can be cut off by tooling outages mid-run. A partial result is marked PARTIAL and the unchecked parts are re-run.
 
 ## 6. Learning loop
+
 - Any correction from Rowin, any finding from an audit and any bug class that repeats becomes a rule in this file the same day, with a date and the trigger in one line.
 - Leads report new rules in the hourly CONFIRM ("rules learned: ..."). The orchestrator merges them here and broadcasts the diff.
 - Every PR description has a one-line "ui-rules checked" statement. Reviewers (human or agent) reject UI changes without it.
 
 ## 7. Where the rules live
+
 - In the repo: CLAUDE.md and AGENTS.md carry the rules in full (not only a link), docs/ui-rules.md carries the detail and examples. Both are committed, reviewed and updated in the same PR that introduces or changes a rule.
 - Sub-agent and builder briefs say "follow CLAUDE.md and docs/ui-rules.md".
 - Nothing in ~/.local/state is a dependency. It is a seed and a broadcast channel.
 
 ## Rules log
+
 - 2026-10-24: no env var names on public pages (websites operator queue).
 - 2026-10-24: carousels swipe on touch.
 - 2026-10-24: centering and insets are checked, not eyeballed (remotxai stop button off-centre).
