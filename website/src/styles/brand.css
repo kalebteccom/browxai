@@ -113,6 +113,11 @@ h1#_top,
   text-decoration-thickness: 2px;
 }
 
+/* Dark theme: accent-coloured inline-code links need a lighter violet for 4.5:1 on the code chip. */
+:root:not([data-theme="light"]) .sl-markdown-content a > code {
+  color: var(--browx-violet-300);
+}
+
 /* ---- Landing page (splash) ---------------------------------------------- */
 
 /* On the splash, our custom hero / 404 replaces Starlight's page-title block. */
