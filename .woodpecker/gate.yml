@@ -71,6 +71,12 @@ steps:
       - bash scripts/gate-slot.sh pnpm run depcheck
       - bash scripts/gate-slot.sh pnpm depcruise
       - bash scripts/gate-slot.sh pnpm jscpd:check
+  # Copy rules on user-visible docs text: no filler words, no "rather than" or "not just" closers.
+  - <<: *step
+    name: copy-rules
+    depends_on: [install]
+    commands:
+      - bash scripts/gate-slot.sh node scripts/check-copy-rules.mjs
   # Example commands and config blocks in the README and docs: BROWX_* names, CLI subcommands and flags, MCP config JSON. This step has no dist/, so the CLI probes are skipped; package-contents repeats the check after the build and runs them.
   - <<: *step
     name: examples

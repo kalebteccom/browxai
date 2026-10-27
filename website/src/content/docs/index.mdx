@@ -50,7 +50,7 @@ import Shot from "../../components/Shot.astro";
       <span class="browx-window-title">agent <span class="dot">·</span> snapshot()</span>
     </div>
     <div class="browx-snap">
-      <div class="browx-snap-note"># a page an agent can read, not a DOM dump</div>
+      <div class="browx-snap-note"># a page an agent can read</div>
       <div class="row">
         <span class="t-role">form</span>
         <span class="t-str">"Sign in"</span>
@@ -171,10 +171,9 @@ import Shot from "../../components/Shot.astro";
 <div class="browx-section not-content">
   <h2 class="browx-section-title">What you get</h2>
   <div class="browx-section-sub">
-    browxai owns its own transport to all eight engines it drives, so it owns
-    the whole session lifecycle. Where a task leaves the browser, for a native
-    app, a desktop app or your host machine, browxai follows it under a
-    capability you switch on.
+    browxai owns its transport to all eight engines it drives, and the session
+    lifecycle with it. When a task moves to a native app, a desktop app or your
+    host machine, browxai follows it under a capability you switch on.
   </div>
 
   <div class="browx-grid">
@@ -184,7 +183,6 @@ import Shot from "../../components/Shot.astro";
       <div class="browx-card-text">
         <code>snapshot()</code> is a scoped, paginated, budgeted accessibility
         tree. <code>find()</code> returns ranked candidates with evidence.
-        Results stay small by design.
       </div>
     </div>
     <div class="browx-card">
@@ -196,8 +194,8 @@ import Shot from "../../components/Shot.astro";
         emulator or the iOS Simulator. The tree comes off the app's view
         hierarchy, with the same refs a page gets. Android is verified against a
         live emulator; the iOS lane is newer and needs a WebDriverAgent you run.
-        Native apps run on an emulator or simulator only. There is no
-        real-device lane for them.
+        Native apps run on an emulator or simulator only, with no
+        real-device lane.
       </div>
     </div>
     <div class="browx-card">
@@ -217,15 +215,14 @@ import Shot from "../../components/Shot.astro";
       <span class="browx-card-mark">// host</span>
       <h3>Reaches past the tab</h3>
       <div class="browx-card-text">
-        A web task leaves the browser. Switch a capability on and browxai writes
-        the real OS clipboard, or pulls a login and a TOTP code from 1Password,
+        Switch a capability on and browxai writes the real OS clipboard, or pulls a login and a TOTP code from 1Password,
         Bitwarden, LastPass or <code>oathtool</code>. File IO is rooted at one
         workspace directory. All three capabilities start off.
       </div>
     </div>
     <div class="browx-card">
       <span class="browx-card-mark">// safety</span>
-      <h3>Safe by default</h3>
+      <h3>Default capabilities</h3>
       <div class="browx-card-text">
         Capability-gated tools, an origin allow and block list, confirmation
         hooks, and a hard anti-wedge deadline on every call. Arbitrary JS, full
