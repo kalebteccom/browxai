@@ -41,7 +41,7 @@ gradients, glow, blur or glass. The tokens live in
 | Light canvas         | `#fbfaff` | Page background             |
 | Light sidebar        | `#f5f1fd` | Surfaces                    |
 
-Type is Poppins for headings, Inter for text and JetBrains Mono for code only.
+Type is Poppins for headings, the system font stack for text and JetBrains Mono for code only.
 
 ## Files
 
