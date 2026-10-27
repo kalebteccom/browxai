@@ -61,7 +61,15 @@ const FOCUS_MAX_CHARS = 80;
 const focusable = (el: HTMLElement, text: string) =>
   text.length < FOCUS_MAX_CHARS && Boolean(el.closest("p, li, td, th"));
 
+// A command this short fits a 320px column on one line, so it never wraps.
+const SHORT_COMMAND = 28;
+
 const enhance = () => {
+  // A page-outline entry is cut to one line in CSS; the title keeps the full text.
+  document.querySelectorAll<HTMLAnchorElement>(".right-sidebar starlight-toc a").forEach((a) => {
+    a.title = a.textContent?.trim() ?? "";
+  });
+
   const copyable = [...document.querySelectorAll<HTMLElement>(".sl-markdown-content code")].filter(
     (el) => COMMAND.test(el.textContent?.trim() ?? "") && !skipped(el),
   );
@@ -70,6 +78,7 @@ const enhance = () => {
   copyable.forEach((el) => {
     const text = el.textContent?.trim() ?? "";
     el.classList.add("browx-copyable");
+    if (text.length <= SHORT_COMMAND) el.classList.add("browx-copyable--short");
     el.title = "Click to copy";
     if (focusCount <= FOCUS_LIMIT && focusable(el, text)) {
       el.tabIndex = 0;

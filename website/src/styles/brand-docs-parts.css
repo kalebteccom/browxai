@@ -73,6 +73,10 @@
   position: relative;
   cursor: pointer;
 }
+/* A short command stays on one line (docs-enhance.ts adds the class). */
+.browx-copyable--short {
+  white-space: nowrap;
+}
 .browx-copyable:hover {
   border-color: var(--sl-color-text-accent);
 }

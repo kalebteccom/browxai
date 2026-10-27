@@ -104,6 +104,8 @@
   margin: var(--space-1) 0 var(--space-3);
 }
 .browx-404-code .x {
+  /* An inline-block box is one line tall; an inline one reaches over the kicker. */
+  display: inline-block;
   color: var(--sl-color-text-accent);
 }
 .browx-404-msg {

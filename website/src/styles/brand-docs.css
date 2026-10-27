@@ -41,7 +41,7 @@
   padding: var(--space-2) var(--space-3);
   border-radius: 0.5rem;
   font-size: 0.9rem;
-  line-height: 1.45;
+  line-height: 1.5;
   /* A 1px gap between stacked links, below the smallest spacing token. */
   margin-block: 0.0625rem;
   color: var(--sl-color-gray-2);
@@ -119,12 +119,26 @@
   letter-spacing: -0.015em;
 }
 
-/* Measure: the 45rem column fits about 90 Inter characters a line. Cap running
-   text near 62. Tables, code blocks and callouts keep the full column. A long
-   unbroken token (a path, a URL) wraps at the column edge instead of pushing
-   the page sideways; table cells are left alone so they scroll. */
-.sl-markdown-content > :is(p, ul, ol, dl):not(.not-content) {
-  max-width: 62ch;
+/* Measure: the 45rem column fits about 100 characters a line. Cap running text
+   at 72ch: paragraphs, lists, quotes, callout bodies and table cells. Code
+   blocks keep the full column. A long unbroken token (a path, a URL) wraps at
+   the column edge instead of pushing the page sideways. */
+.sl-markdown-content > :is(p, ul, ol, dl, blockquote):not(.not-content),
+.sl-markdown-content .starlight-aside__content,
+.sl-markdown-content details > :is(p, ul, ol) {
+  max-width: 72ch;
+}
+.sl-markdown-content table :is(th, td) {
+  max-width: 72ch;
+  line-height: 1.5;
+}
+/* Page outline: one line per entry, cut with an ellipsis (docs-enhance.ts sets
+   the full text as a title). A wrapped entry made a nav control four lines tall. */
+.right-sidebar starlight-toc a:not([hidden]) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.5;
 }
 .sl-markdown-content :is(p, dd, blockquote, h1, h2, h3, h4, h5, h6) {
   overflow-wrap: break-word;

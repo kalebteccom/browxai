@@ -88,6 +88,13 @@ nav.sidebar > button {
   }
 }
 
+/* Theme select: Starlight draws it with no edge. A 1px gray-3 border reaches 3:1
+   on both canvases. The :not() lifts the rule over Starlight's scoped selector. */
+starlight-theme-select select:not([data-x]) {
+  border: 1px solid var(--sl-color-gray-3);
+  border-radius: 0.5rem;
+}
+
 /* 404 kicker: a dot after the label mirrors the dot before it, so the label
    sits on the page centre. */
 .browx-404 .browx-kicker::after {

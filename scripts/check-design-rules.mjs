@@ -20,6 +20,8 @@
 //   layout-transition       a transition on anything but transform and opacity,
 //                            or transitions with no prefers-reduced-motion
 //                            guard anywhere in the site CSS.
+//   flagged-font, tight-leading, measure-range
+//                           type guards, see scripts/design-type-rules.mjs.
 //   spacing-token           padding, margin or gap that is not a var(--space-*)
 //                            token, 0, auto, a percentage or a fluid clamp().
 //
@@ -32,6 +34,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { hasMeasure, typeFinding } from "./design-type-rules.mjs";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const SITE = join(ROOT, "website");
@@ -104,6 +107,7 @@ function checkSource(file) {
 
 const transitionFiles = [];
 let motionGuard = false;
+let measureCap = false;
 const stripComments = (raw) => raw.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
 const oneLine = (x) => x.replace(/\s+/g, " ").trim();
 
@@ -151,6 +155,8 @@ function checkCss(file, raw, isTokenFile = false) {
       if (!name || !value) continue;
       const at = (rule, detail) =>
         report(file, line, rule, `${selector} { ${name}: ${oneLine(value)} } ${detail}`.trim());
+      const typed = typeFinding(selector, name, value, code);
+      if (typed) at(typed[0], typed[1]);
       if (!code) {
         if (name === "font-family" && MONO_FONT.test(value)) at("mono-outside-code", "");
         else if (name === "text-transform" && /uppercase/.test(value))
@@ -204,6 +210,7 @@ function checkCss(file, raw, isTokenFile = false) {
       report(file, h.line, "hover-without-active", `${h.part} has no :active rule`);
   if (usesTransition) transitionFiles.push(file);
   if (/prefers-reduced-motion\s*:\s*reduce/.test(css)) motionGuard = true;
+  if (hasMeasure(css)) measureCap = true;
 }
 
 async function publishedDocs() {
@@ -264,6 +271,13 @@ async function main() {
   if (!motionGuard)
     for (const f of transitionFiles)
       report(f, 1, "layout-transition", "transition without a prefers-reduced-motion guard");
+  if (!measureCap)
+    report(
+      join(SITE, "src", "styles"),
+      1,
+      "measure-range",
+      "no 70 to 75ch cap on the content column",
+    );
   const remaining = applyAllowlist(findings);
   if (remaining.length) {
     console.error(remaining.join("\n"));

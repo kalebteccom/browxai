@@ -7,7 +7,7 @@ Rules for the documentation site (`website/`), the README and the published docs
 - Flat. Solid surfaces and 1px borders. No gradients, glow, blur, glass or accent shadows.
 - One accent, violet `#7e22ce`, the same in both themes. Tokens live in `website/src/styles/brand-tokens.css`.
 - No pure `#fff` or `#000` outside the token file.
-- Poppins for headings, Inter for text. Mono only for code.
+- Poppins for headings, the system font stack for text (no Inter). Mono only for code.
 - No uppercase text and no positive letter spacing outside code.
 - Logo, favicon and app icons keep their own art. See `brand/README.md`.
 
