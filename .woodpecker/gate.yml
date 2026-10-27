@@ -98,6 +98,13 @@ steps:
       - bash scripts/gate-slot.sh pnpm audit:prod
       - bash scripts/gate-slot.sh pnpm licenses:check
       - bash scripts/gate-slot.sh node scripts/lockfile-lint.mjs
+  # Docs site build (sync-docs, astro build with the links validator, then check-h1: one exposed h1 per page), the same command Netlify and release.sh run. About 20 s after install.
+  - <<: *step
+    name: docs-build
+    depends_on: [install]
+    commands:
+      - corepack enable
+      - bash scripts/gate-slot.sh pnpm docs:build
   - <<: *step
     name: package-contents
     image: node:26-bookworm
