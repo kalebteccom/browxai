@@ -77,6 +77,12 @@ steps:
     depends_on: [install]
     commands:
       - bash scripts/gate-slot.sh node scripts/check-examples.mjs
+  # Design rules on the docs site: no em or en dashes in copy, no monospace or tracked uppercase outside real code.
+  - <<: *step
+    name: design-rules
+    depends_on: [install]
+    commands:
+      - bash scripts/gate-slot.sh node scripts/check-design-rules.mjs
   # Supply-chain checks (dependency scan, licenses, lockfile); the scan needs the network, so it stays off the lint and test steps.
   - <<: *step
     name: supply-chain
