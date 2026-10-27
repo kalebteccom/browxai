@@ -15,9 +15,9 @@ import { runInit } from "./init.js";
 import { runServe } from "./serve.js";
 import { runPlugin } from "../plugin/cli.js";
 
-// `runDoctor` takes no argv (it ignored `rest`); the others consume `rest`.
+// Each handler consumes `rest` (`runDoctor` reads `--verbose`).
 // `runPlugin` accepts a `ReadonlyArray<string>`, which `string[]` satisfies.
-registerCommand("doctor", () => runDoctor());
+registerCommand("doctor", (rest) => runDoctor(rest));
 registerCommand("chrome", (rest) => runChrome(rest));
 registerCommand("init", (rest) => runInit(rest));
 registerCommand("serve", (rest) => runServe(rest));

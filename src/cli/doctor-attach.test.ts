@@ -1,7 +1,8 @@
 // `browxai doctor` byob-attach warning — env set/unset x capability on/off.
 
 import { describe, expect, it } from "vitest";
-import { attachCapabilityCheck } from "./doctor-attach.js";
+import { attachCapabilityCheck, cdpAttachRow } from "./doctor-attach.js";
+import { formatDoctor } from "./doctor-summary.js";
 import { DEFAULT_CAPABILITIES, type Capability } from "../util/capabilities.js";
 
 const DEFAULTS: ReadonlySet<Capability> = new Set(DEFAULT_CAPABILITIES);
@@ -23,5 +24,34 @@ describe("attachCapabilityCheck", () => {
     { label: "BROWX_ATTACH_CDP is blank", cdp: "  ", caps: DEFAULTS },
   ])("is silent when $label", ({ cdp, caps }) => {
     expect(attachCapabilityCheck(cdp, caps)).toBeNull();
+  });
+});
+
+describe("cdpAttachRow", () => {
+  const URL_WITH_TOKEN = "wss://user:s3cret@cdp.example.com/devtools/browser?token=t0ken#frag";
+
+  it("prints the attach URL without its userinfo, query or fragment", () => {
+    const up = cdpAttachRow(URL_WITH_TOKEN, { ok: true, version: "Chrome/140" });
+    const down = cdpAttachRow(URL_WITH_TOKEN, {
+      ok: false,
+      error: `fetch ${URL_WITH_TOKEN} failed`,
+    });
+    for (const row of [up, down]) {
+      expect(row.detail).toContain("cdp.example.com");
+      expect(row.detail).not.toContain("s3cret");
+      expect(row.detail).not.toContain("t0ken");
+      expect(row.detail).not.toContain("user:");
+    }
+    expect(down.ok).toBe(false);
+  });
+
+  it("keeps the token out of the short summary and --verbose", () => {
+    const row = cdpAttachRow(URL_WITH_TOKEN, { ok: false, error: "ECONNREFUSED" });
+    for (const verbose of [false, true]) {
+      const { text } = formatDoctor([row], { verbose, version: "0" });
+      expect(text).toContain("cdp.example.com");
+      expect(text).not.toContain("s3cret");
+      expect(text).not.toContain("t0ken");
+    }
   });
 });

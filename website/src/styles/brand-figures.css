@@ -4,15 +4,23 @@
 /* Two zones: a small solid "on by default" set and a dimmed, dashed "off
    until you opt in" set. Pure HTML/flex so every chip wraps; no SVG text. */
 .browx-posture {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr);
+  /* Side by side (the 9rem and 15rem bases grow in the 0.9 : 1.5 ratio) until the column is
+     narrower than both bases, then stacked. The rem bases make the switch follow the text size. */
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-4);
   margin: var(--space-5) 0 var(--space-6);
   container-type: inline-size;
 }
+.browx-posture > .browx-posture-zone.is-on {
+  flex: 0.9 1 9rem;
+}
+.browx-posture > .browx-posture-zone.is-off {
+  flex: 1.5 1 15rem;
+}
 @media (max-width: 40rem) {
-  .browx-posture {
-    grid-template-columns: 1fr;
+  .browx-posture > .browx-posture-zone {
+    flex-basis: 100%;
   }
 }
 .browx-posture-zone {
