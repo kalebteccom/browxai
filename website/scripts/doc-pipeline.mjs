@@ -150,20 +150,23 @@ export function linkPagePaths(text) {
   );
 }
 
-/** Convert em/en dashes to spaced hyphens, skipping fenced code blocks. */
-export function convertDashes(text) {
+/**
+ * Fail on em and en dashes in prose (outside fenced blocks and inline code).
+ * Sources are written without them, so the site never shows a dash of any kind
+ * and nothing is rewritten silently. Returns the text unchanged.
+ */
+export function assertNoDashes(text) {
   let inFence = false;
-  return text
-    .split("\n")
-    .map((raw) => {
-      if (/^\s*(```+|~~~+)/.test(raw)) {
-        inFence = !inFence;
-        return raw;
-      }
-      if (inFence) return raw;
-      return raw.replace(/ ?— ?/g, " - ").replace(/ – /g, " - ").replace(/–/g, "-");
-    })
-    .join("\n");
+  text.split("\n").forEach((raw, i) => {
+    if (/^\s*(```+|~~~+)/.test(raw)) {
+      inFence = !inFence;
+      return;
+    }
+    if (!inFence && /[\u2013\u2014]/.test(raw.replace(/`[^`]*`/g, ""))) {
+      throw new Error(`em or en dash in prose, line ${i + 1}: ${raw.slice(0, 80)}`);
+    }
+  });
+  return text;
 }
 
 export const q = (s) => `"${s.replace(/"/g, '\\"')}"`;
@@ -175,7 +178,7 @@ export const q = (s) => `"${s.replace(/"/g, '\\"')}"`;
  * endpoint can call it on text it read itself at build time.
  */
 export function transformText(text) {
-  text = convertDashes(text);
+  text = assertNoDashes(text);
   text = linkPagePaths(text);
   for (const [re, to] of linkMap) text = text.replace(re, to);
   // Repo-relative links (valid inside docs/, dead on the published site) point
