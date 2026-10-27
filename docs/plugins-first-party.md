@@ -112,13 +112,13 @@ plugin API: `figma.viewport.{center,zoom}`,
 `figma.currentPage.selection`, `figma.getNodeById()`,
 `figma.createRectangle()`, and mutable `x`/`y`/`fills` on scene nodes.
 
-| Tool                     | Args                                                                                                                            | Returns                                                               |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `figma.get_selection`    | _(none)_                                                                                                                        | `{ok, nodes: [{id, name, type, x, y, width, height}]}`                |
-| `figma.get_viewport`     | _(none)_                                                                                                                        | `{ok, center: {x, y}, zoom}`                                          |
-| `figma.select_node`      | `{nodeId: string}`                                                                                                              | `{ok, nodeId}`, or `code:"node-not-found"`                            |
-| `figma.move_node`        | `{nodeId: string, dx: number, dy: number}`                                                                                      | `{ok, nodeId, x, y}` (post-move position), or `code:"node-not-found"` |
-| `figma.create_rectangle` | `{x, y, width, height, fillColor?: {r, g, b}}` (`r/g/b` are 0–1 floats, Figma's color convention; `width`/`height` must be > 0) | `{ok, nodeId}`                                                        |
+| Tool                     | Args                                                                                                                               | Returns                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `figma.get_selection`    | _(none)_                                                                                                                           | `{ok, nodes: [{id, name, type, x, y, width, height}]}`                |
+| `figma.get_viewport`     | _(none)_                                                                                                                           | `{ok, center: {x, y}, zoom}`                                          |
+| `figma.select_node`      | `{nodeId: string}`                                                                                                                 | `{ok, nodeId}`, or `code:"node-not-found"`                            |
+| `figma.move_node`        | `{nodeId: string, dx: number, dy: number}`                                                                                         | `{ok, nodeId, x, y}` (post-move position), or `code:"node-not-found"` |
+| `figma.create_rectangle` | `{x, y, width, height, fillColor?: {r, g, b}}` (`r/g/b` are 0 to 1 floats, Figma's color convention; `width`/`height` must be > 0) | `{ok, nodeId}`                                                        |
 
 Error codes: `figma-not-loaded`, `bad-arg`, `node-not-found`,
 `eval-failed`.
@@ -219,7 +219,7 @@ canvas_query({ adapter: "excalidraw", op: "add_element",
 
 If a step-5 call returns `code:"no-adapter"`, the plugin isn't loaded.
 Check `plugins_list()` for the status + reason, and remember the
-runtime is resolved once at server start (install → restart → retry).
+runtime is resolved once at server start (install, then restart, then retry).
 If it returns `code:"<adapter>-not-loaded"`, the plugin is fine but the
 app isn't on the current page.
 

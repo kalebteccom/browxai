@@ -118,8 +118,8 @@ under that key, as in the Cursor example.
 By default the server launches a **managed** Chrome on the workspace's default
 profile, headed, with the default capability set (`read`, `navigation`,
 `action`, `human`). That is the installed Google Chrome, or the bundled
-Chromium with a logged warning when Chrome is absent. Everything dangerous is
-opt-in.
+Chromium with a logged warning when Chrome is absent. Every capability outside
+that set is opt-in.
 
 A headed browser needs a display. On a machine without one, such as a Linux
 server or a container, the first session fails to open until you set

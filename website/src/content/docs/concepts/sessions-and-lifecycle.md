@@ -6,7 +6,7 @@ description: Managed, incognito, and attached browsers, the per-session isolatio
 Every browser-touching tool accepts an optional `session` argument (default
 `"default"`). Each session id is a fully isolated browser context: its own
 cookie jar and storage, its own ref registry, its own console and network
-buffers. That isolation is the whole concurrency model. For `persistent`
+buffers. Concurrency between agents rests on that isolation. For `persistent`
 sessions the cookie jar is the profile, so concurrent persistent sessions need
 distinct `profile` names (see Session modes below), or use `incognito`.
 

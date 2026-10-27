@@ -1,15 +1,14 @@
 ---
-// Wraps Starlight's head and preloads the three font files the first paint
-// needs: Inter 400 (body) and Poppins 600 and 700 (headings and the site
-// title). The ?url imports resolve to the same hashed files the @fontsource
-// CSS points at, so the browser fetches each once. The @font-face rules keep
-// font-display: swap.
+// Wraps Starlight's head and preloads the two font files the first paint
+// needs: Poppins 600 and 700 (headings and the site title). Body text uses the
+// system font stack, so it needs no file. The ?url imports resolve to the same
+// hashed files the @fontsource CSS points at, so the browser fetches each once.
+// The @font-face rules keep font-display: swap.
 import Default from "@astrojs/starlight/components/Head.astro";
-import inter400 from "@fontsource/inter/files/inter-latin-400-normal.woff2?url";
 import poppins600 from "@fontsource/poppins/files/poppins-latin-600-normal.woff2?url";
 import poppins700 from "@fontsource/poppins/files/poppins-latin-700-normal.woff2?url";
 
-const fonts = [inter400, poppins600, poppins700];
+const fonts = [poppins600, poppins700];
 ---
 
 <Default {...Astro.props}><slot /></Default>

@@ -1,0 +1,26 @@
+[
+  {
+    "tool": "hallmark",
+    "page": "guides_configuration",
+    "match": "FAIL 58",
+    "keep": 8
+  },
+  {
+    "tool": "hallmark",
+    "page": "guides_troubleshooting",
+    "match": "FAIL 58",
+    "keep": 8
+  },
+  {
+    "tool": "hallmark",
+    "page": "reference_tool-reference",
+    "match": "FAIL 58",
+    "keep": 8
+  },
+  {
+    "tool": "hallmark",
+    "page": "security_threat-model",
+    "match": "FAIL 58",
+    "keep": 8
+  }
+]

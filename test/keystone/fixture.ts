@@ -681,6 +681,38 @@ const TIER_DEDUP_PAGE = `<!doctype html>
   <p id="dedup-target">target</p>
 </body></html>`;
 
+// Ten markable elements for the screenshot_marks keystone, all inside the
+// default viewport. Six named buttons come from the accessibility tier. Four
+// nameless `tabindex` tiles with a test attribute come from the DOM walk alone
+// (`[from-dom]`), so their refs resolve through the ref table's locator record
+// with no accessible role/name to fall back on. The tiles are a fixed 60x24 so
+// the keystone can check the box size against a known value.
+const MARKS_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>marks keystone</title>
+<style>
+  body { margin: 16px; font: 14px sans-serif; }
+  .row { display: flex; gap: 12px; margin-bottom: 16px; }
+  .tile { width: 60px; height: 24px; background: #ddd; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <button type="button" id="mark-btn-alpha">Alpha</button>
+    <button type="button" id="mark-btn-bravo">Bravo</button>
+    <button type="button" id="mark-btn-charlie">Charlie</button>
+    <button type="button" id="mark-btn-delta">Delta</button>
+    <button type="button" id="mark-btn-echo">Echo</button>
+    <button type="button" id="mark-btn-foxtrot">Foxtrot</button>
+  </div>
+  <div class="row">
+    <div class="tile" tabindex="0" id="mark-tile-1" data-testid="mark-tile-1"></div>
+    <div class="tile" tabindex="0" id="mark-tile-2" data-testid="mark-tile-2"></div>
+    <div class="tile" tabindex="0" id="mark-tile-3" data-testid="mark-tile-3"></div>
+    <div class="tile" tabindex="0" id="mark-tile-4" data-testid="mark-tile-4"></div>
+  </div>
+</body></html>`;
+
 // A documentation page shaped like the one that broke `find`: one real search
 // button whose accessible name does not contain the query's words in order, and
 // prose that says "button" and "search" over and over. Chromium emits a
@@ -1214,6 +1246,7 @@ function handleUpgrade(
  *   GET /ignored-wrapper-page → interactive content under CDP-ignored wrappers
  *   GET /find-statictext-page → one real button buried in prose that repeats its words
  *   GET /tier-dedup-page  → elements both snapshot tiers see, for the tier join
+ *   GET /marks-page       → ten markable elements, six a11y buttons and four DOM-only tiles
  *   WS  /ws               → RFC 6455 echo (text frames only)
  */
 export async function startFixture(): Promise<Fixture> {
@@ -1294,6 +1327,11 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/tier-dedup-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(TIER_DEDUP_PAGE);
+      return;
+    }
+    if (u.pathname === "/marks-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(MARKS_PAGE);
       return;
     }
     if (u.pathname === "/find-statictext-page") {

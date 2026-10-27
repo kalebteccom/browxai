@@ -87,8 +87,8 @@ Pair it with the `verify_*` family when you want an assertion, for example
 
 ## Handle flaky or transient UI
 
-Do not sleep and hope. browxai has tools for waiting on a condition and for
-sampling an unstable surface.
+browxai has tools for waiting on a condition and for sampling an unstable
+surface. Use them in place of fixed sleeps.
 
 ```ts
 // Wait for a specific thing to exist, with a real deadline.
@@ -105,8 +105,7 @@ const res = await act_and_sample({
 ```
 
 `wait_for`'s `timeoutMs` is both its maximum wait and its deadline. If a
-session keeps timing out, the fix is to discard it (`close_session` then
-`open_session`), not to keep raising the timeout.
+session keeps timing out, discard it (`close_session` then `open_session`).
 
 ## Run flows in parallel
 
