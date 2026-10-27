@@ -37,12 +37,14 @@ nav.sidebar > button {
     align-items: center;
     min-height: 2.75rem;
   }
+  /* The header controls are 44 CSS px, not 2.75rem: at 150% text size 2.75rem is 66px and
+     leaves the site title about 20px at 320px wide. */
   :root {
-    --sl-menu-button-size: 2.75rem;
+    --sl-menu-button-size: 44px;
   }
   site-search button[data-open-modal] {
-    min-width: 2.75rem;
-    height: 2.75rem;
+    min-width: 44px;
+    height: 44px;
   }
   .pagefind-ui__button {
     min-height: 2.75rem;
@@ -53,6 +55,10 @@ nav.sidebar > button {
     justify-content: center;
     min-width: 2.75rem;
     min-height: 2.75rem;
+  }
+  /* A details toggle in the page body: 44px tall, marker kept (a flex summary drops it). */
+  .sl-markdown-content details > summary {
+    padding-block: calc((var(--browx-tap) - 1lh) / 2);
   }
   .sl-markdown-content :is(td > a, li > strong > a) {
     display: inline-block;
@@ -93,12 +99,4 @@ nav.sidebar > button {
 starlight-theme-select select:not([data-x]) {
   border: 1px solid var(--sl-color-gray-3);
   border-radius: 0.5rem;
-}
-
-/* 404 kicker: a dot after the label mirrors the dot before it, so the label
-   sits on the page centre. */
-.browx-404 .browx-kicker::after {
-  content: "";
-  width: 7px;
-  height: 7px;
 }

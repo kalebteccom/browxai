@@ -18,6 +18,9 @@
   border-radius: 0.55rem;
   padding: var(--space-3) var(--space-4h);
   transition: transform 0.12s ease;
+  /* A long label wraps inside the button, so it never widens the page. */
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 /* Flat violet fill. --browx-on-accent clears 4.5:1 on all three steps. */
 .browx-btn--primary {
@@ -91,6 +94,9 @@
   min-height: var(--browx-tap);
   margin-inline-start: var(--space-1h);
   padding: var(--space-1) var(--space-2);
+  /* A long label wraps inside the button, so it never widens the page. */
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font: inherit;
   font-family: var(--browx-font-body);
   font-size: 0.75rem;

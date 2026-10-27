@@ -5,7 +5,8 @@
    until you opt in" set. Pure HTML/flex so every chip wraps; no SVG text. */
 .browx-posture {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr);
+  /* The first column never goes under its longest word, so large text does not spill the labels. */
+  grid-template-columns: minmax(min-content, 0.9fr) minmax(0, 1.5fr);
   gap: var(--space-4);
   margin: var(--space-5) 0 var(--space-6);
   container-type: inline-size;
