@@ -1,73 +1,8 @@
 /*
- * browxai brand layer.
- *
- * Dark-first, built on the violet / aurora palette over a deep purple-black
- * canvas, with a crafted warm-light mode and a frosted-glass treatment on the
- * landing and doc surfaces. Display type is Poppins; body is Inter; code is
- * JetBrains Mono. Everything here overrides Starlight's design tokens plus a
- * few hand-built components. No external CSS, no CDN fonts.
+ * browxai brand layer: base type, links, focus, motion and the landing hero.
+ * Tokens are in brand-tokens.css. Components follow in the other brand-*.css
+ * files, in the order listed in brand-tokens.css.
  */
-
-:root {
-  --browx-font-display: "Poppins", ui-sans-serif, system-ui, sans-serif;
-  --browx-font-body: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --browx-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-
-  /* Brand accent scale (violet / aurora). */
-  --browx-violet-100: #f3e8ff;
-  --browx-violet-200: #e9d5ff;
-  --browx-violet-300: #d8b4fe;
-  --browx-violet-400: #c084fc;
-  --browx-violet-500: #a855f7;
-  --browx-violet-600: #9333ea;
-  --browx-violet-700: #7e22ce;
-  --browx-pink: #ec4899;
-  --browx-aurora-deep: #341070;
-  --browx-aurora-bright: #9032e0;
-
-  --sl-font: var(--browx-font-body);
-  --sl-font-mono: var(--browx-font-mono);
-
-  --browx-code-border: color-mix(in srgb, var(--sl-color-gray-5) 60%, transparent);
-}
-
-/* Dark theme (default). */
-:root,
-:root[data-theme="dark"] {
-  --sl-color-accent-low: #2a1454;
-  --sl-color-accent: #7c3aed;
-  --sl-color-accent-high: var(--browx-violet-200);
-  --sl-color-text-accent: var(--browx-violet-400);
-
-  /* Deep purple-black canvas for the aurora. */
-  --sl-color-bg: #0c0a14;
-  --sl-color-bg-nav: color-mix(in srgb, #0c0a14 72%, transparent);
-  --sl-color-bg-sidebar: #100c1c;
-  --sl-color-hairline-shade: #241a36;
-  --browx-grid-line: color-mix(in srgb, var(--browx-violet-500) 10%, transparent);
-  --browx-glow: color-mix(in srgb, var(--browx-violet-500) 30%, transparent);
-  --browx-glow-2: color-mix(in srgb, var(--browx-pink) 22%, transparent);
-  --browx-glass: color-mix(in srgb, #ffffff 5%, transparent);
-  --browx-glass-border: color-mix(in srgb, #ffffff 11%, transparent);
-}
-
-/* Light theme. */
-:root[data-theme="light"] {
-  --sl-color-accent-low: #ede4ff;
-  --sl-color-accent: #7e22ce;
-  --sl-color-accent-high: #4c1d95;
-  --sl-color-text-accent: var(--browx-violet-700);
-
-  --sl-color-bg: #fbfaff;
-  --sl-color-bg-nav: color-mix(in srgb, #fbfaff 70%, transparent);
-  --sl-color-bg-sidebar: #f5f1fd;
-  --sl-color-hairline-shade: #e7ddf7;
-  --browx-grid-line: color-mix(in srgb, var(--browx-violet-700) 9%, transparent);
-  --browx-glow: color-mix(in srgb, var(--browx-violet-500) 16%, transparent);
-  --browx-glow-2: color-mix(in srgb, var(--browx-pink) 13%, transparent);
-  --browx-glass: color-mix(in srgb, #ffffff 60%, transparent);
-  --browx-glass-border: color-mix(in srgb, var(--browx-violet-700) 13%, transparent);
-}
 
 /* Display type for headings and the site title. */
 .sl-markdown-content h1,
@@ -88,9 +23,40 @@ h1#_top,
   letter-spacing: -0.03em;
 }
 
+/* Wrapping: every heading level and the display wordmarks balance, running text
+   avoids a one-word last line. */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.site-title,
+.browx-wordmark,
+.browx-404-code,
+.browx-section-title,
+.browx-card h3,
+.bx-step-k {
+  text-wrap: balance;
+}
+p,
+li,
+dd,
+figcaption,
+blockquote,
+.browx-lede,
+.browx-about,
+.browx-card-text,
+.browx-404-msg,
+.browx-install-note,
+.browx-section-sub,
+.browx-posture-note {
+  text-wrap: pretty;
+}
+
 /* Selection in the brand accent. */
 ::selection {
-  background: color-mix(in srgb, var(--browx-violet-400) 30%, transparent);
+  background: color-mix(in srgb, var(--browx-violet-400) 30%, var(--sl-color-bg));
   color: var(--sl-color-white);
 }
 
@@ -99,17 +65,18 @@ h1#_top,
   background: color-mix(in srgb, var(--sl-color-accent-low) 55%, var(--sl-color-bg));
   border: 1px solid var(--browx-code-border);
   border-radius: 0.35rem;
+  /* Em units: the chip padding scales with the code font size. */
   padding: 0.1em 0.38em;
   font-size: 0.86em;
 }
 
-/* Links get a brand underline that thickens on hover. */
+/* Links get a brand underline that thickens on hover and press. */
 .sl-markdown-content a:not(:where(.not-content *)) {
   text-underline-offset: 0.18em;
   text-decoration-thickness: 1px;
-  transition: text-decoration-color 0.15s ease;
 }
-.sl-markdown-content a:not(:where(.not-content *)):hover {
+.sl-markdown-content a:not(:where(.not-content *)):hover,
+.sl-markdown-content a:not(:where(.not-content *)):active {
   text-decoration-thickness: 2px;
 }
 
@@ -154,15 +121,14 @@ main:has(.browx-404) > .content-panel {
   display: grid;
   grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
   align-items: center;
-  gap: clamp(2rem, 5vw, 4rem);
-  padding: clamp(2.5rem, 7vw, 5.5rem) 0 clamp(2rem, 4vw, 3rem);
-  isolation: isolate;
+  gap: clamp(var(--space-6), 5vw, var(--space-10));
+  padding: clamp(var(--space-7), 7vw, 5.5rem) 0 clamp(var(--space-6), 4vw, var(--space-8));
 }
 @media (max-width: 52rem) {
   .browx-hero {
     grid-template-columns: 1fr;
-    gap: 2rem;
-    padding-top: 2.5rem;
+    gap: var(--space-6);
+    padding-top: var(--space-7);
   }
 }
 
@@ -175,16 +141,16 @@ main:has(.browx-404) > .content-panel {
 .browx-topnav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 0.5rem;
+  gap: var(--space-1) var(--space-2);
   max-width: 1140px;
   margin-inline: auto;
-  padding-top: 0.5rem;
+  padding-top: var(--space-2);
 }
 .browx-topnav a {
   display: inline-flex;
   align-items: center;
-  min-height: 2.75rem;
-  padding-inline: 0.75rem;
+  min-height: var(--browx-tap);
+  padding-inline: var(--space-3);
   font-weight: 500;
   color: var(--sl-color-gray-2);
   text-decoration: none;
@@ -194,54 +160,29 @@ main:has(.browx-404) > .content-panel {
 .browx-topnav a:focus-visible {
   color: var(--sl-color-text-accent);
 }
+.browx-topnav a:active {
+  color: var(--sl-color-text-accent);
+  background: var(--browx-tint);
+}
 .browx-topnav + .browx-hero {
-  padding-top: clamp(1rem, 3vw, 2.5rem);
+  padding-top: clamp(var(--space-4), 3vw, var(--space-7));
 }
 
-/* A faint targeting grid + glow behind the hero, masked to fade out. */
-.browx-hero::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-  background-image:
-    linear-gradient(to right, var(--browx-grid-line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--browx-grid-line) 1px, transparent 1px);
-  background-size: 46px 46px;
-  -webkit-mask-image: radial-gradient(85% 80% at 50% 0%, #000 0%, transparent 72%);
-  mask-image: radial-gradient(85% 80% at 50% 0%, #000 0%, transparent 72%);
-}
-.browx-hero::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  top: -8%;
-  left: 34%;
-  width: 56%;
-  height: 95%;
-  background: radial-gradient(50% 60% at 60% 30%, var(--browx-glow) 0%, transparent 70%);
-  filter: blur(26px);
-  pointer-events: none;
-}
-
+/* Motion: only the button lift animates (transform), and it stops here. */
 @media (prefers-reduced-motion: reduce) {
-  .browx-hero *,
-  .browx-diagram *,
-  .browx-card,
-  .browx-sidebar-llms {
-    animation: none !important;
-    transition: none !important;
+  .browx-btn {
+    transition: none;
   }
   .browx-btn:hover,
-  .browx-card:hover,
-  .bx-step:hover {
-    transform: none !important;
+  .browx-btn:active {
+    transform: none;
   }
 }
 
 /* Keyboard focus: one visible ring on every hand-built control. */
 .browx-btn:focus-visible,
 .browx-copy:focus-visible,
+.browx-topnav a:focus-visible,
 .browx-sidebar-llms:focus-visible,
 .browx-credit a:focus-visible,
 .browx-facts a:focus-visible,
@@ -287,10 +228,10 @@ main:has(.browx-404) > .content-panel {
   font-family: var(--browx-font-body);
   font-size: 0.82rem;
   color: var(--sl-color-text-accent);
-  margin: 0 0 1.5rem;
+  margin: 0 0 var(--space-5);
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .browx-lede {
@@ -298,1213 +239,12 @@ main:has(.browx-404) > .content-panel {
   line-height: 1.6;
   max-width: 42ch;
   color: var(--sl-color-gray-2);
-  margin: 1.5rem 0 1rem;
+  margin: var(--space-5) 0 var(--space-4);
 }
 .browx-about {
   font-size: 0.97rem;
   line-height: 1.65;
   max-width: 52ch;
   color: var(--sl-color-gray-3);
-  margin: 0 0 2.25rem;
-}
-
-.browx-cta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.85rem;
-  align-items: center;
-}
-.browx-cta a {
-  text-decoration: none;
-}
-.browx-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-family: var(--browx-font-display);
-  font-weight: 600;
-  border-radius: 0.55rem;
-  padding: 0.8rem 1.3rem;
-  transition:
-    transform 0.12s ease,
-    box-shadow 0.12s ease,
-    background 0.12s ease;
-}
-/* White text needs 4.5:1: violet-600 and darker clear it, violet-500 does not. */
-.browx-btn--primary {
-  background: linear-gradient(180deg, var(--browx-violet-600), var(--browx-violet-700));
-  color: #ffffff;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--browx-violet-400) 60%, transparent),
-    0 10px 34px -10px var(--browx-glow);
-}
-.browx-btn--primary:hover {
-  transform: translateY(-2px);
-  background: var(--browx-violet-600);
-}
-.browx-btn--ghost {
-  border: 1px solid var(--sl-color-gray-5);
-  color: var(--sl-color-white);
-}
-.browx-btn--ghost:hover {
-  border-color: var(--sl-color-text-accent);
-  transform: translateY(-2px);
-}
-
-/* Install one-liner under the CTAs. */
-.browx-install {
-  margin-top: 2rem;
-  max-width: 100%;
-  flex-wrap: wrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-family: var(--browx-font-mono);
-  font-size: 0.85rem;
-  color: var(--sl-color-gray-2);
-  border: 1px solid var(--sl-color-hairline-shade);
-  border-radius: 0.5rem;
-  padding: 0.55rem 0.85rem;
-  background: color-mix(in srgb, var(--sl-color-bg-sidebar) 60%, transparent);
-}
-.browx-install .pfx {
-  color: var(--sl-color-text-accent);
-  user-select: none;
-}
-.browx-install code {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  padding: 0;
-  user-select: all;
-}
-/* Copy button. The three labels sit in one grid cell, so the button is as wide
-   as the longest and the state changes without moving the line. */
-.browx-copy {
-  display: inline-grid;
-  margin-inline-start: 0.4rem;
-  padding: 0.25rem 0.6rem;
-  font: inherit;
-  font-family: var(--browx-font-body);
-  font-size: 0.75rem;
-  line-height: 1.3;
-  color: var(--sl-color-gray-2);
-  background: transparent;
-  border: 1px solid var(--sl-color-hairline-shade);
-  border-radius: 0.4rem;
-  cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    color 0.15s ease;
-}
-.browx-copy[hidden] {
-  display: none;
-}
-.browx-copy:hover {
-  border-color: var(--sl-color-text-accent);
-  color: var(--sl-color-white);
-}
-.browx-copy .lbl {
-  grid-area: 1 / 1;
-  text-align: center;
-  visibility: hidden;
-}
-.browx-copy[data-state="idle"] .lbl-idle,
-.browx-copy[data-state="copied"] .lbl-copied,
-.browx-copy[data-state="failed"] .lbl-failed {
-  visibility: visible;
-}
-.browx-copy[data-state="copied"] {
-  border-color: var(--sl-color-green);
-  color: var(--sl-color-green-high);
-}
-.browx-copy[data-state="failed"] {
-  border-color: var(--sl-color-red);
-  color: var(--sl-color-red-high);
-}
-
-/* One line under the install command: the Node floor and the next step. */
-.browx-install-note {
-  margin: 0.9rem 0 0;
-  font-size: 0.88rem;
-  line-height: 1.5;
-  color: var(--sl-color-gray-3);
-}
-.browx-install-note a {
-  color: var(--sl-color-text-accent);
-  text-underline-offset: 0.18em;
-}
-
-/* Version, license, status and links, under the hero. */
-.browx-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  gap: 0.75rem 2rem;
-  max-width: 1140px;
-  margin: 0 auto;
-  padding: 1rem 0;
-  border-block: 1px solid var(--sl-color-hairline-shade);
-  font-size: 0.88rem;
-}
-.browx-facts dt {
-  font-weight: 600;
-  font-family: var(--browx-font-body);
-  font-size: 0.7rem;
-  color: var(--sl-color-gray-3);
-}
-.browx-facts dd {
-  margin: 0.15rem 0 0;
-  color: var(--sl-color-gray-2);
-  line-height: 1.45;
-}
-.browx-facts a {
-  color: var(--sl-color-text-accent);
-}
-.browx-facts .sep {
-  margin: 0 0.4rem;
-  opacity: 0.5;
-}
-
-/* The product window on the right of the hero. */
-.browx-window {
-  border: 1px solid var(--sl-color-hairline-shade);
-  border-radius: 0.85rem;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--sl-color-bg-sidebar) 88%, var(--sl-color-bg));
-  box-shadow:
-    0 30px 70px -34px rgba(0, 0, 0, 0.7),
-    0 0 0 1px color-mix(in srgb, var(--browx-violet-400) 8%, transparent);
-}
-.browx-window-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 0.85rem;
-  border-bottom: 1px solid var(--sl-color-hairline-shade);
-  background: color-mix(in srgb, var(--sl-color-bg) 50%, transparent);
-}
-.browx-window-dots {
-  display: inline-flex;
-  gap: 0.4rem;
-}
-.browx-window-dots i {
-  width: 0.62rem;
-  height: 0.62rem;
-  border-radius: 999px;
-  background: var(--sl-color-gray-5);
-}
-.browx-window-title {
-  font-family: var(--browx-font-body);
-  font-size: 0.74rem;
-  color: var(--sl-color-gray-3);
-}
-.browx-window-title .dot {
-  color: var(--sl-color-text-accent);
-}
-
-/* The compact snapshot tree, laid out on a grid so columns line up. */
-.browx-snap {
-  margin: 0;
-  padding: 1.1rem 1.2rem 1.25rem;
-  font-family: var(--browx-font-mono);
-  font-size: 0.82rem;
-  line-height: 1.8;
-  overflow-x: auto;
-}
-.browx-snap-note {
-  color: var(--sl-color-gray-3);
-  margin-bottom: 0.5rem;
-}
-.browx-snap .row {
-  display: grid;
-  grid-template-columns: 4.6rem 9rem 5rem 1fr;
-  gap: 0.5rem;
-  white-space: nowrap;
-}
-.browx-snap .row.indent {
-  padding-left: 1.3rem;
-}
-.browx-snap .t-role {
-  color: var(--sl-color-white);
-}
-.browx-snap .t-str {
-  color: #6fcdb6;
-}
-:root[data-theme="light"] .browx-snap .t-str {
-  color: #0f766e;
-}
-.browx-snap .t-acc {
-  color: var(--sl-color-text-accent);
-}
-/* Shrink the snapshot on small screens so it fits without an inner scroll. At
-   360px the card body is 294px wide; these columns need about 280px. */
-@media (max-width: 34rem) {
-  .browx-snap {
-    font-size: 0.72rem;
-    padding: 0.9rem 1rem 1rem;
-  }
-  .browx-snap .row {
-    grid-template-columns: 3.1rem 4.6rem 3.7rem 1fr;
-    gap: 0.3rem;
-  }
-  .browx-snap .row.indent {
-    padding-left: 0.8rem;
-  }
-}
-
-/* The agent loop, drawn as a real cycle: four steps at the compass points of a
-   ring, with curved arrows running clockwise and an ActionResult hub at the
-   center that closes the loop. The step labels are HTML (so the text wraps and
-   never overflows); the SVG layer behind them carries only the ring and arrows.
-   Under ~560px the ring collapses to a vertical stepped flow. */
-.browx-diagram {
-  margin-top: clamp(2rem, 5vw, 3rem);
-  container-type: inline-size;
-}
-
-/* --- Ring layout (wide) ------------------------------------------------- */
-.browx-loop {
-  position: relative;
-  width: min(100%, 540px);
-  aspect-ratio: 1 / 1;
-  margin-inline: auto;
-  display: grid;
-  grid-template-columns: 1fr minmax(0, 9.5rem) 1fr;
-  grid-template-rows: 1fr minmax(0, 9.5rem) 1fr;
-  grid-template-areas:
-    ".  n  ."
-    "w  c  e"
-    ".  s  .";
-  place-items: center;
-}
-.browx-loop-arcs {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.browx-loop-arcs .bx-ring-glow {
-  fill: none;
-  stroke: color-mix(in srgb, var(--browx-violet-500) 14%, transparent);
-  stroke-width: 30;
-}
-.browx-loop-arcs .bx-arc {
-  fill: none;
-  stroke: url(#bx-ring);
-  stroke-width: 2.4;
-  stroke-linecap: round;
-}
-
-/* Center hub: the ActionResult that feeds the next pass. */
-.bx-hub {
-  grid-area: c;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.15rem;
-  width: 100%;
-  height: 100%;
-  border-radius: 999px;
-  text-align: center;
-  font-family: var(--browx-font-body);
-  font-size: clamp(0.74rem, 2.4cqi, 0.92rem);
-  font-weight: 600;
-  color: var(--sl-color-text-accent);
-  background: radial-gradient(
-    circle at 50% 38%,
-    color-mix(in srgb, var(--browx-aurora-bright) 22%, transparent),
-    transparent 70%
-  );
-  border: 1px dashed color-mix(in srgb, var(--browx-violet-400) 45%, transparent);
-}
-.bx-hub small {
-  font-family: var(--browx-font-body);
-  font-weight: 400;
-  font-size: 0.72em;
-  color: var(--sl-color-gray-3);
-}
-
-/* Step cards. */
-.bx-step {
-  display: flex;
-  flex-direction: column;
-  gap: 0.12rem;
-  padding: 0.55rem 0.85rem;
-  min-width: 0;
-  max-width: 9.5rem;
-  text-align: center;
-  border-radius: 0.7rem;
-  border: 1px solid var(--browx-glass-border);
-  background: var(--browx-glass);
-  backdrop-filter: blur(12px) saturate(130%);
-  box-shadow: 0 10px 28px -16px var(--browx-glow);
-  transition:
-    border-color 0.15s ease,
-    transform 0.15s ease;
-}
-.bx-step:hover {
-  border-color: color-mix(in srgb, var(--browx-violet-400) 55%, transparent);
-  transform: translateY(-2px);
-}
-.bx-step--n {
-  grid-area: n;
-}
-.bx-step--e {
-  grid-area: e;
-}
-.bx-step--s {
-  grid-area: s;
-}
-.bx-step--w {
-  grid-area: w;
-}
-.bx-step-k {
-  font-family: var(--browx-font-display);
-  font-weight: 600;
-  font-size: 1.02rem;
-  color: var(--sl-color-text-accent);
-  line-height: 1.15;
-}
-.bx-step-d {
-  font-family: var(--browx-font-body);
-  font-size: 0.8rem;
-  color: var(--sl-color-gray-3);
-  line-height: 1.3;
-}
-
-/* --- Vertical reflow (narrow) ------------------------------------------- */
-@container (max-width: 560px) {
-  .browx-loop {
-    width: 100%;
-    max-width: 22rem;
-    aspect-ratio: auto;
-    grid-template-columns: 1fr;
-    grid-template-rows: none;
-    grid-template-areas:
-      "n"
-      "e"
-      "s"
-      "w"
-      "c";
-    gap: 1.6rem;
-    padding: 0.5rem 0;
-  }
-  .browx-loop-arcs {
-    display: none;
-  }
-  .bx-step {
-    max-width: none;
-    width: 100%;
-    position: relative;
-  }
-  /* Down-arrow connectors between the stacked steps. */
-  .bx-step--n::after,
-  .bx-step--e::after,
-  .bx-step--s::after,
-  .bx-step--w::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    bottom: -1.2rem;
-    width: 2px;
-    height: 1.6rem;
-    transform: translateX(-50%);
-    background: linear-gradient(
-      var(--sl-color-text-accent),
-      color-mix(in srgb, var(--sl-color-text-accent) 35%, transparent)
-    );
-  }
-  .bx-hub {
-    aspect-ratio: 1 / 1;
-    width: 9rem;
-    margin-inline: auto;
-    font-size: 0.86rem;
-  }
-}
-
-/* ---- Capability posture (concepts/capabilities-and-safety) -------------- */
-/* Two zones: a small solid "on by default" set and a dimmed, dashed "off
-   until you opt in" set. Pure HTML/flex so every chip wraps; no SVG text. */
-.browx-posture {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr);
-  gap: 1rem;
-  margin: 1.5rem 0 2rem;
-  container-type: inline-size;
-}
-@media (max-width: 40rem) {
-  .browx-posture {
-    grid-template-columns: 1fr;
-  }
-}
-.browx-posture-zone {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  padding: 1rem 1.1rem 1.15rem;
-  border-radius: 0.8rem;
-  min-width: 0;
-}
-.browx-posture-zone.is-on {
-  border: 1px solid color-mix(in srgb, var(--browx-violet-400) 40%, transparent);
-  background: color-mix(in srgb, var(--browx-violet-500) 9%, transparent);
-}
-.browx-posture-zone.is-off {
-  border: 1px dashed var(--browx-glass-border);
-  background: color-mix(in srgb, var(--sl-color-bg-sidebar) 35%, transparent);
-}
-.browx-posture-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-family: var(--browx-font-body);
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-.browx-posture-zone.is-on .browx-posture-head {
-  color: var(--sl-color-text-accent);
-}
-.browx-posture-zone.is-off .browx-posture-head {
-  color: var(--sl-color-gray-3);
-}
-.browx-posture-head .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-.browx-posture-zone.is-on .browx-posture-head .dot {
-  background: var(--sl-color-text-accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--browx-violet-400) 25%, transparent);
-}
-.browx-posture-zone.is-off .browx-posture-head .dot {
-  background: transparent;
-  border: 1.5px dashed var(--sl-color-gray-4);
-}
-.browx-posture-note {
-  font-size: 0.82rem;
-  color: var(--sl-color-gray-3);
-  line-height: 1.4;
-}
-.browx-cap-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-top: 0.15rem;
-}
-.browx-cap {
-  font-weight: 600;
-  font-family: var(--browx-font-body);
-  font-size: 0.8rem;
-  padding: 0.28rem 0.6rem;
-  border-radius: 0.45rem;
-  white-space: nowrap;
-}
-.browx-cap.is-on {
-  color: #ffffff;
-  background: linear-gradient(180deg, var(--browx-violet-600), var(--browx-violet-700));
-  box-shadow: 0 6px 18px -10px var(--browx-glow);
-}
-.browx-cap.is-off {
-  color: var(--sl-color-gray-3);
-  border: 1px dashed var(--browx-glass-border);
-  background: color-mix(in srgb, var(--sl-color-bg) 40%, transparent);
-}
-
-/* ---- Session isolation (concepts/sessions-and-lifecycle) ---------------- */
-/* One server fans out to N isolated session contexts. HTML cards carry the
-   text; a single SVG draws the fan-out connectors. Reflows to a stack with the
-   connector hidden under ~34rem. */
-.browx-iso {
-  margin: 1.5rem 0 2rem;
-  container-type: inline-size;
-}
-.browx-iso-server {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.15rem;
-  max-width: 22rem;
-  margin: 0 auto;
-  padding: 0.7rem 1.1rem;
-  text-align: center;
-  border-radius: 0.7rem;
-  border: 1px solid color-mix(in srgb, var(--browx-violet-400) 45%, transparent);
-  background: color-mix(in srgb, var(--browx-violet-500) 10%, transparent);
-}
-.browx-iso-server-k {
-  font-family: var(--browx-font-display);
-  font-weight: 600;
-  color: var(--sl-color-text-accent);
-}
-.browx-iso-server-d {
-  font-size: 0.8rem;
-  color: var(--sl-color-gray-3);
-}
-.browx-iso-fan {
-  display: block;
-  width: 100%;
-  max-width: 30rem;
-  height: 2.5rem;
-  margin: 0 auto;
-}
-.browx-iso-fan path {
-  fill: none;
-  stroke: var(--sl-color-text-accent);
-  stroke-width: 1.5;
-  opacity: 0.65;
-  vector-effect: non-scaling-stroke;
-}
-.browx-iso-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-.browx-iso-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.8rem 0.9rem;
-  min-width: 0;
-  border-radius: 0.7rem;
-  border: 1px solid var(--browx-glass-border);
-  background: var(--browx-glass);
-  backdrop-filter: blur(12px) saturate(130%);
-}
-.browx-iso-id {
-  font-family: var(--browx-font-body);
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--sl-color-text-accent);
-  word-break: break-word;
-}
-.browx-iso-trait {
-  font-family: var(--browx-font-body);
-  font-size: 0.78rem;
-  color: var(--sl-color-gray-3);
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-.browx-iso-trait::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  flex-shrink: 0;
-  background: color-mix(in srgb, var(--browx-violet-400) 70%, transparent);
-}
-@container (max-width: 34rem) {
-  .browx-iso-fan {
-    height: 1.4rem;
-    width: 2px;
-    background: linear-gradient(
-      var(--sl-color-text-accent),
-      color-mix(in srgb, var(--sl-color-text-accent) 35%, transparent)
-    );
-    opacity: 0.65;
-  }
-  .browx-iso-fan path {
-    display: none;
-  }
-  .browx-iso-row {
-    grid-template-columns: 1fr;
-    gap: 0.6rem;
-  }
-}
-
-/* Feature grid. */
-.browx-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: 1rem;
-  margin: 1.5rem 0;
-}
-.browx-card {
-  border: 1px solid var(--sl-color-hairline-shade);
-  border-radius: 0.75rem;
-  padding: 1.4rem;
-  background: color-mix(in srgb, var(--sl-color-bg-sidebar) 55%, transparent);
-  transition:
-    border-color 0.15s ease,
-    transform 0.15s ease;
-}
-.browx-card:hover {
-  border-color: color-mix(in srgb, var(--browx-violet-400) 45%, transparent);
-  transform: translateY(-3px);
-}
-.browx-card h3 {
-  font-family: var(--browx-font-display);
-  margin: 0 0 0.5rem;
-  font-size: 1.05rem;
-}
-.browx-card-text {
-  margin: 0;
-  color: var(--sl-color-gray-2);
-  font-size: 0.94rem;
-  line-height: 1.55;
-}
-
-/* MDX wraps the multi-line text inside these <div>s in its own <p>. Neutralize
-   that inner paragraph so only the container controls spacing. */
-.browx-lede > p,
-.browx-about > p,
-.browx-section-sub > p,
-.browx-card-text > p {
-  margin: 0;
-  font: inherit;
-  color: inherit;
-  max-width: inherit;
-}
-
-/* The .not-content wrapper drops Starlight's link colour, so prose links in the
-   cards would render browser-default blue. */
-.browx-card-text a {
-  color: var(--sl-color-text-accent);
-  text-underline-offset: 0.18em;
-}
-.browx-card .browx-card-mark {
-  font-weight: 600;
-  font-family: var(--browx-font-body);
-  color: var(--sl-color-text-accent);
-  font-size: 0.78rem;
-  display: block;
-  margin-bottom: 0.7rem;
-}
-
-.browx-section {
-  margin-top: clamp(3.5rem, 8vw, 5.5rem);
-  text-align: center;
-}
-.browx-section-title {
-  font-family: var(--browx-font-display);
-  font-size: clamp(1.35rem, 3.2vw, 1.75rem);
-  letter-spacing: -0.02em;
-  margin: 0 0 0.5rem;
-}
-.browx-section-sub {
-  color: var(--sl-color-gray-3);
-  max-width: 56ch;
-  margin: 0 auto 1.75rem;
-}
-.browx-section .browx-grid {
-  text-align: left;
-}
-
-/* Centered closing call to action. */
-.browx-cta--center {
-  justify-content: center;
-  margin-top: clamp(2.5rem, 6vw, 4rem);
-}
-
-/* ---- 404 ---------------------------------------------------------------- */
-.browx-404 {
-  text-align: center;
-  padding: clamp(2rem, 9vw, 5.5rem) 0;
-  max-width: 40rem;
-  margin-inline: auto;
-}
-.browx-404 .browx-kicker {
-  margin-bottom: 0.75rem;
-}
-.browx-404-code {
-  font-family: var(--browx-font-display);
-  font-weight: 700;
-  font-size: clamp(5rem, 18vw, 9rem);
-  line-height: 1;
-  letter-spacing: -0.04em;
-  margin: 0.25rem 0 0.75rem;
-}
-.browx-404-code .x {
-  color: var(--sl-color-text-accent);
-}
-.browx-404-msg {
-  color: var(--sl-color-gray-2);
-  font-size: 1.1rem;
-  line-height: 1.55;
-  margin: 0 auto 2.25rem;
-  max-width: 34rem;
-}
-
-/* Site-wide credit line, appended after Starlight's default footer. */
-.browx-credit {
-  margin-top: 1.75rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--sl-color-hairline-shade);
-  text-align: center;
-  font-size: 0.8rem;
-  color: var(--sl-color-gray-3);
-}
-.browx-credit a {
-  color: var(--sl-color-text-accent);
-  text-decoration: none;
-}
-.browx-credit a:hover {
-  text-decoration: underline;
-}
-.browx-credit .sep {
-  margin: 0 0.5rem;
-  opacity: 0.5;
-}
-
-/* ---- Sidebar: non-collapsible, Vercel / Next.js / MCP-docs feel ---------- */
-
-/* Inter-group air: each top-level group reads as its own section. */
-#starlight__sidebar .top-level > li + li {
-  margin-top: 1.4rem;
-}
-
-/* Groups are always open: kill the toggle and the caret. */
-#starlight__sidebar summary {
-  pointer-events: none;
-  cursor: default;
-  padding-block: 0.35rem;
-  margin-bottom: 0.15rem;
-}
-#starlight__sidebar summary .caret {
-  display: none;
-}
-
-/* Section labels: small, quiet, sentence case. */
-#starlight__sidebar .group-label .large {
-  font-family: var(--browx-font-body);
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--sl-color-gray-3);
-}
-
-/* Make the sidebar a column so the llms.txt link can pin to the bottom. */
-#starlight__sidebar .sidebar-content {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
-
-/* Items: more vertical padding, rounded, subtle hover, refined active state. */
-#starlight__sidebar .top-level a {
-  display: block;
-  padding: 0.45rem 0.75rem;
-  border-radius: 0.5rem;
-  font-size: 0.9rem;
-  line-height: 1.45;
-  margin-block: 0.0625rem;
-  color: var(--sl-color-gray-2);
-  transition:
-    background 0.13s ease,
-    color 0.13s ease;
-}
-#starlight__sidebar .top-level ul ul a {
-  padding-block: 0.35rem;
-  font-size: 0.875rem;
-}
-#starlight__sidebar .top-level a:hover {
-  background: color-mix(in srgb, var(--sl-color-gray-5) 22%, transparent);
-  color: var(--sl-color-white);
-}
-#starlight__sidebar .top-level a[aria-current="page"] {
-  background: color-mix(in srgb, var(--sl-color-text-accent) 13%, transparent);
-  color: var(--sl-color-text-accent);
-  font-weight: 600;
-}
-#starlight__sidebar .top-level ul ul {
-  border-inline-start-color: var(--sl-color-hairline-shade);
-}
-
-/* The llms.txt affordance, pinned to the bottom of the sidebar. */
-.browx-sidebar-llms {
-  margin: auto 0.5rem 0.4rem;
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--sl-color-hairline-shade);
-  border-radius: 0.55rem;
-  font-family: var(--browx-font-body);
-  font-size: 0.82rem;
-  color: var(--sl-color-gray-2);
-  text-decoration: none;
-  background: color-mix(in srgb, var(--sl-color-bg-sidebar) 50%, transparent);
-  transition:
-    border-color 0.15s ease,
-    color 0.15s ease;
-}
-.browx-sidebar-llms:hover {
-  border-color: color-mix(in srgb, var(--browx-violet-400) 50%, transparent);
-  color: var(--sl-color-white);
-}
-.browx-sidebar-llms .ico {
-  color: var(--sl-color-text-accent);
-  flex-shrink: 0;
-}
-.browx-sidebar-llms .lbl {
-  flex: 1;
-}
-.browx-sidebar-llms .ext {
-  opacity: 0.55;
-  flex-shrink: 0;
-}
-
-/* ---- Content polish: smaller heading scale + comfortable measure -------- */
-
-/* Calmer heading sizes (Poppins runs large). Overrides Starlight's t-shirt
-   scale for both the page title and in-content headings, at every breakpoint. */
-:root {
-  --sl-text-h1: 1.95rem;
-  --sl-text-h2: 1.5rem;
-  --sl-text-h3: 1.2rem;
-  --sl-text-h4: 1.05rem;
-  --sl-text-h5: 0.95rem;
-}
-.sl-markdown-content :is(h1, h2, h3) {
-  letter-spacing: -0.015em;
-}
-
-/* Measure: the 45rem column fits about 90 Inter characters a line. Cap running
-   text near 80. Tables, code blocks and callouts keep the full column. A long
-   unbroken token (a path, a URL) wraps at the column edge instead of pushing
-   the page sideways; table cells are left alone so they scroll. */
-.sl-markdown-content > :is(p, ul, ol, dl):not(.not-content) {
-  max-width: 62ch;
-}
-.sl-markdown-content :is(p, dd, blockquote, h1, h2, h3, h4, h5, h6) {
-  overflow-wrap: break-word;
-}
-
-/* Reference tables: top-align cells and tighten type. Starlight keeps tables
-   in a display:block + overflow-x container, so a genuinely wide one scrolls
-   within the column rather than bleeding under the right-hand sidebar. Tables
-   carrying paragraph-length content (the capability set) are written as lists
-   instead, since that is what they are. */
-.sl-markdown-content table {
-  font-size: 0.9rem;
-}
-.sl-markdown-content table :is(th, td) {
-  vertical-align: top;
-}
-
-/* Scroll hint. A table wider than the column scrolls inside its own box, and an
-   accent glow shows on whichever edge still has content past it. The two
-   "local" layers are cover strips that scroll with the content and hide the
-   glow at that end; the "scroll" layers stay fixed to the box edges. A table
-   that fits shows nothing. */
-.sl-markdown-content table:not(:where(.not-content *)) {
-  --browx-edge: var(--sl-color-bg);
-  --browx-edge-glow: color-mix(in srgb, var(--sl-color-text-accent) 45%, transparent);
-  max-width: 100%;
-  overscroll-behavior-x: contain;
-  background:
-    linear-gradient(to right, var(--browx-edge) 35%, transparent) left center / 1.5rem 100%
-      no-repeat local,
-    linear-gradient(to left, var(--browx-edge) 35%, transparent) right center / 1.5rem 100%
-      no-repeat local,
-    radial-gradient(farthest-side at 0 50%, var(--browx-edge-glow), transparent) left center /
-      0.75rem 100% no-repeat scroll,
-    radial-gradient(farthest-side at 100% 50%, var(--browx-edge-glow), transparent) right center /
-      0.75rem 100% no-repeat scroll;
-}
-/* Phone widths: a table with few columns and short code (marked by
-   docs-enhance.ts) fills the column and wraps its cells, so it needs no sideways
-   scroll. Wide or code-heavy tables keep the scroll box above. */
-@media (max-width: 40rem) {
-  .sl-markdown-content table[data-browx-wrap] {
-    display: table;
-    width: 100%;
-    background: none;
-  }
-  .sl-markdown-content table[data-browx-wrap] :is(th, td, code) {
-    overflow-wrap: anywhere;
-  }
-}
-/* Off-screen code blocks and tables skip layout and paint until they near the
-   viewport. The tool reference holds 88 blocks and 18 tables in 15k nodes, and
-   style recalc over all of them made Ctrl+K and first load slow. "auto" keeps
-   the measured size once a block has rendered, so scrolling back does not shift. */
-.sl-markdown-content :is(.expressive-code, table):not(:where(.not-content *)) {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 12rem;
-}
-.sl-markdown-content table:focus-visible {
-  outline: 2px solid var(--sl-color-text-accent);
-  outline-offset: 2px;
-}
-
-/* ---- Trust-boundary diagram (security/threat-model) --------------------- */
-.browx-trust {
-  display: block;
-  width: 100%;
-  max-width: 600px;
-  height: auto;
-  margin: 0.5rem 0 1.75rem;
-}
-.browx-trust .tb-node rect {
-  fill: color-mix(in srgb, var(--sl-color-bg-sidebar) 70%, var(--sl-color-bg));
-  stroke: var(--sl-color-hairline-shade);
-  stroke-width: 1;
-}
-.browx-trust .tb-title {
-  fill: var(--sl-color-white);
-  font-family: var(--browx-font-display);
-  font-weight: 600;
-  font-size: 18px;
-}
-.browx-trust .tb-sub {
-  fill: var(--sl-color-gray-3);
-  font-family: var(--browx-font-body);
-  font-size: 13px;
-}
-.browx-trust .tb-tag {
-  fill: var(--sl-color-text-accent);
-  font-family: var(--browx-font-body);
-  font-size: 11px;
-}
-.browx-trust .tb-link {
-  stroke: var(--sl-color-text-accent);
-  stroke-width: 2;
-  fill: none;
-}
-.browx-trust .tb-label {
-  fill: var(--sl-color-gray-3);
-  font-family: var(--browx-font-body);
-  font-size: 12px;
-}
-.browx-trust .tb-untrusted rect {
-  fill: color-mix(in srgb, #f87171 13%, transparent);
-  stroke: #f87171;
-  stroke-width: 1.5;
-  stroke-dasharray: 5 4;
-}
-.browx-trust .tb-untrusted-title {
-  fill: var(--sl-color-white);
-  font-family: var(--browx-font-body);
-  font-weight: 600;
-  font-size: 14px;
-}
-.browx-trust .tb-untrusted-tag {
-  fill: #f87171;
-  font-family: var(--browx-font-body);
-  font-size: 11px;
-}
-/* #f87171 is about 2.5:1 on the light canvas. */
-:root[data-theme="light"] .browx-trust .tb-untrusted-tag {
-  fill: #b91c1c;
-}
-:root[data-theme="light"] .browx-trust .tb-untrusted rect {
-  stroke: #dc2626;
-}
-
-/* ---- Glass + aurora ----------------------------------------------------- */
-
-/* A fixed aurora wash behind everything: a violet bloom at top-left and a pink
-   bloom at top-right over the deep canvas. Subtle enough to read over. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(58% 44% at 12% -4%, var(--browx-glow) 0%, transparent 60%),
-    radial-gradient(54% 42% at 92% 0%, var(--browx-glow-2) 0%, transparent 58%);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  body::before {
-    animation: browx-aurora 24s ease-in-out infinite alternate;
-  }
-}
-@keyframes browx-aurora {
-  from {
-    opacity: 0.8;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-/* Frosted top nav. */
-.header {
-  backdrop-filter: blur(14px) saturate(140%);
-}
-
-/* Frosted-glass surfaces: cards, the product window, and the sidebar affordance
-   float over the aurora instead of sitting on a flat panel. */
-.browx-card,
-.browx-window,
-.browx-sidebar-llms {
-  background: var(--browx-glass);
-  border-color: var(--browx-glass-border);
-  backdrop-filter: blur(16px) saturate(135%);
-}
-.browx-card:hover {
-  background: color-mix(in srgb, var(--browx-violet-500) 9%, var(--browx-glass));
-}
-
-/* ---- Docs pages: copyable code, reading, small screens ------------------- */
-
-/* Inline code that holds a command or a BROWX_* name (see docs-enhance.ts). The
-   "Copied" bubble is out of flow, so showing it never moves the text. */
-.browx-copyable {
-  position: relative;
-  cursor: pointer;
-}
-.browx-copyable:hover {
-  border-color: var(--sl-color-text-accent);
-}
-.browx-copyable:focus-visible {
-  outline: 2px solid var(--sl-color-text-accent);
-  outline-offset: 2px;
-}
-.browx-copyable[data-copy-state]::after {
-  content: "Copied";
-  position: absolute;
-  inset-inline-start: 0;
-  bottom: calc(100% + 0.35rem);
-  z-index: 1;
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.35rem;
-  background: var(--sl-color-white);
-  color: var(--sl-color-black);
-  font: 500 0.75rem/1.3 var(--browx-font-body);
-  white-space: nowrap;
-  pointer-events: none;
-}
-.browx-copyable[data-copy-state="failed"]::after {
-  content: "Copy failed";
-}
-
-/* Heading anchors: an outline on keyboard focus. Starlight already reveals the
-   icon on hover and focus where a pointer can hover, and always on touch. */
-.sl-markdown-content .sl-anchor-link:focus-visible {
-  outline: 2px solid var(--sl-color-text-accent);
-  outline-offset: 3px;
-  border-radius: 0.25rem;
-}
-
-/* Previous and next. The title reads at heading scale, and the card takes the
-   accent on hover and focus. */
-.pagination-links a:is(:hover, :focus-visible) {
-  border-color: var(--sl-color-text-accent);
-}
-.pagination-links a:focus-visible {
-  outline: 2px solid var(--sl-color-text-accent);
-  outline-offset: 2px;
-}
-.pagination-links .link-title {
-  font-family: var(--browx-font-display);
-  font-size: var(--sl-text-h3);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-}
-
-/* The mobile "On this page" bar sits over the article with the translucent nav
-   colour. Blur it like the header so text does not show through. */
-mobile-starlight-toc nav {
-  backdrop-filter: blur(14px) saturate(140%);
-}
-
-/* The "Search docs" button reads as a field and its border is its only edge, so
-   it takes a gray that reaches 3:1 against the header in both themes (WCAG
-   1.4.11). Starlight's default gray-5 measures 1.76:1 light and 1.51:1 dark. */
-site-search button[data-open-modal] {
-  border-color: var(--sl-color-gray-3);
-}
-
-/* Small screens (Starlight switches layout at 50rem). Tap targets reach 44px. */
-@media (max-width: 49.9375rem) {
-  :root {
-    --sl-menu-button-size: 2.75rem;
-  }
-  site-search button[data-open-modal] {
-    justify-content: center;
-    min-width: 2.75rem;
-    height: 2.75rem;
-  }
-}
-@media (pointer: coarse) {
-  /* Install copy button: 44px tall on touch. */
-  .browx-copy {
-    min-height: 2.75rem;
-    min-width: 2.75rem;
-  }
-  /* Footer and facts links: grow the hit area without moving the text. */
-  .browx-credit a,
-  .browx-facts a {
-    display: inline-block;
-    padding-block: 0.7rem;
-    margin-block: -0.7rem;
-  }
-  #starlight__sidebar .top-level a,
-  #starlight__sidebar .top-level ul ul a {
-    padding-block: 0.7rem;
-  }
-}
-
-/* ---- Product shots (landing) ---------------------------------------------- */
-/* Shot.astro renders a <picture> per theme and width. Show the one that matches
-   html[data-theme] (dark when unset) and the viewport: the 1280 capture above
-   52rem, the 390 capture at or below it. The captures are burned for display at
-   1100 px and 350 px, so the frame caps at those widths to keep captions
-   readable. */
-.browx-shots {
-  max-width: 1140px;
-  margin-inline: auto;
-  margin-top: clamp(2.5rem, 6vw, 4rem);
-}
-.browx-shot-step {
-  font-weight: 600;
-  display: block;
-  max-width: 1100px;
-  margin: clamp(2rem, 5vw, 3rem) auto 0.75rem;
-  font-family: var(--browx-font-body);
-  font-size: 0.78rem;
-  color: var(--sl-color-text-accent);
-}
-.browx-shot {
-  margin: 0 auto;
-  max-width: 1100px;
-}
-.browx-shot .bs,
-.browx-shot .bs-cap {
-  display: none;
-}
-.browx-shot .bs img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border: 1px solid var(--sl-color-hairline-shade);
-  border-radius: 0.85rem;
-  box-shadow: 0 30px 70px -34px rgba(0, 0, 0, 0.7);
-}
-.browx-shot figcaption {
-  margin-top: 0.75rem;
-  text-align: center;
-  font-size: 0.9rem;
-  color: var(--sl-color-gray-3);
-}
-@media (min-width: 52.0625rem) {
-  :root:not([data-theme="light"]) .browx-shot .bs[data-t="dark"][data-w="wide"],
-  :root[data-theme="light"] .browx-shot .bs[data-t="light"][data-w="wide"] {
-    display: block;
-  }
-  .browx-shot .bs-cap[data-w="wide"] {
-    display: inline;
-  }
-}
-@media (max-width: 52rem) {
-  .browx-shot {
-    max-width: 350px;
-  }
-  :root:not([data-theme="light"]) .browx-shot .bs[data-t="dark"][data-w="narrow"],
-  :root[data-theme="light"] .browx-shot .bs[data-t="light"][data-w="narrow"] {
-    display: block;
-  }
-  .browx-shot .bs-cap[data-w="narrow"] {
-    display: inline;
-  }
-  .browx-shot-step {
-    max-width: 350px;
-  }
+  margin: 0 0 var(--space-7);
 }

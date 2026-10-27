@@ -1,0 +1,214 @@
+/* Docs pages: the trust-boundary figure, copyable code, anchors, pagination, search, small screens and product shots. */
+
+/* ---- Trust-boundary diagram (security/threat-model) --------------------- */
+/* The svg is embedded in docs/threat-model.md, which the site publishes. */
+.browx-trust {
+  display: block;
+  width: 100%;
+  max-width: 600px;
+  height: auto;
+  margin: var(--space-2) 0 var(--space-5h);
+}
+.browx-trust .tb-node rect {
+  fill: color-mix(in srgb, var(--sl-color-bg-sidebar) 70%, var(--sl-color-bg));
+  stroke: var(--sl-color-hairline-shade);
+  stroke-width: 1;
+}
+.browx-trust .tb-title {
+  fill: var(--sl-color-white);
+  font-family: var(--browx-font-display);
+  font-weight: 600;
+  font-size: 18px;
+}
+.browx-trust .tb-sub {
+  fill: var(--sl-color-gray-3);
+  font-family: var(--browx-font-body);
+  font-size: 13px;
+}
+.browx-trust .tb-tag {
+  fill: var(--sl-color-text-accent);
+  font-family: var(--browx-font-body);
+  font-size: 11px;
+}
+.browx-trust .tb-link {
+  stroke: var(--sl-color-text-accent);
+  stroke-width: 2;
+  fill: none;
+}
+.browx-trust .tb-label {
+  fill: var(--sl-color-gray-3);
+  font-family: var(--browx-font-body);
+  font-size: 12px;
+}
+.browx-trust .tb-untrusted rect {
+  fill: color-mix(in srgb, #f87171 13%, transparent);
+  stroke: #f87171;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.browx-trust .tb-untrusted-title {
+  fill: var(--sl-color-white);
+  font-family: var(--browx-font-body);
+  font-weight: 600;
+  font-size: 14px;
+}
+.browx-trust .tb-untrusted-tag {
+  fill: #f87171;
+  font-family: var(--browx-font-body);
+  font-size: 11px;
+}
+/* #f87171 is about 2.5:1 on the light canvas. */
+:root[data-theme="light"] .browx-trust .tb-untrusted-tag {
+  fill: #b91c1c;
+}
+:root[data-theme="light"] .browx-trust .tb-untrusted rect {
+  stroke: #dc2626;
+}
+
+/* ---- Docs pages: copyable code, reading, small screens ------------------- */
+
+/* Inline code that holds a command or a BROWX_* name (see docs-enhance.ts). The
+   "Copied" bubble is out of flow, so showing it never moves the text. */
+.browx-copyable {
+  position: relative;
+  cursor: pointer;
+}
+.browx-copyable:hover {
+  border-color: var(--sl-color-text-accent);
+}
+.browx-copyable:active {
+  border-color: var(--sl-color-text-accent);
+  background: var(--browx-tint);
+}
+.browx-copyable:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+.browx-copyable[data-copy-state]::after {
+  content: "Copied";
+  position: absolute;
+  inset-inline-start: 0;
+  bottom: calc(100% + var(--space-1h));
+  z-index: 1;
+  padding: var(--space-1) var(--space-2);
+  border-radius: 0.35rem;
+  background: var(--sl-color-white);
+  color: var(--sl-color-black);
+  font: 500 0.75rem/1.3 var(--browx-font-body);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.browx-copyable[data-copy-state="failed"]::after {
+  content: "Copy failed";
+}
+
+/* Heading anchors: an outline on keyboard focus. Starlight already reveals the
+   icon on hover and focus where a pointer can hover, and always on touch. */
+.sl-markdown-content .sl-anchor-link:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 3px;
+  border-radius: 0.25rem;
+}
+
+/* Previous and next. The title reads at heading scale, and the card takes the
+   accent on hover, press and focus. */
+.pagination-links a:hover,
+.pagination-links a:active,
+.pagination-links a:focus-visible {
+  border-color: var(--sl-color-text-accent);
+}
+.pagination-links a:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+.pagination-links .link-title {
+  font-family: var(--browx-font-display);
+  font-size: var(--sl-text-h3);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+/* The "Search docs" button reads as a field and its border is its only edge, so
+   it takes a gray that reaches 3:1 against the header in both themes (WCAG
+   1.4.11). Starlight's default gray-5 measures 1.76:1 light and 1.51:1 dark. */
+site-search button[data-open-modal] {
+  border-color: var(--sl-color-gray-3);
+}
+
+/* Small screens (Starlight switches layout at 50rem). Tap targets reach 44px. */
+@media (max-width: 49.9375rem) {
+  :root {
+    --sl-menu-button-size: 2.75rem;
+  }
+  site-search button[data-open-modal] {
+    justify-content: center;
+    min-width: 2.75rem;
+    height: 2.75rem;
+  }
+}
+
+/* ---- Product shots (landing) ---------------------------------------------- */
+/* Shot.astro renders a <picture> per theme and width. Show the one that matches
+   html[data-theme] (dark when unset) and the viewport: the 1280 capture above
+   52rem, the 390 capture at or below it. The captures are burned for display at
+   1100 px and 350 px, so the frame caps at those widths to keep captions
+   readable. */
+.browx-shots {
+  max-width: 1140px;
+  margin-inline: auto;
+  margin-top: clamp(var(--space-7), 6vw, var(--space-10));
+}
+.browx-shot-step {
+  font-weight: 600;
+  display: block;
+  max-width: 1100px;
+  margin: clamp(var(--space-6), 5vw, var(--space-8)) auto var(--space-3);
+  font-family: var(--browx-font-body);
+  font-size: 0.78rem;
+  color: var(--sl-color-text-accent);
+}
+.browx-shot {
+  margin: 0 auto;
+  max-width: 1100px;
+}
+.browx-shot .bs,
+.browx-shot .bs-cap {
+  display: none;
+}
+.browx-shot .bs img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--browx-border);
+  border-radius: 0.85rem;
+}
+.browx-shot figcaption {
+  margin-top: var(--space-3);
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--sl-color-gray-3);
+}
+@media (min-width: 52.0625rem) {
+  :root:not([data-theme="light"]) .browx-shot .bs[data-t="dark"][data-w="wide"],
+  :root[data-theme="light"] .browx-shot .bs[data-t="light"][data-w="wide"] {
+    display: block;
+  }
+  .browx-shot .bs-cap[data-w="wide"] {
+    display: inline;
+  }
+}
+@media (max-width: 52rem) {
+  .browx-shot {
+    max-width: 350px;
+  }
+  :root:not([data-theme="light"]) .browx-shot .bs[data-t="dark"][data-w="narrow"],
+  :root[data-theme="light"] .browx-shot .bs[data-t="light"][data-w="narrow"] {
+    display: block;
+  }
+  .browx-shot .bs-cap[data-w="narrow"] {
+    display: inline;
+  }
+  .browx-shot-step {
+    max-width: 350px;
+  }
+}

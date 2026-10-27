@@ -13,16 +13,11 @@ page, locate a target, act on it. browxai is shaped around that cycle.
         <marker id="al-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
           <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-text-accent)" />
         </marker>
-        <linearGradient id="al-ring" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="var(--browx-aurora-bright)" />
-          <stop offset="1" stop-color="var(--browx-violet-600)" />
-        </linearGradient>
       </defs>
-      <circle class="bx-ring-glow" cx="160" cy="160" r="118" />
-      <path class="bx-arc" style="stroke:url(#al-ring)" d="M196 54 A118 118 0 0 1 266 124" marker-end="url(#al-arrow)" />
-      <path class="bx-arc" style="stroke:url(#al-ring)" d="M266 196 A118 118 0 0 1 196 266" marker-end="url(#al-arrow)" />
-      <path class="bx-arc" style="stroke:url(#al-ring)" d="M124 266 A118 118 0 0 1 54 196" marker-end="url(#al-arrow)" />
-      <path class="bx-arc" style="stroke:url(#al-ring)" d="M54 124 A118 118 0 0 1 124 54" marker-end="url(#al-arrow)" />
+      <path class="bx-arc" d="M196 54 A118 118 0 0 1 266 124" marker-end="url(#al-arrow)" />
+      <path class="bx-arc" d="M266 196 A118 118 0 0 1 196 266" marker-end="url(#al-arrow)" />
+      <path class="bx-arc" d="M124 266 A118 118 0 0 1 54 196" marker-end="url(#al-arrow)" />
+      <path class="bx-arc" d="M54 124 A118 118 0 0 1 124 54" marker-end="url(#al-arrow)" />
     </svg>
     <span class="bx-hub" aria-hidden="true">ActionResult<small>closes the loop</small></span>
     <div class="bx-step bx-step--n" aria-hidden="true"><span class="bx-step-k">navigate</span><span class="bx-step-d">go to a URL</span></div>

@@ -23,11 +23,11 @@ nav.sidebar > button {
     height: 2.75rem;
   }
   #starlight__sidebar summary {
-    padding-block: 0.7rem;
+    padding-block: var(--space-3);
   }
   .pagefind-ui__result-link {
     display: inline-block;
-    padding-block: 0.7rem;
+    padding-block: var(--space-3);
   }
   .site-title {
     min-height: 2.75rem;
@@ -56,18 +56,14 @@ nav.sidebar > button {
   }
   .sl-markdown-content :is(td > a, li > strong > a) {
     display: inline-block;
-    padding-block: 0.7rem;
-    margin-block: -0.7rem;
-  }
-  .browx-facts a {
-    padding-block: 0.75rem;
-    margin-block: -0.75rem;
+    padding-block: var(--space-3);
+    margin-block: calc(-1 * var(--space-3));
   }
 }
 
 /* At large text a card column or capability chip keeps to the viewport. */
 .browx-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
 }
 .browx-cap {
   max-width: 100%;
