@@ -506,7 +506,7 @@ describe("lineDiff", () => {
     const diff = lineDiff("a\nb\n", "a\nb\nc\n", "/f");
     expect(diff).toContain("+++ /f");
     expect(diff).toContain("+ c");
-    expect(diff).not.toContain("- ");
+    expect(diff.split("\n").some((l) => l.startsWith("- "))).toBe(false);
   });
 
   it("shows a new file as all additions", () => {
