@@ -28,6 +28,7 @@ If a residual issue remains (e.g. an external dependency emits a warning you can
 - Use `--no-edit` only when amending or rebasing a commit whose existing subject already satisfies the contract.
 
 Rationale: a terse, scannable log. Ticket, iteration and plan references rot, so state the why in the PR description or in `docs/ai-context/`.
+
 ## Improve existing code
 
 When a change touches existing code, look for cleaner abstractions, dead code removal, better naming, fixing inconsistencies. Small, scoped refactors directly adjacent to the work belong in the same PR. Large refactors deserve a dedicated PR.
