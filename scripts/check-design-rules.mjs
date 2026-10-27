@@ -34,6 +34,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { stripCodeSpans } from "../website/scripts/lib/strip-code.mjs";
 import { hasMeasure, layoutMissing, noteLayout, typeFinding } from "./design-type-rules.mjs";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
@@ -80,7 +81,7 @@ function* proseLines(text) {
       continue;
     }
     if (inFence) continue;
-    yield [i + 1, lines[i].replace(/`[^`]*`/g, "``")];
+    yield [i + 1, stripCodeSpans(lines[i], "``")];
   }
 }
 

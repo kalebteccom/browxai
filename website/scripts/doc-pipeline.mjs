@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripCodeSpans } from "./lib/strip-code.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const ROOT = join(here, "..", "..");
@@ -78,7 +79,7 @@ export const htmlPages = [
     out: "plugins/first-party.md",
     title: "First-party plugins",
     description:
-      "The @browxai plugin set - the example plugin plus the figma, tldraw, and excalidraw canvas adapters: every tool, args, return shapes, and error envelopes.",
+      "The @browxai plugin set, the example plugin plus the figma, tldraw, and excalidraw canvas adapters: every tool, args, return shapes, and error envelopes.",
   },
   {
     src: "plugin-authoring.md",
@@ -162,7 +163,7 @@ export function assertNoDashes(text) {
       inFence = !inFence;
       return;
     }
-    if (!inFence && /[\u2013\u2014]/.test(raw.replace(/`[^`]*`/g, ""))) {
+    if (!inFence && /[\u2013\u2014]/.test(stripCodeSpans(raw))) {
       throw new Error(`em or en dash in prose, line ${i + 1}: ${raw.slice(0, 80)}`);
     }
   });
