@@ -79,7 +79,7 @@ export const htmlPages = [
     out: "plugins/first-party.md",
     title: "First-party plugins",
     description:
-      "The @browxai plugin set - the example plugin plus the figma, tldraw, and excalidraw canvas adapters: every tool, args, return shapes, and error envelopes.",
+      "The @browxai plugin set, the example plugin plus the figma, tldraw, and excalidraw canvas adapters: every tool, args, return shapes, and error envelopes.",
   },
   {
     src: "plugin-authoring.md",
