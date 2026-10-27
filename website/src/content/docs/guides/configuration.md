@@ -53,41 +53,42 @@ persisted layers for that session only.
 
 ### A few keys worth understanding
 
-**`actionTimeoutMs`** applies to every action body, `eval_js`, and the read CDP
-paths. The default of 5000 ms is deliberate: an action that needs longer is
-almost always a no-op or a wedged page op. Every action and read tool also
-takes a per-call `timeoutMs` override; raise that for one known-slow call.
-The value is clamped to a one-hour
-ceiling.
+Each key opens to the details that the table leaves out.
 
-**`allowedOrigins`** and **`blockedOrigins`** do not refuse a navigation by
-themselves. A `navigate` to an origin off the allow list, or on the block list,
-hits the `navigate_off_allowlist` confirmation hook, which is on by default. A
-person then has five minutes to answer `__browx.confirm(true)` in the DevTools
-`browxai` console context, and the call fails if nobody does. A headless server
-has nobody to answer. Leaving `navigate_off_allowlist` out of
-`BROWX_CONFIRM_REQUIRED` lets those navigations through with a logged warning,
-which turns the lists into a warning in the log.
+<details>
+<summary><code>actionTimeoutMs</code></summary>
 
-**`disableWebSecurity`** is turned on only by the operator, with
-`BROWX_DISABLE_WEB_SECURITY=1` in the server's environment. `set_config` can turn
-it off and never on, because the agent can call `set_config`. It applies to managed and incognito sessions; an attached
-Chrome keeps whatever flags it was launched with.
+**`actionTimeoutMs`** applies to every action body, `eval_js`, and the read CDP paths. The default of 5000 ms is deliberate: an action that needs longer is almost always a no-op or a wedged page op. Every action and read tool also takes a per-call `timeoutMs` override; raise that for one known-slow call. The value is clamped to a one-hour ceiling.
 
-**`channel`** picks which browser binary a chromium session launches. Unset, you
-get the installed Google Chrome, and the bundled Chromium with a logged warning
-when Chrome is not installed. Set it to `chromium` to pin the bundled build, or
-to `msedge` or `chrome-beta` for that installed browser, which then must exist:
-browxai does not download it. The browser version follows the install and may
-differ from the version browxai pins. Chrome runs without Playwright's
-`--enable-automation` switch; `BROWX_AUTOMATION_SWITCH=1` restores it. Firefox
-has its own `BROWX_FIREFOX_CHANNEL`; WebKit, Safari and Android ignore the key.
-Override per session with `open_session({ channel })`.
+</details>
 
-**`hideOverlaySelectors`** injects a CSS-only init script that applies
-`pointer-events: none; display: none` to matches on every navigation. It is
-non-destructive (no node removal, so assertions still see the DOM) and uses no
-agent JavaScript. Prefer it over hand-rolled per-session removal.
+<details>
+<summary><code>allowedOrigins</code> and <code>blockedOrigins</code></summary>
+
+**`allowedOrigins`** and **`blockedOrigins`** do not refuse a navigation by themselves. A `navigate` to an origin off the allow list, or on the block list, hits the `navigate_off_allowlist` confirmation hook, which is on by default. A person then has five minutes to answer `__browx.confirm(true)` in the DevTools `browxai` console context, and the call fails if nobody does. A headless server has nobody to answer. Leaving `navigate_off_allowlist` out of `BROWX_CONFIRM_REQUIRED` lets those navigations through with a logged warning, which turns the lists into a warning in the log.
+
+</details>
+
+<details>
+<summary><code>disableWebSecurity</code></summary>
+
+**`disableWebSecurity`** is turned on only by the operator, with `BROWX_DISABLE_WEB_SECURITY=1` in the server's environment. `set_config` can turn it off and never on, because the agent can call `set_config`. It applies to managed and incognito sessions; an attached Chrome keeps whatever flags it was launched with.
+
+</details>
+
+<details>
+<summary><code>channel</code></summary>
+
+**`channel`** picks which browser binary a chromium session launches. Unset, you get the installed Google Chrome, and the bundled Chromium with a logged warning when Chrome is not installed. Set it to `chromium` to pin the bundled build, or to `msedge` or `chrome-beta` for that installed browser, which then must exist: browxai does not download it. The browser version follows the install and may differ from the version browxai pins. Chrome runs without Playwright's `--enable-automation` switch; `BROWX_AUTOMATION_SWITCH=1` restores it. Firefox has its own `BROWX_FIREFOX_CHANNEL`; WebKit, Safari and Android ignore the key. Override per session with `open_session({ channel })`.
+
+</details>
+
+<details>
+<summary><code>hideOverlaySelectors</code></summary>
+
+**`hideOverlaySelectors`** injects a CSS-only init script that applies `pointer-events: none; display: none` to matches on every navigation. It is non-destructive (no node removal, so assertions still see the DOM) and uses no agent JavaScript. Prefer it over hand-rolled per-session removal.
+
+</details>
 
 ## Legacy environment variables
 
