@@ -117,8 +117,15 @@ describe("reads", () => {
   });
 });
 
+interface FailureRow {
+  label: string;
+  answers: Record<string, string | Buffer>;
+  call: (d: AndroidDevice) => Promise<unknown>;
+  error: RegExp | typeof NativeDeviceError;
+}
+
 describe("named failures", () => {
-  it.each([
+  it.each<FailureRow>([
     {
       // THE REAL FAILURE MODE. A React Native splash screen with an indeterminate
       // spinner keeps the window busy forever, `uiautomator dump` gives up at ~10s

@@ -166,7 +166,15 @@ describe("SafariStorageSubstrate", () => {
     expect(scripts).toEqual([]);
   });
 
-  it.each([
+  interface GuardRow {
+    name: string;
+    opts: { url?: string; scriptResult?: unknown };
+    prepare: (handle: SafariSessionHandle) => void;
+    call: (sub: SafariStorageSubstrate) => Promise<unknown>;
+    error: RegExp;
+  }
+
+  it.each<GuardRow>([
     {
       name: "refuses web-storage on about:blank with the same navigation hint as the helper",
       opts: { url: "about:blank" },

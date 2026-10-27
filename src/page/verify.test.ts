@@ -140,7 +140,15 @@ describe("verifyValue", () => {
 });
 
 describe("verifyAttribute", () => {
-  it.each([
+  interface AttributeRow {
+    name: string;
+    attributes: Record<string, string | null>;
+    attribute: string;
+    value: string | undefined;
+    result: Record<string, unknown>;
+  }
+
+  it.each<AttributeRow>([
     {
       name: "fails source:'app' on attribute mismatch",
       attributes: { "aria-pressed": "false" },
