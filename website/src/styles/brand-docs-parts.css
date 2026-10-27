@@ -68,14 +68,24 @@
 /* ---- Docs pages: copyable code, reading, small screens ------------------- */
 
 /* Inline code that holds a command or a BROWX_* name (see docs-enhance.ts). The
-   "Copied" bubble is out of flow, so showing it never moves the text. */
+   "Copied" label covers the chip, so showing it never moves the text and the
+   chip's own scroll box never clips it. */
 .browx-copyable {
   position: relative;
   cursor: pointer;
 }
-/* A short command stays on one line (docs-enhance.ts adds the class). */
-.browx-copyable--short {
+/* A command stays on one line and scrolls sideways inside its own chip, with a
+   44px target. */
+.browx-copyable {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: var(--browx-tap);
+  vertical-align: middle;
   white-space: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 .browx-copyable:hover {
   border-color: var(--sl-color-text-accent);
@@ -91,9 +101,11 @@
 .browx-copyable[data-copy-state]::after {
   content: "Copied";
   position: absolute;
-  inset-inline-start: 0;
-  bottom: calc(100% + var(--space-1h));
+  inset: 0;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: var(--space-1) var(--space-2);
   border-radius: 0.35rem;
   background: var(--sl-color-white);

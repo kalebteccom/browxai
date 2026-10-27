@@ -34,7 +34,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { hasMeasure, typeFinding } from "./design-type-rules.mjs";
+import { hasMeasure, layoutMissing, noteLayout, typeFinding } from "./design-type-rules.mjs";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const SITE = join(ROOT, "website");
@@ -108,6 +108,7 @@ function checkSource(file) {
 const transitionFiles = [];
 let motionGuard = false;
 let measureCap = false;
+const layoutSeen = { copyable: false, container: false, codeWrap: false };
 const stripComments = (raw) => raw.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
 const oneLine = (x) => x.replace(/\s+/g, " ").trim();
 
@@ -211,6 +212,7 @@ function checkCss(file, raw, isTokenFile = false) {
   if (usesTransition) transitionFiles.push(file);
   if (/prefers-reduced-motion\s*:\s*reduce/.test(css)) motionGuard = true;
   if (hasMeasure(css)) measureCap = true;
+  noteLayout(css, layoutSeen);
 }
 
 async function publishedDocs() {
@@ -278,6 +280,8 @@ async function main() {
       "measure-range",
       "no 70 to 75ch cap on the content column",
     );
+  for (const [rule, detail] of layoutMissing(layoutSeen))
+    report(join(SITE, "src", "styles"), 1, rule, detail);
   const remaining = applyAllowlist(findings);
   if (remaining.length) {
     console.error(remaining.join("\n"));

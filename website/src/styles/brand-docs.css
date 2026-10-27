@@ -125,7 +125,8 @@
    the column edge instead of pushing the page sideways. */
 .sl-markdown-content > :is(p, ul, ol, dl, blockquote):not(.not-content),
 .sl-markdown-content .starlight-aside__content,
-.sl-markdown-content details > :is(p, ul, ol) {
+.sl-markdown-content details > :is(p, ul, ol, dl, blockquote, div),
+.sl-markdown-content :is(td, th) > :is(p, ul, ol) {
   max-width: 72ch;
 }
 .sl-markdown-content table :is(th, td) {
@@ -140,8 +141,16 @@
   text-overflow: ellipsis;
   line-height: 1.5;
 }
-.sl-markdown-content :is(p, dd, blockquote, h1, h2, h3, h4, h5, h6) {
+.sl-markdown-content :is(p, li, dt, dd, summary, blockquote, h1, h2, h3, h4, h5, h6) {
   overflow-wrap: break-word;
+}
+/* Inline code and long identifiers wrap anywhere in running text, so a long
+   token never widens the page at 320px. Tables and code blocks keep their own
+   scroll boxes, and a copyable chip scrolls inside itself. */
+.sl-markdown-content
+  :is(p, li, dt, dd, summary, blockquote, h2, h3, h4, h5, h6, .starlight-aside__content)
+  code:not(.browx-copyable, :where(pre *)) {
+  overflow-wrap: anywhere;
 }
 
 /* Reference tables: top-align cells and tighten type. Starlight keeps tables
