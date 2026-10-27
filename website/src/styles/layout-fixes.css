@@ -58,7 +58,8 @@ nav.sidebar > button {
   }
   /* A details toggle in the page body: 44px tall, marker kept (a flex summary drops it). */
   .sl-markdown-content details > summary {
-    padding-block: calc((var(--browx-tap) - 1lh) / 2);
+    padding-block: var(--space-3);
+    min-height: var(--browx-tap);
   }
   .sl-markdown-content :is(td > a, li > strong > a) {
     display: inline-block;
