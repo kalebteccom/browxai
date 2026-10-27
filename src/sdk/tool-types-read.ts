@@ -216,6 +216,8 @@ export interface ExtractOk {
   ok: true;
   data: unknown;
   evidence: ExtractEvidence;
+  /** Present when a selector in the schema matched no element. */
+  warnings?: ReadonlyArray<string>;
   tokensEstimate: number;
 }
 export interface ExtractFail {

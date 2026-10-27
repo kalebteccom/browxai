@@ -4,7 +4,7 @@
 // (no page contact, deterministic over already-captured inputs).
 
 import { walk, type A11yNode } from "./a11y-types.js";
-import { findByRef, serialise } from "./snapshot.js";
+import { findByRef, serialise, type SerialiseOptions } from "./snapshot.js";
 import { truncateToBudget } from "../util/tokens.js";
 
 /** A page-level landmark region (dialog / alert / banner / …) tracked across the
@@ -121,6 +121,7 @@ function serialiseScopedSubtrees(
   scopeRefs: string[],
   maxTokens: number,
   warnings: string[],
+  maskText: SerialiseOptions["maskText"],
 ): SnapshotDeltaInfo {
   const subtrees = scopeRefs
     .map((ref) => findByRef(tree, ref))
@@ -137,7 +138,8 @@ function serialiseScopedSubtrees(
   const text = subtrees
     .map(
       (n, i) =>
-        (subtrees.length > 1 ? `--- subtree ${i + 1}/${subtrees.length} ---\n` : "") + serialise(n),
+        (subtrees.length > 1 ? `--- subtree ${i + 1}/${subtrees.length} ---\n` : "") +
+        serialise(n, { maskText }),
     )
     .join("\n");
   const { text: trimmed, truncated } = truncateToBudget(text, maxTokens);
@@ -158,10 +160,16 @@ export function buildSnapshotDelta(
   tree: A11yNode | null,
   maxTokens: number,
   warnings: string[],
-  /** refs to scope the delta to (action's ref + appeared regions).
-   *  When empty + mode=scoped_snapshot, falls back to the full tree as before. */
-  scopeRefs: string[] = [],
+  delta: {
+    /** refs to scope the delta to (action's ref + appeared regions).
+     *  When empty + mode=scoped_snapshot, falls back to the full tree as before. */
+    refs?: string[];
+    /** Masks registered secrets in page text before rows are clipped. */
+    maskText?: SerialiseOptions["maskText"];
+  } = {},
 ): SnapshotDeltaInfo | undefined {
+  const scopeRefs = delta.refs ?? [];
+  const maskText = delta.maskText;
   if (mode === "none") return undefined;
   if (!tree) return { mode, scope: "(no tree)", truncated: false };
   let renderMode: SnapshotMode = mode;
@@ -179,14 +187,14 @@ export function buildSnapshotDelta(
     // real scope-down. Serialise just the action's element subtree + any
     // newly-appeared top-level regions. Drops 7-10k-token snapshots to ~500-1500
     // on the heavy-SPA / many-elements shape.
-    return serialiseScopedSubtrees(tree, scopeRefs, maxTokens, warnings);
+    return serialiseScopedSubtrees(tree, scopeRefs, maxTokens, warnings, maskText);
   }
 
   // Fall-through: full tree. Honours explicit mode:"full" and the rare case where
   // scoped_snapshot was asked-for but we have no scope refs (no action ref, no
   // appeared regions — uncommon).
   const scope = renderMode === "scoped_snapshot" ? "full (no scope refs)" : "full";
-  const { text, truncated } = truncateToBudget(serialise(tree), maxTokens);
+  const { text, truncated } = truncateToBudget(serialise(tree, { maskText }), maxTokens);
   if (truncated)
     warnings.push(
       `snapshotDelta truncated to fit maxResultTokens=${maxTokens}; call snapshot() for the complete tree`,

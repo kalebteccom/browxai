@@ -125,5 +125,12 @@ export interface ExtractFailure {
 }
 
 export type ExtractResult =
-  | { ok: true; data: unknown; evidence: ExtractEvidence; tokensEstimate: number }
+  | {
+      ok: true;
+      data: unknown;
+      evidence: ExtractEvidence;
+      /** Present when a selector in the schema matched no element. */
+      warnings?: string[];
+      tokensEstimate: number;
+    }
   | { ok: false; failure: ExtractFailure; tokensEstimate: number };

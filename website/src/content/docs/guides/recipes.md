@@ -79,6 +79,7 @@ const res = await extract({
 });
 // res.data = { plans: [{ name: "Starter", price: 9 }, ...] }
 // res.evidence.partialMisses names anything the schema asked for but missed.
+// res.warnings names any selector that matched no element.
 ```
 
 Pair it with the `verify_*` family when you want an assertion, for example
@@ -143,7 +144,7 @@ import { createBrowxai } from "browxai";
 
 const browxai = await createBrowxai(); // in-process, one script
 await browxai.navigate({ url: "https://example.com" });
-const page = await browxai.snapshot();
+const page = await browxai.snapshot(); // paragraphs carry their text on the row
 console.log(page);
 await browxai.close();
 ```
