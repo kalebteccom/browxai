@@ -9,6 +9,7 @@
 import { existsSync, lstatSync, readlinkSync } from "node:fs";
 import { hostname } from "node:os";
 import { join, relative } from "node:path";
+import { docsUrl } from "../util/docs-links.js";
 import { assertValidProfileName, invalidNameRefusal } from "../util/profile-name.js";
 import { resolveWorkspacePath, type Workspace } from "../util/workspace.js";
 
@@ -48,7 +49,7 @@ export function liveProfileRefusal(
     `profile-in-use: session "${id}" cannot launch on ${label} (${profileDir}): ` +
     `session "${holder.id}" has it open, and a browser profile can be open in one browser at a time. ` +
     `Pass an explicit \`profile\` name to open_session for "${id}", use mode "incognito", ` +
-    `or close_session "${holder.id}" first.`
+    `or close_session "${holder.id}" first. See ${docsUrl.troubleshootingProfileInUse}`
   );
 }
 
@@ -115,6 +116,7 @@ export function refuseLockedProfile(profileDir: string, id: string): void {
   throw new Error(
     `profile-in-use: session "${id}" cannot launch on ${profileDir}: ${who} outside this server ` +
       "has it open (a `browxai chrome start` / `chrome login` window, or another browxai server). " +
-      'Quit that Chrome, pass an explicit `profile` name to open_session, or use mode "incognito".',
+      'Quit that Chrome, pass an explicit `profile` name to open_session, or use mode "incognito". See ' +
+      docsUrl.troubleshootingProfileInUse,
   );
 }
