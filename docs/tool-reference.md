@@ -283,7 +283,9 @@ When the a11y tree has fewer than 5 interactive descendants under root, a warnin
 
 Nodes CDP marks `ignored` (presentational wrappers, layout tables, and `<html>` / `<body>`, which Chromium marks ignored on essentially every page) contribute no line of their own, and their children take their place in document order. An `aria-hidden` container's descendants are themselves ignored, so nothing under it reaches the a11y tier. The DOM walk still reports it, `[from-dom]`-marked.
 
-Chromium's text and layout leaves get no line either: `StaticText`, `LineBreak`, `ListMarker`, `LayoutTable` / `LayoutTableRow` / `LayoutTableCell`, `Abbr`, `EmphasizedText`, `StrongText`, `Ruby` / `RubyAnnotation`, `superscript` and `subscript`. Each carries text its enclosing control, heading, cell or paragraph already names, so emitting both printed the page twice, two thirds of the serialised body across six real pages. Use `text_search` or `extract` to read page text; one of these nodes bearing a configured test attribute is still emitted, and `find` will still rank it.
+Chromium's text and layout leaves get no line either: `StaticText`, `LineBreak`, `ListMarker`, `LayoutTable` / `LayoutTableRow` / `LayoutTableCell`, `Abbr`, `EmphasizedText`, `StrongText`, `Ruby` / `RubyAnnotation`, `superscript` and `subscript`. Each carries text its enclosing control, heading, cell or paragraph already names, so emitting both printed the page twice, two thirds of the serialised body across six real pages. One of these nodes bearing a configured test attribute is still emitted, and `find` will still rank it.
+
+**Container text.** A paragraph, list item, blockquote, layout table cell or unnamed `generic` has no accessible name, so Chromium puts its words on a `StaticText` child. The row carries those words in the name position: `paragraph "Shipping takes 3 days." [ref=e12]`. Text from a child that has its own row (a link, a button) stays on that row. The words left on the container are trimmed, so `See <a>docs</a>` gives `paragraph "See" [ref=e2]` above `link "docs" [ref=e3]`. Nothing under a button, link, heading, cell or form field carries text, so a password field's value never lands on a container row. Each row keeps at most 120 characters, cut with `…`, and one snapshot carries at most 4000 characters in total. Past that, rows come out bare and a last line reads `... [text left off N row(s) past the 4000 character text budget; use text_search or extract to read it]`. `text_search` and `extract` read the full text.
 
 **Inputs (all optional):**
 
@@ -291,7 +293,7 @@ Chromium's text and layout leaves get no line either: `StaticText`, `LineBreak`,
 - `maxNodes: <N>` is a hard cap on emitted nodes; excess is elided with a `+N more nodes elided` marker pointing the agent at `scope` or a higher cap.
 - `omit: ["<pattern>",...]` takes case-insensitive substring patterns, matched against each node's `role` / `name` / `testId`. Matching nodes and their _entire subtrees_ are skipped. Useful for noisy regions: `omit: ["timeline-segment-", "clip-thumbnail"]`.
 
-**Output (text):** `url:` / `title:` / `stats:` header + (optional) `scope:` / `warnings:` block + indented `role "name" [ref=eN] [<test-attr>=…] [from-dom|from-both] [state]` lines + (when relevant) `... [+N more nodes elided]` or `... [omit matched N subtree(s), M nodes total]`.
+**Output (text):** `url:` / `title:` / `stats:` header + (optional) `scope:` / `warnings:` block + indented `role "name" [ref=eN] [<test-attr>=…] [from-dom|from-both] [state]` lines + (when relevant) `... [+N more nodes elided]` or `... [omit matched N subtree(s), M nodes total]` or `... [text left off N row(s) ...]`.
 
 **Example.** Scope to one panel instead of dumping the whole tree:
 
@@ -615,7 +617,7 @@ Args:
 - `scope`: scope to this CSS selector's first match. Invalid (zero matches) Returns structured `failure`, not an empty object. Mutually exclusive with `ref`.
 - `mode`: RETIRED. Tolerated for back-compat (warn + treated as deterministic). Drop the arg.
 
-Returns `{ok:true, data:<schema-shaped>, evidence:{refsUsed,selectorsUsed,partialMisses}, tokensEstimate}`, or `{ok:false, failure:{source,kind,expected,actual,partialMisses?}, tokensEstimate}` for misses. `evidence.refsUsed` lets the agent `name_ref` / cache the elements the extraction actually drew from.
+Returns `{ok:true, data:<schema-shaped>, evidence:{refsUsed,selectorsUsed,partialMisses}, warnings?, tokensEstimate}`, or `{ok:false, failure:{source,kind,expected,actual,partialMisses?}, tokensEstimate}` for misses. `evidence.refsUsed` lets the agent `name_ref` / cache the elements the extraction actually drew from. `warnings` appears when a `selector` or `collection` in the schema matched no element, one line per selector naming the first field that used it (`selector ".price" matched no element (field price)`), up to 10. An `ok:true` result with empty `data` and this list means a selector needs fixing.
 
 #### Lowering rules
 
