@@ -19,6 +19,10 @@
 //   stability   top and height of the theme control and status lines across themes
 //               and after a copy click (1 px)
 //   safe-area   env(safe-area-inset-*) used by fixed or sticky edge elements
+//   decoration  gradient, backdrop-filter, blur filter or box-shadow on the site's
+//               own components and on html and body (and their pseudo-elements)
+//   transition  a running transition on anything but transform and opacity
+//   tap-target  also at every viewport, 44 px on the hand-built controls
 // States: the page, the mobile nav open, the search dialog open, 150% root font
 // size, and a 60-character unbroken string injected into a heading, a table
 // cell and a button label.
@@ -258,6 +262,53 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
         add("tap-target", el, `w=${n1(r.width)} h=${n1(r.height)} min=${tapMin}`, {
           lv: r.height < tapMin - tol && !inlineInProse ? "should" : "nit",
         });
+    }
+  }
+
+  // ---- decoration and motion on the site's own components ----
+  // Vendor chrome (Starlight, Pagefind, code blocks) is out of scope; the logo
+  // keeps its own colours, so anything named logo is skipped.
+  const ownSel = '[class*="browx-"],.bx-step,.bx-hub,#starlight__sidebar a';
+  const ownEls = [de, document.body, ...all.filter((el) => el.matches(ownSel))].filter(
+    (el) => !el.closest('[class*="logo"],.site-title img'),
+  );
+  for (const el of ownEls) {
+    for (const pseudo of [null, "::before", "::after"]) {
+      const s = pseudo ? getComputedStyle(el, pseudo) : cs(el);
+      if (pseudo && s.content === "none") continue;
+      const where = pseudo ? `${sel(el)}${pseudo}` : sel(el);
+      const bad = [];
+      if (/gradient\(/.test(s.backgroundImage) || /gradient\(/.test(s.maskImage || ""))
+        bad.push("gradient");
+      if (s.backdropFilter && s.backdropFilter !== "none")
+        bad.push(`backdrop-filter ${s.backdropFilter}`);
+      if (/blur\(/.test(s.filter)) bad.push(`filter ${s.filter}`);
+      if (el.matches(ownSel) && s.boxShadow !== "none") bad.push(`box-shadow ${s.boxShadow}`);
+      if (bad.length)
+        out.push({ check: "decoration", sel: where, detail: bad.join("; "), lv: "should" });
+      const props = s.transitionProperty.split(",").map((x) => x.trim());
+      const durs = s.transitionDuration.split(",").map((x) => parseFloat(x));
+      const layout = props.filter(
+        (p, i) => durs[i % durs.length] > 0 && !["transform", "opacity", "none"].includes(p),
+      );
+      if (layout.length)
+        out.push({
+          check: "transition",
+          sel: where,
+          detail: `transition on ${layout.join(", ")}`,
+          lv: "should",
+        });
+    }
+  }
+  // The hand-built controls reach 44 px at every viewport, not only on phones.
+  if (!phone) {
+    const controls =
+      ".browx-btn,.browx-copy,.browx-sidebar-llms,.browx-credit a,.browx-facts a,.browx-topnav a,#starlight__sidebar .top-level a";
+    for (const el of all) {
+      if (!el.matches(controls)) continue;
+      const r = rect(el);
+      if (r.height < tapMin - tol)
+        add("tap-target", el, `w=${n1(r.width)} h=${n1(r.height)} min=${tapMin}`, { lv: "should" });
     }
   }
 

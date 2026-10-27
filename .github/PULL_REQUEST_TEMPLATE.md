@@ -15,6 +15,10 @@ What this changes and **why** (the why matters more than the what).
 - [ ] Stable-surface change — `CHANGELOG.md` updated, semver bump noted, deprecation handled
 - [ ] New surface lands behind an off-by-default capability
 
+## UI and copy
+
+- [ ] ui-rules checked: yes, <what was checked> (docs/ui-rules.md), or n/a (no UI or copy change)
+
 ## Checklist
 
 - [ ] `pnpm typecheck`, `pnpm test`, `pnpm build` green
