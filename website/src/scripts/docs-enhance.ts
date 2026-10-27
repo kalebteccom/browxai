@@ -1,10 +1,10 @@
 // Progressive enhancement for docs pages. Without JS the page reads the same.
 // 1. Inline code that holds a command or a BROWX_* name copies on click, and on
 //    Enter or Space when it is a tab stop (see FOCUS_LIMIT). The "Copied" bubble
-//    is a ::after (see brand.css), so nothing reflows.
+//    is a ::after (see brand-docs-parts.css), so nothing reflows.
 // 2. A table that scrolls sideways becomes focusable, so a keyboard can scroll it.
 //    A table of short cells wraps on phone widths instead: rehype-table-wrap
-//    marks it at build time (see brand.css), so nothing shifts after load.
+//    marks it at build time (see brand-docs.css), so nothing shifts after load.
 // The work runs when the main thread is idle. The tool reference holds 15k nodes,
 // and doing it before first input blocked the page for over a second.
 // BROWX_NAME and BROWX_NAME=value both copy. A value with a placeholder or an

@@ -7,23 +7,41 @@ of truth; the raster files are generated from it by [`render.py`](./render.py)
 ## The mark
 
 An orbiting pair of arcs around a navigation-cursor glyph: a browser in motion,
-driven toward a target. The glyph is monochrome; on icons it sits on a violet
-"aurora" tile with a soft glass treatment.
+driven toward a target. The glyph is one colour. App icons and favicons set it
+on a violet tile.
 
-## Palette (aurora)
+## Icon palette
 
-| Token         | Hex       | Use                                   |
-| ------------- | --------- | ------------------------------------- |
-| Aurora deep   | `#341070` | Top of the icon gradient              |
-| Aurora bright | `#9032E0` | Bottom of the icon gradient           |
-| Violet 700    | `#6D28D9` | Tile gradient top / deep accent       |
-| Violet 600    | `#9333EA` | Tile gradient bottom / primary accent |
-| Pink glow     | `#EC4899` | The aurora highlight glow             |
-| White         | `#FAFAF7` | The mark and ink on dark surfaces     |
-| Ink           | `#16161A` | The mark on light surfaces            |
+These colours live in the icon art only: the tile gradients, the app icons and
+the social avatar.
 
-The documentation site (`website/`) carries this palette: a violet accent and
-glass / aurora surfaces. The mark stays monochrome in the header.
+| Token         | Hex       | Use                                     |
+| ------------- | --------- | --------------------------------------- |
+| Aurora deep   | `#341070` | Top of the app icon gradient (`hig.py`) |
+| Aurora bright | `#9032E0` | Bottom of the app icon gradient         |
+| Violet 700    | `#6D28D9` | Top of the favicon tile gradient        |
+| Violet 600    | `#9333EA` | Bottom of the favicon tile gradient     |
+| Pink glow     | `#EC4899` | Highlight in the app icons              |
+| White         | `#FAFAF7` | The mark on dark surfaces               |
+| Ink           | `#16161A` | The mark on light surfaces              |
+
+## Site palette
+
+The documentation site (`website/`) is flat: solid surfaces, 1px borders, no
+gradients, glow, blur or glass. The tokens live in
+`website/src/styles/brand-tokens.css`.
+
+| Token                | Hex       | Use                         |
+| -------------------- | --------- | --------------------------- |
+| `--browx-accent`     | `#7e22ce` | The one accent, both themes |
+| `--browx-violet-400` | `#c084fc` | Accent text on dark         |
+| `--browx-violet-700` | `#7e22ce` | Accent text on light        |
+| Dark canvas          | `#0c0a14` | Page background             |
+| Dark sidebar         | `#100c1c` | Surfaces                    |
+| Light canvas         | `#fbfaff` | Page background             |
+| Light sidebar        | `#f5f1fd` | Surfaces                    |
+
+Type is Poppins for headings, Inter for text and JetBrains Mono for code only.
 
 ## Files
 
@@ -53,12 +71,12 @@ python3 brand/hig.py      # aurora app icons + Icon Composer layers
 
 ## Where these are used
 
-The documentation site consumes the mark and favicons:
+The documentation site uses the tile and the favicons:
 
-- `website/src/assets/mark-light.svg` / `mark-dark.svg` — the header logo
-  (the monochrome glyph: ink on the light theme, white on the dark theme).
+- `website/src/assets/browxai-tile.svg`: the header logo (the tile with the
+  glyph).
 - `website/public/favicon.svg`, `favicon.ico`, `favicon-16.png`,
-  `favicon-32.png`, `apple-touch-icon.png` — the tile favicons.
+  `favicon-32.png`, `apple-touch-icon.png`: the tile favicons.
 
 When the brand changes, update the source SVGs here, run the scripts, then copy
 the relevant files into `website/`.
