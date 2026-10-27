@@ -29,6 +29,7 @@
 
 import type { BrowserContext, CDPSession, Worker } from "playwright-core";
 import { isOriginAllowed, type OriginPolicy } from "../policy/origin.js";
+import { docsUrl } from "../util/docs-links.js";
 import { invariant } from "../util/invariant.js";
 import { globToRegex } from "./ws-interactive.js";
 import type { SwFetchInterceptSpec, WorkerListing, WorkerMessage } from "./workers-types.js";
@@ -322,7 +323,8 @@ export class WorkersSwChannel {
         workerId: args.workerId,
         error:
           `origin-blocked: service worker ${args.workerId} (${hit.url}) is on an origin the ` +
-          "origin policy does not allow (BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS), so it is not messaged",
+          "origin policy does not allow (BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS), so it is not messaged. " +
+          `See ${docsUrl.troubleshootingOriginBlocked}`,
       };
     try {
       await hit.worker.evaluate(dispatchSwMessage, args.message);

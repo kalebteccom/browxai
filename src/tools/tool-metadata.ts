@@ -26,6 +26,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   installToolMetadataCollector,
   resolveCapabilities,
+  type CapabilityConfig,
   resolveConfirmHooks,
 } from "../util/capabilities.js";
 import { installDeepToolsCollector } from "../engine/tool-gate.js";
@@ -76,6 +77,14 @@ import { PLUGIN_INFO_TOOL_CAPABILITY } from "./plugin-runtime.js";
  *  resolvers; the session-registry factory is lazy (no session opens), and the
  *  two per-handler closures (`describeTarget` / `asTarget`) are stubs `buildHost`
  *  only stores and never invokes at construction. */
+function resolveCapabilitiesOrDefaults(env: NodeJS.ProcessEnv): CapabilityConfig {
+  try {
+    return resolveCapabilities(env);
+  } catch {
+    return resolveCapabilities({ ...env, BROWX_CAPABILITIES: undefined });
+  }
+}
+
 function makeMetadataHostDeps(): HostDeps {
   const workspace = resolveWorkspace();
   // The metadata table is the full surface, whatever this process's env says:
@@ -90,7 +99,10 @@ function makeMetadataHostDeps(): HostDeps {
   const resolvedConfig = configStore.resolve();
   const cfgEnv = resolvedToEnv(resolvedConfig);
   const config = resolveConfig(cfgEnv);
-  const caps = resolveCapabilities(cfgEnv);
+  // A mistyped capability name is `createServer`'s and `doctor`'s error to
+  // report. It must not throw from the import-time collection, which would hit
+  // every subcommand with a raw stack trace.
+  const caps = resolveCapabilitiesOrDefaults(cfgEnv);
   const confirmHooks = resolveConfirmHooks(cfgEnv);
   const originPolicy = resolveOriginPolicy(cfgEnv);
   const approvals = new ApprovalStore();

@@ -16,6 +16,7 @@ import { createServer } from "./server.js";
 // handler the old `switch (subcommand)` case did.
 import "./cli/register-commands.js";
 import { commandFor, registeredCommands } from "./cli/command-registry.js";
+import { wantsHelp } from "./cli/help.js";
 import { log } from "./util/logging.js";
 import { resolveConfig } from "./util/config.js";
 import { isHeadlessEnv } from "./util/config-store.js";
@@ -27,9 +28,10 @@ const USAGE = `Usage: browxai [subcommand]
 
   browxai                       start the MCP server (stdio)            — default
   browxai doctor                env + connectivity health-check (run this first)
-  browxai chrome start [opts]   launch an attachable Chrome (BYOB host) on the
-                                installed Google Chrome and the workspace
-                                profile. --port N, --profile NAME, --force,
+  browxai chrome start [opts]   launch a Chrome that browxai can attach to (BYOB,
+                                bring your own browser) on the installed Google
+                                Chrome and the workspace profile.
+                                --port N, --profile NAME, --force,
                                 --insecure,
                                 --disable-background-throttling (keep timers and
                                 rAF running while a tab is backgrounded)
@@ -39,8 +41,13 @@ const USAGE = `Usage: browxai [subcommand]
                                 --force. Quit that Chrome when done.
   browxai chrome stop           kill the Chrome that \`chrome start\` launched
   browxai chrome status         say whether that Chrome is still running
-  browxai init <workspace>      bootstrap a per-app workspace: writes <workspace>/.mcp.json
-                                (managed + attached entries) and picks test attributes
+  browxai init <workspace>      one-command start: writes <workspace>/.mcp.json, prints the
+                                setup line for each MCP client it finds (Claude Code,
+                                Cursor, Codex, Claude Desktop), then checks that a
+                                headless session can take a snapshot.
+                                --write-user-config <client> prints the change to that
+                                client's user-level config, then writes it.
+                                --no-smoke skips the snapshot check, --no-write prints only.
   browxai serve --socket <p>    long-running server on a Unix socket / named pipe
                                 — accepts MCP-over-socket connections from SDK clients
                                 (\`createBrowxai({ endpoint: "unix:///..." })\`).
@@ -54,7 +61,7 @@ const USAGE = `Usage: browxai [subcommand]
                                 BROWX_ENGINE. android implies attach-mode (real
                                 Chrome-on-Android over adb — no BROWX_ATTACH_CDP).
   --version, -v                 print the browxai version
-  --help, -h                    print this usage text
+  --help, -h, help              print this usage text (also works after a subcommand)
 
 All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/).
 `;
@@ -68,6 +75,13 @@ async function main(): Promise<void> {
   // own argv contract, not extension points). Resolving the registry FIRST keeps
   // the same precedence the old `switch` encoded by case order: a registered
   // subcommand wins, then the flag literals, then the server fallthrough.
+  // Help first, for every subcommand: nothing may run when help is asked for.
+  // `plugin` has its own longer help text, so it gets its `help` verb.
+  if (wantsHelp(process.argv.slice(2))) {
+    if (subcommand === "plugin") process.exit(await commandFor("plugin")!(["help"]));
+    process.stdout.write(USAGE);
+    process.exit(0);
+  }
   if (subcommand !== undefined) {
     const handler = commandFor(subcommand);
     if (handler) {

@@ -1,20 +1,16 @@
 // `browxai doctor` — environment + connectivity health-check ().
 //
-// Prints a ✓/✗ checklist + one-line fix per failing check (− marks purely
-// informational rows, which get an `enable with:` line when their lane is not
-// ready; ⚠ marks a warning with a fix line, which never fails doctor). Exits 0
-// iff no check fails, 1 otherwise. Writes to
-// stdout (this is a CLI subcommand, not the MCP server — stdout is fine here).
+// Prints a short summary by default: one ✓/✗ line per area, failures first, each
+// with its next step. `--verbose` prints every row (− marks purely informational
+// rows, which get an `enable with:` line when their lane is not ready; ⚠ marks a
+// warning with a fix line, which never fails doctor). Exits 0 iff no check
+// fails, 1 otherwise, 2 for a bad flag. Writes to stdout (this is a CLI
+// subcommand, not the MCP server — stdout is fine here).
 
 import { existsSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  resolveCapabilities,
-  resolveConfirmHooks,
-  DEFAULT_CAPABILITIES,
-  type Capability,
-} from "../util/capabilities.js";
+import { resolveConfirmHooks, type Capability } from "../util/capabilities.js";
 import { resolveConfig } from "../util/config.js";
 import { resolveOriginPolicy, describePolicy } from "../policy/origin.js";
 import { resolveWorkspace } from "../util/workspace.js";
@@ -22,7 +18,8 @@ import { PACKAGE_VERSION } from "../util/version.js";
 import { ConfigStore } from "../util/config-store.js";
 import { pluginChecks } from "./doctor-plugins.js";
 import { probeCdp } from "./doctor-cdp.js";
-import { attachCapabilityCheck } from "./doctor-attach.js";
+import { attachCapabilityCheck, cdpAttachRow } from "./doctor-attach.js";
+import { capabilitiesRow } from "./doctor-capabilities.js";
 import {
   chromeCheck,
   chromiumCheck,
@@ -39,6 +36,7 @@ import {
   type EngineKind,
 } from "../engine/index.js";
 import { docsUrl } from "../util/docs-links.js";
+import { formatDoctor } from "./doctor-summary.js";
 
 export interface Check {
   name: string;
@@ -55,7 +53,14 @@ export interface Check {
   warn?: boolean;
 }
 
-export async function runDoctor(): Promise<number> {
+export async function runDoctor(args: readonly string[] = []): Promise<number> {
+  const opts = parseDoctorArgs(args);
+  if (!opts) {
+    process.stderr.write(
+      "usage: browxai doctor [--verbose]\n  --verbose   print every check, including the opt-in engines\n",
+    );
+    return 2;
+  }
   const checks: Check[] = [];
 
   // 0. Node version. package.json `engines` is >=22; npm only warns on a
@@ -130,17 +135,7 @@ export async function runDoctor(): Promise<number> {
   // 4. BROWX_ATTACH_CDP — if set, can we reach it?
   const cdpEnv = process.env.BROWX_ATTACH_CDP?.trim();
   if (cdpEnv) {
-    const reachable = await probeCdp(cdpEnv);
-    checks.push({
-      name: "cdp-attach",
-      ok: reachable.ok,
-      detail: reachable.ok
-        ? `${cdpEnv} reachable — ${reachable.version}`
-        : `${cdpEnv} unreachable (${reachable.error})`,
-      fix: reachable.ok
-        ? undefined
-        : "start a Chrome at this port — `browxai chrome start` or `chrome --remote-debugging-port=9222 …`",
-    });
+    checks.push(cdpAttachRow(cdpEnv, await probeCdp(cdpEnv)));
   } else {
     // Not configured. Probe the default port anyway — adopters with a Chrome
     // already running may want to be told "you could attach to that, you know."
@@ -149,7 +144,7 @@ export async function runDoctor(): Promise<number> {
       checks.push({
         name: "cdp-attach",
         ok: true,
-        detail: `BROWX_ATTACH_CDP unset, but a Chrome is reachable at 127.0.0.1:9222 (${reachable.version}). Use the \`browxai-attached\` MCP entry to attach.`,
+        detail: `BROWX_ATTACH_CDP unset, but a Chrome is reachable at 127.0.0.1:9222 (${reachable.version}). To attach to it, use the \`browxai-attached\` MCP entry that \`browxai init\` writes.`,
       });
     } else {
       checks.push({
@@ -161,35 +156,12 @@ export async function runDoctor(): Promise<number> {
   }
 
   // 5. Capabilities ( security model).
-  let enabledCapabilities: ReadonlySet<Capability> = new Set(DEFAULT_CAPABILITIES);
-  try {
-    const c = resolveCapabilities();
-    enabledCapabilities = c.enabled;
-    const explicit = !!process.env.BROWX_CAPABILITIES;
-    const dangerous = [...c.enabled].filter((x) => x === "eval" || x === "byob-attach");
-    const detail = `enabled=[${[...c.enabled].join(", ")}]${explicit ? "" : " (default)"}${dangerous.length ? "  ⚠ dangerous: " + dangerous.join(", ") : ""}`;
-    checks.push({
-      name: "capabilities",
-      ok: true,
-      detail,
-      fix: dangerous.length
-        ? `${dangerous.join(",")} on — page text remains untrusted; review ${docsUrl.threatModel}`
-        : explicit
-          ? undefined
-          : "see " +
-            docsUrl.threatModel +
-            " for the full set; default is " +
-            DEFAULT_CAPABILITIES.join(","),
-    });
-    const attachWarn = attachCapabilityCheck(cdpEnv, c.enabled);
+  const capabilities = capabilitiesRow();
+  const enabledCapabilities: ReadonlySet<Capability> = capabilities.enabled;
+  checks.push(capabilities.row);
+  if (capabilities.row.ok) {
+    const attachWarn = attachCapabilityCheck(cdpEnv, enabledCapabilities);
     if (attachWarn) checks.push(attachWarn);
-  } catch (e) {
-    checks.push({
-      name: "capabilities",
-      ok: false,
-      detail: e instanceof Error ? e.message : String(e),
-      fix: "fix BROWX_CAPABILITIES (comma-separated, see " + docsUrl.threatModel + ")",
-    });
   }
 
   // 6. Confirm-required hooks.
@@ -205,7 +177,7 @@ export async function runDoctor(): Promise<number> {
       name: "confirm-hooks",
       ok: false,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "fix BROWX_CONFIRM_REQUIRED — see " + docsUrl.threatModel,
+      fix: "fix BROWX_CONFIRM_REQUIRED — see " + docsUrl.threatModelConfiguring,
     });
   }
 
@@ -218,7 +190,8 @@ export async function runDoctor(): Promise<number> {
       ok: true,
       detail: describePolicy(policy),
       fix: noAllowlist
-        ? "no allowlist set — defense-in-depth not engaged. Set BROWX_ALLOWED_ORIGINS for the navigation gate."
+        ? "no allowlist set — defense-in-depth not engaged. Set BROWX_ALLOWED_ORIGINS for the navigation gate, see " +
+          docsUrl.threatModelOrigins
         : undefined,
     });
   } catch (e) {
@@ -226,7 +199,9 @@ export async function runDoctor(): Promise<number> {
       name: "origins",
       ok: false,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS: comma-separated absolute URLs (https://app.example.com or https://*.example.com)",
+      fix:
+        "BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS: comma-separated absolute URLs (https://app.example.com or https://*.example.com), see " +
+        docsUrl.threatModelOrigins,
     });
   }
 
@@ -333,21 +308,20 @@ export async function runDoctor(): Promise<number> {
   }
 
   // Print + exit.
-  let allOk = true;
-  process.stdout.write(`browxai doctor (v${PACKAGE_VERSION}) — environment & connectivity\n\n`);
-  for (const c of checks) {
-    if (!c.ok) allOk = false;
-    const glyph = c.info ? "−" : c.warn ? "⚠" : c.ok ? "✓" : "✗";
-    process.stdout.write(`  ${glyph} ${c.name.padEnd(12)} ${c.detail}\n`);
-    if ((!c.ok || c.warn) && c.fix) process.stdout.write(`    fix: ${c.fix}\n`);
-    if (c.info && c.enable) process.stdout.write(`    enable with: ${c.enable}\n`);
-  }
-  process.stdout.write(
-    `\n${
-      allOk
-        ? "all checks passed. Next: add browxai to your MCP client, see https://browxai.com/getting-started/"
-        : "fix the ✗ items above, then run `browxai doctor` again"
-    }\n`,
-  );
+  const { text, allOk } = formatDoctor(checks, { verbose: opts.verbose, version: PACKAGE_VERSION });
+  process.stdout.write(text);
   return allOk ? 0 : 1;
+}
+
+interface DoctorOpts {
+  verbose: boolean;
+}
+
+function parseDoctorArgs(args: readonly string[]): DoctorOpts | null {
+  let verbose = false;
+  for (const a of args) {
+    if (a === "--verbose") verbose = true;
+    else return null;
+  }
+  return { verbose };
 }

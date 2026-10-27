@@ -18,5 +18,37 @@
     "check": "inset-gap",
     "selector": "header.header",
     "why": "The 76px right gutter reserves the slot of the fixed menu button"
+  },
+  {
+    "check": "clipped",
+    "context": "starlight-toc",
+    "groups": 15,
+    "why": "Page outline entries are one line cut with an ellipsis on purpose, and the full text is the link title",
+    "evidence": "website/src/styles/brand-docs.css (.right-sidebar starlight-toc a: overflow hidden, nowrap, ellipsis) and website/src/scripts/docs-enhance.ts (a.title = full text). Run 208: 10 groups on nav > ul > li > a and 5 on li > ul > li > a, 1280x800 only"
+  },
+  {
+    "check": "clipped",
+    "context": "mobile-starlight-toc",
+    "selector": "span.display-current",
+    "groups": 1,
+    "why": "Starlight cuts the current heading in the mobile outline bar with an ellipsis",
+    "evidence": "@astrojs/starlight components/MobileTableOfContents.astro (.display-current: nowrap, text-overflow ellipsis, overflow hidden). Run 208: /guides/recipes/ at 320x640, 150% text"
+  },
+  {
+    "check": "clipped",
+    "context": "div#starlight__search",
+    "selector": "pagefind-ui__search-clear",
+    "groups": 3,
+    "why": "Starlight draws the clear button as a masked icon in an overflow hidden box; its text is not shown",
+    "evidence": "@astrojs/starlight components/Search.astro (#starlight__search .pagefind-ui__search-clear: overflow hidden, ::before mask icon). Run 209: /, /getting-started/, /reference/tool-reference/, scrollHeight=64 clientHeight=46"
+  },
+  {
+    "check": "offscreen",
+    "selector": "site-search > button > ",
+    "vp": "844x390",
+    "variant": "stress",
+    "groups": 20,
+    "why": "The search button sizes to its label and does not wrap. The label is the fixed UI string, and only the 60 character unbroken string the stress state injects pushes it past the edge",
+    "evidence": "@astrojs/starlight components/Search.astro (button[data-open-modal] > :last-child, max-width 22rem, no wrap). Run 208: span and kbd on 10 pages at 844x390, stress variant only; the base and large states pass"
   }
 ]

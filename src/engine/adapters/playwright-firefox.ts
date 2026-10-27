@@ -25,6 +25,7 @@
 import type { BrowserContextOptions, LaunchOptions } from "playwright-core";
 import { resolveBrowserType } from "../select.js";
 import { capabilitiesFor } from "../capabilities.js";
+import { withInstallHint } from "../../util/missing-browser-hint.js";
 import type { EngineCapabilities, EngineKind, EngineLaunchHandles } from "../types.js";
 
 /** Persistent (managed) launch spec — the subset the managed factory passes to
@@ -82,7 +83,11 @@ export class PlaywrightFirefoxAdapter {
   async launchPersistent(spec: FirefoxPersistentLaunchSpec): Promise<EngineLaunchHandles> {
     const browserType = resolveBrowserType(this.engine);
     const options = this.withChannel(spec.options);
-    const context = await browserType.launchPersistentContext(spec.profileDir, options);
+    const context = await browserType
+      .launchPersistentContext(spec.profileDir, options)
+      .catch((err: unknown) => {
+        throw this.hint(err);
+      });
     const page = context.pages()[0] ?? (await context.newPage());
     return { context, page };
   }
@@ -90,7 +95,11 @@ export class PlaywrightFirefoxAdapter {
   /** Ephemeral launch — wraps `launch` + `newContext`. No eager CDP session. */
   async launchEphemeral(spec: FirefoxEphemeralLaunchSpec): Promise<EngineLaunchHandles> {
     const browserType = resolveBrowserType(this.engine);
-    const browser = await browserType.launch(this.withChannel(spec.launchOptions));
+    const browser = await browserType
+      .launch(this.withChannel(spec.launchOptions))
+      .catch((err: unknown) => {
+        throw this.hint(err);
+      });
     const context = await browser.newContext(spec.contextOptions);
     const page = await context.newPage();
     return { browser, context, page };
@@ -115,6 +124,12 @@ export class PlaywrightFirefoxAdapter {
           "Firefox session (the default), or a chromium session for CDP-attach BYOB.",
       ),
     );
+  }
+
+  /** Add the install hint, except on the stock-Firefox channel, whose missing
+   *  binary `playwright-core install` does not fetch. */
+  private hint(err: unknown): unknown {
+    return this.channel ? err : withInstallHint("firefox", err);
   }
 
   /** Splice the optional `moz-firefox` BiDi channel into a launch options bag.

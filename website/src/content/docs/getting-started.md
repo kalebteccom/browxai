@@ -18,8 +18,9 @@ npm install -g browxai
 browxai doctor
 ```
 
-`browxai doctor` checks the environment and prints a fix next to anything that
-fails. On a machine with no Google Chrome it fails until you add a browser:
+`browxai doctor` checks the environment and prints one line per area, with a tick
+or a cross and the next step under anything that fails. `browxai doctor --verbose`
+prints every check. On a machine with no Google Chrome it fails until you add a browser:
 install Chrome, or fetch the bundled Chromium (about 150 MB).
 
 ```bash
@@ -58,7 +59,23 @@ neither browser is present.
 
 ## Wire it into an MCP client
 
-Add browxai to your client's MCP config. In Claude Code, one command does it:
+The quickest way is one command, run in your project:
+
+```bash
+browxai init .
+```
+
+It writes a `.mcp.json` in that directory, finds the MCP clients on your machine
+(Claude Code, Cursor, Codex and Claude Desktop) and prints the exact command or
+snippet for each one. It changes nothing outside the project. To have it add
+browxai to a client's user-level config, run it again with
+`--write-user-config cursor` (or `codex`, `claude-desktop`). It prints the change,
+then writes it without asking. Add `--no-write` to only print it. At the end it opens a headless private session on a blank page,
+takes a snapshot and closes it, then prints `ok: first snapshot in N ms`. Add
+`--no-smoke` to skip that check.
+
+To do it by hand instead, add browxai to your client's MCP server config. In
+Claude Code, one command does it:
 
 ```bash
 claude mcp add browxai -- browxai

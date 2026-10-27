@@ -55,3 +55,16 @@ steps:
     name: keystone-2
   - <<: *shard
     name: keystone-3
+  # Layout check of the built docs site (centering, overflow, 44 px tap targets, flat surfaces, transitions) in Chromium. Builds the site itself (about 20 s), serves website/dist on loopback and exits 1 on any hit outside scripts/check-layout-allow.json. It queues behind the shards when the agent is full.
+  - <<: *step
+    name: website-layout
+    image: node:26-bookworm
+    depends_on: [browsers]
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium
+      - bash scripts/gate-slot.sh pnpm docs:build
+      - node scripts/design-audit/serve.mjs website/dist 4411 > /tmp/website-layout-server.log 2>&1 &
+      - for i in $(seq 1 30); do curl --silent --fail --output /dev/null http://127.0.0.1:4411/ && break; sleep 1; done
+      - bash scripts/gate-slot.sh node scripts/check-layout.mjs http://127.0.0.1:4411

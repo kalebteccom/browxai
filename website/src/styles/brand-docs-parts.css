@@ -154,12 +154,12 @@ site-search button[data-open-modal] {
 /* Small screens (Starlight switches layout at 50rem). Tap targets reach 44px. */
 @media (max-width: 49.9375rem) {
   :root {
-    --sl-menu-button-size: 2.75rem;
+    --sl-menu-button-size: 44px;
   }
   site-search button[data-open-modal] {
     justify-content: center;
-    min-width: 2.75rem;
-    height: 2.75rem;
+    min-width: 44px;
+    height: 44px;
   }
 }
 
