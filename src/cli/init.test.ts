@@ -31,4 +31,10 @@ describe("browxai init", () => {
     expect(await runInit([dir, ...ARGS])).toBe(0);
     expect(out).toContain('{ "command": "npx", "args": ["-y", "browxai"] }');
   });
+
+  it("puts the workspace on the chrome commands so logins reach the MCP profile", async () => {
+    expect(await runInit([dir, ...ARGS])).toBe(0);
+    expect(out).toContain(`BROWX_WORKSPACE=${join(dir, ".browxai")} browxai chrome login`);
+    expect(out).toContain(`BROWX_WORKSPACE=${join(dir, ".browxai")} browxai chrome start`);
+  });
 });
