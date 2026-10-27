@@ -12,22 +12,59 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { capabilitiesAssignment, capabilitiesWith } from "../util/capabilities.js";
+import {
+  CLIENT_IDS,
+  clientInstructions,
+  clientsReport,
+  detectClients,
+  realSystem,
+  shellWord,
+  userConfigPath,
+  type ClientId,
+  type ClientSystem,
+  type ServerEntry,
+} from "./init-clients.js";
+import { runSmoke, type SmokeOptions, type SmokeResult } from "./init-smoke.js";
+import {
+  applyUserConfig,
+  lineDiff,
+  planUserConfig,
+  type UserConfigPlan,
+} from "./init-user-config.js";
 
 interface InitOpts {
   workspace: string;
   testAttrs?: string;
   noWrite?: boolean;
+  writeUserConfig?: ClientId;
+  noSmoke?: boolean;
 }
 
-export function runInit(args: string[]): Promise<number> {
+/** Seams a test can replace. */
+export interface InitDeps {
+  system?: ClientSystem;
+  smoke?: (opts: SmokeOptions) => Promise<SmokeResult>;
+  /** Reads a user-level config file; undefined when it does not exist. */
+  readConfig?: (path: string) => string | undefined;
+  /** Writes a planned user-level config file. */
+  applyConfig?: typeof applyUserConfig;
+}
+
+export async function runInit(args: string[], deps: InitDeps = {}): Promise<number> {
   const opts = parseArgs(args);
   if (!opts) {
     process.stderr.write(
       "usage: browxai init <workspace> [--test-attrs data-testid,data-type,...] [--no-write]\n" +
-        "  <workspace>  per-app dir to host browxai state (e.g. ~/site-docs/<app>)\n" +
-        "  --no-write   print the .mcp.json snippet without creating files\n",
+        "                          [--write-user-config <client>] [--no-smoke]\n" +
+        "  <workspace>                 per-app dir to host browxai state (e.g. ~/site-docs/<app>)\n" +
+        "  --no-write                  print the .mcp.json snippet without creating files\n" +
+        "  --write-user-config <client>  print the change to that client's user-level config,\n" +
+        "                              then write it. Add --no-write to only print it.\n" +
+        `                              <client> is one of: ${CLIENT_IDS.join(", ")}\n` +
+        "  --no-smoke                  skip the headless first-snapshot check at the end\n" +
+        "                              (also skipped under --no-write)\n",
     );
-    return Promise.resolve(2);
+    return 2;
   }
   const workspace = resolve(opts.workspace);
   const browxDir = join(workspace, ".browxai");
@@ -106,6 +143,22 @@ export function runInit(args: string[]): Promise<number> {
     );
   }
   const ws = shellWord(browxDir);
+  // The entry a user-level client config gets. Same server as the project file,
+  // minus the attach entry, and never a path inside the npx cache. The command is
+  // the absolute path of this node: a client started from the desktop (Claude
+  // Desktop under launchd) does not get the shell's PATH, so a bare `node` fails.
+  const inNpxCache = /[\\/]_npx[\\/]/.test(distCli);
+  const userEntry: ServerEntry = {
+    ...(inNpxCache
+      ? { command: "npx", args: ["-y", "browxai"] }
+      : { command: process.execPath, args: [distCli] }),
+    env: { BROWX_WORKSPACE: browxDir, BROWX_TEST_ATTRIBUTES: testAttrs },
+  };
+  const system = deps.system ?? realSystem();
+  process.stdout.write(clientsReport(detectClients(system), userEntry, system) + "\n");
+  const userConfigOk = opts.writeUserConfig
+    ? writeUserConfigStep(opts.writeUserConfig, userEntry, system, !!opts.noWrite, deps)
+    : true;
   process.stdout.write(
     `next steps:\n  1) open Claude Code with cwd=${workspace} so this .mcp.json is picked up\n` +
       `  2) use the \`browxai\` MCP server for managed mode. It needs no more setup: it launches your installed Chrome, or the bundled Chromium without one\n` +
@@ -115,12 +168,65 @@ export function runInit(args: string[]): Promise<number> {
       `  5) run \`browxai doctor\` if a session fails to open\n\n` +
       `Keep BROWX_WORKSPACE=${ws} on every \`browxai chrome\` command. The entries above use it, and a Chrome started without it uses ~/.browxai/profile, which is a different profile.\n`,
   );
-  return Promise.resolve(0);
+  let smokeOk = true;
+  if (!opts.noSmoke && !opts.noWrite) {
+    process.stdout.write("\nchecking that a headless session can take a snapshot...\n");
+    const smoke = await (deps.smoke ?? runSmoke)({ distCli });
+    process.stdout.write(`${smoke.message}\n`);
+    smokeOk = smoke.ok;
+  }
+  return userConfigOk && smokeOk ? 0 : 1;
 }
 
-/** The path as one shell word: bare when it is plain, single-quoted otherwise. */
-function shellWord(path: string): string {
-  return /^[\w@%+=:,./-]+$/.test(path) ? path : `'${path.replace(/'/g, `'\\''`)}'`;
+/** Print the change to a client's user-level config, then write it unless dryRun. */
+function writeUserConfigStep(
+  id: ClientId,
+  entry: ServerEntry,
+  system: ClientSystem,
+  dryRun: boolean,
+  deps: InitDeps,
+): boolean {
+  let plan: UserConfigPlan;
+  try {
+    plan = planUserConfig(id, entry, system, deps.readConfig);
+  } catch (e) {
+    const path = userConfigPath(id, system) ?? "the config file";
+    const code = (e as NodeJS.ErrnoException).code;
+    const why =
+      code === "EISDIR"
+        ? "it is a folder"
+        : code === "EACCES" || code === "EPERM"
+          ? "permission denied"
+          : `read failed${code ? `, ${code}` : ""}`;
+    process.stdout.write(
+      `  ✗ ${path} can't be read (${why}): add the entry by hand with:\n${clientInstructions(id, entry, system)}\n\n`,
+    );
+    return false;
+  }
+  if (plan.kind === "refuse") {
+    process.stdout.write(`  ✗ ${plan.message}\n\n`);
+    return false;
+  } else if (plan.kind === "present") {
+    process.stdout.write(`  ✓ ${plan.path} already has a browxai entry, left as it is\n\n`);
+  } else {
+    process.stdout.write(
+      `Change to ${plan.path}:\n\n${lineDiff(plan.before, plan.after, plan.path)}\n\n`,
+    );
+    if (dryRun) {
+      process.stdout.write("  not written (--no-write)\n\n");
+    } else {
+      try {
+        (deps.applyConfig ?? applyUserConfig)(plan);
+      } catch (e) {
+        process.stdout.write(
+          `  ✗ could not write ${plan.path} (${(e as NodeJS.ErrnoException).code ?? "write failed"}): add the entry by hand with:\n${clientInstructions(id, entry, system)}\n\n`,
+        );
+        return false;
+      }
+      process.stdout.write(`  ✓ wrote ${plan.path}. Restart the client to pick it up.\n\n`);
+    }
+  }
+  return true;
 }
 
 function parseArgs(args: string[]): InitOpts | null {
@@ -128,8 +234,21 @@ function parseArgs(args: string[]): InitOpts | null {
   const positional: string[] = [];
   let testAttrs: string | undefined;
   let noWrite = false;
+  let writeUserConfig: ClientId | undefined;
+  let noSmoke = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
+    if (a === "--write-user-config") {
+      const id = args[++i];
+      if (!id || !(CLIENT_IDS as readonly string[]).includes(id)) return null;
+      writeUserConfig = id as ClientId;
+      continue;
+    }
+    if (a === "--no-smoke") {
+      noSmoke = true;
+      continue;
+    }
+    if (a.startsWith("--") && a !== "--test-attrs" && a !== "--no-write") return null;
     if (a === "--test-attrs") {
       testAttrs = args[++i];
       continue;
@@ -141,7 +260,7 @@ function parseArgs(args: string[]): InitOpts | null {
     positional.push(a);
   }
   if (positional.length !== 1) return null;
-  return { workspace: positional[0]!, testAttrs, noWrite };
+  return { workspace: positional[0]!, testAttrs, noWrite, writeUserConfig, noSmoke };
 }
 
 /**

@@ -8,13 +8,20 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **`browxai init` is the one-command start.** It finds Claude Code, Cursor, Codex and Claude Desktop on the machine and prints the exact command or snippet for each. It still writes only the project `.mcp.json`. `--write-user-config <client>` (`cursor`, `codex` or `claude-desktop`) adds browxai to that client's user-level config. It prints the diff, then writes it without asking, keeps the file mode and leaves the old file as `<config>.browxai-bak`. `--no-write` only prints it. It ends with a smoke test: a headless private session on `about:blank`, one snapshot, then `ok: first snapshot in N ms` or a plain error with the next step (exit 1). `--no-smoke` skips it, and `--no-write` skips it too.
+
 ### Changed
 
 - Links in refusals, `browxai doctor` rows and startup warnings now open the section that has the fix: "Configuring" for a disabled tool or a missing capability, "The capability set" for what a capability grants, and the origin and credentials sections. The doctor success line opens the MCP wiring step, and `profile-in-use` and `origin-blocked` link a new troubleshooting page.
+- **`browxai doctor` prints a short summary.** One line per area with a tick or a cross, failures first with the next step, and the `claude mcp add browxai -- npx -y browxai` line at the end. `browxai doctor --verbose` prints every row as before. Exit codes are unchanged, and an unknown flag exits 2.
 
 ### Fixed
 
 - **`--help` and `-h` print usage on every subcommand.** `browxai chrome start --help` used to launch Chrome and `browxai doctor --help` ran the check. Both now print usage and exit 0 without running anything. `browxai help` works too.
+- **`browxai chrome` rejects an argument it does not know.** `browxai chrome start --hlep` used to launch Chrome. Any unknown flag or extra word now prints usage and exits 2.
+- **`browxai doctor` prints `BROWX_ATTACH_CDP` without credentials.** A `user:password@` part, a query string and a fragment are dropped from the URL before it is shown.
 - **A mistyped capability name no longer prints a stack trace.** `browxai doctor` (and every other subcommand) used to crash on a name such as `evall` in `BROWX_CAPABILITIES`. `doctor` now shows a failing `capabilities` row that names the bad value and lists the valid names, and exits 1.
 - **`doctor` warns when `BROWX_CAPABILITIES` drops the defaults.** A list such as `eval` replaces `read,navigation,action,human`. The `capabilities` row shows a warning, not a green tick, and prints the list with the defaults added back.
 - **`browxai init` next steps keep the workspace on `chrome login` and `chrome start`.** The generated `.mcp.json` sets `BROWX_WORKSPACE` to `<dir>/.browxai`, so a login made in a shell without it went to `~/.browxai/profile` and the `browxai` entry never saw it. The next steps now print both commands with `BROWX_WORKSPACE` set, and say why.
