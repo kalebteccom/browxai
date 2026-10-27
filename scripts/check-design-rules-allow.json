@@ -1,0 +1,14 @@
+[
+  {
+    "rule": "spacing-token",
+    "path": "website/src/styles/brand.css",
+    "count": 3,
+    "reason": "Visually hidden pattern: margin -1px on the screen-reader text class and on the splash h1 panel, and em-based padding on the inline code chip, which must scale with the code font size"
+  },
+  {
+    "rule": "spacing-token",
+    "path": "website/src/styles/brand-docs.css",
+    "count": 1,
+    "reason": "A 1px gap between stacked sidebar links, below the smallest spacing token"
+  }
+]

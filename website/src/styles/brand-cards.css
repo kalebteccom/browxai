@@ -1,0 +1,148 @@
+/* Landing sections: feature cards, section headings, the 404 page and the footer credit line. */
+
+/* Feature grid. Two columns at the 1140px landing width, so card text runs
+   about 60 to 70 characters a line. */
+.browx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
+  gap: var(--space-4);
+  margin: var(--space-5) 0;
+}
+/* A card is a static block: a solid surface and a flat border, no hover state. */
+.browx-card {
+  border: 1px solid var(--browx-border);
+  border-radius: 0.75rem;
+  padding: var(--space-5);
+  background: var(--browx-surface);
+  color: var(--sl-color-text);
+}
+.browx-card h3 {
+  font-family: var(--browx-font-display);
+  margin: 0 0 var(--space-2);
+  font-size: 1.05rem;
+}
+.browx-card-text {
+  margin: 0;
+  max-width: 70ch;
+  color: var(--sl-color-gray-2);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+/* MDX wraps the multi-line text inside these <div>s in its own <p>. Neutralize
+   that inner paragraph so only the container controls spacing. */
+.browx-lede > p,
+.browx-about > p,
+.browx-section-sub > p,
+.browx-card-text > p {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  max-width: inherit;
+}
+
+/* The .not-content wrapper drops Starlight's link colour, so prose links in the
+   cards would render browser-default blue. */
+.browx-card-text a {
+  color: var(--sl-color-text-accent);
+  text-underline-offset: 0.18em;
+}
+.browx-card-text a:hover,
+.browx-card-text a:active {
+  text-decoration-thickness: 2px;
+}
+.browx-card .browx-card-mark {
+  font-weight: 600;
+  font-family: var(--browx-font-body);
+  color: var(--sl-color-text-accent);
+  font-size: 0.78rem;
+  display: block;
+  margin-bottom: var(--space-3);
+}
+
+.browx-section {
+  margin-top: clamp(var(--space-8), 8vw, 5.5rem);
+  text-align: center;
+}
+.browx-section-title {
+  font-family: var(--browx-font-display);
+  font-size: clamp(1.35rem, 3.2vw, 1.75rem);
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--space-2);
+}
+.browx-section-sub {
+  color: var(--sl-color-gray-3);
+  max-width: 56ch;
+  margin: 0 auto var(--space-5h);
+}
+.browx-section .browx-grid {
+  text-align: left;
+}
+
+/* Centered closing call to action. */
+.browx-cta--center {
+  justify-content: center;
+  margin-top: clamp(var(--space-7), 6vw, var(--space-10));
+}
+
+/* ---- 404 ---------------------------------------------------------------- */
+.browx-404 {
+  text-align: center;
+  padding: clamp(var(--space-6), 9vw, 5.5rem) 0;
+  max-width: 40rem;
+  margin-inline: auto;
+}
+.browx-404 .browx-kicker {
+  margin-bottom: var(--space-3);
+}
+.browx-404-code {
+  font-family: var(--browx-font-display);
+  font-weight: 700;
+  font-size: clamp(5rem, 18vw, 9rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  margin: var(--space-1) 0 var(--space-3);
+}
+.browx-404-code .x {
+  color: var(--sl-color-text-accent);
+}
+.browx-404-msg {
+  color: var(--sl-color-gray-2);
+  font-size: 1.1rem;
+  line-height: 1.55;
+  margin: 0 auto var(--space-7);
+  max-width: 34rem;
+}
+
+/* Site-wide credit line, appended after Starlight's default footer. A flex row,
+   so each 44px link sits on the same line as the plain text around it. */
+.browx-credit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  column-gap: var(--space-2);
+  margin-top: var(--space-5h);
+  padding-top: var(--space-4h);
+  border-top: 1px solid var(--sl-color-hairline-shade);
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-3);
+}
+.browx-credit a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--browx-tap);
+  color: var(--sl-color-text-accent);
+  text-decoration: none;
+}
+.browx-credit a:hover {
+  text-decoration: underline;
+}
+.browx-credit a:active {
+  color: var(--sl-color-accent-high);
+  text-decoration: underline;
+}
+.browx-credit .sep {
+  opacity: 0.5;
+}
