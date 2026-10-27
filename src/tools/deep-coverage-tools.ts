@@ -28,7 +28,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        "Arm precise JS + CSS coverage tracking on this session — wraps CDP `Profiler.startPreciseCoverage` (per-script byte-level use counts) + `CSS.startRuleUsageTracking` (per-stylesheet rule-level use counts) in lockstep. Use to identify dead JS + dead CSS that ships but boot never executes. Pairs with `coverage_stop` (returns the parsed report). Per-session; one lifecycle in flight at a time. **Idempotent restart:** calling `coverage_start` while a tracker is already running cleanly stops the in-flight one (results discarded) and starts fresh. Captures stylesheet metadata (URL + length) via the `CSS.styleSheetAdded` event stream during the tracking window. Capability `action` (mutates target state). The audit tool `perf_audit` calls this internally — only use the direct primitives when you want the raw report or want a longer window than the audit's default.",
+        "Start precise JS and CSS coverage on this session (CDP `Profiler.startPreciseCoverage` and `CSS.startRuleUsageTracking`), to find JS and CSS that ships but never runs. Read the result with `coverage_stop`. One tracker per session: calling `coverage_start` while one runs stops it (results discarded) and restarts. `perf_audit` uses this internally; call these two directly only for the raw report or a longer window than `perf_audit` takes.",
       inputSchema: {
         ...SESSION_ARG,
       },
@@ -77,7 +77,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        "Stop precise JS + CSS coverage tracking and return the parsed report. Calls `Profiler.takePreciseCoverage` + `CSS.stopRuleUsageTracking` then aggregates the raw byte-range output into per-script + per-stylesheet entries. Returns `{ok, jsCoverage:[{url, totalBytes, usedBytes, usagePercent, deadRanges?}], cssCoverage:[{url, totalBytes, usedBytes, usedRules, totalRules, usagePercent, deadRules?}], durationMs}`. `usagePercent` is the agent's scan metric — `<30` indicates substantial dead code (the audit's `unused-code` analyser flags it). `deadRanges` / `deadRules` are top-50 byte ranges per file. **Safe to call any number of times:** if no tracker is running, returns `notRunning:true` rather than an error. Pure parsing + composition past the CDP fetches — no file written; the caller decides whether to persist the report. Capability `read`.",
+        "Stop coverage tracking and return the parsed report: `{ok, jsCoverage:[{url, totalBytes, usedBytes, usagePercent, deadRanges?}], cssCoverage:[{url, totalBytes, usedBytes, usedRules, totalRules, usagePercent, deadRules?}], durationMs}`. `usagePercent` under 30 means a lot of dead code (the `unused-code` analyser flags it); `deadRanges` and `deadRules` hold the top 50 per file. With no tracker running it returns `notRunning:true`. Nothing is written to disk.",
       inputSchema: {
         ...SESSION_ARG,
       },
@@ -134,7 +134,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        'Record a focused CDP trace for `durationMs` (default 5000, max 30000) that captures forced synchronous layouts + LayoutShift + Recalc Style events, then aggregate by originating call-stack so the agent sees `"this rAF loop fired 200 forced layouts"` at a glance instead of paging through a 100MB chromium trace. Returns `{ok, forcedLayoutsCount, layoutShiftsCount, eventsByOrigin:[{originatingStack, count, totalDurationMs}], tracePath, durationMs}`. `originatingStack` reads from the trace\'s `stackTrace` field on each event (chromium populates it when DevTools is attached) — `"<anonymous>"` when no stack was attached. `tracePath` is a workspace-rooted JSON file under `<workspace>/perf/<sessionId>-layout-thrash-<ts>.json` — loadable in DevTools\' Performance panel for the full visual. Capped at the top 50 origins, sorted by count desc. Capability `read`.',
+        'Record a CDP trace for `durationMs` (default 5000, max 30000) that captures forced synchronous layouts, layout shifts and style recalculations, then group them by originating call stack, so you see "this rAF loop fired 200 forced layouts" without paging through a huge trace. Returns `{ok, forcedLayoutsCount, layoutShiftsCount, eventsByOrigin:[{originatingStack, count, totalDurationMs}], tracePath, durationMs}`, top 50 origins by count. `originatingStack` is `"<anonymous>"` when the event has no stack (Chromium adds stacks when DevTools is attached). `tracePath` is `<workspace>/perf/<sessionId>-layout-thrash-<ts>.json`, loadable in DevTools\' Performance panel.',
       inputSchema: {
         durationMs: z
           .number()
@@ -193,7 +193,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        "Diff two V8 heap snapshots (paths to existing `.heapsnapshot` files from `heap_snapshot`) and report retainer growth per node-type group. Pure function — no browser interaction; no CDP touch; reads + parses two existing JSON-shaped V8 heap snapshots on disk and emits the structured diff. **Inputs:** `beforePath` + `afterPath`, both workspace-rooted (path-escape rejected). **Output:** `{ok, retainerGrowth:[{node, type, sizeBefore, sizeAfter, deltaBytes, deltaPercent}], summary:{totalGrowth, top3Growers}}`. `node` is the V8 `${type}:${name}` display (matches `heap_retainers`'s shape). Groups whose `|deltaBytes| < 1024` are dropped as noise. Sorted by `deltaBytes` desc, capped at 100 rows. Typical leak-detection flow: `heap_snapshot` (before suspect interaction) → drive the action → `heap_snapshot` (after) → `memory_diff({beforePath, afterPath})`. The audit's `leak-suspects` analyser consumes this shape directly. Capability `read`.",
+        "Diff two V8 heap snapshots (`.heapsnapshot` paths from `heap_snapshot`) and report retainer growth per node-type group. Pure file work: it does not touch the browser. `beforePath` and `afterPath` must resolve inside `$BROWX_WORKSPACE`. Returns `{ok, retainerGrowth:[{node, type, sizeBefore, sizeAfter, deltaBytes, deltaPercent}], summary:{totalGrowth, top3Growers}}`, sorted by `deltaBytes` descending, max 100 rows, groups under 1024 bytes of change dropped. `node` is the V8 `${type}:${name}` label, as in `heap_retainers`. Typical leak check: `heap_snapshot`, run the suspect interaction, `heap_snapshot`, then `memory_diff`. The `leak-suspects` analyser of `perf_audit` consumes this shape.",
       inputSchema: {
         beforePath: z
           .string()
@@ -243,7 +243,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        "Take a V8 heap snapshot on this session's target — wraps CDP `HeapProfiler.takeHeapSnapshot`. The output file is the same `.heapsnapshot` JSON DevTools' Memory panel and `chrome://inspect` consume on drag-and-drop. Use to diagnose memory leaks: pair with `heap_retainers({snapshotPath, query})` to ask \"who's still pointing to objects named X / typed Y\" — the answer is invisible in `snapshot` / `find` because the leaked nodes are no longer in the DOM. Per-session; one-shot (a heap snapshot is a point-in-time capture, not a recording window). Default file path: `<workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot` — explicit `path` is rejected if it escapes `$BROWX_WORKSPACE`. Snapshots are heavy (often tens to hundreds of MiB on a real page); don't take them in a tight loop.",
+        "Take a V8 heap snapshot of this session's target (CDP `HeapProfiler.takeHeapSnapshot`), to diagnose memory leaks: pair it with `heap_retainers({snapshotPath, query})` to ask who still points at objects of a given name or type, which `snapshot` and `find` cannot show because leaked nodes are no longer in the DOM. One snapshot per call. Default path `<workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot`; `path` must resolve inside `$BROWX_WORKSPACE`. The file opens in DevTools' Memory panel. Snapshots are heavy (tens to hundreds of MiB on a real page): do not take them in a loop.",
       inputSchema: {
         path: z
           .string()
@@ -304,7 +304,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        'Run a retainer query against a written `.heapsnapshot` file. Returns the top retainers (sorted by retainer self-size desc, capped at 50) of nodes whose display name and/or V8 type matches the query — directly answers "who\'s holding these objects alive?" without paging through DevTools\' Memory panel. Pure file read + in-process parse, no CDP touch. `query.name` defaults to exact match against the node\'s string-table name (use `nameMatch:"substring"` for containment); `query.type` filters by V8 node-type (`"closure"`, `"object"`, `"hidden"`, …). At least one of `name` / `type` is required — a match-everything query is never the right answer. `snapshotPath` is workspace-rooted; rejected if it escapes `$BROWX_WORKSPACE`. Same JSON format `heap_snapshot` writes — bring-your-own snapshot (downloaded from DevTools, saved by a CI run) works too.',
+        'Run a retainer query against a `.heapsnapshot` file and return the top 50 retainers (by retainer self-size, descending) of the nodes whose name or V8 type matches. Answers "who is holding these objects alive?". File read only; no browser is touched. `query.name` is an exact match against the node\'s string-table name by default (`nameMatch:"substring"` for containment); `query.type` filters by V8 node type (`"closure"`, `"object"`, `"hidden"`, and so on). At least one of `name` and `type` is required. `snapshotPath` must resolve inside `$BROWX_WORKSPACE`. Any `.heapsnapshot` works, including one saved from DevTools or CI.',
       inputSchema: {
         snapshotPath: z
           .string()

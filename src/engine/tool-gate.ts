@@ -30,6 +30,7 @@
 
 import type { EngineKind, EngineSubInterface } from "./types.js";
 import { engineDeclaration, engineDeclares } from "./sub-interface.js";
+import { docsUrl } from "../util/docs-links.js";
 
 const DEEP_TOOLS_SET = new Set<string>();
 
@@ -200,7 +201,7 @@ export function assertEngineSubInterface(
       `run against and the check was NOT performed. This is a refusal, not a result — it says ` +
       `nothing about whether the condition you asked about holds. Re-run on an engine that ` +
       `declares "${sub}" (chromium, the default), or check the per-engine capability matrix in ` +
-      `docs/ai-context/architecture/engine-adapters.md.`,
+      `${docsUrl.engineAdapters}.`,
   };
 }
 
@@ -250,6 +251,6 @@ export function assertEngineSupports(tool: string, engine: EngineKind): EngineRe
     hint:
       `${reason} ` +
       `Re-run on a chromium session (browserType:"chromium", the default), or check the ` +
-      `per-engine capability matrix in docs/ai-context/architecture/engine-adapters.md.`,
+      `per-engine capability matrix in ${docsUrl.engineAdapters}.`,
   };
 }

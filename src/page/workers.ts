@@ -131,7 +131,11 @@ export class WorkersRegistry {
     };
   }
 
-  async readMessages(page: Page, args: { workerId?: string }): Promise<WorkerMessage[]> {
+  async readMessages(
+    page: Page,
+    args: { workerId?: string },
+    sw: Pick<ServiceWorkerAccess, "originPolicy"> = {},
+  ): Promise<WorkerMessage[]> {
     await this.installPageWrapper(page);
     const out: WorkerMessage[] = [];
     // Web Worker messages — drain from the page ring.
@@ -141,7 +145,7 @@ export class WorkersRegistry {
     // Service Worker messages — move what the page received into the
     // server-side ring, then drain that.
     if (!args.workerId || args.workerId.startsWith("sw-")) {
-      this.sw.ingestPageMessages(await this.page.drainSw(page));
+      this.sw.ingestPageMessages(await this.page.drainSw(page), sw.originPolicy);
       out.push(...this.sw.drainMessages(args.workerId));
     }
     return out;

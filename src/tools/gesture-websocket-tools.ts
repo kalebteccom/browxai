@@ -28,7 +28,7 @@ export function registerGestureWebsocketTools(
     {
       capability: "action",
       description:
-        "Send a payload on a live page-side WebSocket. `wsId` is the id surfaced by the page-side `__browxWs.list()` registry (the wrapper assigns `ws-1`, `ws-2`, … as the page opens sockets) — call `ws_read` first to identify the endpoint URL, then `eval_js` `JSON.stringify(window.__browxWs.list())` to map URL → wsId, OR drive a deterministic test where the order of socket creation is known. Calls the real (unwrapped) `WebSocket.prototype.send`, so app-level message listeners do NOT observe a fake event — only the server sees the outbound frame. Returns `{ok:true, wsId, url, bytes}` on success, or `{ok:false, error}` if the id is unknown or the socket isn't OPEN. Capability: `action`.",
+        "Send a payload on a live page WebSocket. `wsId` is the id from the page-side `__browxWs.list()` registry (the wrapper assigns `ws-1`, `ws-2`, and so on as the page opens sockets): call `ws_read` to find the endpoint URL, then `eval_js` (needs the `eval` capability) with `JSON.stringify(window.__browxWs.list())` to map URL to `wsId`; or rely on a known socket creation order. It calls the real `WebSocket.prototype.send`, so page listeners do not see a fake event and only the server sees the frame. Returns `{ok:true, wsId, url, bytes}`, or `{ok:false, error}` when the id is unknown or the socket is not OPEN.",
       inputSchema: {
         wsId: z.string().describe("Page-side socket id, e.g. `ws-1`. See `__browxWs.list()`."),
         message: z
@@ -63,7 +63,7 @@ export function registerGestureWebsocketTools(
     {
       capability: "action",
       description:
-        'Install a route-style interceptor for INBOUND WebSocket frames. `pattern` is a glob matched against `socket.url` (the route family\'s intent: `*` = single segment, `**` = any). `response` controls what the page sees: `"drop"` — silently discard the frame (app handlers don\'t run); `"echo"` — mirror the inbound payload back to the server (the app still receives it locally); `{data:"<string>"}` — replace the inbound payload with `data` (app handlers see the replacement). The interceptor evaluates on every matching frame until removed via `ws_unintercept`; re-adding the same pattern replaces the prior entry. Per-session; lost on session close or session rebuild. Capability: `action`.',
+        'Install a route-style interceptor for inbound WebSocket frames. `pattern` is a glob against `socket.url` (`*` is one segment, `**` is any). `response` sets what the page sees: `"drop"` discards the frame (page handlers do not run); `"echo"` mirrors the payload back to the server (the page still receives it); `{data:"<string>"}` replaces the payload. The interceptor runs on every matching frame until removed with `ws_unintercept`; adding the same pattern again replaces the earlier entry. Per session; lost when the session closes or is rebuilt.',
       inputSchema: {
         pattern: z
           .string()
@@ -113,7 +113,7 @@ export function registerGestureWebsocketTools(
     {
       capability: "action",
       description:
-        "Remove a `ws_intercept` interceptor (by exact `pattern`), or — with no `pattern` — every interceptor this session installed. Capability: `action`.",
+        "Remove a `ws_intercept` interceptor by exact `pattern`, or every interceptor this session installed when `pattern` is omitted.",
       inputSchema: {
         pattern: z
           .string()

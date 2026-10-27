@@ -100,7 +100,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        'List what there is to drive on this machine: every Android device and emulator adb can see plus the AVDs defined here, and every iOS simulator `simctl` knows about. Each Android device reports its serial, state, model and API level; a device that is `unauthorized` or `offline` is LISTED with that state rather than hidden, because the state is the actionable part. Each simulator reports its udid, name, runtime and state. Either platform being absent (no Android SDK, no Xcode) is reported as an empty list for that platform and never fails the call. Takes no session — this is what you call BEFORE `open_session({browserType:"android-app"})` or `open_session({browserType:"ios-app"})`. Requires the off-by-default `native-device` capability.',
+        'List what there is to drive on this machine: every Android device and emulator `adb` sees, the AVDs defined here, and every iOS simulator `simctl` knows. Each Android device reports serial, state, model and API level; an `unauthorized` or `offline` device is listed with that state, since the state is what you need to act on. Each simulator reports udid, name, runtime and state. A platform that is absent (no Android SDK, no Xcode) gives an empty list and never fails the call. Takes no session: call it before `open_session({engine:"android-app"})` or `open_session({engine:"ios-app"})`. Requires the `native-device` capability (off by default).',
       inputSchema: {},
     },
     async () => {
@@ -138,7 +138,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Boot an ANDROID emulator by AVD name and wait until it is USABLE — `sys.boot_completed` plus a working package manager, not merely an adb connection (`adb wait-for-device` returns about a minute before the launcher exists, and a session opened at that point dumps an empty hierarchy and looks like a broken app). Headless by default. Boots with `-no-snapshot-save`, so anything this session installs or grants never persists into the operator's AVD. browxai NEVER creates an AVD: the system image, device profile and disk allocation are the operator's choice. Can take 30-90 seconds on a cold boot. iOS is not this tool's job: an `ios-app` session boots the simulator it resolves at session creation, so there is nothing to call first. Requires `native-device`.",
+        "Boot an Android emulator by AVD name and wait until it is usable: `sys.boot_completed` plus a working package manager, not just an adb connection (`adb wait-for-device` returns about a minute before the launcher exists, and a session opened then sees an empty hierarchy and looks like a broken app). Headless by default. It boots with `-no-snapshot-save`, so nothing this session installs or grants persists in the AVD. browxai never creates an AVD: the system image, device profile and disk size are yours to choose. A cold boot takes 30-90 seconds. iOS needs no boot step: an `ios-app` session boots the simulator it resolves at creation. Requires the `native-device` capability (off by default).",
       inputSchema: {
         avd: z
           .string()
@@ -168,7 +168,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Shut down a running ANDROID emulator by serial (`emu kill`). REFUSES on a physical device: browxai does not power off the operator's phone. Closing a session does NOT shut a device down — a session leases a device, it does not own it — so this is the explicit teardown. There is no iOS counterpart: an `ios-app` session never shuts down a simulator, because the operator may have booted it and booting one costs tens of seconds. Requires `native-device`.",
+        "Shut down a running Android emulator by serial (`emu kill`). Refuses on a physical device. Closing a session does not shut a device down, because a session leases a device and does not own it, so this is the explicit teardown. There is no iOS counterpart: an `ios-app` session never shuts a simulator down, since you may have booted it and a boot costs tens of seconds. Requires the `native-device` capability (off by default).",
       inputSchema: {
         serial: z.string().describe("Emulator serial, e.g. `emulator-5554`. From `device_list`."),
       },
@@ -190,7 +190,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "List the app ids installed on the session's device. On `android-app`, third-party only by default, because the full list is ~200 system packages of noise. On `ios-app`, `simctl listapps` reports user and runtime apps in one list with no flag to separate them, so `includeSystem` has nothing to select on and the full list is what you get. Requires `native-device` and a native session.",
+        "List the app ids installed on the session's device. On `android-app`, third-party only by default, because the full list is ~200 system packages of noise. On `ios-app`, `simctl listapps` reports user and runtime apps in one list with no flag to separate them, so `includeSystem` has nothing to select on and the full list is what you get. Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: {
         includeSystem: z
           .boolean()
@@ -219,7 +219,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Install an application bundle from a path under $BROWX_WORKSPACE onto the session's device — an `.apk` on `android-app`, a `.app` on `ios-app`. `reinstall` keeps the app's existing data (`adb install -r`); without it, installing over an existing app fails. INSTALLING AN APPLICATION IS THE BROADEST THING THIS ENGINE DOES — the APK is arbitrary code that then runs on the device with whatever permissions it declares, so the operator chooses the file and the `native-device` capability is what says they meant to. Reports adb's own failure reason (a wrong ABI, insufficient storage, an unsigned build) rather than a bare non-zero exit. Requires `native-device` and a native session.",
+        "Install an app bundle from a path under $BROWX_WORKSPACE onto the session's device: an `.apk` on `android-app`, a `.app` on `ios-app`. `reinstall` keeps the app's data (`adb install -r`); without it, installing over an existing app fails. Installing an app is the broadest thing this engine does: the bundle is arbitrary code that runs on the device with the permissions it declares, so you choose the file and the `native-device` capability says you meant to. Failures report adb's own reason (wrong ABI, insufficient storage, unsigned build). Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: {
         apkPath: z
           .string()
@@ -254,7 +254,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Uninstall an app from the session's device, removing its data with it. `android-app` only — on `ios-app` this REFUSES, naming the engine: `simctl uninstall` would remove an app the operator may have installed by hand from a device the session leases rather than owns. Requires `native-device` and a native session.",
+        "Uninstall an app from the session's device and remove its data. `android-app` only: on `ios-app` it refuses, naming the engine, because `simctl uninstall` could remove an app installed by hand on a device the session leases and does not own. Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: {
         appId: z.string().describe("Package id, e.g. `com.acme.app`."),
         ...SESSION_ARG,
@@ -279,7 +279,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Launch an app and point the session at it. On `android-app` it resolves the declared launcher activity first, so a missing package is reported as a missing package — `monkey -p <pkg>` reports success having done nothing — and returns the resolved component. On `ios-app` there is no activity and none is invented. The app may still be on a splash screen when this returns: follow with `snapshot`, which surfaces `native-hierarchy-not-idle` while an indeterminate spinner keeps the window busy. Requires `native-device` and a native session.",
+        "Launch an app and point the session at it. On `android-app` it resolves the declared launcher activity first, so a missing package is reported as missing (`monkey -p <pkg>` reports success having done nothing), and returns the resolved component. On `ios-app` there is no activity. The app may still be on a splash screen when this returns: follow with `snapshot`, which reports `native-hierarchy-not-idle` while a spinner keeps the window busy. Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: {
         appId: z.string().describe("Package / bundle id, e.g. `com.acme.app`. See `app_list`."),
         ...SESSION_ARG,
@@ -304,7 +304,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Stop a running app on the session's device. On `android-app` it is `am force-stop`, not `am kill`: kill only targets background processes and silently no-ops on the foreground app, which would make this report success for a close that did not happen. On `ios-app` it is `simctl terminate`. Data survives — use `app_reset` to clear it, where the platform has one. Requires `native-device` and a native session.",
+        "Stop a running app on the session's device. On `android-app` this is `am force-stop`, not `am kill`, because kill only affects background processes and silently does nothing to the foreground app. On `ios-app` it is `simctl terminate`. App data survives; use `app_reset` to clear it where the platform has that. Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: {
         appId: z.string().describe("Package id to stop."),
         ...SESSION_ARG,
@@ -328,7 +328,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Clear an app's data AND its granted runtime permissions, so a run starts from a known state. This is the native answer to `incognito`, which a native app has no equivalent of — there is no second browsing context to isolate into. DESTRUCTIVE: logins, local databases and cached files are gone. `android-app` only — on `ios-app` this REFUSES, naming the engine: iOS has no per-app data clear, and `simctl erase` wipes every app on the device rather than the one you named. Requires `native-device` and a native session.",
+        "Clear an app's data and its granted runtime permissions so a run starts clean. This is the native counterpart of `incognito`, which a native app lacks. Destructive: logins, local databases and cached files are gone. `android-app` only: on `ios-app` it refuses, naming the engine, because iOS has no per-app data clear and `simctl erase` wipes every app on the device. Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: {
         appId: z.string().describe("Package id to clear."),
         ...SESSION_ARG,
@@ -352,7 +352,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Report which app owns the foreground right now, as `{appId, activity?}`, plus the `app://…` target url the session's snapshot and secret-scope check use. `activity` is present on `android-app` and absent on `ios-app`, which has no activity. Answers `null` during a window transition, which is a real state and not an error. This is how an agent confirms a launch landed, and how it notices the app under test was replaced by a system permission dialog. Requires `native-device` and a native session.",
+        "Report which app owns the foreground: `{appId, activity?}`, plus the `app://…` target url that the session's snapshot and secret-scope check use. `activity` is present on `android-app` and absent on `ios-app`. It answers `null` during a window transition, which is a real state and not an error. Use it to confirm a launch landed and to notice that a system permission dialog replaced the app. Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: { ...SESSION_ARG },
     },
     async ({ session }) => {

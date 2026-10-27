@@ -13,16 +13,11 @@ page, locate a target, act on it. browxai is shaped around that cycle.
         <marker id="al-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
           <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-text-accent)" />
         </marker>
-        <linearGradient id="al-ring" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="var(--browx-aurora-bright)" />
-          <stop offset="1" stop-color="var(--browx-violet-600)" />
-        </linearGradient>
       </defs>
-      <circle class="bx-ring-glow" cx="160" cy="160" r="118" />
-      <path class="bx-arc" style="stroke:url(#al-ring)" d="M196 54 A118 118 0 0 1 266 124" marker-end="url(#al-arrow)" />
-      <path class="bx-arc" style="stroke:url(#al-ring)" d="M266 196 A118 118 0 0 1 196 266" marker-end="url(#al-arrow)" />
-      <path class="bx-arc" style="stroke:url(#al-ring)" d="M124 266 A118 118 0 0 1 54 196" marker-end="url(#al-arrow)" />
-      <path class="bx-arc" style="stroke:url(#al-ring)" d="M54 124 A118 118 0 0 1 124 54" marker-end="url(#al-arrow)" />
+      <path class="bx-arc" d="M196 54 A118 118 0 0 1 266 124" marker-end="url(#al-arrow)" />
+      <path class="bx-arc" d="M266 196 A118 118 0 0 1 196 266" marker-end="url(#al-arrow)" />
+      <path class="bx-arc" d="M124 266 A118 118 0 0 1 54 196" marker-end="url(#al-arrow)" />
+      <path class="bx-arc" d="M54 124 A118 118 0 0 1 124 54" marker-end="url(#al-arrow)" />
     </svg>
     <span class="bx-hub" aria-hidden="true">ActionResult<small>closes the loop</small></span>
     <div class="bx-step bx-step--n" aria-hidden="true"><span class="bx-step-k">navigate</span><span class="bx-step-d">go to a URL</span></div>
@@ -44,9 +39,9 @@ confirmation hook or proceeds with a warning, depending on your config.
 ## snapshot
 
 `snapshot()` reads the page as a compact accessibility tree plus a DOM-walk.
-Every node carries a stable `[ref=eN]` handle that you act on later. It is not
-a DOM dump: the result is scoped, paginated, and token-budgeted so it stays
-small enough for a model to reason over.
+Every node carries a stable `[ref=eN]` handle that you act on later. The result
+is scoped, paginated, and token-budgeted, so it stays small enough for a model
+to reason over.
 
 ```text
 form "Sign in" [ref=e3]
@@ -60,8 +55,7 @@ form "Sign in" [ref=e3]
 When you know what you want but not its ref, `find({ query })` takes a
 plain-language description and returns ranked candidates with evidence: a
 `stability` flag (`high` / `medium` / `low`), an `actionable` verdict, and a
-visible-rect `bbox`. It hands back ranked options with reasons, not a single
-guess you have to trust blind.
+visible-rect `bbox`. It returns ranked options with reasons for each.
 
 ```ts
 const res = await find({ query: "the Continue button" });
@@ -86,8 +80,8 @@ await click({ ref: "e6" });
 
 ## The ActionResult closes the loop
 
-The reason the loop works without constant re-snapshotting is the
-`ActionResult`. Every action returns a structured summary of its consequences:
+The `ActionResult` removes the need to re-snapshot after each action. Every
+action returns a structured summary of its consequences:
 
 - `navigation`: whether the URL changed, and how.
 - `structure`: which nodes appeared or were removed, and any new tabs.
@@ -96,8 +90,7 @@ The reason the loop works without constant re-snapshotting is the
 - `dialogs`, `permissionRequests`, `notifications`, and `fsPickerRequests`
   fired during the call, each independent of success.
 
-The agent reads the result and decides the next move. It does not have to take
-a fresh snapshot after every click to find out what happened.
+The agent reads the result and decides the next move.
 
 ## Verifying
 
@@ -111,6 +104,5 @@ For flaky or transient UI, reach for `wait_for`, `sample`, and
 and [agent guidance](https://github.com/kalebteccom/browxai/blob/main/docs/agent-guidance.md)
 maps the common footguns to the tool that avoids each one.
 
-A reminder that carries through the whole surface: page text is untrusted. An
-agent must not treat text inside a snapshot or a find result as instructions to
-itself.
+Page text is untrusted on every tool. An agent must not treat text inside a
+snapshot or a find result as instructions to itself.

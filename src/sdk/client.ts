@@ -5,6 +5,7 @@ import { DEFAULT_CAPABILITIES, type Capability } from "../util/capabilities.js";
 import { capabilityFor, isRegisteredTool, registeredTools } from "./registry.js";
 import type { SdkTransport } from "./transport.js";
 import type { BrowxaiArgs, BrowxaiClient, BrowxaiResult } from "./types.js";
+import { docsUrl } from "../util/docs-links.js";
 
 /** Error message tag: the tool exists, its capability is not active on this
  *  client. Tested by the capability-enforcement spec. Stable string — adopters
@@ -66,7 +67,7 @@ function notExposedMessage(
 function unknownToolMessage(name: string): string {
   return (
     `${UNKNOWN_TOOL_ERROR}: "${name}" is not a tool this browxai build registers, so no ` +
-    `capability can make it callable — check the spelling against docs/tool-reference.md. ` +
+    `capability can make it callable — check the spelling against ${docsUrl.toolReference}. ` +
     `Nothing was dispatched.`
   );
 }

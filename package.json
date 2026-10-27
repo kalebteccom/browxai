@@ -79,7 +79,8 @@
     "licenses:notices": "license-checker-rseidelsohn --production --markdown",
     "audit:prod": "pnpm audit --prod --audit-level=high",
     "sbom": "cdxgen -t pnpm -o sbom.cdx.json --no-recurse .",
-    "depcheck": "depcheck"
+    "depcheck": "depcheck",
+    "check:examples": "node scripts/check-examples.mjs"
   },
   "pnpm": {
     "overrides": {
@@ -107,13 +108,13 @@
     ]
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "playwright-core": "^1.64.1",
     "rrweb": "2.1.7",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@cyclonedx/cdxgen": "^12.8.6",
+    "@cyclonedx/cdxgen": "^12.9.0",
     "@eslint/js": "^9.39.5",
     "@types/node": "^20.19.43",
     "depcheck": "^1.4.7",
@@ -122,13 +123,13 @@
     "eslint": "^9.12.0",
     "eslint-plugin-import-x": "^4.3.0",
     "globals": "^15.11.0",
-    "jscpd": "^5.4.1",
+    "jscpd": "^5.4.2",
     "license-checker-rseidelsohn": "^4.4.2",
     "lint-staged": "^15.2.10",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "^5.5.0",
-    "typescript-eslint": "^8.71.2",
+    "typescript-eslint": "^8.72.0",
     "vitest": "^4.1.12"
   }
 }

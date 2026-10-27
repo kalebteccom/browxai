@@ -36,7 +36,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
     {
       capability: "read",
       description:
-        "PNG screenshot of an arbitrary viewport rectangle (not an element) — for virtualised timelines / canvas / unlabelled positioned regions where an element-cropped shot doesn't apply.",
+        "Take a PNG screenshot of a viewport rectangle `box`, for canvas, virtualised timelines and unlabelled positioned regions where an element crop does not apply. Use `screenshot` for the whole viewport or one element.",
       inputSchema: {
         box: BOX_SCHEMA.describe("Viewport rect {x,y,width,height} in CSS px."),
         ...SESSION_ARG,
@@ -84,14 +84,14 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        'Composed PNG with numbered bounding boxes painted over caller-supplied candidates — the set-of-marks primitive multimodal agents reach for when they want to ground a vision read against a small palette of stable refs ("click 2" instead of estimating a coordinate). Each candidate is either a bare `{ref}` (looked up against the current snapshot for its bbox) OR a full `find()` candidate row passed through (`{ref, role, name, testId, bbox}` — fast path, no extra tree walk). `label:"index"` (default) paints 1..N positions paired with an `{index→ref}` mapping; `label:"ref"` paints the existing `eN` directly; `label:"role"` paints the role for visual grounding. The numbering scheme SHARES the existing `name_ref` / `eN` namespace — no parallel ID space — so `mapping["2"] === "e7"` and the agent can address either way. Pure compose on top of `find()` / `snapshot()` (no new browser interaction beyond a transient in-page overlay removed before return). Candidates with `bbox:null` (clipped / off-screen) are kept in `marks` with `painted:false` so the mapping stays complete. Read-only (`read`).',
+        'Take a PNG with numbered boxes painted over candidate elements, so a vision read can point at refs ("click 2") instead of estimating coordinates. Each candidate is a bare `{ref}` (its box comes from the ref table, resolved the way a click resolves it, so a ref from `snapshot` or `find` works as is; a ref the table has never seen is named in `warnings`) or a full `find` candidate row passed through. `label:"index"` (default) paints 1..N and returns an `{index→ref}` mapping, `"ref"` paints the `eN` ref, `"role"` paints the role. The numbers share the `eN` ref namespace, so `mapping["2"] === "e7"`. A candidate with `bbox:null` (clipped or off-screen) stays in `marks` with `painted:false`. A temporary in-page overlay is removed before return. Use `screenshot` when you do not need marks.',
       inputSchema: {
         candidates: z
           .array(z.union([z.object({ ref: z.string() }).passthrough(), z.object({}).passthrough()]))
           .min(1)
           .max(50)
           .describe(
-            "Either `{ref}` rows (looked up against the current snapshot for bbox) OR full find() candidate rows (passed through). Mix-and-match allowed. Cap 50.",
+            "Either `{ref}` rows (box resolved through the ref table) OR full find() candidate rows (passed through). Mix-and-match allowed. Cap 50.",
           ),
         label: z
           .enum(["index", "ref", "role"])
@@ -162,7 +162,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
         "Bind a viewport rectangle to a mnemonic so a sub-agent can re-select the same media segment / timeline row without re-deriving coordinates (drift). Resolve it later with `region`. Per-session.",
       inputSchema: {
         name: z.string().describe('Mnemonic, e.g. "matching_audio_clip".'),
-        box: BOX_SCHEMA,
+        box: BOX_SCHEMA.describe("Viewport rectangle `{x, y, width, height}` in CSS px."),
         ...SESSION_ARG,
       },
     },
@@ -187,7 +187,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       capability: "human",
       description:
         "Resolve a `name_region` mnemonic to its `{ box, center }`. Pass `center` to a coords-based action (`click({coords})`) to act on the bound region.",
-      inputSchema: { name: z.string(), ...SESSION_ARG },
+      inputSchema: { name: z.string().describe("Name given to `name_region`."), ...SESSION_ARG },
     },
     async ({ name, session }) => {
       const g = gateCheck("region");
@@ -220,17 +220,43 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
     {
       capability: "read",
       description:
-        "Drive an action in one session and sample a metric in ANOTHER over the same window, in one call — for realtime-propagation assertions (an action in session A should reflect in session B within a freshness budget). `action` is `{tool,args}` from the batch whitelist, dispatched in `actionSession`; the document-scroller `metric` is traced in `sampleSession`. Returns `{ action: <inner result>, sample }`.",
+        "Run an action in one session and trace a metric in another session over the same window, to assert that a change in session A reaches session B within a time budget. Use `act_and_sample` when one session does both. The inner `action` runs in `actionSession`; the document-scroller `metric` is traced in `sampleSession`. Load the page in each session first. Returns `{ action: <inner result>, sample }`.",
       inputSchema: {
-        action: z.object({ tool: z.string(), args: z.record(z.string(), z.unknown()).optional() }),
-        actionSession: z.string().describe("Session the action runs in."),
-        sampleSession: z.string().describe("Session whose page is sampled."),
+        action: z
+          .object({
+            tool: z.string().describe("Inner tool name (batch whitelist)."),
+            args: z
+              .record(z.string(), z.unknown())
+              .optional()
+              .describe("Inner tool args (same shape as a top-level call)."),
+          })
+          .describe(
+            "The inner call `{tool, args}`. Any batchable tool except `batch`, `await_human`, recording tools and this tool.",
+          ),
+        actionSession: z.string().describe("Session id the action runs in."),
+        sampleSession: z.string().describe("Session id whose page is sampled."),
         metric: z
           .enum(ELEMENT_METRICS)
           .describe("Fixed metric (document scroller of sampleSession)."),
-        durationMs: z.number().int().positive().max(30_000),
-        everyFrame: z.boolean().optional(),
-        intervalMs: z.number().int().positive().max(5000).optional(),
+        durationMs: z
+          .number()
+          .int()
+          .positive()
+          .max(30_000)
+          .describe("Trace window in ms (max 30000)."),
+        everyFrame: z
+          .boolean()
+          .optional()
+          .describe("Sample every animation frame. Default false: sample on a fixed interval."),
+        intervalMs: z
+          .number()
+          .int()
+          .positive()
+          .max(5000)
+          .optional()
+          .describe(
+            "Sample interval in ms (default 100, min 16). Ignored when everyFrame is true.",
+          ),
       },
     },
     async (args) => {

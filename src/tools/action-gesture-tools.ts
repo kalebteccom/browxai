@@ -30,9 +30,12 @@ export function registerActionGestureTools(
   // `$ref` dedup → every field renders identically.
   const gestureTarget = () =>
     z.object({
-      ref: z.string().optional().describe("Stable [eN] ref."),
-      selector: z.string().optional().describe("CSS / selectorHint."),
-      coords: z.object({ x: z.number(), y: z.number() }).optional().describe("Viewport CSS px."),
+      ref: z.string().optional().describe("Stable [eN] ref from snapshot() or find()."),
+      selector: z.string().optional().describe("CSS selector or a `selectorHint` from find()."),
+      coords: z
+        .object({ x: z.number(), y: z.number() })
+        .optional()
+        .describe("Viewport point in CSS px."),
     });
   type GestureTargetArg = { ref?: string; selector?: string; coords?: { x: number; y: number } };
   const toActionTarget = (o: GestureTargetArg) => {
@@ -47,12 +50,12 @@ export function registerActionGestureTools(
     {
       capability: "action",
       description:
-        "Drag from one target to another: press at `from`, move to `to` over `steps` points, release. Each of `from`/`to` is `{ref}|{selector}|{coords}` (element targets press the box centre). `preflight:true` instead probes the `from` point and returns what's under it (top hit element + `resizeRisk` when a resize-handle cursor is present) WITHOUT dragging — check it first so a narrow item's edge doesn't get resized instead of moved. For timeline scrub/trim, drag-reorder, slider, lasso.",
+        "Drag from one target to another with the mouse: press at `from`, move to `to` over `steps` points, release. `from` and `to` are each `{ref}|{selector}|{coords}` (element targets press the box centre). Set `preflight:true` to probe the `from` point and return what is under it (top hit element, plus `resizeRisk` when a resize-handle cursor is present) without dragging; run it first so a narrow item's edge is not resized instead of moved. For timeline scrub and trim, drag-reorder, sliders and lasso. Touch handlers ignore mouse events: use `gesture_swipe` there.",
       inputSchema: {
-        from: gestureTarget().describe("Drag start: {ref}|{selector}|{coords}."),
+        from: gestureTarget().describe("Drag start: one of ref, selector, coords."),
         to: gestureTarget()
           .optional()
-          .describe("Drag end: {ref}|{selector}|{coords}. Required unless `preflight:true`."),
+          .describe("Drag end: one of ref, selector, coords. Required unless `preflight:true`."),
         steps: z
           .number()
           .int()
@@ -120,9 +123,12 @@ export function registerActionGestureTools(
     "double_click",
     {
       capability: "action",
-      description: "Double-click a target (`{ref}|{selector}|{coords}`).",
+      description:
+        "Double-click a target, given as `{ref}|{selector}|{coords}`. Use `click` for a single click.",
       inputSchema: {
-        target: gestureTarget().describe("{ref}|{selector}|{coords}."),
+        target: gestureTarget().describe(
+          "Element or point to double-click: one of ref, selector, coords.",
+        ),
         ...SESSION_ARG,
       },
     },

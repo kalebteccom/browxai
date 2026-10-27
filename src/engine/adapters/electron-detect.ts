@@ -28,6 +28,7 @@
 // browser to learn something.
 
 import type { Browser } from "playwright-core";
+import { docsUrl } from "../../util/docs-links.js";
 
 /** `Electron/39.8.8`. Anchored on the token boundary so a page title or a path
  *  segment containing the word cannot match. */
@@ -72,7 +73,7 @@ const CHROMIUM_ATTACH_WARNING = [
   "    and authed tab is in scope of any page the agent visits.",
   "  - The CDP port is unauthenticated; any local process can attach.",
   "",
-  "  Managed mode (the default) avoids all of the above. See docs/threat-model.md.",
+  "  Managed mode (the default) avoids all of the above. See " + docsUrl.threatModel + ".",
   "================================================================",
 ].join("\n");
 
@@ -97,7 +98,7 @@ function electronAttachWarning(app: string, electron: string): string {
     "  --user-data-dir matches published EDR rules for infostealer cookie",
     "  theft (MITRE T1539). Expect your endpoint agent to flag it.",
     "",
-    "  Managed mode (the default) avoids all of the above. See docs/threat-model.md.",
+    "  Managed mode (the default) avoids all of the above. See " + docsUrl.threatModel + ".",
     "================================================================",
   ].join("\n");
 }

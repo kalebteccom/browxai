@@ -14,6 +14,7 @@ import { capabilitiesWith, type Capability } from "../util/capabilities.js";
 import { log } from "../util/logging.js";
 import type { ToolHost, ToolResponse } from "./host.js";
 import { activeSecretRegistries, maskToolResponse } from "./host-egress-mask.js";
+import { docsUrl } from "../util/docs-links.js";
 
 /** The createServer-owned pieces the plugin runtime needs that the shared
  *  `ToolHost` doesn't surface: the raw MCP server (for plugin-tool
@@ -54,7 +55,8 @@ export function warnNonFirstPartyPlugins(loaded: ReadonlyArray<PluginRecord>): v
       `${lines.join("\n")}\n` +
       "browxai does not sandbox plugins and gates every trust tier identically — a declared " +
       "capability list is disclosure, not enforcement. Audit with `plugins_list`. See " +
-      "docs/plugin-governance.md.",
+      docsUrl.pluginGovernance +
+      ".",
   );
 }
 
@@ -124,9 +126,9 @@ export async function wirePluginRuntime(
               requiredCapability: cap,
               activeCapabilities: [...caps.enabled],
               hint:
-                "Add the capability to BROWX_CAPABILITIES and restart the browxai server, e.g. " +
-                `BROWX_CAPABILITIES=${capabilitiesWith(cap)}. ` +
-                "`set_config` cannot enable it: a saved list can only narrow the capabilities the server started with.",
+                "Add the capability to `BROWX_CAPABILITIES` and restart the browxai server. The variable replaces the default set, so keep the defaults in it, e.g. " +
+                `\`BROWX_CAPABILITIES=${capabilitiesWith(cap)}\`. ` +
+                '`set_config` cannot enable it: capabilities are read once at server start, and a saved list can only narrow them. If it stays off after a restart, run `reset_config` to clear a saved list that omits it, then check `get_config({scope:"resolved"}).capabilities`.',
             },
             null,
             2,
@@ -278,7 +280,7 @@ export async function wirePluginRuntime(
     "plugins_list",
     {
       description:
-        "List every declared browxai plugin and its load status. Each entry carries `{name, namespace, version, trust, capabilities, dependsOn, status, declaredAt, enabledAt?, statusReason?, tools, transitiveDeps}`. `status` is one of `loaded` (live), `disabled-by-capability-mismatch` (plugin declares a capability not in the server's active set), `disabled-by-cycle` (caught at startup — server start would have aborted, so this status only appears in test surfaces), `disabled-by-dep-missing` (a `dependsOn` target isn't installed or fails the version range), `disabled-by-namespace-conflict` (two plugins claimed the same namespace), or `load-error` (manifest invalid, entry module threw, etc.). Read-only — gates under `read`. The plugin runtime is RESOLVED ONCE AT SERVER START; this tool reports the live state, not what `plugins.json` currently declares (use `get_config({scope:'resolved'}).plugins` for that, plus the `pluginsPendingRestart` flag).",
+        'List every declared browxai plugin with its load status: `{name, namespace, version, trust, capabilities, dependsOn, status, declaredAt, enabledAt?, statusReason?, tools, transitiveDeps}`. `trust` is `kalebtec`, `community` or `local`; `kalebtec` needs a plain registry install of the exact `@browxai/*` name recorded in `plugins-lock.json`. `status` is `loaded`, `disabled-by-capability-mismatch` (the plugin declares a capability the server lacks: add it to `BROWX_CAPABILITIES` and restart), `disabled-by-cycle`, `disabled-by-dep-missing` (a `dependsOn` target is missing or fails its version range), `disabled-by-namespace-conflict` or `load-error` (see `statusReason`). The runtime resolves once at server start, so this reports live state, not the current `plugins.json`: compare `get_config({scope:"resolved"}).plugins` and its `pluginsPendingRestart` flag. Use `plugins_info` for one plugin\'s tools.',
       capability: PLUGIN_INFO_TOOL_CAPABILITY.plugins_list,
       inputSchema: {},
     },
@@ -315,12 +317,14 @@ export async function wirePluginRuntime(
     "plugins_info",
     {
       description:
-        "Full manifest + tool registry dump for ONE plugin. Returns `{name, version, namespace, trust, capabilities, dependsOn, transitiveDeps, status, tools: [{name, description, inputSchema?}]}` so an operator can audit what a plugin contributes to the running surface. Read-only — gates under `read`.",
+        "Dump one plugin's manifest and tool registry: `{name, version, namespace, trust, capabilities, dependsOn, transitiveDeps, status, tools: [{name, description, inputSchema?}]}`, to check what it adds to the running surface. Use `plugins_list` to see every plugin and its status.",
       capability: PLUGIN_INFO_TOOL_CAPABILITY.plugins_info,
       inputSchema: {
         name: z
           .string()
-          .describe('npm package name of the plugin (e.g. "@browxai/plugin-example").'),
+          .describe(
+            'npm package name of the plugin, e.g. "@browxai/plugin-example". Names come from `plugins_list`.',
+          ),
       },
     },
     async ({ name }: { name: string }) => {

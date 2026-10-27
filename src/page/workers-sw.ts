@@ -73,6 +73,10 @@ export class WorkersSwChannel {
    *  URL reuses the id, so `worker_messages_read` and `workers_list` agree on
    *  which SW is `sw-N`, and the id survives the SW stopping and restarting. */
   private swIdByUrl = new Map<string, string>();
+  /** The ids `liveWorkers` has handed out, so a worker this session saw live.
+   *  `list` shows a stopped row only for these: a URL the page's own message
+   *  ring named has an id too, but no worker was ever seen behind it. */
+  private seenLive = new Set<string>();
   private nextSwId = 1;
   /** Active fetch interceptors. Re-add of the same pattern replaces. */
   private fetchInterceptors = new Map<string, ActiveFetchIntercept>();
@@ -269,22 +273,34 @@ export class WorkersSwChannel {
       if (policy && !isOriginAllowed(url, policy)) continue;
       const id = this.idForUrl(url);
       if (!id) continue;
+      this.seenLive.add(id);
       byId.delete(id);
       byId.set(id, { id, url, worker });
     }
     return [...byId.values()];
   }
 
-  /** Listings for the SWs Playwright currently holds for the context (the
-   *  `sw-*` family). Playwright drops a SW when its target goes away, so a
-   *  stopped SW is not listed and every listed one is `running`. */
+  /** Listings for the `sw-*` family: the SWs Playwright currently holds for the
+   *  context (`running`), then every other id this session saw live whose origin
+   *  `policy` allows (`stopped`). Playwright drops a SW when its target goes
+   *  away, so a stopped SW is no longer live, but a message it posted still
+   *  carries its id. An id minted only from the page's message ring is not
+   *  listed, because the page can name any URL it likes. */
   list(context: BrowserContext, policy?: OriginPolicy): WorkerListing[] {
-    return this.liveWorkers(context, policy).map(({ id, url }) => ({
+    const live = this.liveWorkers(context, policy);
+    const liveIds = new Set(live.map((w) => w.id));
+    const out: WorkerListing[] = live.map(({ id, url }) => ({
       workerId: id,
       type: "service",
       url,
       state: "running",
     }));
+    for (const [url, id] of this.swIdByUrl) {
+      if (liveIds.has(id) || !this.seenLive.has(id)) continue;
+      if (policy && !isOriginAllowed(url, policy)) continue;
+      out.push({ workerId: id, type: "service", url, state: "stopped" });
+    }
+    return out;
   }
 
   /** Dispatch a `MessageEvent` into the matching SW global with `Worker.evaluate`. */
@@ -398,12 +414,15 @@ export class WorkersSwChannel {
    *  script URL. The page owns that ring and can return anything, so the input
    *  is untyped: only the last `SW_RING_MAX` well-formed entries are kept, and
    *  every field is coerced and bounded. */
-  ingestPageMessages(drained: unknown): void {
+  ingestPageMessages(drained: unknown, policy?: OriginPolicy): void {
     if (!Array.isArray(drained)) return;
     for (const m of drained.slice(-SW_RING_MAX)) {
       if (typeof m !== "object" || m === null) continue;
       const { url, data, at } = m as { url?: unknown; data?: unknown; at?: unknown };
       const scriptUrl = typeof url === "string" ? url.slice(0, 2048) : "";
+      // A SW on an origin the policy does not allow is not listed, so its
+      // messages are not returned either.
+      if (policy && !isOriginAllowed(scriptUrl, policy)) continue;
       // A page can name any URL it likes; past SW_URL_MAX distinct ones the
       // unknown URLs are dropped so the id index stays bounded.
       const id = this.idForUrl(scriptUrl);

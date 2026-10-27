@@ -86,7 +86,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
     {
       batchable: true,
       description:
-        "Inspect browxai configuration. Default returns the fully *resolved* view (precedence: built-in defaults < env [legacy BROWX_*] < user < project < session). Pass `scope` to see one raw pre-merge layer. Config is browxai-managed — change it with `set_config`, never by hand-editing files or env.",
+        "Show browxai configuration. By default it returns the fully resolved view (precedence: built-in defaults, then env `BROWX_*`, then the user, project and session layers). Pass `scope` to see one raw pre-merge layer. Change config with `set_config` and `reset_config`, not by editing files or env.",
       inputSchema: {
         scope: z
           .enum(["defaults", "env", "user", "project", "session", "resolved"])
@@ -235,7 +235,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
         batchable: true,
         capability: "self-approval",
         description:
-          'Pre-approve one or more confirm-required scopes for a TTL window, so confirm hooks for those scopes pass without asking the human. Requires the off-by-default `self-approval` capability: the confirm hooks exist to stop the agent\'s own actions, and this tool lets the agent answer them itself, so the operator has to opt in at server start. Refused with `requiredCapability: "self-approval"` when the capability is not active. Each grant + consume is logged for audit. Falls back to asking the human when no grant covers the scope. Keep `ttlSeconds` short.',
+          'Pre-approve one or more confirm-required scopes for a time window, so the confirm hooks for those scopes pass without asking the human. Requires the `self-approval` capability (off by default): the hooks exist to stop the agent\'s own actions, so the operator opts in at server start. Without it the call is refused with `requiredCapability:"self-approval"`. Each grant and use is logged. A scope with no grant still asks the human. Keep `ttlSeconds` short.',
         inputSchema: {
           scopes: z
             .array(
@@ -286,7 +286,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
     {
       batchable: true,
       description:
-        "List live pre-approvals from `approve_actions` — scope, grantedAt, expiresAt, uses, remainingMs. Audit helper.",
+        "List live pre-approvals from `approve_actions`: scope, grantedAt, expiresAt, uses, remainingMs.",
       inputSchema: {},
     },
     async () => ({

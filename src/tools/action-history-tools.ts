@@ -23,7 +23,8 @@ export function registerActionHistoryTools(
     {
       capability: "navigation",
       batchable: true,
-      description: "Navigate back in history. Returns an ActionResult.",
+      description:
+        "Go back one entry in the session history. The origin rules apply to the page you land on. Use `navigate` for a new URL. Returns an ActionResult.",
       inputSchema: { ...ACTION_OPTS },
     },
     async (args) => {
@@ -46,7 +47,8 @@ export function registerActionHistoryTools(
     {
       capability: "navigation",
       batchable: true,
-      description: "Navigate forward in history. Returns an ActionResult.",
+      description:
+        "Go forward one entry in the session history, after a `go_back`. The origin rules apply to the page you land on. Returns an ActionResult.",
       inputSchema: { ...ACTION_OPTS },
     },
     async (args) => {
@@ -70,10 +72,10 @@ export function registerActionHistoryTools(
       capability: "navigation",
       batchable: true,
       description:
-        "resize a session's viewport mid-flight (responsive-breakpoint testing). `page.setViewportSize` re-lays-out and commonly triggers responsive re-render / lazy-load — returns an ActionResult so `structure` / `snapshotDelta` / `network` show what changed. Only the *size* changes live; full device emulation (isMobile/touch/UA/DPR) is creation-time — set it via `open_session({ device })`.",
+        "Resize the session's viewport mid-session, for responsive-breakpoint checks. A resize often triggers a responsive re-render or lazy-load, so the ActionResult's `structure`, `snapshotDelta` and `network` show what changed. Only the size changes live. Device emulation (mobile flag, touch, user agent, pixel ratio) is set at creation with `open_session({ device })`.",
       inputSchema: {
-        width: z.number().int().positive().describe("CSS px."),
-        height: z.number().int().positive().describe("CSS px."),
+        width: z.number().int().positive().describe("Viewport width in CSS px."),
+        height: z.number().int().positive().describe("Viewport height in CSS px."),
         ...TIMEOUT_ARG,
         ...SESSION_ARG,
       },

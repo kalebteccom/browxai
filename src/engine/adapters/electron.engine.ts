@@ -33,6 +33,7 @@ import { capabilitiesFor } from "../capabilities.js";
 import { playwrightSubstrateBundle } from "../../page/substrate-bundle.js";
 import { playwrightPostWire } from "../../session/playwright-post-wire.js";
 import { attachByobDesktop } from "../../session/byob-attach.js";
+import { docsUrl } from "../../util/docs-links.js";
 
 async function makeElectronAdapter(opts: SessionOptions): Promise<BrowserSession> {
   const mode = opts.launchMode ?? "managed";
@@ -49,7 +50,9 @@ async function makeElectronAdapter(opts: SessionOptions): Promise<BrowserSession
       "(e.g. `/Applications/Slack.app/Contents/MacOS/Slack --remote-debugging-port=9333`), " +
       "then point browxai at it with BROWX_ATTACH_CDP=http://127.0.0.1:9333 and grant the " +
       "`byob-attach` capability. Note that the port is UNAUTHENTICATED for the app's whole " +
-      "lifetime and the app holds a logged-in session: see docs/threat-model.md before you do " +
+      "lifetime and the app holds a logged-in session: see " +
+      docsUrl.threatModel +
+      " before you do " +
       "this to an app that matters.",
   );
 }

@@ -12,10 +12,12 @@ adapters. All four ship from this repo.
 
 ```sh
 # 1. Install by package name (workspace-rooted, see below).
-$ browxai plugin install @browxai/plugin-figma
+browxai plugin install @browxai/plugin-figma
 
-# 2. Start the server. Keep the four default capabilities in the list and add
-#    what the plugin declares (figma needs eval and canvas).
+# 2. Set the capabilities for the server, in your MCP client's `env` block
+#    (shown here as a shell prefix). Keep the four default capabilities in the
+#    list and add what the plugin declares (figma needs eval and canvas).
+#    Run by hand, browxai waits for a client on stdin.
 $ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
 
 # Optional: check the declaration, install and manifests without running plugin code.
@@ -23,7 +25,14 @@ $ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
 $ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai doctor
 ```
 
-Then call `plugins_list()` from your agent and look for
+Then set the same `BROWX_CAPABILITIES` value in your MCP client's entry for
+browxai (its `env`), and restart the client. The server reads its environment
+once at start. Run by hand, `browxai` only waits for a client on stdio.
+
+The install writes under the workspace root, so run it with the same
+`BROWX_WORKSPACE` your MCP entry sets, or the server will not see the plugin.
+
+Call `plugins_list()` from your agent and look for
 `status: "loaded"`. A plugin whose capabilities are missing from
 `BROWX_CAPABILITIES` shows `disabled-by-capability-mismatch` and the
 reason. Every first-party plugin README says which capabilities it
@@ -34,7 +43,7 @@ needs.
 The happy path is an npm install by package name:
 
 ```sh
-$ browxai plugin install @browxai/plugin-figma
+browxai plugin install @browxai/plugin-figma
 ```
 
 During plugin development (or from a checkout of this repo), install
@@ -46,9 +55,9 @@ from your shell's working directory) or absolute. The CLI records the
 
 ```sh
 # Dev-loop: build the plugin, then install its directory by path.
-$ pnpm build                                            # in the browxai repo
-$ browxai plugin install file:./packages/plugins/figma
-$ browxai plugin list
+pnpm build                                            # in the browxai repo
+browxai plugin install file:./packages/plugins/figma
+browxai plugin list
 ```
 
 Every install writes under the workspace root (`$BROWX_WORKSPACE`, default `~/.browxai/`):
@@ -103,9 +112,9 @@ package-manager install inside `<workspace>/plugins/` (reconciling
 the lock pin for every plugin declared in `plugins.json`:
 
 ```sh
-$ browxai plugin sync
-browxai plugin: syncing 4 declared plugin(s)
-browxai plugin: sync done. Server restart required — …
+browxai plugin sync
+# browxai plugin: syncing 4 declared plugin(s)
+# browxai plugin: sync done. Server restart required — …
 ```
 
 Use it when the install dir has drifted (a wiped `node_modules/`, a
@@ -123,11 +132,11 @@ Each `✗` comes with a one-line fix, usually `browxai plugin sync`.
 ## Other CLI subcommands
 
 ```sh
-$ browxai plugin list                       # list declared plugins
-$ browxai plugin info <pkg>                 # full manifest + lock entry
-$ browxai plugin remove <pkg>               # uninstall
-$ browxai plugin upgrade [<pkg>]            # upgrade one plugin, or all
-$ browxai plugin sync                       # reconcile installed dir with plugins.json
+browxai plugin list                       # list declared plugins
+browxai plugin info <pkg>                 # full manifest + lock entry
+browxai plugin remove <pkg>               # uninstall
+browxai plugin upgrade [<pkg>]            # upgrade one plugin, or all
+browxai plugin sync                       # reconcile installed dir with plugins.json
 ```
 
 ## MCP introspection
@@ -159,8 +168,10 @@ the fixture the runtime keystone test loads.
 - `kalebtec`: Kalebtec-maintained plugins (`@browxai/plugin-*` on
   npm), installed from the registry under that exact name. An alias,
   git or tarball install of the same name is `community`.
-- `community`: third-party npm plugins
-  (`browxai-plugin-*` or `@<org>/browxai-plugin-*`).
+- `community`: every other registry, git or tarball install, including an
+  `@browxai/*` name installed by alias. Third-party plugins are published
+  as `browxai-plugin-*` or `@<org>/browxai-plugin-*` by convention, and the
+  name does not change the tier.
 - `local`: installed from a file path during development
   (`browxai plugin install file:/abs/path/to/plugin`).
 

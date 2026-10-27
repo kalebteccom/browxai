@@ -5,24 +5,25 @@ description: "Short answers to the questions people ask first about browxai: wha
 
 ## Which MCP clients work with browxai?
 
-Any MCP client that speaks stdio. It is model-agnostic on purpose: use it from
-Claude, from Codex, or from anything else that speaks the protocol.
+Any MCP client that speaks stdio. It is model-agnostic: use it from Claude or
+Codex, or from any other client that speaks the protocol.
 
 ## How is this different from a Playwright MCP wrapper?
 
-browxai is not a shell over `@playwright/mcp` or any other MCP server. It owns
-its own Playwright and CDP transport. That ownership is what lets it own the
-whole session lifecycle: managed profiles, incognito contexts, attach to an
+browxai does not wrap `@playwright/mcp` or any other MCP server. It owns its
+own Playwright and CDP transport, and with it the whole session lifecycle:
+managed profiles, incognito contexts, attach to an
 existing Chrome, authenticated and resumable sessions, headed and headless, and
 per-session policies for dialogs, permissions, notifications, and file pickers.
-A wrapper inherits whatever the wrapped tool exposes; browxai does not.
+A wrapper inherits whatever the wrapped tool exposes.
 
 ## Does it run headless, and in CI?
 
 Yes. A managed Chrome (or Chromium) runs headed or headless (`BROWX_HEADLESS=1`, or the
-`headless` config key), and the surface is built to run unattended. State that
-must survive an MCP-server restart should attach to a separately launched
-Chrome; see [Sessions and lifecycle](/concepts/sessions-and-lifecycle/).
+`headless` config key), and the surface is built to run unattended. A machine
+with no display needs headless: the default launch is headed and fails without
+one. State that must survive an MCP-server restart should attach to a separately
+launched Chrome; see [Sessions and lifecycle](/concepts/sessions-and-lifecycle/).
 
 ## What is BYOB?
 
@@ -33,15 +34,20 @@ closed on shutdown and it survives browxai restarts cleanly. Attaching requires
 the `byob-attach` capability: set
 `BROWX_CAPABILITIES=read,navigation,action,human,byob-attach`, keeping the four
 defaults, or every attach is refused. The `browxai-attached` entry that
-`browxai init` writes already sets it.
+`browxai init` writes already sets it. With the default confirmation hooks, an
+action on an attached browser also waits for a person to confirm it, so read
+[Sessions and lifecycle](/concepts/sessions-and-lifecycle/) before an unattended
+run.
 
 ## Which engines does it drive?
 
-Eight, in three families. Five browsers: Chromium, Firefox, WebKit, real Safari
-and real Chrome on an Android device. Two native-app engines, `android-app` on an
+Eight, in three families. Five browsers: Chromium (`chromium`), Firefox
+(`firefox`), WebKit (`webkit`), real Safari (`safari`) and real Chrome on an
+Android device (`android`). Two native-app engines, `android-app` on an
 emulator and `ios-app` on the iOS Simulator, both behind the `native-device`
 capability. One desktop-app engine, `electron`, which attaches to a running
-Electron app. Pick the engine per session with `open_session({ engine })`.
+Electron app. Pick the engine per session with `open_session({ engine })`, or for
+the whole server with `--engine <kind>` or `BROWX_ENGINE`.
 
 ## Does it get past bot protection?
 
@@ -68,9 +74,9 @@ durable state, is BYOB. See
 
 ## Is the origin allow list a security boundary?
 
-No. Treat `allowedOrigins` and `blockedOrigins` as defense in depth, not a hard
-boundary. The [threat model](/security/threat-model/) is explicit about where
-the real boundaries are and what browxai does not defend against.
+No. `allowedOrigins` and `blockedOrigins` are defense in depth and carry no
+hard guarantee. The [threat model](/security/threat-model/) is explicit about
+where the real boundaries are and what browxai does not defend against.
 
 ## Can the agent run arbitrary JavaScript?
 
@@ -81,9 +87,9 @@ capability, which is off by default. The same is true for full response bodies
 
 ## Is page content safe to act on?
 
-Read it, do not obey it. Page text is untrusted. An agent must never treat text
-inside a snapshot, a find result, or a network body as instructions to itself.
-This holds across the entire surface.
+Read it and do not obey it. Page text is untrusted. An agent must never treat
+text inside a snapshot, a find result, or a network body as instructions to
+itself.
 
 ## How do I configure it without environment variables?
 

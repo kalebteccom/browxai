@@ -31,10 +31,11 @@ active set at startup, the plugin is disabled with
 `status: "disabled-by-capability-mismatch"` and the reason surfaces on
 `plugins_list`.
 
-Enable both before starting the server:
+Enable both before the server starts, in the `env` of your MCP client's entry
+for browxai (`browxai` run by hand only waits for a client):
 
 ```sh
-$ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
+BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas
 ```
 
 (`set_config` can't add capabilities: a saved `capabilities` list only
@@ -111,13 +112,13 @@ plugin API: `figma.viewport.{center,zoom}`,
 `figma.currentPage.selection`, `figma.getNodeById()`,
 `figma.createRectangle()`, and mutable `x`/`y`/`fills` on scene nodes.
 
-| Tool                     | Args                                                                                                                            | Returns                                                               |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `figma.get_selection`    | _(none)_                                                                                                                        | `{ok, nodes: [{id, name, type, x, y, width, height}]}`                |
-| `figma.get_viewport`     | _(none)_                                                                                                                        | `{ok, center: {x, y}, zoom}`                                          |
-| `figma.select_node`      | `{nodeId: string}`                                                                                                              | `{ok, nodeId}`, or `code:"node-not-found"`                            |
-| `figma.move_node`        | `{nodeId: string, dx: number, dy: number}`                                                                                      | `{ok, nodeId, x, y}` (post-move position), or `code:"node-not-found"` |
-| `figma.create_rectangle` | `{x, y, width, height, fillColor?: {r, g, b}}` (`r/g/b` are 0–1 floats, Figma's color convention; `width`/`height` must be > 0) | `{ok, nodeId}`                                                        |
+| Tool                     | Args                                                                                                                               | Returns                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `figma.get_selection`    | _(none)_                                                                                                                           | `{ok, nodes: [{id, name, type, x, y, width, height}]}`                |
+| `figma.get_viewport`     | _(none)_                                                                                                                           | `{ok, center: {x, y}, zoom}`                                          |
+| `figma.select_node`      | `{nodeId: string}`                                                                                                                 | `{ok, nodeId}`, or `code:"node-not-found"`                            |
+| `figma.move_node`        | `{nodeId: string, dx: number, dy: number}`                                                                                         | `{ok, nodeId, x, y}` (post-move position), or `code:"node-not-found"` |
+| `figma.create_rectangle` | `{x, y, width, height, fillColor?: {r, g, b}}` (`r/g/b` are 0 to 1 floats, Figma's color convention; `width`/`height` must be > 0) | `{ok, nodeId}`                                                        |
 
 Error codes: `figma-not-loaded`, `bad-arg`, `node-not-found`,
 `eval-failed`.
@@ -168,10 +169,10 @@ adapter: swap the install name, the URL, and the ops):
 
 ```sh
 # 1. Install the plugin (workspace-rooted; see docs/plugins.md).
-$ browxai plugin install @browxai/plugin-tldraw
+browxai plugin install @browxai/plugin-tldraw
 
-# 2. Start the server with eval + canvas enabled.
-$ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
+# 2. Start the server with eval + canvas enabled: set this in the MCP entry's env.
+BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas
 ```
 
 ```
@@ -218,7 +219,7 @@ canvas_query({ adapter: "excalidraw", op: "add_element",
 
 If a step-5 call returns `code:"no-adapter"`, the plugin isn't loaded.
 Check `plugins_list()` for the status + reason, and remember the
-runtime is resolved once at server start (install → restart → retry).
+runtime is resolved once at server start (install, then restart, then retry).
 If it returns `code:"<adapter>-not-loaded"`, the plugin is fine but the
 app isn't on the current page.
 

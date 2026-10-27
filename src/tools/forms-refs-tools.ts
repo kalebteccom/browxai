@@ -20,7 +20,7 @@ export function registerFormsRefsTools(
       capability: "human",
       batchable: true,
       description:
-        'Bind a mnemonic name to a ref. Subsequent action tools accept `named: "<name>"` in place of `ref` / `selector`. Refs are stable across snapshots (by element-key), so the binding survives navigation as long as the element persists. Carry session-wide anchor sets without remembering the bare `eN`s.',
+        'Bind a name you choose to a ref, so later calls can pass `named: "<name>"` in place of `ref` or `selector`. Refs are keyed by element, so the binding survives snapshots and navigation while the element exists. If the element is gone the name stops resolving: call `find` or `snapshot` and bind it again. List bindings with `list_named_refs`. Per-session.',
       inputSchema: {
         name: z.string().describe('Mnemonic (e.g. "main_tab", "library_tab")'),
         ref: z.string().describe("The ref to bind to this name"),
@@ -42,7 +42,7 @@ export function registerFormsRefsTools(
     {
       capability: "read",
       batchable: true,
-      description: "List all current name → ref bindings created via name_ref.",
+      description: "List this session's current name to ref bindings created with `name_ref`.",
       inputSchema: { ...SESSION_ARG },
     },
     async ({ session }) => {
@@ -67,7 +67,7 @@ export function registerFormsRefsTools(
       capability: "human",
       batchable: true,
       description:
-        "Tell browxai which candidate was the right answer to a prior `find(query)`. Subsequent finds whose query overlaps the token set will boost candidates matching this winner's identity (testId, or role+name). Session-scoped, in-memory, capped at 100 entries with LRU eviction. The learning is intentionally simple — a 'don't re-do that mistake' signal, not an ML model.",
+        "Record which candidate was the right answer to an earlier `find(query)`. Later finds with an overlapping query rank candidates with that identity (testId, or role and name) higher. Per-session, in memory, capped at 100 entries (least recently used dropped).",
       inputSchema: {
         query: z
           .string()

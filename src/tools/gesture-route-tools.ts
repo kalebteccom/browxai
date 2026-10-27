@@ -78,7 +78,7 @@ export function registerGestureRouteTools(
     {
       capability: "action",
       description:
-        "Intercept requests matching `urlPattern` (Playwright glob) and fulfil every match with one canned response. For substituting a backend response in QA. Per-session; discarded with the session or via `unroute`.",
+        "Intercept requests matching `urlPattern` (a Playwright glob) and answer every match with one canned response, to stand in for a backend in QA. Use `route_queue` for different responses per request and `unroute` to remove a route. Per session; dropped when the session closes.",
       inputSchema: {
         urlPattern: z.string().describe("Playwright URL glob, e.g. `**/api/records*`."),
         method: z
@@ -119,10 +119,13 @@ export function registerGestureRouteTools(
     {
       capability: "action",
       description:
-        "Intercept `urlPattern` and fulfil *successive* matches from `responses[]` (one per request, in order); once exhausted, matches fall through to the real network. Each response carries its own `delayMs` — give response #1 a long delay and #2 a short one to make backend responses **arrive out of request order** (the race-condition QA case). Per-session.",
+        "Intercept `urlPattern` and answer successive matches from `responses[]` (one per request, in order); once the list is used up, matches go to the real network. Each response has its own `delayMs`: give the first a long delay and the second a short one to make responses arrive out of request order (the race-condition case). Use `route` for one fixed response. Per session.",
       inputSchema: {
-        urlPattern: z.string().describe("Playwright URL glob."),
-        method: z.string().optional(),
+        urlPattern: z.string().describe("Playwright URL glob, such as `**/api/records*`."),
+        method: z
+          .string()
+          .optional()
+          .describe("HTTP method to match, such as GET. Other methods go to the real network."),
         responses: z
           .array(z.object(ROUTE_RESPONSE))
           .min(1)
@@ -149,10 +152,13 @@ export function registerGestureRouteTools(
     {
       capability: "action",
       description:
-        "Remove a route registered by `route`/`route_queue` (by `urlPattern`[+`method`]), or — with no `urlPattern` — every route this session registered.",
+        "Remove a route added by `route` or `route_queue`, by `urlPattern` (and `method`). With no `urlPattern` it removes every route this session added.",
       inputSchema: {
         urlPattern: z.string().optional().describe("Omit to clear ALL of this session's routes."),
-        method: z.string().optional(),
+        method: z
+          .string()
+          .optional()
+          .describe("HTTP method of the route to remove. Omit to match any method."),
         ...SESSION_ARG,
       },
     },

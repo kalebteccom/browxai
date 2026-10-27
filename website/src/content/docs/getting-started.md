@@ -9,14 +9,25 @@ any MCP client.
 
 ## Install
 
-You need Node 22 or newer. browxai drives the Google Chrome you already have
-installed, so no browser download is required on a machine with Chrome.
+You need Node 22 or newer (`node --version` tells you). browxai drives the
+Google Chrome you already have installed, so a machine with Chrome needs no
+browser download.
 
 ```bash
 npm install -g browxai
-browxai doctor                          # checks the environment and your setup
-npx playwright-core@1.64.1 install chromium    # optional, ~150 MB: the fallback when Chrome is missing
+browxai doctor
 ```
+
+`browxai doctor` checks the environment and prints a fix next to anything that
+fails. On a machine with no Google Chrome it fails until you add a browser:
+install Chrome, or fetch the bundled Chromium (about 150 MB).
+
+```bash
+npx playwright-core@1.64.1 install chromium
+```
+
+A bare Linux image also lacks the system libraries Chromium needs. Add
+`--with-deps` to that command to install them (it needs root).
 
 Firefox and WebKit sessions use their own Playwright builds
 (`npx playwright-core@1.64.1 install firefox webkit`).
@@ -25,37 +36,96 @@ A global install puts the `browxai` binary on your `PATH`, so an MCP client can
 launch it by name (`command: "browxai"`). The binary is the MCP server on the
 stdio transport. Run by hand in a terminal it just waits for a client, so use
 `browxai doctor` to check the machine instead: it reports the Node version, the
-browser, the workspace and your configuration, and prints a fix next to
-anything that fails.
+browser, the workspace and your configuration.
+
+On Linux and macOS, `npm install -g` can fail with `EACCES` when npm's global
+prefix sits in a root-owned directory. Don't reach for `sudo`. Either skip the
+global install and use `npx -y browxai` as the client's command ([how to wire it into a
+client](#wire-it-into-an-mcp-client)), or give npm a prefix in your home directory:
+
+```bash
+npm config set prefix ~/.npm-global
+```
+
+Then add `~/.npm-global/bin` to your `PATH` and run the install again.
 
 browxai launches the Google Chrome already installed on the machine, on one
 default profile per workspace (`<workspace>/profile`), so logins carry over
-between sessions. When there is no Chrome it falls back to Playwright's bundled
-Chromium. `browxai doctor` fails only when neither browser is present.
+between sessions. It looks for Google Chrome at its default install path on each
+OS, so a distro Chromium package is not picked up. When there is no Chrome it
+falls back to Playwright's bundled Chromium. `browxai doctor` fails only when
+neither browser is present.
 
 ## Wire it into an MCP client
 
-Add browxai to your client's MCP server config. For example, an `.mcp.json`:
+Add browxai to your client's MCP config. In Claude Code, one command does it:
 
-```jsonc
+```bash
+claude mcp add browxai -- browxai
+```
+
+Restart the client after any config change, then check that `browxai` shows as
+connected (in Claude Code, run `/mcp`).
+
+Every client below runs the same command, `browxai`. Without a global install,
+use `npx -y browxai` instead (`claude mcp add browxai -- npx -y browxai`).
+
+### Codex
+
+Add this to `~/.codex/config.toml`, or to `.codex/config.toml` in a project.
+Or run `codex mcp add browxai -- browxai`.
+
+```toml
+[mcp_servers.browxai]
+command = "browxai"
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+```
+
+The longer startup timeout helps when the client launches browxai through
+`npx -y`, which can take a while on first run. Options go in an `env` table:
+`env = { BROWX_HEADLESS = "1" }`.
+
+### Cursor
+
+Add this to `~/.cursor/mcp.json` for all projects, or `.cursor/mcp.json` for one:
+
+```json
 {
   "mcpServers": {
     "browxai": {
-      "command": "browxai",
-    },
-  },
+      "command": "browxai"
+    }
+  }
 }
 ```
 
-Prefer not to install globally? Use `{ "command": "npx", "args": ["-y", "browxai"] }`
-as the entry. Restart the client after editing its config, then check that
-`browxai` shows as connected (in Claude Code, run `/mcp`).
+### Other clients
+
+Each client keeps its list of servers under its own key in its own file.
+
+- **Claude Desktop**: key `mcpServers`.
+  macOS `~/Library/Application Support/Claude/claude_desktop_config.json`,
+  Windows `%APPDATA%\Claude\claude_desktop_config.json`.
+- **VS Code**: key `servers`, in `.vscode/mcp.json`.
+- **Windsurf**: key `mcpServers`, in `~/.codeium/windsurf/mcp_config.json`.
+- **Zed**: key `context_servers`, in `settings.json`. Its entry has a different
+  shape, so copy it from Zed's MCP docs.
+
+For the three JSON clients, the entry is `"browxai": { "command": "browxai" }`
+under that key, as in the Cursor example.
 
 By default the server launches a **managed** Chrome on the workspace's default
 profile, headed, with the default capability set (`read`, `navigation`,
 `action`, `human`). That is the installed Google Chrome, or the bundled
-Chromium with a logged warning when Chrome is absent. Everything dangerous is
-opt-in. On a machine with no display, such as a Linux server or a container, set `BROWX_HEADLESS=1`.
+Chromium with a logged warning when Chrome is absent. Every capability outside
+that set is opt-in.
+
+A headed browser needs a display. On a machine without one, such as a Linux
+server or a container, the first session fails to open until you set
+`BROWX_HEADLESS=1` in the server's environment. In a JSON config that is an
+`env` entry next to `command`: `"env": { "BROWX_HEADLESS": "1" }`. With
+Claude Code, add `--env BROWX_HEADLESS=1` to `claude mcp add`.
 
 ### Common environment variables
 
@@ -64,7 +134,7 @@ opt-in. On a machine with no display, such as a Linux server or a container, set
 | `BROWX_WORKSPACE`    | Where all transient state lives (default `~/.browxai/`). Never `cwd`.                                                                                                                       |
 | `BROWX_HEADLESS`     | `1` or `true` launches headless.                                                                                                                                                            |
 | `BROWX_CAPABILITIES` | The full comma-separated capability set. It replaces the default, so keep `read,navigation,action,human` and add `eval`, `network-body`, `clipboard`, or `file-io` to opt into gated tools. |
-| `BROWX_ENGINE`       | Default engine, `chromium` unless set. Also `--engine <kind>`. All eight are in the [FAQ](/reference/faq/).                                                                                 |
+| `BROWX_ENGINE`       | Default engine, `chromium` unless set. Also `--engine <kind>`. The values are in the [FAQ](/reference/faq/).                                                                                |
 | `BROWX_ATTACH_CDP`   | Loopback CDP endpoint to attach to an existing Chrome (BYOB). Needs `byob-attach` in `BROWX_CAPABILITIES` too: `read,navigation,action,human,byob-attach`.                                  |
 
 See the [tool reference](/reference/tool-reference/) for the full configuration
@@ -84,24 +154,13 @@ For verification use `text_search`, `inspect`, and the read tools; for
 flaky or transient UI use `wait_for`, `sample`, and `act_and_sample`.
 
 Try it with a prompt such as "open https://example.com, snapshot it and tell me
-what the page says". The agent calls `navigate` and `snapshot`; a browser window
-opens and the heading and link come back as refs it can `click`.
+what the page says". The agent calls `navigate` and `snapshot`, and the heading
+and link come back as refs it can `click`. A Chrome window opens on a machine
+with a display. Headless runs show no window.
 
 ## When something does not work
 
-- **A session will not open and the error mentions a browser.** Run
-  `browxai doctor`. It names whether Chrome and the bundled Chromium are present.
-- **`profile-in-use`.** A browser profile is open in one browser at a time. A
-  second session on the workspace default profile, or a Chrome opened by
-  `browxai chrome start` or `chrome login`, holds it. Quit that Chrome, pass
-  `profile: "name"` to `open_session`, or use `mode: "incognito"`.
-- **A tool answers that it is disabled.** Its capability is off. Add it to
-  `BROWX_CAPABILITIES` together with the default four and restart the server, as
-  capabilities are read once at start.
-- **A site shows a challenge page.** browxai does not defeat or spoof bot
-  detection, so it cannot clear the challenge for you. `browxai chrome login`
-  opens the same Chrome profile with nothing attached so you can clear it by
-  hand. See [Sites behind bot protection](/guides/sites-behind-bot-protection/).
+Run `browxai doctor`. For an error string, see [Troubleshooting](/guides/troubleshooting/).
 
 ## Where to go next
 

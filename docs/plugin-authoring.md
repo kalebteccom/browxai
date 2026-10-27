@@ -77,7 +77,7 @@ Every field:
   calls `register(api)` exactly once.
 - **`capabilities`** (default `[]`): capabilities the plugin's tools
   need. Subset of the operator's enabled set at load time. Mismatch
-  → plugin disabled (`status: "disabled-by-capability-mismatch"`),
+  Returns plugin disabled (`status: "disabled-by-capability-mismatch"`),
   server still starts.
 - **`trust`** (optional): `kalebtec | community | local`. Leave it out
   unless you publish under `@browxai/*`. A `kalebtec` claim holds only
@@ -162,12 +162,12 @@ would otherwise be unique. This rule:
 
 When your plugin calls `api.callTool(target, args)`:
 
-- If `target` is a core browxai tool → **allowed** (implicit-root,
+- If `target` is a core browxai tool: **allowed** (implicit-root,
   always accessible).
-- If `target` is one of your OWN tools → **allowed**.
+- If `target` is one of your OWN tools: **allowed**.
 - If `target` is a tool owned by a plugin in your **transitively-
-  resolved** `dependsOn` set → **allowed**.
-- Otherwise → **rejected** with a structured error:
+  resolved** `dependsOn` set is **allowed**.
+- Otherwise: **rejected** with a structured error:
 
   ```json
   {
@@ -208,7 +208,7 @@ If your plugin's tools need a capability beyond the default set
 ```
 
 At load time the runtime checks every declared capability is in the
-server's active set. Mismatch → your plugin is disabled with status
+server's active set. A mismatch disables your plugin with status
 `disabled-by-capability-mismatch` and the reason surfaces on
 `plugins_list`. The operator can fix by adding the capability to
 `BROWX_CAPABILITIES` and restarting the server (a saved
@@ -231,8 +231,9 @@ declarations may come in a future minor version.
   installed from the registry under that exact name (no alias, git or
   tarball spec), with an integrity hash in `plugins-lock.json`.
   Reference plugins; same release/CI hygiene as browxai itself.
-- `community`: third-party npm packages
-  (`browxai-plugin-*` or `@<org>/browxai-plugin-*`).
+- `community`: every other registry, git or tarball install. Third-party
+  packages are published as `browxai-plugin-*` or `@<org>/browxai-plugin-*`
+  by convention, and the name does not change the tier.
 - `local`: file-path-installed plugins. Used during plugin
   development (`browxai plugin install file:/abs/path/to/my-plugin`).
 
@@ -246,10 +247,10 @@ During development, install your plugin's working directory by file
 path:
 
 ```sh
-$ pnpm build                                          # inside my-plugin/
-$ browxai plugin install file:./my-plugin             # a relative or an absolute path
-$ browxai plugin list
-$ browxai doctor                                      # plugins section: manifest, lock, drift
+pnpm build                                          # inside my-plugin/
+browxai plugin install file:./my-plugin             # a relative or an absolute path
+browxai plugin list
+browxai doctor                                      # plugins section: manifest, lock, drift
 ```
 
 A relative path resolves from your shell's working directory. The CLI

@@ -29,6 +29,7 @@ import type { SafariSessionHandle } from "../engine/index.js";
 import type { ToolHost, ToolResponse } from "./host.js";
 import { SecretRegistry } from "../util/secrets.js";
 import { makeFakeProvider, type CredentialResult } from "../util/credentials.js";
+import type { ProviderName } from "../util/credentials-contract.js";
 
 type CapturedHandler = (args: Record<string, unknown>) => Promise<ToolResponse>;
 
@@ -119,7 +120,12 @@ describe("solve_captcha — no Playwright page", () => {
 // get_credential binds the vault password to the origins the operator listed
 // for the account in BROWX_CREDENTIAL_ORIGINS, and refuses any other account.
 describe("get_credential — origin binding and account names", () => {
-  function captureGetCredential(opts: { pageUrl: string; origins?: Record<string, string[]> }): {
+  function captureGetCredential(opts: {
+    pageUrl: string;
+    origins?: Record<string, string[]>;
+    providerName?: ProviderName;
+    capabilities?: string[];
+  }): {
     handler: CapturedHandler;
     secrets: SecretRegistry;
     lookups: string[];
@@ -140,7 +146,7 @@ describe("get_credential — origin binding and account names", () => {
           } as CredentialResult);
         },
       },
-      "1password",
+      opts.providerName ?? "1password",
     );
     const host = {
       z,
@@ -149,10 +155,14 @@ describe("get_credential — origin binding and account names", () => {
       },
       gateCheck: () => undefined,
       entryFor: () => ({ secrets }),
-      caps: { enabled: new Set<string>(["secrets", "credentials"]) },
+      caps: { enabled: new Set<string>(opts.capabilities ?? ["secrets", "credentials"]) },
       credentialsResolved: {
         provider,
-        config: { provider: "1password", warnings: [], origins: opts.origins ?? {} },
+        config: {
+          provider: opts.providerName ?? "1password",
+          warnings: [],
+          origins: opts.origins ?? {},
+        },
       },
       targetFor: () => ({ url: () => Promise.resolve(opts.pageUrl) }),
     } as unknown as ToolHost;
@@ -171,6 +181,35 @@ describe("get_credential — origin binding and account names", () => {
     expect(String(body.error)).toContain('"acme"');
     expect(String(body.error)).toContain("acme=https://");
     expect(String(body.error)).toMatch(/restart/);
+    expect(lookups).toEqual([]);
+    expect(secrets.size()).toBe(0);
+  });
+
+  it("refuses with the oathtool reason, not an origin hint, when oathtool is the provider", async () => {
+    const { handler, lookups } = captureGetCredential({
+      pageUrl: "https://app.example.com/",
+      origins: { acme: ["https://app.example.com"] },
+      providerName: "oathtool",
+    });
+    const body = bodyOf(await handler({ account: "acme" }));
+    expect(body.ok).toBe(false);
+    expect(body.provider).toBe("oathtool");
+    expect(String(body.error)).toContain("TOTP seeds only");
+    expect(String(body.error)).toContain("BROWX_CREDENTIALS_PROVIDER");
+    expect(lookups).toEqual([]);
+  });
+
+  it("refuses before asking the vault when the secrets capability is off", async () => {
+    const { handler, secrets, lookups } = captureGetCredential({
+      pageUrl: "https://app.example.com/login",
+      origins: { acme: ["https://app.example.com"] },
+      capabilities: ["credentials"],
+    });
+    const body = bodyOf(await handler({ account: "acme" }));
+    expect(body.ok).toBe(false);
+    expect(body.provider).toBe("1password");
+    expect(String(body.error)).toContain("`secrets` capability is not enabled");
+    expect(String(body.error)).toContain("BROWX_CAPABILITIES");
     expect(lookups).toEqual([]);
     expect(secrets.size()).toBe(0);
   });

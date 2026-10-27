@@ -267,6 +267,19 @@ data has limits. The four first-party plugins move to 0.1.2, and zod moves to
 - **`export_session_report` redacts the page URL.** The `url` field now drops
   the query string, fragment and userinfo, the same way `network_read` shows
   URLs.
+- **Tool descriptions are clearer.** 199 of the 209 tool descriptions and 157
+  parameter descriptions are reworded to say what the tool does, when to use it
+  over a neighbour, its defaults and units, and the next step to try. Tool
+  names, schemas, defaults, error codes and the capability refusal wording are
+  unchanged.
+- **Error, doctor and warning text links the live docs site.** Refusals, doctor
+  rows, startup warnings and tool descriptions said `docs/threat-model.md` and
+  similar paths, which the npm package does not ship. They now give the
+  `https://browxai.com/` page for the threat model, the tool reference and the
+  plugin guides, and the engine matrix note links its file in the repository.
+- **The README links every docs, harness and brand page by absolute URL.** The
+  relative links to `docs/`, `deploy/` and `brand/` led nowhere from an
+  installed copy.
 
 ### Fixed
 
@@ -311,6 +324,14 @@ data has limits. The four first-party plugins move to 0.1.2, and zod moves to
   default browser, the `BROWX_CHANNEL` row says an unset channel uses the
   installed Chrome, the BYOB recipe uses the current profile directory, and the
   harness READMEs say Node 22 where they said Node 20.
+- **First-run docs and examples corrected.** The docs site fixes the install
+  block, MCP client wiring, headless setup and seven missing environment
+  variables, and says that attaching to an existing Chrome waits for a person to
+  answer each action in DevTools. The README SDK sample uses a valid `extract`
+  schema, pasted JSON configs have no trailing commas (a `plugins.json` that
+  failed to parse loaded no plugins and said nothing), and the origin allowlist
+  wording matches the code. `scripts/check-examples.mjs` (`pnpm check:examples`)
+  now checks the shell, JSON and `BROWX_*` examples in the docs in CI.
 - **First-party plugins no longer log an "untested combination" warning.** Their
   `browxaiVersion` range was `^0.7.0`, which excludes every later 0.x host. It is
   now `>=0.14.0` and reaches npm with the 0.1.2 plugin release. The plugin
@@ -340,6 +361,32 @@ data has limits. The four first-party plugins move to 0.1.2, and zod moves to
   plugins' `schema.d.ts` files tell consumers to write
   `import type { BrowxaiClientWithPlugins } from "browxai"`, which failed
   because only the SDK module defined it.
+- **`screenshot_marks` paints a bare `{ref}` candidate.** A ref from `snapshot`
+  or `find` came back with `bbox: null` and nothing painted when the DOM walk
+  had found it, and ten of them in a row ran past the 5 s limit because each
+  waited out its own 1 s probe in turn. A bare ref now resolves through the ref
+  table the way `click` does, all of them at once, and a ref the table has never
+  seen is named in `warnings`.
+- **`workers_list` keeps a stopped Service Worker in the list, and lists only
+  ones the session saw.** A Service Worker that has stopped keeps its `sw-N` id
+  and is listed with `state: "stopped"`, so the id `worker_messages_read`
+  returned still resolves. It appears as `stopped` only after the session has
+  seen it running, so a page cannot get script URLs of its own listed through
+  the message ring. Messages from a worker on an origin the origin rules do not
+  allow are no longer returned.
+- **`get_credential` refuses before contacting the credential provider when
+  `secrets` is off.** With `credentials` on and `secrets` off it used to ask the
+  vault first, which could show an unlock prompt from `op`, `bw` or `lpass` and
+  load the password into server memory before it refused. It now refuses first,
+  with the same message.
+- **`get_credential` says so when the provider is `oathtool`.** It used to
+  answer an unlisted account with the `BROWX_CREDENTIAL_ORIGINS` hint and
+  `"provider":"oathtool"`, a provider that holds TOTP seeds only. It now refuses
+  first, names `oathtool` as TOTP-only and points at
+  `BROWX_CREDENTIALS_PROVIDER`.
+- **`doctor` shows the `build` row only in a source checkout.** An installed
+  package printed `build  dist/cli.js exists (0d old)`, which says nothing
+  there. A missing `dist/cli.js` still fails the check.
 
 ### Dependencies
 

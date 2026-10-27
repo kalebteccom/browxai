@@ -9,31 +9,31 @@ lastUpdated: false
 
 import InstallCommand from "../../components/InstallCommand.astro";
 import ProjectFacts from "../../components/ProjectFacts.astro";
+import Shot from "../../components/Shot.astro";
+
+<nav class="browx-topnav not-content" aria-label="Site">
+  <a href="/getting-started/">Docs</a>
+  <a href="/security/threat-model/">Security</a>
+  <a href="https://github.com/kalebteccom/browxai">GitHub</a>
+</nav>
 
 <div class="browx-hero not-content">
   <div class="browx-hero-copy">
     <p class="browx-kicker">Open source MCP server</p>
-    <h1 class="browx-wordmark">brow<span class="x">x</span>ai</h1>
+    <div class="browx-wordmark">brow<span class="x">x</span>ai</div>
     <div class="browx-lede">
       browxai is an open source MCP server that lets an AI agent drive a web
       page or a native app with the same small set of tools.
     </div>
     <div class="browx-about">
-      An agent gets a compact, readable view of the page and a short list of
-      tools to find, click, fill and read it. browxai drives eight engines in
-      three families: five browsers (Chromium, Firefox, WebKit, real Safari
-      and real Chrome on an Android phone), two native-app engines on an
-      Android emulator and the iOS Simulator, and a desktop Electron app. By
-      default it launches the installed Google Chrome on one default profile
-      per workspace. Every capability past the default four (read, navigation,
-      action and human) starts off until you switch it on. It works with any MCP client over
-      stdio, and ships a typed TypeScript SDK.
+      An agent gets a compact view of the page and a short list of tools to find, click, fill and read it. browxai drives eight engines, and every capability past the default four starts off.
     </div>
     <div class="browx-cta">
       <a href="/getting-started/" class="browx-btn browx-btn--primary">Get started</a>
       <a href="/reference/tool-reference/" class="browx-btn browx-btn--ghost">Tool reference</a>
     </div>
     <InstallCommand command="npm install -g browxai" />
+    <p class="browx-install-note">Needs Node 22 or newer. Next, <a href="/getting-started/#wire-it-into-an-mcp-client">wire it into your MCP client</a>.</p>
   </div>
 
   <div class="browx-window" aria-hidden="true">
@@ -42,7 +42,7 @@ import ProjectFacts from "../../components/ProjectFacts.astro";
       <span class="browx-window-title">agent <span class="dot">·</span> snapshot()</span>
     </div>
     <div class="browx-snap">
-      <div class="browx-snap-note"># a page an agent can read, not a DOM dump</div>
+      <div class="browx-snap-note"># a page an agent can read</div>
       <div class="row">
         <span class="t-role">form</span>
         <span class="t-str">"Sign in"</span>
@@ -71,6 +71,21 @@ import ProjectFacts from "../../components/ProjectFacts.astro";
   </div>
 </div>
 
+<div class="browx-shots not-content">
+  <Shot
+    name="snapshot"
+    alt={{
+      wide: "A sample projects app at desktop width, run through browxai, annotated with element refs from the snapshot: e4 for the Projects link, e7 for the Account button, e10 for the search input and e13 for the first Open button.",
+      narrow:
+        "The same sample projects app at 390 px wide in its mobile layout, run through browxai, annotated with refs from the snapshot: e10 for the search input and e13 for the first Open button.",
+    }}
+    caption={{
+      wide: "A sample app run through browxai: the refs the agent can act on.",
+      narrow: "The same sample app at 390 px, in its mobile layout.",
+    }}
+  />
+</div>
+
 <ProjectFacts />
 
 <div class="browx-diagram not-content">
@@ -84,12 +99,7 @@ import ProjectFacts from "../../components/ProjectFacts.astro";
         <marker id="bx-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
           <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-text-accent)" />
         </marker>
-        <linearGradient id="bx-ring" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="var(--browx-aurora-bright)" />
-          <stop offset="1" stop-color="var(--browx-violet-600)" />
-        </linearGradient>
       </defs>
-      <circle class="bx-ring-glow" cx="160" cy="160" r="118" />
       <path class="bx-arc" d="M196 54 A118 118 0 0 1 266 124" marker-end="url(#bx-arrow)" />
       <path class="bx-arc" d="M266 196 A118 118 0 0 1 196 266" marker-end="url(#bx-arrow)" />
       <path class="bx-arc" d="M124 266 A118 118 0 0 1 54 196" marker-end="url(#bx-arrow)" />
@@ -116,119 +126,89 @@ import ProjectFacts from "../../components/ProjectFacts.astro";
     </div>
 
   </div>
+
+  <div class="browx-shots">
+    <span class="browx-shot-step">Find</span>
+    <Shot
+      name="marks"
+      alt={{
+        wide: "The sample projects app at desktop width, run through browxai, with numbered boxes over eight elements, each number mapped to a ref. Mark 3 is e7, the Account button, and mark 8 is e13, the first Open button.",
+        narrow: "The sample projects app at 390 px wide in its mobile layout, run through browxai, with numbered boxes over six elements, each number mapped to a ref. Mark 6 is e13, the first Open button.",
+      }}
+      caption={{
+        wide: "Sample app run through browxai: number the candidates, then say click 3.",
+        narrow: "Sample app at 390 px, mobile layout: number the candidates, then say click 6.",
+      }}
+    />
+    <span class="browx-shot-step">Act</span>
+    <Shot
+      name="act-diff"
+      alt={{
+        wide: "The sample projects app at desktop width, run through browxai, with the Account menu open after one click and the diff browxai returned: aria-expanded false to true and 6 nodes added.",
+        narrow: "The sample projects app at 390 px wide in its mobile layout, run through browxai, with the Account menu open after one click and the diff browxai returned: aria-expanded false to true and 6 nodes added.",
+      }}
+      caption={{
+        wide: "Sample app run through browxai: one click, one diff.",
+        narrow: "Sample app at 390 px, mobile layout: one click, one diff.",
+      }}
+    />
+  </div>
 </div>
 
 <div class="browx-section not-content">
   <h2 class="browx-section-title">What you get</h2>
-  <div class="browx-section-sub">
-    browxai owns its own transport to all eight engines it drives, so it owns
-    the whole session lifecycle. Where a task leaves the browser, for a native
-    app, a desktop app or your host machine, browxai follows it under a
-    capability you switch on.
-  </div>
 
-  <div class="browx-grid">
-    <div class="browx-card">
-      <span class="browx-card-mark">// surface</span>
-      <h3>Token-efficient</h3>
-      <div class="browx-card-text">
-        <code>snapshot()</code> is a scoped, paginated, budgeted accessibility
-        tree. <code>find()</code> returns ranked candidates with evidence.
-        Results stay small by design.
-      </div>
-    </div>
-    <div class="browx-card">
-      <span class="browx-card-mark">// native</span>
-      <h3>Native apps, same tools</h3>
-      <div class="browx-card-text">
-        Switch on <code>native-device</code> and <code>find</code>,
-        <code>click</code> and <code>fill</code> drive an app on an Android
-        emulator or the iOS Simulator. The tree comes off the app's view
-        hierarchy, with the same refs a page gets. Android is verified against a
-        live emulator; the iOS lane is newer and needs a WebDriverAgent you run.
-        Native apps run on an emulator or simulator only. There is no
-        real-device lane for them.
-      </div>
-    </div>
-    <div class="browx-card">
-      <span class="browx-card-mark">// desktop</span>
-      <h3>The Electron app you have open</h3>
-      <div class="browx-card-text">
-        An Electron app is Chromium, so one started with
-        <code>--remote-debugging-port</code> answers the same CDP browxai
-        already speaks. Attach to an app such as VS Code and
-        <code>snapshot</code> and <code>find</code> read its UI. It needs
-        <code>byob-attach</code>. The engine is attach-only, <code>navigate</code>
-        refuses, and whether a port opens at all depends on the app and its
-        version.
-      </div>
-    </div>
-    <div class="browx-card">
-      <span class="browx-card-mark">// host</span>
-      <h3>Reaches past the tab</h3>
-      <div class="browx-card-text">
-        A web task leaves the browser. Switch a capability on and browxai writes
-        the real OS clipboard, or pulls a login and a TOTP code from 1Password,
-        Bitwarden, LastPass or <code>oathtool</code>. File IO is rooted at one
-        workspace directory. All three capabilities start off.
-      </div>
-    </div>
-    <div class="browx-card">
-      <span class="browx-card-mark">// safety</span>
-      <h3>Safe by default</h3>
-      <div class="browx-card-text">
-        Capability-gated tools, an origin allow and block list, confirmation
-        hooks, and a hard anti-wedge deadline on every call. Arbitrary JS, full
-        response bodies, the OS clipboard, your password manager, the native
-        engines and attaching to a desktop app are all off until you opt in.
-      </div>
-    </div>
-    <div class="browx-card">
-      <span class="browx-card-mark">// clients</span>
-      <h3>Model-agnostic</h3>
-      <div class="browx-card-text">
-        Any MCP client over stdio: Claude, Codex, or anything else that speaks
-        the protocol. A typed TypeScript SDK runs the same tools from a script.
-      </div>
-    </div>
-    <div class="browx-card">
-      <span class="browx-card-mark">// sessions</span>
-      <h3>Sessions and lifecycle</h3>
-      <div class="browx-card-text">
-        Chromium sessions launch the installed Google Chrome, or the bundled
-        Chromium when Chrome is missing, on one default profile per workspace.
-        Sessions are isolated contexts: persistent, incognito, or attached to a
-        Chrome you already have open, on your desktop or on a plugged-in Android
-        phone. Headed and headless. Pick the engine per session, so one server
-        can hold a Chromium page and an emulator app at once.
-      </div>
-    </div>
-    <div class="browx-card">
-      <span class="browx-card-mark">// access</span>
-      <h3>Sites behind bot protection</h3>
-      <div class="browx-card-text">
-        By default browxai does not defeat or spoof bot detection, and it cannot
-        guarantee access to any site. When a challenge needs a person,
-        <code>browxai chrome login</code> opens the installed Chrome on the
-        workspace profile with nothing attached. Clear it by hand, quit Chrome,
-        and later sessions on that profile reuse the cookies. The off-by-default
-        <code>stealth</code> and <code>captcha</code> capabilities patch four
-        browser properties and hand captchas to a third-party solving service.
-        See
-        <a href="/guides/sites-behind-bot-protection/">the guide</a>.
-      </div>
+<div class="browx-grid">
+  <div class="browx-card">
+    <span class="browx-card-mark">Surface</span>
+    <h3>Token-efficient</h3>
+    <div class="browx-card-text">
+      <code>snapshot()</code> is scoped and budgeted; <code>find()</code> ranks candidates.
     </div>
   </div>
+  <div class="browx-card">
+    <span class="browx-card-mark">Native</span>
+    <h3>Native apps, same tools</h3>
+    <div class="browx-card-text">
+      <code>native-device</code> drives Android emulator and iOS Simulator apps.
+    </div>
+  </div>
+  <div class="browx-card">
+    <span class="browx-card-mark">Host</span>
+    <h3>Reaches past the tab</h3>
+    <div class="browx-card-text">Host features such as the clipboard start off.</div>
+  </div>
+  <div class="browx-card">
+    <span class="browx-card-mark">Safety</span>
+    <h3>Default capabilities</h3>
+    <div class="browx-card-text">Arbitrary JS and response bodies start off.</div>
+  </div>
+  <div class="browx-card">
+    <span class="browx-card-mark">Clients</span>
+    <h3>Model-agnostic</h3>
+    <div class="browx-card-text">Any MCP client over stdio, typed TypeScript SDK.</div>
+  </div>
+  <div class="browx-card">
+    <span class="browx-card-mark">Sessions</span>
+    <h3>Sessions and lifecycle</h3>
+    <div class="browx-card-text">Installed Chrome, one default profile per workspace.</div>
+  </div>
+</div>
+
+<p class="browx-section-sub">
+  <a href="/concepts/overview/#native-apps-desktop-apps-and-sessions">Native apps and sessions in detail</a>.
+  <a href="/guides/sites-behind-bot-protection/">Bot protection</a>.
+</p>
 </div>
 
 <div class="browx-cta browx-cta--center not-content">
   <a href="/getting-started/" class="browx-btn browx-btn--primary">
-    Wire it into your agent
+    Get started
   </a>
   <a href="/security/threat-model/" class="browx-btn browx-btn--ghost">
-    Read the threat model
+    Threat model
   </a>
   <a href="https://github.com/kalebteccom/browxai" class="browx-btn browx-btn--ghost">
-    Source on GitHub
+    GitHub
   </a>
 </div>

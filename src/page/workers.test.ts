@@ -310,6 +310,57 @@ describe("WorkersRegistry.readMessages", () => {
     ]);
   });
 
+  it("lists a service worker the session saw live as stopped once it is gone", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.enqueueResponse(() => undefined);
+    f.enqueueResponse(() => []); // drain (Web Workers)
+    f.enqueueResponse(() => [{ url: "https://x/gone.js", data: "g", at: 1 }]);
+    const gone = fakeSw("https://x/gone.js");
+    f.serviceWorkers.push(gone);
+    expect((await reg.list(f.page, CHROMIUM, "service")).map((w) => w.state)).toEqual(["running"]);
+    f.serviceWorkers.length = 0;
+    const read = await reg.readMessages(f.page, {});
+    const listed = await reg.list(f.page, CHROMIUM, "service");
+    for (const m of read) expect(listed.map((w) => w.workerId)).toContain(m.workerId);
+    expect(listed.map((w) => [w.workerId, w.state])).toEqual([["sw-1", "stopped"]]);
+  });
+
+  it("does not list a service worker URL that only the page's message ring named", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.enqueueResponse(() => undefined);
+    f.enqueueResponse(() => []); // drain (Web Workers)
+    f.enqueueResponse(() => [
+      { url: "https://planted.example/a.js", data: "a", at: 1 },
+      { url: "https://planted.example/b.js", data: "b", at: 2 },
+      { data: "no url", at: 3 },
+    ]);
+    const read = await reg.readMessages(f.page, {});
+    expect(read).toHaveLength(3);
+    expect(await reg.list(f.page, CHROMIUM, "service")).toEqual([]);
+    // A real worker is listed as running, and the planted ids still are not.
+    f.serviceWorkers.push(fakeSw("https://x/real.js"));
+    const listed = await reg.list(f.page, CHROMIUM, "service");
+    expect(listed.map((w) => [w.url, w.state])).toEqual([["https://x/real.js", "running"]]);
+  });
+
+  it("keeps a stopped service worker's id once it is listed, and does not message it", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    const sw = fakeSw("https://x/sw.js");
+    f.serviceWorkers.push(sw);
+    expect((await reg.list(f.page, CHROMIUM, "service"))[0]!.state).toBe("running");
+    f.serviceWorkers.length = 0;
+    expect(await reg.list(f.page, CHROMIUM, "service")).toEqual([
+      { workerId: "sw-1", type: "service", url: "https://x/sw.js", state: "stopped" },
+    ]);
+    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "sw-1", message: "x" });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/no service worker/);
+    expect(sw.evaluate).not.toHaveBeenCalled();
+  });
+
   it("lists at most 64 distinct service worker script URLs", async () => {
     const reg = new WorkersRegistry();
     const f = fakePage();
@@ -426,6 +477,32 @@ describe("service workers and the origin policy", () => {
     expect(out).toEqual([
       { workerId: "sw-1", type: "service", url: "https://ok.example/sw.js", state: "running" },
     ]);
+  });
+
+  it("returns no messages from a service worker the listing leaves out", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.enqueueResponse(() => undefined);
+    f.enqueueResponse(() => []); // drain (Web Workers)
+    f.enqueueResponse(() => [
+      { url: "https://blocked.example/sw.js", data: "no", at: 1 },
+      { url: "https://ok.example/sw.js", data: "yes", at: 2 },
+    ]);
+    const out = await reg.readMessages(f.page, {}, blocked);
+    expect(out.map((m) => m.data)).toEqual(["yes"]);
+    // Neither URL was seen running, so a ring message alone lists nothing.
+    expect(await reg.list(f.page, blocked, "service")).toEqual([]);
+    // Once both workers have run and stopped, the blocked origin stays out.
+    f.serviceWorkers.push(
+      fakeSw("https://blocked.example/sw.js"),
+      fakeSw("https://ok.example/sw.js"),
+    );
+    expect((await reg.list(f.page, blocked, "service")).map((w) => w.url)).toEqual([
+      "https://ok.example/sw.js",
+    ]);
+    f.serviceWorkers.length = 0;
+    const listed = await reg.list(f.page, blocked, "service");
+    expect(listed.map((w) => [w.url, w.state])).toEqual([["https://ok.example/sw.js", "stopped"]]);
   });
 
   it("refuses a send to a service worker on a blocked origin", async () => {

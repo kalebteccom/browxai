@@ -59,13 +59,13 @@ export function registerStorageStateCookiesTools(
     {
       capability: "read",
       description:
-        "Storage-state bulk dump — capture the session's current storage state (cookies + per-origin localStorage), the blob format Playwright's `BrowserContext.storageState()` returns. ALWAYS returns the blob; with `path`, also writes JSON to a workspace-rooted file (path-traversal rejected — must resolve under $BROWX_WORKSPACE). Use this to checkpoint an authed state for later replay via `inject_storage_state` / `auth_save`. Read-only. SECURITY NOTE: cookie *values* may carry credentials — treat the dump as sensitive (a future egress-masking pass lands separately).",
+        "Capture the session's storage state (cookies and per-origin localStorage) in the shape of Playwright's `storageState()`. Always returns the blob; with `path` it also writes JSON to a workspace-rooted file. Use it to checkpoint a login for `inject_storage_state`; use `auth_save` to keep it under a name and `cookies_list` for cookies only. sessionStorage is not included. Cookie values may carry credentials, so treat the blob and the file as sensitive: with the `secrets` capability on, registered values are masked in the returned blob, but a file written with `path` keeps the values as the browser holds them.",
       inputSchema: {
         path: z
           .string()
           .optional()
           .describe(
-            "Optional workspace-rooted JSON file to write the state to (in addition to returning it inline). Rejected if it escapes $BROWX_WORKSPACE.",
+            "Workspace-rooted JSON file to write the state to, as well as returning it inline. A path that leaves $BROWX_WORKSPACE, including through a symlink, is rejected.",
           ),
         ...SESSION_ARG,
       },
@@ -98,15 +98,19 @@ export function registerStorageStateCookiesTools(
     {
       capability: "action",
       description:
-        "Storage-state bulk inject — apply a bulk storage state to the current session's context. `state` accepts either an inline blob OR a workspace-rooted JSON path (escape rejected). `mode:\"replace\"` (default) uses Playwright's `setStorageState` which CLEARS the context's existing cookies/localStorage/IndexedDB first — clean swap semantics. `mode:\"merge\"` adds cookies via `addCookies` without clearing AND best-effort merges localStorage for the currently-loaded origin only (other origins in the blob are skipped and returned in `originsSkipped` — localStorage is page-bound, not context-bound). For per-session seeding at CREATION, prefer `open_session({ storageState | authState })` — that's the Playwright-native primitive on incognito mode.",
+        'Apply a bulk storage state to the session\'s context. `state` is an inline blob (from `dump_storage_state`) or a workspace-rooted JSON path. `mode:"replace"` (default) uses `setStorageState`, which first clears the context\'s cookies, localStorage and IndexedDB. `mode:"merge"` adds cookies without clearing and merges localStorage for the currently loaded origin only; other origins in the blob come back in `originsSkipped`. To seed a session at creation, prefer `open_session({storageState})` or `open_session({authState})`. Use `auth_load` to apply a named slot.',
       inputSchema: {
-        state: z.union([
-          z.string().describe("Workspace-rooted JSON path to a state file (escape rejected)."),
-          z
-            .object({ cookies: z.array(z.any()), origins: z.array(z.any()) })
-            .passthrough()
-            .describe("Inline state blob (the shape `dump_storage_state` returns)."),
-        ]),
+        state: z
+          .union([
+            z.string().describe("Workspace-rooted JSON path to a state file (escape rejected)."),
+            z
+              .object({ cookies: z.array(z.any()), origins: z.array(z.any()) })
+              .passthrough()
+              .describe("Inline state blob (the shape `dump_storage_state` returns)."),
+          ])
+          .describe(
+            "Inline state blob `{cookies, origins}` (the shape `dump_storage_state` returns) or a workspace-rooted path to a JSON state file.",
+          ),
         mode: z
           .enum(["replace", "merge"])
           .optional()
@@ -147,7 +151,7 @@ export function registerStorageStateCookiesTools(
     {
       capability: "read",
       description:
-        "Read a single cookie by name. Optional `url` narrows the cookie jar (only cookies that would be sent on a request to that URL). Returns the full Playwright cookie object or `null`. Read-only.",
+        "Read one cookie by name from the session's jar and return the full Playwright cookie object, or `null`. `url` narrows the jar to cookies that would be sent to that URL. Use `cookies_list` for several cookies and `dump_storage_state` for cookies plus localStorage.",
       inputSchema: {
         name: z.string().describe("Cookie name."),
         url: z
@@ -181,7 +185,7 @@ export function registerStorageStateCookiesTools(
     {
       capability: "read",
       description:
-        "List cookies in the session's jar. `urls` filters to cookies that would be sent on requests to those URLs (Playwright's native filter). Returns the full Playwright cookie array. Read-only.",
+        "List the cookies in the session's jar as full Playwright cookie objects. `urls` keeps only cookies that would be sent to those URLs. Use `cookies_get` for one cookie by name and `dump_storage_state` for cookies plus localStorage.",
       inputSchema: {
         urls: z
           .array(z.string())
@@ -214,7 +218,7 @@ export function registerStorageStateCookiesTools(
     {
       capability: "action",
       description:
-        'Set a single cookie. Playwright\'s `addCookies` requires either `url` (recommended — derives domain/path/secure for you) OR both `domain` AND `path` explicitly; one of those two forms must be supplied or the call is rejected. Optional `expires` (Unix seconds), `httpOnly`, `secure`, `sameSite` (`"Strict"|"Lax"|"None"`). Idempotent w.r.t. (name, domain, path).',
+        "Set one cookie. Pass `url` (recommended; it derives domain, path and secure) or both `domain` and `path`; any other combination is rejected. `expires` is Unix seconds (omit for a session cookie). Use `inject_storage_state` to seed many cookies and localStorage at once, and `auth_save` to keep a whole login under a name. Setting the same name, domain and path again overwrites it.",
       inputSchema: {
         name: z.string().describe("Cookie name."),
         value: z.string().describe("Cookie value."),
@@ -230,9 +234,14 @@ export function registerStorageStateCookiesTools(
           .optional()
           .describe('Explicit cookie path (e.g. "/"). Requires `domain` too.'),
         expires: z.number().optional().describe("Unix time in seconds. Omit for a session cookie."),
-        httpOnly: z.boolean().optional(),
-        secure: z.boolean().optional(),
-        sameSite: z.enum(["Strict", "Lax", "None"]).optional(),
+        httpOnly: z.boolean().optional().describe("Set the HttpOnly flag."),
+        secure: z.boolean().optional().describe("Set the Secure flag. Passing `url` derives it."),
+        sameSite: z
+          .enum(["Strict", "Lax", "None"])
+          .optional()
+          .describe(
+            "SameSite attribute: `Strict`, `Lax` or `None`. Browsers require `secure:true` with `None`.",
+          ),
         ...SESSION_ARG,
       },
     },
@@ -272,7 +281,7 @@ export function registerStorageStateCookiesTools(
     {
       capability: "action",
       description:
-        "Delete cookies by name, optionally narrowed by `url` (derives domain/path) or explicit `domain`/`path`. Returns `{ok:true}` even if no cookie matched (idempotent — distinguish presence via `cookies_get` first if needed).",
+        "Delete cookies by name, optionally narrowed by `url` (derives domain and path) or an explicit `domain` and `path`. Returns `{ok:true}` even when nothing matched; call `cookies_get` first to check presence. `cookies_clear` removes every cookie.",
       inputSchema: {
         name: z.string().describe("Cookie name."),
         url: z.string().optional().describe("Optional URL — narrows by derived domain/path."),
@@ -308,7 +317,7 @@ export function registerStorageStateCookiesTools(
     {
       capability: "action",
       description:
-        'Wipe ALL cookies in the session\'s jar. Destructive across every domain in this context. localStorage and sessionStorage are untouched (use `*_clear` for those, or `inject_storage_state({state, mode:"replace"})` to reset everything via a bulk swap).',
+        'Remove all cookies in the session\'s jar, across every domain in this context. localStorage and sessionStorage stay: use the `*_clear` tools for those, or `inject_storage_state({state, mode:"replace"})` to reset everything. Use `cookies_delete` for one cookie.',
       inputSchema: { ...SESSION_ARG },
     },
     async ({ session }) => {

@@ -99,7 +99,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        'Assertive sibling of `wait_for`: fail-emitting (`ok:false` + `failure:{source,kind,expected,actual}`) instead of permissive (`wait_for` returns ok:false on deadline expiry as a normal outcome). Use to terminate retry loops deterministically: "this element MUST be visible right now, else fail loudly." Read-only. `source:"app"` when the element isn\'t visible (the assertion failed against the page); `source:"browxai"` when verify itself couldn\'t run (ref no longer in the snapshot, etc).',
+        'Assert that the targeted element is visible right now, failing the step if it is not. Use `wait_for` to wait for it, and `verify_text`, `verify_value`, `verify_count` or `verify_attribute` for other assertions. Failure returns `ok:false` with `failure:{source,kind,expected,actual}`: `source:"app"` means the element is not visible, `source:"browxai"` means the check could not run (a stale ref: call `snapshot` or `find` again).',
       inputSchema: VERIFY_TARGET,
     },
     async (args) => {
@@ -153,7 +153,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        "Assert the targeted element's visible text matches. Fail-emitting (`ok:false` + structured `failure`) — distinct from `text_search` (which counts matches over the whole page) and `wait_for` (permissive). Default substring + case-insensitive; pass `exact:true` for case-sensitive equality on the trimmed text. Read-only.",
+        "Assert that the targeted element's visible text matches, failing the step if it does not. Use `text_search` to count matches across the whole page instead. The default is a case-insensitive substring; `exact:true` compares the trimmed text case-sensitively. Failure returns `ok:false` with a structured `failure` (`source` `app` or `browxai`, as in `verify_visible`).",
       inputSchema: {
         ...VERIFY_TARGET,
         text: z.string().describe("Text to assert against the element's visible text."),
@@ -216,7 +216,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        "Assert the targeted form-control's current value (input/textarea/select/contenteditable). Fail-emitting (`ok:false` + structured `failure`). Use to confirm a controlled-component fill landed without an extra round-trip — pairs with `ActionResult.element.value` from `fill`. Read-only.",
+        "Assert the current value of the targeted form control (input, textarea, select, contenteditable), failing the step if it differs. Use it after `fill` to confirm a controlled component kept the value (the `fill` ActionResult also carries `element.value`). Failure returns `ok:false` with a structured `failure`.",
       inputSchema: {
         ...VERIFY_TARGET,
         value: z
@@ -275,7 +275,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        'Assert exactly `n` elements match. Pass one of `selector` (raw CSS / Playwright locator) or `text` (case-insensitive visible-text search over the composed a11y tree, same shape as `text_search`). Fail-emitting (`ok:false` + structured `failure`). Use for grid/list invariants — "there are 5 rows after the delete", "no \'Wrong Type\' values left in the table". Read-only.',
+        'Assert that exactly `n` elements match, failing the step if not. Pass `selector` (CSS or a Playwright locator) or `text` (case-insensitive visible-text search over the a11y tree, as in `text_search`). Failure returns `ok:false` with a structured `failure`. Use it for grid and list invariants ("5 rows after the delete", "no \'Wrong Type\' left in the table").',
       inputSchema: {
         selector: z
           .string()
@@ -433,7 +433,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        'Composed predicate check over a caller-supplied `data` bag — fixed vocabulary, NOT arbitrary JS. The predicate `kind` is a fixed enum (`equals`/`notEquals`/`contains`/`notContains`/`gt`/`lt`/`gte`/`lte`/`between`/`matches`/`exists`, plus `and`/`or`/`not` combinators). The accessor `key` must start with an allow-listed root: `actionResult`, `snapshot`, `element`, `value`, `expect`. The model supplies *data* (which key, which expected value); the *vocabulary* is server-owned. Use as a deterministic gate on an already-captured ActionResult / snapshot / metric (the screenshot-judge analogue when chained behind a `screenshot`). Fail-emitting: `source:"app"` when the predicate didn\'t hold; `source:"browxai"` when the predicate shape itself is malformed. `eval_js` (gated behind `eval`) remains the only arbitrary-JS path — verify_predicate does NOT add a second.',
+        'Evaluate a predicate over a `data` bag you supply: a fixed vocabulary, not JS. `kind` is `equals`, `notEquals`, `contains`, `notContains`, `gt`, `lt`, `gte`, `lte`, `between`, `matches` or `exists`, plus the `and`, `or` and `not` combinators. An accessor `key` must start with one of the roots `actionResult`, `snapshot`, `element`, `value` or `expect`. Use it as a deterministic gate on an ActionResult, snapshot or metric you already have (chained behind `screenshot` it plays the screenshot-judge role). Failure returns `source:"app"` when the predicate did not hold and `source:"browxai"` when its shape is malformed. `eval_js` (needs the `eval` capability) stays the only arbitrary-JS path.',
       inputSchema: {
         predicate: PREDICATE_SCHEMA.describe(
           "The predicate to evaluate. Recursive shape — and/or/not nest leaf predicates.",

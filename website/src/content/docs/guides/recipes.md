@@ -5,7 +5,10 @@ description: "Concrete patterns for common agent flows: logging in, extracting d
 
 These are small, real patterns built from the documented tool surface. Each
 one assumes browxai is already wired into your MCP client; see
-[Getting started](/getting-started/) if not.
+[Getting started](/getting-started/) if not. The calls are written as
+TypeScript to show the tool names and arguments. In an MCP client you describe
+the task and the agent makes the calls. To run them from a script, see
+[Run it from a script](#run-it-from-a-script).
 
 ## Log in once, resume later
 
@@ -83,8 +86,8 @@ Pair it with the `verify_*` family when you want an assertion, for example
 
 ## Handle flaky or transient UI
 
-Do not sleep and hope. browxai has tools for waiting on a condition and for
-sampling an unstable surface.
+browxai has tools for waiting on a condition and for sampling an unstable
+surface. Use them in place of fixed sleeps.
 
 ```ts
 // Wait for a specific thing to exist, with a real deadline.
@@ -101,8 +104,7 @@ const res = await act_and_sample({
 ```
 
 `wait_for`'s `timeoutMs` is both its maximum wait and its deadline. If a
-session keeps timing out, the fix is to discard it (`close_session` then
-`open_session`), not to keep raising the timeout.
+session keeps timing out, discard it (`close_session` then `open_session`).
 
 ## Run flows in parallel
 
@@ -128,6 +130,31 @@ await navigate({ session: "mobile", url: "https://example.com" });
 // resize mid-session to check a breakpoint; the result shows what re-rendered
 await set_viewport({ session: "mobile", width: 768, height: 1024 });
 ```
+
+## Run it from a script
+
+The same tools run from a Node script through the typed SDK, with no MCP client
+in between. The SDK gates tools by capability exactly as the server does, and
+the script's `capabilities` option and the server's `BROWX_CAPABILITIES` each
+have to allow a gated tool.
+
+```ts
+import { createBrowxai } from "browxai";
+
+const browxai = await createBrowxai(); // in-process, one script
+await browxai.navigate({ url: "https://example.com" });
+const page = await browxai.snapshot();
+console.log(page);
+await browxai.close();
+```
+
+Import needs a local install in the script's project (`npm install browxai`), as
+a global install is not importable. Save the script as an ES module (`.mjs`, or
+`"type": "module"` in `package.json`) and run it with Node 22 or newer. Any other
+tool is reachable with `browxai.callTool(name, args)`. `createBrowxai` also takes
+a `transport` of `"stdio-child"` to run the `browxai` bin as a subprocess, or an
+`endpoint` to attach to a `browxai serve --socket <path>` server that several
+scripts share.
 
 For the full set of tools and their exact inputs and outputs, see the
 [tool reference](/reference/tool-reference/).

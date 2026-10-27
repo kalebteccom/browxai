@@ -51,6 +51,11 @@ the result.
 "persistent" })`, or the same `profile` name) and navigate. The clearance
    and session cookies are in the profile, so the automated run reuses them.
 
+`chrome login` needs a display and an installed Google Chrome. It refuses to run
+on the bundled Chromium, which bot-protected sites treat as automation, and
+`browxai doctor` shows whether it found Chrome. On a server with no display, sign
+in on a machine that has one.
+
 Clearance cookies expire and may be tied to the browser and network they were
 issued to, so a later run can meet the challenge again. Repeat the steps.
 

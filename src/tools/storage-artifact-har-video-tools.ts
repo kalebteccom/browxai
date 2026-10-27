@@ -69,7 +69,7 @@ export function registerStorageArtifactHarVideoTools(
     {
       capability: "action",
       description:
-        'Save a session-scoped artifact (string or binary) into the session\'s workspace-rooted KV. The artifact lives at `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`. `name` must be letters / digits / `._-` only (no path separators, no `..`, no leading dot — workspace-escape rejected). `content` is text by default (`encoding:"utf8"`); pass `encoding:"base64"` for binary payloads. Overwrites an existing artifact with the same name. The session\'s KV is capacity-bounded at 200 entries / 50 MiB — past either cap the OLDEST-write entry is evicted to make room. Cleared on `close_session` — artifacts don\'t survive teardown. Retrieve with `artifact_get({name})`; enumerate with `artifact_list()`. → `{ ok, name, size, mtime, path }`. Capability `action`.',
+        'Save a text or binary artifact to the session\'s key-value store at `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`. `name` is letters, digits and `._-` only (no separators, `..` or leading dot). `content` is text by default (`encoding:"utf8"`); pass `encoding:"base64"` for binary. Saving an existing name overwrites it. The store holds 200 entries or 50 MiB per session; past either cap the oldest-written entry is evicted. Artifacts are deleted on `close_session`. Read back with `artifact_get`, list with `artifact_list`. Returns `{ ok, name, size, mtime, path }`.',
       inputSchema: {
         name: z
           .string()
@@ -112,7 +112,7 @@ export function registerStorageArtifactHarVideoTools(
     {
       capability: "read",
       description:
-        "Read back a previously-saved session artifact. `name` matches the value passed to `artifact_save`. `encoding` controls the return shape — `utf8` (default) returns the bytes as text; `base64` returns them base64-encoded (round-trip-faithful for binary payloads). Throws if the name is unknown in this session. → `{ ok, name, content, size, mtime, encoding }`. Capability `read`.",
+        "Read back a session artifact saved with `artifact_save`. `encoding` is `utf8` (default, text) or `base64` (faithful for binary). An unknown name errors: check `artifact_list`. Returns `{ ok, name, content, size, mtime, encoding }`.",
       inputSchema: {
         name: z.string().describe("Artifact name (as passed to `artifact_save`)."),
         encoding: z
@@ -147,7 +147,7 @@ export function registerStorageArtifactHarVideoTools(
     {
       capability: "read",
       description:
-        "Enumerate every artifact in this session's KV (sorted by name asc). Read-only. → `{ ok, count, artifacts: [{ name, size, mtime }] }`. Per-session, capacity-bounded (200 entries / 50 MiB); cleared on `close_session`. Capability `read`.",
+        "List this session's artifacts, sorted by name: `{ ok, count, artifacts: [{ name, size, mtime }] }`. The store holds 200 entries or 50 MiB per session and is cleared on `close_session`.",
       inputSchema: { ...SESSION_ARG },
     },
     async ({ session }) => {
@@ -183,7 +183,7 @@ export function registerStorageArtifactHarVideoTools(
       capability: "action",
       batchable: true,
       description:
-        'Begin HAR recording on the current session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is captured into a HAR archive. **The file on disk is finalized when the session closes** (`close_session`) — Playwright provides no mid-session flush. Re-calling `start_har` while a recorder is already active transparently stops the prior one and swaps targets. For up-front recording across the whole session prefer the additive `open_session({har:{...}})` schema (Playwright\'s blessed native primitive — same finalize-on-close caveat). Bodies are left out by default (`content:"omit"`); `embed` and `attach` write request and response bodies to disk and need the off-by-default `network-body` capability. When the session closes, the file is rewritten with the `Cookie`, `Set-Cookie` and `Authorization` header values dropped (names kept) and registered secrets masked in headers, URLs and text bodies, and without `network-body` the request bodies emptied. Capability `action`. Workspace-rooted `.har` paths only; a path outside the workspace is rejected.',
+        'Start recording a HAR on the current session through `context.routeFromHAR(path, {update:true})`. The file is finalized only when the session closes (`close_session`); Playwright has no mid-session flush. Calling it again while recording stops the earlier recorder and adds the new path (every recorded file is rewritten on close). To record from the start of a session, pass `open_session({har})` instead. Bodies are omitted by default (`content:"omit"`); `embed` and `attach` write bodies to disk and need the `network-body` capability (off by default). On close the file is rewritten with `Cookie`, `Set-Cookie` and `Authorization` values emptied (names kept) and registered secrets masked in headers, URLs and text bodies; without `network-body` request bodies are emptied too. Paths are workspace-rooted `.har` files: a path outside the workspace or a `.zip` path is rejected.',
       inputSchema: {
         path: z
           .string()
@@ -259,7 +259,7 @@ export function registerStorageArtifactHarVideoTools(
       capability: "action",
       batchable: true,
       description:
-        "Stop HAR recording on the current session. Removes the recording route so further requests aren't logged. **The HAR file is finalized only when the session closes** (`close_session`) — there is no mid-session flush on Playwright's native HAR pipeline. Returns the reserved path; if the file already exists on disk and is under ~256 KB, an inline `har` field is also returned (only happens once the context has actually been closed and re-opened with the same path; usually you'll just read the file after `close_session`). Re-recording within the same session: stop_har, then start_har again with a fresh path. Capability `action`.",
+        "Stop HAR recording on the current session by removing the recording route, so later requests are not logged. The file is finalized only when the session closes (`close_session`). Returns the reserved path; an inline `har` field appears only when the file already exists and is under about 256 KB, which usually means the context was reopened on the same path, so read the file after `close_session`. To record again in the same session, call `start_har` with a fresh path.",
       inputSchema: { ...SESSION_ARG },
     },
     async ({ session }) => {
@@ -314,7 +314,7 @@ export function registerStorageArtifactHarVideoTools(
       capability: "file-io",
       batchable: true,
       description:
-        "Signal that the session's video recording should be finalized. Mirrors the `stop_har` native-record posture: **the .webm is written to disk only when the session closes** (`close_session`) — Playwright provides no mid-context flush on the `recordVideo` primitive. This call marks the recorder as `pendingFinalize:true` and returns the reserved target path; the actual file appears on disk after `close_session`. Use `get_video` afterwards to retrieve the bytes or absolute path. Returns a structured error if no video recorder is active (you didn't pass `recordVideo` to `open_session`). Capability `file-io`.",
+        "Mark the session's video recording to be finalized. The .webm is written only when the session closes (`close_session`); Playwright has no mid-session flush, so this sets `pendingFinalize:true` and returns the reserved target path. After `close_session`, read the file with `get_video`. Returns a structured error if no recorder is active (`recordVideo` was not passed to `open_session`). Requires the `file-io` capability (off by default).",
       inputSchema: { ...SESSION_ARG },
     },
     async ({ session }) => {
@@ -365,7 +365,7 @@ export function registerStorageArtifactHarVideoTools(
       capability: "file-io",
       batchable: true,
       description:
-        'Read the session\'s recorded video. **The .webm is written only after `close_session`** — calling `get_video` before then returns a structured error pointing at the close requirement. `format:"path"` (default) returns the absolute path + on-disk size. `format:"bytes"` additionally inlines the file as base64 when under ~1 MiB; larger files return path + `tooLargeToInline:true` so the caller reads them off disk. Returns a structured error if no recorder was wired (no `recordVideo` on `open_session`). Capability `file-io`.',
+        'Read the session\'s recorded video. The .webm exists only after `close_session`; an earlier call returns a structured error saying so. `format:"path"` (default) returns the absolute path and size. `format:"bytes"` also inlines the file as base64 when it is under about 1 MiB; larger files return the path with `tooLargeToInline:true`, so read them from disk. Returns a structured error if the session had no `recordVideo`. Requires the `file-io` capability (off by default).',
       inputSchema: {
         format: z
           .enum(["path", "bytes"])

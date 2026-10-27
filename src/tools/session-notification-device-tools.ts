@@ -37,15 +37,13 @@ export function registerSessionNotificationDeviceTools(
     {
       capability: "read",
       description:
-        'Read the current permission state(s) for an origin via the W3C Permissions API (`navigator.permissions.query` — which reflects the CDP-applied baseline). Returns `{ [permission]: "granted" | "denied" | "prompt" | "unknown" }` per requested name. Defaults the `origin` to the current page\'s origin when omitted. Read-only — does not mutate state. Supported permission names (v1): ' +
-        SUPPORTED_PERMISSIONS.join(", ") +
-        ". Sibling of `set_permission_policy`.",
+        'Read the permission state for an origin through the Permissions API (`navigator.permissions.query`, which reflects the CDP baseline). Returns `{ [permission]: "granted"|"denied"|"prompt"|"unknown" }`. `origin` defaults to the current page\'s origin. Does not change state; use `set_permission_policy` or `grant_permissions` for that. Names: camera, microphone, geolocation, notifications, clipboard-read, clipboard-write, midi, midi-sysex, payment-handler, background-sync, accelerometer, gyroscope, magnetometer.',
       inputSchema: {
         permissions: z
           .array(z.string())
           .min(1)
           .describe(
-            'Canonical permission names to query — see tool description for the supported set. Unknown names map to `"unknown"` in the result.',
+            'Permission names to query (camera, microphone, geolocation, notifications, clipboard-read, clipboard-write, midi, midi-sysex, payment-handler, background-sync, accelerometer, gyroscope, magnetometer). Unknown names return `"unknown"`.',
           ),
         origin: z
           .string()
@@ -113,16 +111,11 @@ export function registerSessionNotificationDeviceTools(
     {
       capability: "action",
       description:
-        "Mutate the session's notification policy at runtime. Governs `new Notification(title, opts)` *constructor* calls — the page actually attempting to display a notification. Distinct from `set_permission_policy` (which gates `Notification.requestPermission` and the `Notification.permission` state); the two policies compose. Modes:\n" +
-        '  - "allow"     — DEFAULT (browser default). Constructor proceeds; the OS displays per its own settings. Every call is still captured on `ActionResult.notifications[]` for observability.\n' +
-        '  - "deny"      — Constructor throws `NotAllowedError` (the same exception the browser raises when permission is denied). Use to suppress OS notifications while still observing what the page would have shown.\n' +
-        '  - "raise"     — Constructor throws AND RECORDS; the next ActionResult flips `ok:false` with `failure:{source:"app", hint:"unhandled notification — set notificationPolicy"}`. Useful when notifications should be a hard signal that the action triggered an unexpected user-facing event.\n' +
-        '  - "ask-human" — server blocks on `__browx.confirm(true|false)` with the ticket printed in the prompt, from the DevTools `browxai-…` console context it names (the `await_human({kind:"confirm"})` mechanism; page scripts cannot answer it), then resolves to allow/deny per the human\'s answer. The constructor returns a stub synchronously (the spec requires a sync return); the real OS notification fires once the human-decision resolves.\n' +
-        'Leaving `ask-human` (to any other mode) is refused with `requiredCapability: "human-gate-override"` unless the operator enabled that off-by-default capability; changes that keep `ask-human` are always accepted. Persists across navigation: the init-script is re-injected on every new document within the session. Returns the resolved policy. Captured calls surface on `ActionResult.notifications[] = [{title, body?, icon?, tag?, timestamp, origin?, handledAs}]`.',
+        'Change at runtime how the session handles `new Notification(title, opts)` constructor calls, meaning the page actually showing a notification. Use `set_permission_policy` for `Notification.requestPermission` and the permission state; the two compose. Persists across navigation and returns the resolved policy. Modes:\n  - "allow" (default): the constructor proceeds and the OS shows it. Every call is still recorded on `ActionResult.notifications[]`.\n  - "deny": the constructor throws `NotAllowedError`, to suppress OS notifications while still seeing what the page tried to show.\n  - "raise": throw and record; the next ActionResult is `ok:false` with `failure:{source:"app"}` and a hint to set notificationPolicy.\n  - "ask-human": the server waits for a human allow or deny from the DevTools `browxai-…` console context (see `await_human`; page scripts cannot answer). The constructor returns a stub at once and the real notification fires after the answer.\nLeaving `ask-human` is refused with `requiredCapability:"human-gate-override"` unless the operator enabled that capability (off by default); changes that keep it are accepted. Recorded calls look like `{title, body?, icon?, tag?, timestamp, origin?, handledAs}`.',
       inputSchema: {
         mode: z
           .enum(["allow", "deny", "raise", "ask-human"])
-          .describe("Policy mode — see tool description."),
+          .describe('Policy mode: "allow" (default), "deny", "raise" or "ask-human".'),
         ...SESSION_ARG,
       },
     },
@@ -172,12 +165,7 @@ export function registerSessionNotificationDeviceTools(
     {
       capability: "device-emulation",
       description:
-        'Read-side companion to `emulate_bluetooth` / `emulate_usb` / `emulate_hid`. Returns the buffer of `requestDevice()` calls the page has made on this session — one entry per page-side call, each with `{api, handledAs, returned, filters?, ts}`. Useful for diagnosing "did the page even ask?" when a flow gated on hardware appears stuck. `handledAs`:\n' +
-        '  - `"resolved"`  — catalog non-empty; picker resolved with the synthetic device (Bluetooth/USB) or device list (HID).\n' +
-        '  - `"rejected"` — catalog empty for Bluetooth/USB; picker rejected with `NotFoundError` (user-dismissed shape).\n' +
-        '  - `"empty"`    — catalog empty for HID; picker resolved with `[]` (HID\'s user-dismissed shape).\n' +
-        '  - `"refused"`  — capability `device-emulation` was OFF at the time of the call; the wrapper short-circuited. Recorded so the read surfaces "the page asked for hardware and you didn\'t have the capability on".\n' +
-        "**Gated behind the off-by-default `device-emulation` capability** — a server without the capability can't even read whether the page tried to ask (same posture class as `eval` / `network-body` / `secrets`). Read-only — does not mutate state.",
+        'Read what the page asked for: the buffer of `requestDevice()` calls it made on this session (Bluetooth, USB, HID), each `{api, handledAs, returned, filters?, ts}`. Use it to check whether the page asked at all when a hardware-gated flow looks stuck. Requires the `device-emulation` capability (off by default); without it you cannot read whether the page asked. `handledAs`:\n  - `"resolved"`: catalog non-empty; the picker resolved with the synthetic device (Bluetooth, USB) or device list (HID).\n  - `"rejected"`: catalog empty for Bluetooth or USB; rejected with `NotFoundError`.\n  - `"empty"`: catalog empty for HID; resolved with `[]`.\n  - `"refused"`: `device-emulation` was off at the time of the call, so the wrapper stepped aside; recorded so you can see the page asked for hardware.\nUse `emulate_bluetooth`, `emulate_usb` or `emulate_hid` to stage devices.',
       inputSchema: {
         since: z
           .number()
@@ -185,7 +173,7 @@ export function registerSessionNotificationDeviceTools(
           .nonnegative()
           .optional()
           .describe(
-            "epoch ms — return only records with `ts >= since`. Default 0 (return everything in the buffer).",
+            "Epoch ms: return only records with `ts >= since`. Default 0 (everything in the buffer).",
           ),
         ...SESSION_ARG,
       },

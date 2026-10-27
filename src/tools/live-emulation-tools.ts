@@ -122,7 +122,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        "Override the session's browser locale (`navigator.language` / `navigator.languages`, `Intl.*` defaults, `Accept-Language` header). Persists across navigation + new tabs in the same session and takes effect on the current page immediately. Pass `locale: null` to clear the override and restore the browser default. NOTE: Playwright's `BrowserContext.locale` is creation-time-only, so this primitive combines CDP `Emulation.setLocaleOverride` (Accept-Language + Intl) with a context init-script that patches the JS `navigator.language(s)` getters — `setLocaleOverride` alone does not move them. BYOB caveat: both overrides persist on the attached Chrome until it navigates/restarts after detach.",
+        "Override the session's browser locale (`navigator.language` and `languages`, `Intl.*` defaults, the `Accept-Language` header). It applies to the current page at once, persists across navigation and new tabs, and `locale: null` clears it. Playwright's context locale is fixed at creation, so this combines CDP `Emulation.setLocaleOverride` (Accept-Language and Intl) with an init script that patches the `navigator.language(s)` getters. On `attached` sessions both overrides stay on your Chrome until it navigates or restarts after detach.",
       inputSchema: {
         locale: z
           .union([z.string(), z.null()])
@@ -164,7 +164,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        "Override the session's IANA timezone for `Date`, `Intl.DateTimeFormat`, etc. Persists across navigation + new tabs. Pass `timezoneId: null` to clear. NOTE: Playwright's `BrowserContext.timezoneId` is creation-time-only, so this primitive uses CDP `Emulation.setTimezoneOverride` (mid-session-capable). BYOB caveat: the CDP override persists on attached Chrome after detach.",
+        "Override the session's IANA timezone for `Date`, `Intl.DateTimeFormat` and similar. Persists across navigation and new tabs; `timezoneId: null` clears it. Playwright's context timezone is fixed at creation, so this uses CDP `Emulation.setTimezoneOverride`. On `attached` sessions the override stays on your Chrome after detach.",
       inputSchema: {
         timezoneId: z
           .union([z.string(), z.null()])
@@ -202,7 +202,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       capability: "action",
       batchable: true,
       description:
-        "Override the session's HTML5 Geolocation reading. The page MUST also be granted the `geolocation` permission via `grant_permissions` for `navigator.geolocation.*` to deliver this value (browsers gate it). Uses Playwright's `context.setGeolocation()` which mutates a live context — no CDP fallback needed. Pass no coords (or `latitude:null`) to clear.",
+        "Override the session's Geolocation reading (`context.setGeolocation()` on the live context). The page must also hold the `geolocation` permission (`grant_permissions`) before `navigator.geolocation` delivers it. Omit the coordinates, or pass `latitude:null`, to clear.",
       inputSchema: {
         latitude: z
           .union([z.number(), z.null()])
@@ -262,7 +262,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       capability: "action",
       batchable: true,
       description:
-        "Override the session's `prefers-color-scheme` media query — drives dark-mode rendering. Mutates a live page via Playwright's `page.emulateMedia({colorScheme})`; takes effect immediately (CSS media queries re-evaluate). Pass `\"no-preference\"` to clear the override.",
+        'Override the session\'s `prefers-color-scheme` media query to drive dark-mode rendering (`page.emulateMedia({colorScheme})`), effective at once. Pass `"no-preference"` to clear.',
       inputSchema: {
         scheme: z
           .enum(["light", "dark", "no-preference"])
@@ -295,7 +295,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       capability: "action",
       batchable: true,
       description:
-        "Override the session's `prefers-reduced-motion` media query — useful when an animation-heavy page is unstable to drive, or to verify a reduced-motion code path. Mutates a live page via Playwright's `page.emulateMedia({reducedMotion})`. Pass `on:false` to clear.",
+        "Override the session's `prefers-reduced-motion` media query, to calm an animation-heavy page or to check the reduced-motion path (`page.emulateMedia({reducedMotion})`). Pass `on:false` to clear.",
       inputSchema: {
         on: z.boolean().describe("true → `reduce`; false → `no-preference` (clears the override)."),
         ...SESSION_ARG,
@@ -326,7 +326,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        "Override the session's User-Agent (HTTP header + `navigator.userAgent`). Persists across navigation + new tabs. Pass `userAgent: null` to clear. NOTE: Playwright's `BrowserContext.userAgent` is creation-time-only, so this primitive uses CDP `Network.setUserAgentOverride` (mid-session-capable; updates both the network header and the JS-visible value). BYOB caveat: the CDP override persists on attached Chrome after detach.",
+        "Override the session's User-Agent (HTTP header and `navigator.userAgent`). Persists across navigation and new tabs; `userAgent: null` clears it. Playwright's context user agent is fixed at creation, so this uses CDP `Network.setUserAgentOverride`, which updates both values. On `attached` sessions the override stays on your Chrome after detach.",
       inputSchema: {
         userAgent: z
           .union([z.string(), z.null()])
@@ -364,7 +364,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       capability: "action",
       batchable: true,
       description:
-        "Grant browser permissions for the session — `geolocation`, `notifications`, `clipboard-read`, `clipboard-write`, `camera`, `microphone`, `midi`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, `ambient-light-sensor`, `payment-handler`, etc. (Chromium permission names). Mutates a live context via Playwright `context.grantPermissions`. Optionally scope to a specific `origin`; otherwise grants for the current page's origin. Pass `permissions: []` (or omit) to clear all grants for the session — Playwright does not expose per-origin revocation, so clearing is context-wide. Names the session's permission policy holds on `ask-human` and that the browser handles natively (`notifications`, `midi`, `midi-sysex`, `payment-handler`, `background-sync`, the sensors) are refused with `requiredCapability: \"human-gate-override\"` unless the operator enabled it: a native grant would let the page skip the human prompt.",
+        "Grant browser permissions to the session's context in bulk (Chromium names such as geolocation, notifications, clipboard-read, clipboard-write, camera, microphone, midi, background-sync, accelerometer, gyroscope, magnetometer, ambient-light-sensor, payment-handler). Use `set_permission_policy` to set how runtime requests are answered, and `permission_state` to read the result. Scope with `origin` (default: the current page's origin). An empty or omitted `permissions` list clears all grants for the whole context (per-origin revocation is not available). Names the permission policy holds on `ask-human` that the browser handles natively (`notifications`, `midi`, `midi-sysex`, `payment-handler`, `background-sync`, the sensors) are refused with `requiredCapability:\"human-gate-override\"` unless the operator enabled it, because a native grant would skip the human prompt.",
       inputSchema: {
         permissions: z
           .array(z.string())
@@ -420,7 +420,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
     {
       capability: "navigation",
       description:
-        'Background or foreground the session\'s tab — the only way to reproduce the bug class that only fires when the tab is hidden (throttled setTimeout, paused requestAnimationFrame so framework enter/animation hooks never run, and on-return a visibilitychange/focus handler replays stale state). `state:"background"` overrides document.visibilityState/hidden + dispatches visibilitychange, AND best-effort takes front focus away from the page so real timer/rAF throttling applies (real throttling is best-effort under headless). `state:"background"` with `holdMs` is the headline form: background, hold hidden for holdMs, then auto-foreground — reproducing the background→return transition in one call. `state:"foreground"` restores visibility and re-focuses the tab.',
+        'Background or foreground the session\'s tab, to reproduce bugs that appear only while the tab is hidden: throttled `setTimeout`, paused `requestAnimationFrame` (framework enter and animation hooks never run), and stale state replayed by a `visibilitychange` or focus handler on return. `state:"background"` overrides `document.visibilityState` and `hidden`, dispatches `visibilitychange`, and tries to take front focus away so real timer and rAF throttling applies (best effort under headless). With `holdMs` it backgrounds, holds hidden for that many ms, then foregrounds again, reproducing the round trip in one call. `state:"foreground"` restores visibility and focuses the tab.',
       inputSchema: {
         state: z
           .enum(["background", "foreground"])

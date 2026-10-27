@@ -1,0 +1,52 @@
+---
+// A product shot for the landing page. The raw captures were burned once per
+// theme (dark, light) and width (1280 wide, 390 narrow), so this renders one
+// <picture> per combination and lets CSS show the one that matches the site's
+// theme (`html[data-theme]`, set by Starlight before first paint) and the
+// viewport. Hidden pictures are `loading="lazy"`, so the browser never fetches
+// them. Each picture carries its own alt text because the narrow capture shows
+// different refs than the wide one.
+import shots from "./shots.json";
+
+interface Props {
+  /** Key in shots.json: snapshot, marks or act-diff. */
+  name: keyof typeof shots;
+  alt: { wide: string; narrow: string };
+  caption: { wide: string; narrow?: string };
+}
+
+const { name, alt, caption } = Astro.props;
+const widths = [
+  { key: "wide", px: "1280" },
+  { key: "narrow", px: "390" },
+] as const;
+const themes = ["dark", "light"] as const;
+const files = shots[name] as Record<string, { stem: string; width: number; height: number }>;
+---
+
+<figure class="browx-shot">
+  {
+    widths.map((w) =>
+      themes.map((t) => {
+        const f = files[`${t}.${w.px}`];
+        return (
+          <picture class="bs" data-t={t} data-w={w.key}>
+            <source type="image/webp" srcset={`/shots/${f.stem}.webp`} />
+            <img
+              src={`/shots/${f.stem}.png`}
+              width={f.width}
+              height={f.height}
+              alt={alt[w.key]}
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
+        );
+      }),
+    )
+  }
+  <figcaption>
+    <span class="bs-cap" data-w="wide">{caption.wide}</span>
+    <span class="bs-cap" data-w="narrow">{caption.narrow ?? caption.wide}</span>
+  </figcaption>
+</figure>
