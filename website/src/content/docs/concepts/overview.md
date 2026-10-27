@@ -52,6 +52,44 @@ See [Capabilities and safety](/concepts/capabilities-and-safety/) for the model,
 and the [threat model](/security/threat-model/) for the trust boundaries and
 what browxai deliberately does not defend against.
 
+## Native apps, desktop apps and sessions
+
+### Native apps, same tools
+
+Switch on `native-device` and `find`, `click` and `fill` drive an app on an
+Android emulator or the iOS Simulator. The tree comes off the app's view
+hierarchy, with the same refs a page gets. Android is verified against a live
+emulator; the iOS lane is newer and needs a WebDriverAgent you run. Native apps
+run on an emulator or simulator only, with no real-device lane.
+
+### The Electron app you have open
+
+An Electron app is Chromium, so one started with `--remote-debugging-port`
+answers the same CDP browxai already speaks. Attach to an app such as VS Code
+and `snapshot` and `find` read its UI. It needs `byob-attach`. The engine is
+attach-only, `navigate` refuses, and whether a port opens at all depends on the
+app and its version.
+
+### Sessions and lifecycle
+
+Chromium sessions launch the installed Google Chrome, or the bundled Chromium
+when Chrome is missing, on one default profile per workspace. Sessions are
+isolated contexts: persistent, incognito, or attached to a Chrome you already
+have open, on your desktop or on a plugged-in Android phone. Headed and
+headless. Pick the engine per session, so one server can hold a Chromium page
+and an emulator app at once.
+
+### Sites behind bot protection
+
+By default browxai does not defeat or spoof bot detection, and it cannot
+guarantee access to any site. When a challenge needs a person,
+`browxai chrome login` opens the installed Chrome on the workspace profile with
+nothing attached. Clear it by hand, quit Chrome, and later sessions on that
+profile reuse the cookies. The off-by-default `stealth` and `captcha`
+capabilities patch four browser properties and hand captchas to a third-party
+solving service. Read
+[Sites behind bot protection](/guides/sites-behind-bot-protection/).
+
 ## Where to go next
 
 - [The agent loop](/concepts/the-agent-loop/) is how navigate, snapshot, find,
