@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripCodeSpans } from "./lib/strip-code.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const ROOT = join(here, "..", "..");
@@ -162,7 +163,7 @@ export function assertNoDashes(text) {
       inFence = !inFence;
       return;
     }
-    if (!inFence && /[\u2013\u2014]/.test(raw.replace(/`[^`]*`/g, ""))) {
+    if (!inFence && /[\u2013\u2014]/.test(stripCodeSpans(raw))) {
       throw new Error(`em or en dash in prose, line ${i + 1}: ${raw.slice(0, 80)}`);
     }
   });
