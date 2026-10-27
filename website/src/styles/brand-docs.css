@@ -120,17 +120,17 @@
 }
 
 /* Measure: the 45rem column fits about 100 characters a line. Cap running text
-   at 72ch: paragraphs, lists, quotes, callout bodies and table cells. Code
+   at 60ch: paragraphs, lists, quotes, callout bodies and table cells. Code
    blocks keep the full column. A long unbroken token (a path, a URL) wraps at
    the column edge instead of pushing the page sideways. */
 .sl-markdown-content > :is(p, ul, ol, dl, blockquote):not(.not-content),
 .sl-markdown-content .starlight-aside__content,
 .sl-markdown-content details > :is(p, ul, ol, dl, blockquote, div),
 .sl-markdown-content :is(td, th) > :is(p, ul, ol) {
-  max-width: 72ch;
+  max-width: 60ch;
 }
 .sl-markdown-content table :is(th, td) {
-  max-width: 72ch;
+  max-width: 60ch;
   line-height: 1.5;
 }
 /* Page outline: one line per entry, cut with an ellipsis (docs-enhance.ts sets
