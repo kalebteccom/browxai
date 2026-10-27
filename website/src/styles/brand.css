@@ -93,9 +93,10 @@ blockquote,
 main:has(.browx-hero) > .content-panel:first-of-type,
 main:has(.browx-404) > .content-panel:first-of-type {
   position: absolute;
+  inset-inline-start: 0;
   width: 1px;
   height: 1px;
-  margin: -1px;
+  margin: 0;
   padding: 0;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
@@ -105,6 +106,14 @@ main:has(.browx-404) > .content-panel:first-of-type {
 main:has(.browx-hero) > .content-panel,
 main:has(.browx-404) > .content-panel {
   border-top: 0;
+}
+/* Landing and 404 pages: the column is capped and centred, so nothing starts at
+   the viewport edge on a wide screen. The hidden h1 panel anchors to it. */
+main:has(.browx-hero),
+main:has(.browx-404) {
+  position: relative;
+  max-width: 1440px;
+  margin-inline: auto;
 }
 
 /* Center every landing block on a shared column width. */

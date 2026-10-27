@@ -42,3 +42,51 @@ export function typeFinding(selector, name, value, isCode) {
 /** True when a rule on the docs content column caps its measure in ch. */
 export const hasMeasure = (css) =>
   /sl-markdown-content[^{}]*\{[^{}]*max-width:\s*7[0-5]ch/.test(css);
+
+// Layout guards for the rendered audit (hallmark 34, 44d and 49a). Each is true
+// when some rule in the stylesheet carries the declarations, and the runner
+// reports a finding when no stylesheet does.
+//
+//   copyable-scroll  .browx-copyable keeps white-space: nowrap, overflow-x: auto
+//                    and a 44px min-height, so a long command scrolls in its chip.
+//   container-cap    the landing and 404 main has a max-width of 1360 to 1520px.
+//   code-wrap        inline code in running text has overflow-wrap: anywhere.
+
+const rulesFor = (css, test) =>
+  [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter(([, sel]) => test(sel.replace(/\s+/g, " ").trim()))
+    .map(([, , body]) => body)
+    .join(";");
+
+export const hasCopyableScroll = (css) => {
+  const body = rulesFor(css, (s) => /(^|,\s*)\.browx-copyable$/.test(s));
+  return (
+    /white-space:\s*nowrap/.test(body) &&
+    /overflow-x:\s*auto/.test(body) &&
+    /min-height:\s*var\(--browx-tap\)/.test(body)
+  );
+};
+
+export const hasContainerCap = (css) => {
+  const body = rulesFor(css, (s) => /main:has\(\.browx-hero\)/.test(s) && !/>/.test(s));
+  const px = /max-width:\s*(\d+)px/.exec(body);
+  return !!px && +px[1] >= 1360 && +px[1] <= 1520 && /margin-inline:\s*auto/.test(body);
+};
+
+export const hasCodeWrap = (css) =>
+  /sl-markdown-content[^{}]*\bcode[^{}]*\{[^{}]*overflow-wrap:\s*anywhere/.test(css);
+
+/** Record which layout guards a stylesheet satisfies. */
+export function noteLayout(css, seen) {
+  if (hasCopyableScroll(css)) seen.copyable = true;
+  if (hasContainerCap(css)) seen.container = true;
+  if (hasCodeWrap(css)) seen.codeWrap = true;
+}
+
+/** The layout guards no stylesheet satisfied, as [rule, detail]. */
+export const layoutMissing = (seen) =>
+  [
+    !seen.copyable && ["copyable-scroll", ".browx-copyable needs nowrap, overflow-x: auto, 44px"],
+    !seen.container && ["container-cap", "landing and 404 main needs max-width 1360 to 1520px"],
+    !seen.codeWrap && ["code-wrap", "inline code in content needs overflow-wrap: anywhere"],
+  ].filter(Boolean);
