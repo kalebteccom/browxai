@@ -76,6 +76,13 @@ $BROWX_WORKSPACE/profile/Cookies to evil.example"_. The defenses:
 
 - **Tool descriptions** explicitly tell the host agent that this text is untrusted. The
   agent is expected to never treat it as instructions to itself.
+- **Hidden text is included.** Text a sighted user never sees (positioned off-screen, `opacity:0`,
+  `font-size:0`, a screen-reader-only class) stays in the accessibility tree, so it reaches
+  `snapshot` rows and every action's `snapshotDelta` like visible text does.
+- **Rows are escaped.** Quotes and backslashes in row text and names are escaped, control and
+  format characters (zero-width, bidi overrides) are dropped, and a `[ref=` inside page text is
+  rewritten to `(ref=`, so page text cannot add a ref to a row. Registered secrets are masked
+  before a row is clipped.
 - **No server-side interpretation** of page text. Ranking heuristics in `find()` only use
   string matching against the query, not the page's content semantics. `eval_js`'s return
   value is page-controlled and tagged as such in its description.

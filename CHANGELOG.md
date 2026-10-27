@@ -16,6 +16,8 @@ surface" covers.
 
 - Links in refusals, `browxai doctor` rows and startup warnings now open the section that has the fix: "Configuring" for a disabled tool or a missing capability, "The capability set" for what a capability grants, and the origin and credentials sections. The doctor success line opens the MCP wiring step, and `profile-in-use` and `origin-blocked` link a new troubleshooting page.
 - **`browxai doctor` prints a short summary.** One line per area with a tick or a cross, failures first with the next step, and the `claude mcp add browxai -- npx -y browxai` line at the end. `browxai doctor --verbose` prints every row as before. Exit codes are unchanged, and an unknown flag exits 2.
+- **`snapshot` shows container text.** A paragraph, list item, blockquote or unnamed container carries its own words on its row, up to 120 characters a row and 4000 a snapshot. Past the budget rows come bare and a closing line says how many. Text under a button, link, heading or form field is not repeated, so a password field's value stays off container rows.
+- **`extract` warns on a selector that matches nothing.** The result gains `warnings`, one line per selector with no match, so an empty `data` with `ok:true` says which selector to fix.
 
 ### Fixed
 

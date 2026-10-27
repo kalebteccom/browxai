@@ -214,7 +214,7 @@ export async function extract(
   if (!scoped.ok) return scoped.failure;
   const { scopeTree, scopeLocator } = scoped.value;
 
-  const { data, evidence, requiredMisses } = await resolveAgainstTree({
+  const { data, evidence, requiredMisses, warnings } = await resolveAgainstTree({
     schema: relaxedSchema,
     page,
     scopeTree,
@@ -249,6 +249,7 @@ export async function extract(
       selectorsUsed: dedupe(evidence.selectorsUsed),
       partialMisses: evidence.partialMisses,
     },
+    ...(warnings.length > 0 ? { warnings } : {}),
     tokensEstimate: 0,
   };
   out.tokensEstimate = estimateTokens(JSON.stringify(out));
