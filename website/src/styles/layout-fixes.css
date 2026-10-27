@@ -118,3 +118,9 @@ starlight-theme-select select:not([data-x]) {
     min-width: max-content;
   }
 }
+
+/* List paragraphs break lines with the plain algorithm: text-wrap: pretty left a long inline
+   code chip 5px past the edge of the box at 320px with 150% text. */
+.sl-markdown-content li > p {
+  text-wrap: wrap;
+}
