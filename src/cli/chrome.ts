@@ -141,7 +141,7 @@ function startChrome(opts: string[]): Promise<number> {
   writeFileSync(pidFile, String(child.pid), "utf8");
   writeFileSync(join(root, PROFILE_FILE), profileDir, "utf8");
   process.stdout.write(
-    `browxai chrome started\n  pid:     ${child.pid}\n  port:    ${port}\n  profile: ${profileDir}\n  attach:  BROWX_ATTACH_CDP=http://127.0.0.1:${port}\n  caps:    ${capabilitiesAssignment("byob-attach")}\n\nstop with: browxai chrome stop\n`,
+    `browxai chrome started\n  pid:     ${child.pid}\n  port:    ${port}\n  profile: ${profileDir}\n  attach:  BROWX_ATTACH_CDP=http://127.0.0.1:${port}\n  caps:    ${capabilitiesAssignment("byob-attach")}\n\nTo attach, put the attach and caps lines in the env of a browxai MCP entry. \`browxai init <dir>\` writes one as \`browxai-attached\`.\nStop with: browxai chrome stop\n`,
   );
   return Promise.resolve(0);
 }

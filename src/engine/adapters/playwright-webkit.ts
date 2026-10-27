@@ -32,6 +32,7 @@
 import type { BrowserContextOptions, LaunchOptions } from "playwright-core";
 import { resolveBrowserType } from "../select.js";
 import { capabilitiesFor } from "../capabilities.js";
+import { withInstallHint } from "../../util/missing-browser-hint.js";
 import type { EngineCapabilities, EngineKind, EngineLaunchHandles } from "../types.js";
 
 /** Persistent (managed) launch spec — the subset the managed factory passes to
@@ -68,7 +69,11 @@ export class PlaywrightWebKitAdapter {
    *  `webkit-persistent-not-supported` reason is reserved for a structured refusal). */
   async launchPersistent(spec: WebKitPersistentLaunchSpec): Promise<EngineLaunchHandles> {
     const browserType = resolveBrowserType(this.engine);
-    const context = await browserType.launchPersistentContext(spec.profileDir, spec.options);
+    const context = await browserType
+      .launchPersistentContext(spec.profileDir, spec.options)
+      .catch((err: unknown) => {
+        throw withInstallHint("webkit", err);
+      });
     const page = context.pages()[0] ?? (await context.newPage());
     return { context, page };
   }
@@ -76,7 +81,9 @@ export class PlaywrightWebKitAdapter {
   /** Ephemeral launch — wraps `launch` + `newContext`. No eager CDP session. */
   async launchEphemeral(spec: WebKitEphemeralLaunchSpec): Promise<EngineLaunchHandles> {
     const browserType = resolveBrowserType(this.engine);
-    const browser = await browserType.launch(spec.launchOptions);
+    const browser = await browserType.launch(spec.launchOptions).catch((err: unknown) => {
+      throw withInstallHint("webkit", err);
+    });
     const context = await browser.newContext(spec.contextOptions);
     const page = await context.newPage();
     return { browser, context, page };

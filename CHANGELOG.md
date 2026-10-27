@@ -12,6 +12,15 @@ surface" covers.
 
 - Links in refusals, `browxai doctor` rows and startup warnings now open the section that has the fix: "Configuring" for a disabled tool or a missing capability, "The capability set" for what a capability grants, and the origin and credentials sections. The doctor success line opens the MCP wiring step, and `profile-in-use` and `origin-blocked` link a new troubleshooting page.
 
+### Fixed
+
+- **`--help` and `-h` print usage on every subcommand.** `browxai chrome start --help` used to launch Chrome and `browxai doctor --help` ran the check. Both now print usage and exit 0 without running anything. `browxai help` works too.
+- **A mistyped capability name no longer prints a stack trace.** `browxai doctor` (and every other subcommand) used to crash on a name such as `evall` in `BROWX_CAPABILITIES`. `doctor` now shows a failing `capabilities` row that names the bad value and lists the valid names, and exits 1.
+- **`doctor` warns when `BROWX_CAPABILITIES` drops the defaults.** A list such as `eval` replaces `read,navigation,action,human`. The `capabilities` row shows a warning, not a green tick, and prints the list with the defaults added back.
+- **`browxai init` next steps keep the workspace on `chrome login` and `chrome start`.** The generated `.mcp.json` sets `BROWX_WORKSPACE` to `<dir>/.browxai`, so a login made in a shell without it went to `~/.browxai/profile` and the `browxai` entry never saw it. The next steps now print both commands with `BROWX_WORKSPACE` set, and say why.
+- **A missing Firefox or WebKit download now says which command to run.** Playwright's own message tells you to run `npx playwright install`, which can fetch a different build from the one browxai uses. The error now ends with the matching `npx playwright-core@<version> install firefox` or `... webkit` line, as the Chromium error already did.
+- **`BYOB` is spelled out where you first meet it.** `browxai --help` and `browxai init` now say it means bring your own browser, a Chrome you start yourself and browxai attaches to. `chrome start` now ends with what to do with its `attach` and `caps` lines, and `doctor` says the `browxai-attached` entry is the one `browxai init` writes.
+
 ## [0.14.0] - 2026-10-24
 
 This release tightens how browxai handles secrets, plugins, workspace paths and
