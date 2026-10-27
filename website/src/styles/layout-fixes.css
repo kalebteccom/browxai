@@ -101,3 +101,20 @@ starlight-theme-select select:not([data-x]) {
   border: 1px solid var(--sl-color-gray-3);
   border-radius: 0.5rem;
 }
+
+/* Header below 50rem: the gaps and side padding stop growing with the root font size
+   (16px cap) and the logo is 32px, so the site name keeps its full width at 150% text
+   on a 320px screen. At 100% text every value is unchanged. */
+@media (max-width: 49.9375rem) {
+  :root {
+    --sl-nav-gap: min(1rem, 16px);
+    --sl-nav-pad-x: min(1rem, 16px);
+  }
+  .site-title img {
+    height: min(2rem, 32px);
+  }
+  .title-wrapper {
+    flex-shrink: 0;
+    min-width: max-content;
+  }
+}
