@@ -1,0 +1,194 @@
+/* Docs pages: sidebar, reading column and tables. */
+
+/* ---- Sidebar: non-collapsible, Vercel / Next.js / MCP-docs feel ---------- */
+
+/* Inter-group air: each top-level group reads as its own section. */
+#starlight__sidebar .top-level > li + li {
+  margin-top: var(--space-5);
+}
+
+/* Groups are always open: kill the toggle and the caret. */
+#starlight__sidebar summary {
+  pointer-events: none;
+  cursor: default;
+  padding-block: var(--space-1h);
+  margin-bottom: var(--space-0h);
+}
+#starlight__sidebar summary .caret {
+  display: none;
+}
+
+/* Section labels: small, quiet, sentence case. */
+#starlight__sidebar .group-label .large {
+  font-family: var(--browx-font-body);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--sl-color-gray-3);
+}
+
+/* Make the sidebar a column so the llms.txt link can pin to the bottom. */
+#starlight__sidebar .sidebar-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* Items: 44px tall at every pointer, rounded, subtle hover, refined active state. */
+#starlight__sidebar .top-level a {
+  display: flex;
+  align-items: center;
+  min-height: var(--browx-tap);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  /* A 1px gap between stacked links, below the smallest spacing token. */
+  margin-block: 0.0625rem;
+  color: var(--sl-color-gray-2);
+}
+#starlight__sidebar .top-level ul ul a {
+  padding-block: var(--space-1h);
+  font-size: 0.875rem;
+}
+#starlight__sidebar .top-level a:hover {
+  background: color-mix(in srgb, var(--sl-color-gray-5) 22%, var(--sl-color-bg-sidebar));
+  color: var(--sl-color-white);
+}
+#starlight__sidebar .top-level a:active {
+  background: color-mix(in srgb, var(--sl-color-gray-5) 38%, var(--sl-color-bg-sidebar));
+  color: var(--sl-color-white);
+}
+#starlight__sidebar .top-level a[aria-current="page"] {
+  background: color-mix(in srgb, var(--sl-color-text-accent) 13%, var(--sl-color-bg-sidebar));
+  color: var(--sl-color-text-accent);
+  font-weight: 600;
+}
+#starlight__sidebar .top-level ul ul {
+  border-inline-start-color: var(--sl-color-hairline-shade);
+}
+
+/* The llms.txt affordance, pinned to the bottom of the sidebar. */
+.browx-sidebar-llms {
+  margin: auto var(--space-2) var(--space-1h);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--browx-tap);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--browx-border);
+  border-radius: 0.55rem;
+  font-family: var(--browx-font-body);
+  font-size: 0.82rem;
+  color: var(--sl-color-gray-2);
+  text-decoration: none;
+  background: var(--browx-surface);
+}
+.browx-sidebar-llms:hover {
+  border-color: var(--browx-border-accent);
+  color: var(--sl-color-white);
+}
+.browx-sidebar-llms:active {
+  border-color: var(--sl-color-text-accent);
+  background: var(--browx-tint);
+  color: var(--sl-color-white);
+}
+.browx-sidebar-llms .ico {
+  color: var(--sl-color-text-accent);
+  flex-shrink: 0;
+}
+.browx-sidebar-llms .lbl {
+  flex: 1;
+}
+.browx-sidebar-llms .ext {
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+/* ---- Content polish: smaller heading scale + comfortable measure -------- */
+
+/* Calmer heading sizes (Poppins runs large). Overrides Starlight's t-shirt
+   scale for both the page title and in-content headings, at every breakpoint. */
+:root {
+  --sl-text-h1: 1.95rem;
+  --sl-text-h2: 1.5rem;
+  --sl-text-h3: 1.2rem;
+  --sl-text-h4: 1.05rem;
+  --sl-text-h5: 0.95rem;
+}
+.sl-markdown-content :is(h1, h2, h3) {
+  letter-spacing: -0.015em;
+}
+
+/* Measure: the 45rem column fits about 100 characters a line. Cap running text
+   at 60ch: paragraphs, lists, quotes, callout bodies and table cells. Code
+   blocks keep the full column. A long unbroken token (a path, a URL) wraps at
+   the column edge instead of pushing the page sideways. */
+.sl-markdown-content > :is(p, ul, ol, dl, blockquote):not(.not-content),
+.sl-markdown-content .starlight-aside__content,
+.sl-markdown-content details > :is(p, ul, ol, dl, blockquote, div),
+.sl-markdown-content :is(td, th) > :is(p, ul, ol) {
+  max-width: 60ch;
+}
+.sl-markdown-content table :is(th, td) {
+  max-width: 60ch;
+  line-height: 1.5;
+}
+/* Page outline: one line per entry, cut with an ellipsis (docs-enhance.ts sets
+   the full text as a title). A wrapped entry made a nav control four lines tall. */
+.right-sidebar starlight-toc a:not([hidden]) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.5;
+}
+.sl-markdown-content :is(p, li, dt, dd, summary, blockquote, h1, h2, h3, h4, h5, h6) {
+  overflow-wrap: break-word;
+}
+/* Inline code and long identifiers wrap anywhere in running text, so a long
+   token never widens the page at 320px. Tables and code blocks keep their own
+   scroll boxes, and a copyable chip scrolls inside itself. */
+.sl-markdown-content
+  :is(p, li, dt, dd, summary, blockquote, h2, h3, h4, h5, h6, .starlight-aside__content)
+  code:not(.browx-copyable, :where(pre *)) {
+  overflow-wrap: anywhere;
+}
+
+/* Reference tables: top-align cells and tighten type. Starlight keeps tables
+   in a display:block + overflow-x container, so a genuinely wide one scrolls
+   within the column rather than bleeding under the right-hand sidebar. Tables
+   carrying paragraph-length content (the capability set) are written as lists
+   instead, since that is what they are. */
+.sl-markdown-content table {
+  font-size: 0.9rem;
+}
+.sl-markdown-content table :is(th, td) {
+  vertical-align: top;
+}
+.sl-markdown-content table:not(:where(.not-content *)) {
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+}
+/* Phone widths: a table with few columns and short code (marked by
+   docs-enhance.ts) fills the column and wraps its cells, so it needs no sideways
+   scroll. Wide or code-heavy tables keep the scroll box above. */
+@media (max-width: 40rem) {
+  .sl-markdown-content table[data-browx-wrap] {
+    display: table;
+    width: 100%;
+  }
+  .sl-markdown-content table[data-browx-wrap] :is(th, td, code) {
+    overflow-wrap: anywhere;
+  }
+}
+/* Off-screen code blocks and tables skip layout and paint until they near the
+   viewport. The tool reference holds 88 blocks and 18 tables in 15k nodes, and
+   style recalc over all of them made Ctrl+K and first load slow. "auto" keeps
+   the measured size once a block has rendered, so scrolling back does not shift. */
+.sl-markdown-content :is(.expressive-code, table):not(:where(.not-content *)) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 12rem;
+}
+.sl-markdown-content table:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}

@@ -1,0 +1,279 @@
+/* Landing hero parts: call-to-action buttons, install command, copy button, facts and the product window. */
+
+.browx-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+.browx-cta a {
+  text-decoration: none;
+}
+.browx-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--browx-font-display);
+  font-weight: 600;
+  border-radius: 0.55rem;
+  padding: var(--space-3) var(--space-4h);
+  transition: transform 0.12s ease;
+}
+/* Flat violet fill. --browx-on-accent clears 4.5:1 on all three steps. */
+.browx-btn--primary {
+  background: var(--browx-accent);
+  color: var(--browx-on-accent);
+  border: 1px solid var(--browx-accent);
+}
+.browx-btn--primary:hover {
+  transform: translateY(-2px);
+  background: var(--browx-accent-hover);
+  border-color: var(--browx-accent-hover);
+}
+.browx-btn--primary:active {
+  transform: none;
+  background: var(--browx-accent-active);
+  border-color: var(--browx-accent-active);
+}
+.browx-btn--ghost {
+  border: 1px solid var(--sl-color-gray-5);
+  color: var(--sl-color-white);
+}
+.browx-btn--ghost:hover {
+  border-color: var(--sl-color-text-accent);
+  transform: translateY(-2px);
+}
+.browx-btn--ghost:active {
+  transform: none;
+  border-color: var(--sl-color-text-accent);
+  background: var(--browx-tint);
+}
+.browx-btn:is(:disabled, [aria-disabled="true"]) {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  pointer-events: none;
+}
+
+/* Install one-liner under the CTAs. */
+.browx-install {
+  margin-top: var(--space-6);
+  max-width: 100%;
+  flex-wrap: wrap;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--browx-font-mono);
+  font-size: 0.85rem;
+  color: var(--sl-color-gray-2);
+  border: 1px solid var(--sl-color-hairline-shade);
+  border-radius: 0.5rem;
+  padding: var(--space-2) var(--space-3);
+  background: var(--browx-surface);
+}
+.browx-install .pfx {
+  color: var(--sl-color-text-accent);
+  user-select: none;
+}
+.browx-install code {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  user-select: all;
+}
+/* Copy button. The three labels sit in one grid cell, so the button is as wide
+   as the longest and the state changes without moving the line. */
+.browx-copy {
+  display: inline-grid;
+  align-content: center;
+  min-height: var(--browx-tap);
+  margin-inline-start: var(--space-1h);
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  font-family: var(--browx-font-body);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--sl-color-gray-2);
+  background: transparent;
+  border: 1px solid var(--sl-color-hairline-shade);
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+.browx-copy[hidden] {
+  display: none;
+}
+.browx-copy:hover {
+  border-color: var(--sl-color-text-accent);
+  color: var(--sl-color-white);
+}
+.browx-copy:active {
+  border-color: var(--sl-color-text-accent);
+  background: var(--browx-tint);
+  color: var(--sl-color-white);
+}
+.browx-copy:is(:disabled, [aria-disabled="true"]) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.browx-copy .lbl {
+  grid-area: 1 / 1;
+  text-align: center;
+  visibility: hidden;
+}
+.browx-copy[data-state="idle"] .lbl-idle,
+.browx-copy[data-state="copied"] .lbl-copied,
+.browx-copy[data-state="failed"] .lbl-failed {
+  visibility: visible;
+}
+.browx-copy[data-state="copied"] {
+  border-color: var(--sl-color-green);
+  color: var(--sl-color-green-high);
+}
+.browx-copy[data-state="failed"] {
+  border-color: var(--sl-color-red);
+  color: var(--sl-color-red-high);
+}
+
+/* One line under the install command: the Node floor and the next step. */
+.browx-install-note {
+  margin: var(--space-4) 0 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--sl-color-gray-3);
+}
+.browx-install-note a {
+  color: var(--sl-color-text-accent);
+  text-underline-offset: 0.18em;
+}
+
+/* Version, license, status and links, under the hero. */
+.browx-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-3) var(--space-6);
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: var(--space-4) 0;
+  border-block: 1px solid var(--sl-color-hairline-shade);
+  font-size: 0.88rem;
+}
+.browx-facts dt {
+  font-weight: 600;
+  font-family: var(--browx-font-body);
+  font-size: 0.7rem;
+  color: var(--sl-color-gray-3);
+}
+.browx-facts dd {
+  margin: var(--space-0h) 0 0;
+  color: var(--sl-color-gray-2);
+  line-height: 1.45;
+}
+/* The links row lays out as a flex line so each 44px link sits on one baseline. */
+.browx-facts dd:has(.sep) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.browx-facts a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--browx-tap);
+  color: var(--sl-color-text-accent);
+}
+.browx-facts a:hover {
+  text-decoration-thickness: 2px;
+}
+.browx-facts a:active {
+  color: var(--sl-color-accent-high);
+}
+.browx-facts .sep {
+  margin: 0 var(--space-1h);
+  opacity: 0.5;
+}
+
+/* The product window on the right of the hero: a solid surface with a flat border. */
+.browx-window {
+  border: 1px solid var(--browx-border);
+  border-radius: 0.85rem;
+  overflow: hidden;
+  background: var(--browx-surface);
+  color: var(--sl-color-text);
+}
+.browx-window-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--browx-border);
+  background: var(--sl-color-bg);
+}
+.browx-window-dots {
+  display: inline-flex;
+  gap: var(--space-1h);
+}
+.browx-window-dots i {
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 999px;
+  background: var(--sl-color-gray-5);
+}
+.browx-window-title {
+  font-family: var(--browx-font-body);
+  font-size: 0.74rem;
+  color: var(--sl-color-gray-3);
+}
+.browx-window-title .dot {
+  color: var(--sl-color-text-accent);
+}
+
+/* The compact snapshot tree, laid out on a grid so columns line up. */
+.browx-snap {
+  margin: 0;
+  padding: var(--space-4) var(--space-4h) var(--space-4h);
+  font-family: var(--browx-font-mono);
+  font-size: 0.82rem;
+  line-height: 1.8;
+  overflow-x: auto;
+}
+.browx-snap-note {
+  color: var(--sl-color-gray-3);
+  margin-bottom: var(--space-2);
+}
+.browx-snap .row {
+  display: grid;
+  grid-template-columns: 4.6rem 9rem 5rem 1fr;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+.browx-snap .row.indent {
+  padding-left: var(--space-4h);
+}
+.browx-snap .t-role {
+  color: var(--sl-color-white);
+}
+.browx-snap .t-str {
+  color: #6fcdb6;
+}
+:root[data-theme="light"] .browx-snap .t-str {
+  color: #0f766e;
+}
+.browx-snap .t-acc {
+  color: var(--sl-color-text-accent);
+}
+/* Shrink the snapshot on small screens so it fits without an inner scroll. At
+   360px the card body is 294px wide; these columns need about 280px. */
+@media (max-width: 34rem) {
+  .browx-snap {
+    font-size: 0.72rem;
+    padding: var(--space-3) var(--space-4) var(--space-4);
+  }
+  .browx-snap .row {
+    grid-template-columns: 3.1rem 4.6rem 3.7rem 1fr;
+    gap: var(--space-1h);
+  }
+  .browx-snap .row.indent {
+    padding-left: var(--space-3);
+  }
+}
