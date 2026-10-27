@@ -1,3 +1,4 @@
+/* global document, window, Node, NodeFilter, getComputedStyle -- these run inside page.evaluate, in the browser. */
 // Print which elements sit behind a hallmark rule 58 finding and an impeccable line-length finding, for one page at 1440px.
 // Usage: node element-dump.mjs <puppeteer-dir> <chrome-wrapper> <url> <hallmark-json> <impeccable-1440-json>
 // Chrome starts through the fenced wrapper only; the page is on loopback. Prints nothing when neither rule fired.
