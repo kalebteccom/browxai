@@ -4,7 +4,8 @@
 // Identical findings across themes and widths are merged into one line with the variants listed.
 // Exit codes: impeccable 0 clean, 2 findings, anything else a tool error. hallmark 0 clean, 1 findings, anything else a tool error.
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const [outDir, themesFile] = process.argv.slice(2);
 if (!outDir || !themesFile) {
@@ -142,6 +143,16 @@ const gaps = [
 if (!themes.includes("dark"))
   gaps.unshift("dark theme NOT audited: the colour-scheme flag was not honoured, light only.");
 
+// Accepted findings (website/design-audit-keep.md rows) are listed apart and do not fail the run.
+const allow = parse(read(join(dirname(fileURLToPath(import.meta.url)), "allow.json"))) ?? [];
+const kept = [];
+for (const [key, g] of groups)
+  if (allow.some((a) => a.tool === g.tool && a.page === g.page && g.label.startsWith(a.match))) {
+    kept.push(
+      `[kept, keep row ${allow.find((a) => a.page === g.page && g.label.startsWith(a.match)).keep}] ${g.page} ${g.label} ${clip(g.detail, 60)}`,
+    );
+    groups.delete(key);
+  }
 const lines = [];
 lines.push("===== DESIGN-AUDIT FINDINGS BEGIN =====");
 lines.push(
@@ -155,16 +166,27 @@ for (const g of byTool) {
   lines.push(`[${g.tool}] ${g.page} ${g.label} (${[...g.variants].sort().join(" ")})`);
   if (g.detail) lines.push(`    ${g.detail}`);
 }
+for (const k of kept) lines.push(k);
 if (tallies.size)
   lines.push(
     `not failing, hallmark: ${[...tallies].map(([grade, n]) => `${grade} ${n}`).join(", ")}`,
   );
+// Dumps print home, tool-reference and threat-model first so a truncated log still has them.
+const first = ["dump-home", "dump-reference_tool-reference", "dump-security_threat-model"];
+const rank = (f) => {
+  const i = first.findIndex((p) => f.startsWith(p));
+  return i < 0 ? first.length : i;
+};
+let dumpBytes = 0;
 for (const file of readdirSync(outDir)
   .filter((f) => /^dump-.*\.txt$/.test(f))
-  .sort()) {
+  .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))) {
   const text = read(join(outDir, file)).trim();
-  if (text) lines.push(text);
+  if (!text) continue;
+  dumpBytes += text.length + 1;
+  lines.push(clip(text, 1500));
 }
+lines.push(`[dump] total ${dumpBytes} bytes`);
 for (const e of errors) lines.push(`[tool error] ${e}`);
 for (const g of gaps) lines.push(`[gap] ${g}`);
 lines.push("===== DESIGN-AUDIT FINDINGS END =====");

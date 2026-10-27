@@ -1,9 +1,9 @@
-/* global document, window, Node, NodeFilter, getComputedStyle -- these run inside page.evaluate, in the browser. */
-// Print which elements sit behind a hallmark rule 58 finding and an impeccable line-length finding, for one page at 1440px.
+/* global document, window, NodeFilter, getComputedStyle -- these run inside page.evaluate, in the browser. */
+// Compact element dump for one page at 1440px: one line per rule 58 hit, three lines for line-length.
 // Usage: node element-dump.mjs <puppeteer-dir> <chrome-wrapper> <url> <hallmark-json> <impeccable-1440-json>
 // Chrome starts through the fenced wrapper only; the page is on loopback. Prints nothing when neither rule fired.
-// Rule 58: the element at x=720 under several points below the flagged y, its closest heading, its tag/class chain, word counts, and the densest blocks in the window.
-// line-length: the 5 widest rendered text lines (characters per line, from Range.getClientRects per character).
+// Rule 58: the 3 densest blocks in the 900px from the flagged y (words, last 3 elements of the chain, nearest heading).
+// line-length: the 3 widest rendered lines. Character rects are grouped by block ancestor and top coordinate.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
@@ -37,164 +37,105 @@ if (ys.length === 0 && !wantLines) process.exit(0);
 
 const puppeteer = createRequire(join(resolve(pptDir), "x.js"))("puppeteer-core");
 
-// Runs in the page. Returns plain data only.
-const probeRule58 = (y) => {
+// Both probes run in the page and return plain strings.
+const probeBlocks = (y) => {
   const chain = (el) => {
     const parts = [];
-    for (let n = el; n && n.nodeType === 1 && parts.length < 6; n = n.parentElement) {
+    for (let n = el; n && n.nodeType === 1 && parts.length < 3; n = n.parentElement) {
       const cls = String(n.getAttribute("class") ?? "")
         .trim()
         .split(/\s+/)
         .filter(Boolean)
-        .slice(0, 2)
+        .slice(0, 1)
         .join(".");
       parts.unshift(n.tagName.toLowerCase() + (cls ? `.${cls}` : ""));
     }
-    return parts.join(" > ");
+    return parts.join(">");
   };
-  const words = (el) => (el.innerText ?? "").split(/\s+/).filter(Boolean).length;
   const heading = (el) => {
     let last = null;
     for (const h of document.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
-      if (
-        h === el ||
-        h.contains(el) ||
-        h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING
-      )
-        last = h;
+      if (h.compareDocumentPosition(el) & 4 || h.contains(el)) last = h;
       else break;
     }
-    return last
-      ? `${last.tagName.toLowerCase()} "${last.textContent.trim().slice(0, 60)}"`
-      : "none";
+    return last ? last.textContent.trim().slice(0, 40) : "none";
   };
-  const vis = (el) => {
-    const s = getComputedStyle(el);
-    return s.display !== "none" && s.visibility !== "hidden";
-  };
-  const at = [];
-  for (const dy of [0, 150, 300, 450, 600]) {
-    window.scrollTo(0, Math.max(0, y + dy - 100));
-    const el = document.elementFromPoint(720, y + dy - window.scrollY);
-    if (!el) {
-      at.push(`y=${y + dy}: nothing at x=720`);
-      continue;
-    }
-    const sec = el.closest("section,article,details,li,tr,figure,dl,table") ?? el.parentElement;
-    at.push(
-      `y=${y + dy}: ${chain(el)} | heading ${heading(el)} | words el ${words(el)}, container <${sec?.tagName.toLowerCase()}> ${sec ? words(sec) : 0}`,
-    );
-  }
-  const blocks = new Map();
+  const blocks = [];
   for (const el of document.querySelectorAll(
-    "p,li,td,th,dd,dt,pre,figcaption,blockquote,h1,h2,h3,h4,summary",
+    "p,li,td,th,dd,dt,pre,figcaption,blockquote,summary",
   )) {
-    if (!vis(el) || el.querySelector("p,li,td,pre,dd")) continue;
-    const r = el.getBoundingClientRect();
-    const top = r.top + window.scrollY;
+    const s = getComputedStyle(el);
+    if (s.display === "none" || s.visibility === "hidden" || el.querySelector("p,li,td,pre,dd"))
+      continue;
+    const top = el.getBoundingClientRect().top + window.scrollY;
     if (top < y - 20 || top > y + 900) continue;
-    const key = chain(el).split(" > ").slice(-3).join(" > ");
-    const b = blocks.get(key) ?? { n: 0, words: 0 };
-    b.n += 1;
-    b.words += words(el);
-    blocks.set(key, b);
+    blocks.push({ w: (el.innerText ?? "").split(/\s+/).filter(Boolean).length, el });
   }
-  // Words visible in the viewport at this scroll, by landmark: the sidebar and outline count on every screen.
-  window.scrollTo(0, y);
-  const zones = new Map();
-  const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  const rg = document.createRange();
-  for (let n = tw.nextNode(); n; n = tw.nextNode()) {
-    const pe = n.parentElement;
-    if (!pe || /^(SCRIPT|STYLE|NOSCRIPT)$/.test(pe.tagName) || !vis(pe)) continue;
-    rg.selectNodeContents(n);
-    const r = rg.getBoundingClientRect();
-    if (r.width === 0 || r.bottom < 0 || r.top > window.innerHeight) continue;
-    const z =
-      pe.closest("header,nav,aside,main,footer,starlight-toc,starlight-menu-button") ??
-      document.body;
-    const k = chain(z).split(" > ").slice(-2).join(" > ");
-    zones.set(k, (zones.get(k) ?? 0) + n.textContent.split(/\s+/).filter(Boolean).length);
-  }
-  const zoneList = [...zones].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${v}w in ${k}`);
-  const dense = [...blocks].sort((a, b) => b[1].words - a[1].words).slice(0, 8);
-  return { at, zones: zoneList, dense: dense.map(([k, v]) => `${v.words}w in ${v.n}x ${k}`) };
+  blocks.sort((a, b) => b.w - a.w);
+  return blocks
+    .slice(0, 3)
+    .map((b) => `${b.w}w ${chain(b.el)} [${heading(b.el)}]`)
+    .join(" ; ");
 };
 
 const probeLines = () => {
+  const isInline = (el) => /^inline/.test(getComputedStyle(el).display);
+  const block = (el) => {
+    let n = el;
+    while (n.parentElement && isInline(n)) n = n.parentElement; // cap: tree depth
+    return n;
+  };
   const lines = new Map();
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   const range = document.createRange();
+  const owners = new Map();
+  const ids = new Map();
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const el = node.parentElement;
     if (!el || /^(SCRIPT|STYLE|NOSCRIPT)$/.test(el.tagName)) continue;
     const s = getComputedStyle(el);
     if (s.display === "none" || s.visibility === "hidden") continue;
+    if (!owners.has(el)) owners.set(el, block(el));
+    const b = owners.get(el);
     const text = node.textContent;
     for (let i = 0; i < text.length; i++) {
       range.setStart(node, i);
       range.setEnd(node, i + 1);
       const r = range.getClientRects()[0];
       if (!r || r.width === 0) continue;
-      const key = `${Math.round(r.top + window.scrollY)}|${el.tagName}|${el.className}|${Math.round(r.left / 40)}`;
-      const l = lines.get(key) ?? {
-        el,
-        chars: 0,
-        left: r.left,
-        right: r.right,
-        text: "",
-        top: r.top + window.scrollY,
-      };
+      if (!ids.has(b)) ids.set(b, ids.size);
+      const id = ids.get(b);
+      const key = `${id}|${Math.round((r.top + window.scrollY) / 4)}`;
+      const l = lines.get(key) ?? { b, chars: 0, top: r.top + window.scrollY };
       l.chars += 1;
-      l.right = Math.max(l.right, r.right);
-      l.left = Math.min(l.left, r.left);
-      if (l.text.length < 80) l.text += text[i];
       lines.set(key, l);
     }
   }
-  const chain = (el) => {
-    const parts = [];
-    for (let n = el; n && n.nodeType === 1 && parts.length < 5; n = n.parentElement) {
-      const cls = String(n.getAttribute("class") ?? "")
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .join(".");
-      parts.unshift(n.tagName.toLowerCase() + (cls ? `.${cls}` : ""));
-    }
-    return parts.join(" > ");
+  const name = (el) => {
+    const cls = String(el.getAttribute("class") ?? "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)[0];
+    return el.tagName.toLowerCase() + (cls ? `.${cls}` : "");
   };
   return [...lines.values()]
     .sort((a, b) => b.chars - a.chars)
-    .slice(0, 5)
+    .slice(0, 3)
     .map(
-      (l) =>
-        `${l.chars} chars, ${Math.round(l.right - l.left)}px, y=${Math.round(l.top)}: ${chain(l.el)} | "${l.text.trim()}"`,
-    );
+      (l) => `${l.chars}ch ${name(l.b.parentElement ?? l.b)}>${name(l.b)} y=${Math.round(l.top)}`,
+    )
+    .join(" ; ");
 };
 
+const slug = new URL(url).pathname.replace(/^\/|\/$/g, "").replace(/[/.]/g, "_") || "home";
 const browser = await puppeteer.launch({ executablePath: resolve(chrome), headless: true });
 try {
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 900 });
   await page.goto(url, { waitUntil: "networkidle0", timeout: 30000 });
-  const out = [`--- element dump ${url} (1440px)`];
-  for (const y of ys) {
-    const r = await page.evaluate(probeRule58, y);
-    out.push(
-      `rule 58 flagged from y=${y}`,
-      ...r.at.map((l) => `  at ${l}`),
-      "  words in the viewport at y, by landmark:",
-      ...r.zones.map((l) => `    ${l}`),
-      "  densest blocks in the next 900px:",
-      ...r.dense.map((l) => `    ${l}`),
-    );
-  }
-  if (wantLines) {
-    out.push("line-length: 5 widest text lines");
-    for (const l of await page.evaluate(probeLines)) out.push(`  ${l}`);
-  }
+  const out = [];
+  for (const y of ys) out.push(`[dump58] ${slug} y=${y}: ${await page.evaluate(probeBlocks, y)}`);
+  if (wantLines) out.push(`[dumpLL] ${slug}: ${await page.evaluate(probeLines)}`);
   console.log(out.join("\n"));
 } finally {
   await browser.close();
