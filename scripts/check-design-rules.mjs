@@ -278,7 +278,7 @@ async function main() {
       join(SITE, "src", "styles"),
       1,
       "measure-range",
-      "no 70 to 75ch cap on the content column",
+      "no 55 to 64ch cap on the content column",
     );
   for (const [rule, detail] of layoutMissing(layoutSeen))
     report(join(SITE, "src", "styles"), 1, rule, detail);

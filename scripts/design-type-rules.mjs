@@ -7,7 +7,7 @@
 //                   content, page outline, sidebar, table cells, paragraphs and
 //                   lists), or --sl-line-height under 1.5 or
 //                   --sl-line-height-headings under 1.3.
-//   measure-range   a max-width in ch on the docs content column outside 70 to 75.
+//   measure-range   a max-width in ch on the docs content column outside 55 to 64.
 //                   A page that ends with no such cap fails too (see hasMeasure).
 
 const FLAGGED = /\b(inter|roboto|fraunces|geist|plus jakarta sans|space grotesk)\b/i;
@@ -34,14 +34,14 @@ export function typeFinding(selector, name, value, isCode) {
   if (name === "--sl-line-height-headings" && n < 1.3)
     return ["tight-leading", "(headings need 1.3 or more)"];
   const ch = /^(\d*\.?\d+)ch$/.exec(value);
-  if (name === "max-width" && ch && CONTENT.test(selector) && (+ch[1] < 70 || +ch[1] > 75))
-    return ["measure-range", "(content column measure is 70 to 75ch)"];
+  if (name === "max-width" && ch && CONTENT.test(selector) && (+ch[1] < 55 || +ch[1] > 64))
+    return ["measure-range", "(content column measure is 55 to 64ch)"];
   return null;
 }
 
 /** True when a rule on the docs content column caps its measure in ch. */
 export const hasMeasure = (css) =>
-  /sl-markdown-content[^{}]*\{[^{}]*max-width:\s*7[0-5]ch/.test(css);
+  /sl-markdown-content[^{}]*\{[^{}]*max-width:\s*(?:5[5-9]|6[0-4])ch/.test(css);
 
 // Layout guards for the rendered audit (hallmark 34, 44d and 49a). Each is true
 // when some rule in the stylesheet carries the declarations, and the runner
