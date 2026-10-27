@@ -45,7 +45,7 @@ describe("serialise carried text", () => {
       node("link", "docs", "e3", [text("docs")]),
     ]);
     const out = serialise(doc(p));
-    expect(out).toContain('paragraph "See "');
+    expect(out).toContain('paragraph "See" [ref=e2]');
     expect(out.match(/docs/g)).toHaveLength(1);
   });
 
