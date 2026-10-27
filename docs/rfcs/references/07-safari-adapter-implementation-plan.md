@@ -11,7 +11,7 @@
 - **Decisively de-risked:** (a) Safari 26.5 ships a real WebDriver BiDi socket behind the vendor cap `safari:experimentalWebSocketUrl:true`; (b) WebDriver Classic is a complete workhorse; (c) **browxai's exact DOM-walk `PAGE_SCRIPT` returns the identical `DomWalkEntry` shape under Classic `execute/sync`**, so the Safari snapshot substrate is feasible (RFC open-Q#7 CLOSED, see §4).
 - **The hard part (NOT a normal adapter):** the `BrowserEngine` port and the whole session/server layer are built on a Playwright `Page`. Safari has none. This is a **session-layer seam**, not just a new adapter file. See §3 for why it's the biggest engine add.
 - **Build is staged into 5 gate-green increments** = tasks #31–#35 (§6). Increment 1 (transport + adapter + engine declaration, unit-tested, NOT yet operator-reachable) is the safe first commit.
-- **Repo rules:** browxai AGENTS.md governs. Full gate: `typecheck` / `test` / `test:keystone` / `lint` / `format:check` / `build` / `docs:build`. Single-line conventional commits ≤72 chars, **NO trailers** (the commit-msg hook rejects multi-line/trailer subjects; run each `git commit` as its OWN command, never chained with `&&`). Explicit `git add <files>` only; never `-A`. The owner's uncommitted `.gitignore` (`.scratch/`) edit stays untouched.
+- **Repo rules:** browxai AGENTS.md governs. Full gate: `typecheck` / `test` / `test:keystone` / `lint` / `format:check` / `build` / `docs:build`. Conventional commits, subject ≤72 chars (body and trailers optional). Explicit `git add <files>` only; never `-A`. The owner's uncommitted `.gitignore` (`.scratch/`) edit stays untouched.
 
 ---
 

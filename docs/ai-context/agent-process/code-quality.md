@@ -23,12 +23,11 @@ If a residual issue remains (e.g. an external dependency emits a warning you can
 
 - Conventional Commit subjects: `type(scope): subject` or `type: subject`.
 - Allowed types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`.
-- Single-line, ≤72 characters, no body.
-- Hooks enforce this on visible `git commit -m` / `--message=` invocations.
+- Subject ≤72 characters. A body is optional and trailers are optional.
+- Hooks enforce the subject rules on visible `git commit -m` / `--message=` invocations. Merge commits are exempt.
 - Use `--no-edit` only when amending or rebasing a commit whose existing subject already satisfies the contract.
 
-Rationale: a terse, scannable log. Ticket, iteration and plan references rot, so state the why in the PR description or in `docs/ai-context/`. The commit body stays empty.
-
+Rationale: a terse, scannable log. Ticket, iteration and plan references rot, so state the why in the PR description or in `docs/ai-context/`.
 ## Improve existing code
 
 When a change touches existing code, look for cleaner abstractions, dead code removal, better naming, fixing inconsistencies. Small, scoped refactors directly adjacent to the work belong in the same PR. Large refactors deserve a dedicated PR.

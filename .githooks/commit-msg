@@ -6,10 +6,12 @@
 # same gate.
 #
 # Rules:
-#   1. Subject line ≤ 72 chars.
-#   2. Single line — no body, no bullet points.
-#   3. Conventional-commits prefix
+#   1. Subject line <= 72 chars.
+#   2. Conventional-commits prefix
 #      (feat|fix|chore|docs|refactor|test|perf|build|ci|style|revert)(scope)?: ...
+#
+# A body is allowed. Trailers are allowed and never required.
+# Merge commits are exempt (MERGE_HEAD present, or subject starts with "Merge ").
 #
 # Bypass (emergency only): git commit --no-verify
 
@@ -31,20 +33,16 @@ if [[ -z "$MSG_BODY" ]]; then
 fi
 
 SUBJECT=$(printf '%s\n' "$MSG_BODY" | head -n 1)
-# Git trailers (`Key: value`, RFC-822 shape) are exempt from the line count.
-# AGENTS.md asks every agent commit to carry Co-Authored-By and Claude-Session,
-# and a rule that rejects them makes the repo's own attribution requirement
-# impossible to satisfy. What this hook exists to stop is a prose body.
-LINES=$(printf '%s\n' "$MSG_BODY" | grep '.' | grep -cvE '^[A-Za-z][A-Za-z-]*: ' || true)
+
+# Merge commits are exempt: MERGE_HEAD exists while a merge is being concluded.
+if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 || [[ "$SUBJECT" == "Merge "* ]]; then
+  exit 0
+fi
 
 ERRORS=()
 
 if (( ${#SUBJECT} > MAX_SUBJECT )); then
   ERRORS+=("Subject line is ${#SUBJECT} chars (max ${MAX_SUBJECT}).")
-fi
-
-if (( LINES > 1 )); then
-  ERRORS+=("Message has ${LINES} body lines — keep it to a single subject line.")
 fi
 
 if ! printf '%s' "$SUBJECT" | grep -qE '^(feat|fix|chore|docs|refactor|test|perf|build|ci|style|revert)(\([a-z0-9._/-]+\))?!?: .+'; then

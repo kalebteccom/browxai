@@ -1,6 +1,6 @@
 # Commit discipline
 
-Single-line conventional-commit subjects, ≤72 characters, no body. Enforced by `.claude/hooks/block-long-commits.sh` on visible `git commit -m` / `--message=` invocations.
+Conventional-commit subjects, ≤72 characters. A body is optional and trailers are optional. `.githooks/commit-msg` enforces the subject rules on every commit. `.claude/hooks/block-long-commits.sh` enforces them on visible `git commit -m` / `--message=` invocations, and only when `git commit` is the command word, not when the text appears inside another command. Merge commits are exempt.
 
 ## Subject format
 
@@ -9,7 +9,7 @@ Single-line conventional-commit subjects, ≤72 characters, no body. Enforced by
 ## What goes in the commit, what goes elsewhere
 
 - Subject: what changed, in 72 chars.
-- The _why_ goes in the PR description, the CHANGELOG entry, or the relevant `docs/ai-context/` note. The commit body field stays empty.
+- The _why_ goes in the PR description, the CHANGELOG entry, or the relevant `docs/ai-context/` note. A short commit body is fine.
 - No bug-tracker links in the subject.
 
 ## Staging
