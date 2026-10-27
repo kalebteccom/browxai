@@ -3,7 +3,7 @@
 # Usage: run-audit.sh <audit-dir>   (from the repo root; needs website/dist, <audit-dir>/tools from fetch-tools.sh,
 #        <audit-dir>/bin/chrome-fenced and <audit-dir>/themes from the fence step)
 # Chrome only ever starts through the fenced wrapper. The tools run in a minimal environment: no CI variable (impeccable adds --no-sandbox when it is set), throwaway HOME, telemetry off.
-# Never runs hallmark redesign, install-hook, imagegen or audit, and never passes --cdp. Exit status comes from summarize.mjs.
+# Never runs hallmark redesign, install-hook, imagegen or audit, and never passes --cdp. Exit status: 1 when there are findings that are not kept, 2 on a tool error or a crash in the summary (summarize.mjs sets it).
 set -uo pipefail
 
 AUDIT="$(cd "${1:?usage: run-audit.sh <audit-dir>}" && pwd)"
@@ -77,11 +77,45 @@ for theme in $THEMES; do
 done
 
 # Element dump: which elements sit behind rule 58 and line-length. Light theme, 1440 only; loopback fence unchanged.
+# Each page runs on its own: a failure prints its stderr and the run goes on. element-dump.mjs has its own 100 s deadline.
+echo "== audit: element dump start =="
 for page in $PAGES; do
   s="$(slug "$page")"
   tool_env CHROME_PATH="$WRAP" EXTRA_CHROME_FLAGS="$(flags light)" \
     node "$HERE/element-dump.mjs" "$PPT" "$WRAP" "$BASE$page" "$OUT/hm-light-$s.json" "$OUT/imp-light-1440-$s.json" \
-    2>/dev/null | head -c 2000 > "$OUT/dump-$s.txt" || true
+    > "$OUT/dump-$s.txt" 2> "$OUT/dump-$s.err"
+  rc=$?
+  [ "$rc" -eq 0 ] || echo "FAILED: element-dump $page (exit $rc)"
+  [ -s "$OUT/dump-$s.err" ] && { echo "element-dump $page stderr:"; head -c 1500 "$OUT/dump-$s.err"; echo; }
 done
+echo "== audit: element dump end =="
 
-node "$HERE/summarize.mjs" "$OUT" "$AUDIT/themes"
+echo "== audit: summary start =="
+SUMMARY_RC=0
+if node "$HERE/summarize.mjs" "$OUT" "$AUDIT/themes" > "$AUDIT/findings.txt" 2> "$AUDIT/summarize.err"; then
+  SUMMARY_RC=0
+else
+  SUMMARY_RC=$?
+fi
+if [ ! -s "$AUDIT/findings.txt" ] || [ "$SUMMARY_RC" -gt 2 ]; then
+  echo "FAILED: summarize.mjs (exit $SUMMARY_RC)"
+  head -c 3000 "$AUDIT/summarize.err"
+  echo "raw per-tool counts (exit codes, then findings per file):"
+  for t in imp hm; do
+    echo "$t exit codes: $(cat "$OUT"/$t-*.rc 2>/dev/null | sort | uniq -c | tr '\n' ' ')"
+  done
+  for f in "$OUT"/*.json; do echo "$(basename "$f") $(grep -o '"id"\|"gate"' "$f" 2>/dev/null | wc -l)"; done
+  SUMMARY_RC=2
+else
+  cat "$AUDIT/findings.txt"
+  # The same text again in 1.5 KB chunks, so a log service that drops a long line still leaves it readable.
+  split -b 1500 -d -a 3 "$AUDIT/findings.txt" "$AUDIT/findings.chunk."
+  n=0
+  for c in "$AUDIT"/findings.chunk.*; do
+    n=$((n + 1))
+    sed "s/^/FINDINGS|$n|/" "$c"
+  done
+  rm -f "$AUDIT"/findings.chunk.*
+fi
+echo "== audit: summary end (exit $SUMMARY_RC) =="
+exit "$SUMMARY_RC"

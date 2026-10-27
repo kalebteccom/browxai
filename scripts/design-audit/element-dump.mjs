@@ -35,6 +35,14 @@ const ys = (hm.findings ?? [])
 const wantLines = read(impFile).includes("line-length");
 if (ys.length === 0 && !wantLines) process.exit(0);
 
+// A hung page must not hold the audit: after 100 s print what failed and exit.
+let browserRef;
+setTimeout(() => {
+  console.error(`element-dump: ${url} timed out after 100 s`);
+  browserRef?.process()?.kill("SIGKILL");
+  process.exit(3);
+}, 100000).unref();
+
 const puppeteer = createRequire(join(resolve(pptDir), "x.js"))("puppeteer-core");
 
 // Both probes run in the page and return plain strings.
@@ -98,18 +106,19 @@ const probeLines = () => {
     if (!owners.has(el)) owners.set(el, block(el));
     const b = owners.get(el);
     const text = node.textContent;
-    for (let i = 0; i < text.length; i++) {
-      range.setStart(node, i);
-      range.setEnd(node, i + 1);
-      const r = range.getClientRects()[0];
-      if (!r || r.width === 0) continue;
-      if (!ids.has(b)) ids.set(b, ids.size);
-      const id = ids.get(b);
-      const key = `${id}|${Math.round((r.top + window.scrollY) / 4)}`;
-      const l = lines.get(key) ?? { b, chars: 0, top: r.top + window.scrollY };
-      l.chars += 1;
+    if (!ids.has(b)) ids.set(b, ids.size);
+    const id = ids.get(b);
+    const add = (top, chars) => {
+      const key = `${id}|${Math.round((top + window.scrollY) / 4)}`;
+      const l = lines.get(key) ?? { b, chars: 0, top: top + window.scrollY };
+      l.chars += chars;
       lines.set(key, l);
-    }
+    };
+    range.selectNodeContents(node);
+    const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+    // One client rect per rendered line of this node; characters are shared out by rect width.
+    const total = rects.reduce((sum, r) => sum + r.width, 0);
+    for (const r of rects) add(r.top, Math.round((text.trim().length * r.width) / total));
   }
   const name = (el) => {
     const cls = String(el.getAttribute("class") ?? "")
@@ -129,6 +138,7 @@ const probeLines = () => {
 
 const slug = new URL(url).pathname.replace(/^\/|\/$/g, "").replace(/[/.]/g, "_") || "home";
 const browser = await puppeteer.launch({ executablePath: resolve(chrome), headless: true });
+browserRef = browser;
 try {
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 900 });
