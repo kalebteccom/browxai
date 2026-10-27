@@ -23,7 +23,7 @@
 }
 .browx-card-text {
   margin: 0;
-  max-width: 70ch;
+  max-width: 60ch;
   color: var(--sl-color-gray-2);
   font-size: 0.94rem;
   line-height: 1.55;
@@ -81,9 +81,15 @@
 
 /* Long card text that moved off the first screen sits in a closed block. */
 .browx-more {
-  max-width: 72ch;
-  margin: 0 auto var(--space-5);
+  max-width: 60ch;
+  margin: 0 auto var(--space-2);
   text-align: left;
+}
+.browx-more:last-of-type {
+  margin-bottom: var(--space-5);
+}
+.browx-more .browx-card-text {
+  padding-bottom: var(--space-3);
 }
 .browx-more summary {
   display: flex;

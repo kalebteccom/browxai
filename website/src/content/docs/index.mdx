@@ -219,50 +219,43 @@ import Shot from "../../components/Shot.astro";
   </div>
 </div>
 
+<details class="browx-more">
+  <summary>More on native apps, same tools</summary>
+  <div class="browx-card-text">
+    Switch on <code>native-device</code> and <code>find</code>, <code>click</code> and{" "}
+    <code>fill</code> drive an app on an Android emulator or the iOS Simulator. The tree comes off
+    the app's view hierarchy, with the same refs a page gets. Android is verified against a live
+    emulator; the iOS lane is newer and needs a WebDriverAgent you run. Native apps run on an
+    emulator or simulator only, with no real-device lane.
+  </div>
+</details>
+
+<details class="browx-more">
+  <summary>More on the Electron app you have open</summary>
+  <div class="browx-card-text">
+    An Electron app is Chromium, so one started with <code>--remote-debugging-port</code> answers
+    the same CDP browxai already speaks. Attach to an app such as VS Code and <code>snapshot</code>{" "}
+    and <code>find</code> read its UI. It needs <code>byob-attach</code>. The engine is attach-only,{" "}
+    <code>navigate</code> refuses, and whether a port opens at all depends on the app and its
+    version.
+  </div>
+</details>
+
+<details class="browx-more">
+  <summary>More on sessions and lifecycle</summary>
+  <div class="browx-card-text">
+    Chromium sessions launch the installed Google Chrome, or the bundled Chromium when Chrome is
+    missing, on one default profile per workspace. Sessions are isolated contexts: persistent,
+    incognito, or attached to a Chrome you already have open, on your desktop or on a plugged-in
+    Android phone. Headed and headless. Pick the engine per session, so one server can hold a
+    Chromium page and an emulator app at once.
+  </div>
+</details>
+
   <details class="browx-more">
-    <summary>Details on native apps, desktop apps, sessions and bot protection</summary>
-    <div class="browx-more-body">
-    <h3>Native apps, same tools</h3>
+    <summary>More on sites behind bot protection</summary>
     <div class="browx-card-text">
-      Switch on <code>native-device</code> and <code>find</code>,
-        <code>click</code> and <code>fill</code> drive an app on an Android
-        emulator or the iOS Simulator. The tree comes off the app's view
-        hierarchy, with the same refs a page gets. Android is verified against a
-        live emulator; the iOS lane is newer and needs a WebDriverAgent you run.
-        Native apps run on an emulator or simulator only, with no
-        real-device lane.
-    </div>
-    <h3>The Electron app you have open</h3>
-    <div class="browx-card-text">
-      An Electron app is Chromium, so one started with
-        <code>--remote-debugging-port</code> answers the same CDP browxai
-        already speaks. Attach to an app such as VS Code and
-        <code>snapshot</code> and <code>find</code> read its UI. It needs
-        <code>byob-attach</code>. The engine is attach-only, <code>navigate</code>
-        refuses, and whether a port opens at all depends on the app and its
-        version.
-    </div>
-    <h3>Sessions and lifecycle</h3>
-    <div class="browx-card-text">
-      Chromium sessions launch the installed Google Chrome, or the bundled
-        Chromium when Chrome is missing, on one default profile per workspace.
-        Sessions are isolated contexts: persistent, incognito, or attached to a
-        Chrome you already have open, on your desktop or on a plugged-in Android
-        phone. Headed and headless. Pick the engine per session, so one server
-        can hold a Chromium page and an emulator app at once.
-    </div>
-    <h3>Sites behind bot protection</h3>
-    <div class="browx-card-text">
-      By default browxai does not defeat or spoof bot detection, and it cannot
-        guarantee access to any site. When a challenge needs a person,
-        <code>browxai chrome login</code> opens the installed Chrome on the
-        workspace profile with nothing attached. Clear it by hand, quit Chrome,
-        and later sessions on that profile reuse the cookies. The off-by-default
-        <code>stealth</code> and <code>captcha</code> capabilities patch four
-        browser properties and hand captchas to a third-party solving service.
-        Read
-        <a href="/guides/sites-behind-bot-protection/">Sites behind bot protection</a>.
-    </div>
+      By default browxai does not defeat or spoof bot detection, and it cannot guarantee access to any site. When a challenge needs a person, <code>browxai chrome login</code> opens the installed Chrome on the workspace profile with nothing attached. Clear it by hand, quit Chrome, and later sessions on that profile reuse the cookies. The off-by-default <code>stealth</code> and <code>captcha</code> capabilities patch four browser properties and hand captchas to a third-party solving service. Read <a href="/guides/sites-behind-bot-protection/">Sites behind bot protection</a>.
     </div>
   </details>
 </div>
