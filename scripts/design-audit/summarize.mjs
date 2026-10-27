@@ -2,6 +2,7 @@
 // Usage: node summarize.mjs <out-dir> <themes-file>
 // Reads imp-<theme>-<width>-<page>.{json,rc,err} (impeccable) and hm-<theme>-<page>.{json,rc,err} (hallmark).
 // Identical findings across themes and widths are merged into one line with the variants listed.
+// Exit status of this script: 2 on a tool error or no runs, 1 on findings that are not kept, 0 clean.
 // Exit codes: impeccable 0 clean, 2 findings, anything else a tool error. hallmark 0 clean, 1 findings, anything else a tool error.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -184,11 +185,11 @@ for (const file of readdirSync(outDir)
   const text = read(join(outDir, file)).trim();
   if (!text) continue;
   dumpBytes += text.length + 1;
-  lines.push(clip(text, 1500));
+  lines.push(text.slice(0, 1500));
 }
 lines.push(`[dump] total ${dumpBytes} bytes`);
 for (const e of errors) lines.push(`[tool error] ${e}`);
 for (const g of gaps) lines.push(`[gap] ${g}`);
 lines.push("===== DESIGN-AUDIT FINDINGS END =====");
 console.log(lines.join("\n"));
-process.exit(groups.size > 0 || errors.length > 0 || runs === 0 ? 1 : 0);
+process.exit(errors.length > 0 || runs === 0 ? 2 : groups.size > 0 ? 1 : 0);
