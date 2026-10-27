@@ -1,0 +1,155 @@
+/*
+ * Diagram: the agent loop (landing and concepts). Solid fills and flat borders only.
+ */
+
+/* The agent loop, drawn as a real cycle: four steps at the compass points of a
+   ring, with curved arrows running clockwise and an ActionResult hub at the
+   center that closes the loop. The step labels are HTML (so the text wraps and
+   never overflows); the SVG layer behind them carries only the arrows.
+   Under ~560px the ring collapses to a vertical stepped flow. */
+.browx-diagram {
+  margin-top: clamp(var(--space-6), 5vw, var(--space-8));
+  container-type: inline-size;
+}
+
+/* --- Ring layout (wide) ------------------------------------------------- */
+.browx-loop {
+  position: relative;
+  width: min(100%, 540px);
+  aspect-ratio: 1 / 1;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 9.5rem) 1fr;
+  grid-template-rows: 1fr minmax(0, 9.5rem) 1fr;
+  grid-template-areas:
+    ".  n  ."
+    "w  c  e"
+    ".  s  .";
+  place-items: center;
+}
+.browx-loop-arcs {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.browx-loop-arcs .bx-arc {
+  fill: none;
+  stroke: var(--sl-color-text-accent);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+/* Center hub: the ActionResult that feeds the next pass. */
+.bx-hub {
+  grid-area: c;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-0h);
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  text-align: center;
+  font-family: var(--browx-font-body);
+  font-size: clamp(0.74rem, 2.4cqi, 0.92rem);
+  font-weight: 600;
+  color: var(--sl-color-text-accent);
+  background: var(--browx-tint);
+  border: 1px dashed var(--browx-border-accent);
+}
+.bx-hub small {
+  font-family: var(--browx-font-body);
+  font-weight: 400;
+  font-size: 0.72em;
+  color: var(--sl-color-gray-3);
+}
+
+/* Step cards: static labels, not controls. */
+.bx-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0h);
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+  max-width: 9.5rem;
+  text-align: center;
+  border-radius: 0.7rem;
+  border: 1px solid var(--browx-border);
+  background: var(--browx-surface);
+  color: var(--sl-color-text);
+}
+.bx-step--n {
+  grid-area: n;
+}
+.bx-step--e {
+  grid-area: e;
+}
+.bx-step--s {
+  grid-area: s;
+}
+.bx-step--w {
+  grid-area: w;
+}
+.bx-step-k {
+  font-family: var(--browx-font-display);
+  font-weight: 600;
+  font-size: 1.02rem;
+  color: var(--sl-color-text-accent);
+  line-height: 1.15;
+}
+.bx-step-d {
+  font-family: var(--browx-font-body);
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-3);
+  line-height: 1.3;
+}
+
+/* --- Vertical reflow (narrow) ------------------------------------------- */
+@container (max-width: 560px) {
+  .browx-loop {
+    width: 100%;
+    max-width: 22rem;
+    aspect-ratio: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-template-areas:
+      "n"
+      "e"
+      "s"
+      "w"
+      "c";
+    gap: var(--space-5);
+    padding: var(--space-2) 0;
+  }
+  .browx-loop-arcs {
+    display: none;
+  }
+  .bx-step {
+    max-width: none;
+    width: 100%;
+    position: relative;
+  }
+  /* Down-arrow connectors between the stacked steps. */
+  .bx-step--n::after,
+  .bx-step--e::after,
+  .bx-step--s::after,
+  .bx-step--w::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -1.2rem;
+    width: 2px;
+    height: 1.6rem;
+    transform: translateX(-50%);
+    background: var(--sl-color-text-accent);
+  }
+  .bx-hub {
+    aspect-ratio: 1 / 1;
+    width: 9rem;
+    margin-inline: auto;
+    font-size: 0.86rem;
+  }
+}

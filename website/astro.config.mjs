@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { unified } from "@astrojs/markdown-remark";
 import starlightLinksValidator from "starlight-links-validator";
 import rehypeStripAgentAsides from "./plugins/rehype-strip-agent-asides.mjs";
+import rehypeTableWrap from "./plugins/rehype-table-wrap.mjs";
 
 // The published version comes from the repo root package.json, so the
 // structured data never drifts from a release.
@@ -22,8 +23,16 @@ export default defineConfig({
   // guidance stays in the page source and is served from the plaintext .md
   // endpoint, so the human site stays end-user-focused while agents still get
   // it via llms.txt.
+  //
+  // Smartypants stays on for quotes, but not for dashes: it turns a `--` in
+  // plain text, including the text inside the landing page's JSX `<code>`
+  // elements, into a typographic dash, which breaks a copied CLI flag such as
+  // `--remote-debugging-port`.
   markdown: {
-    processor: unified({ rehypePlugins: [rehypeStripAgentAsides] }),
+    processor: unified({
+      rehypePlugins: [rehypeStripAgentAsides, rehypeTableWrap],
+      smartypants: { dashes: false },
+    }),
   },
   integrations: [
     starlight({
@@ -40,6 +49,7 @@ export default defineConfig({
       components: {
         Footer: "./src/components/Footer.astro",
         Head: "./src/components/Head.astro",
+        Header: "./src/components/Header.astro",
         Sidebar: "./src/components/Sidebar.astro",
       },
       routeMiddleware: "./src/route-data.ts",
@@ -53,7 +63,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "browxai - the same tools for a web page and a native app",
+            content: "browxai: the same tools for a web page and a native app",
           },
         },
         { tag: "meta", attrs: { property: "og:site_name", content: "browxai" } },
@@ -62,7 +72,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image:alt",
-            content: "browxai - the same tools for a web page and a native app",
+            content: "browxai: the same tools for a web page and a native app",
           },
         },
         { tag: "meta", attrs: { name: "twitter:card", content: "summary_large_image" } },
@@ -125,12 +135,17 @@ export default defineConfig({
         "@fontsource/poppins/500.css",
         "@fontsource/poppins/600.css",
         "@fontsource/poppins/700.css",
-        "@fontsource/inter/400.css",
-        "@fontsource/inter/500.css",
-        "@fontsource/inter/600.css",
         "@fontsource/jetbrains-mono/400.css",
         "@fontsource/jetbrains-mono/500.css",
+        "./src/styles/brand-tokens.css",
         "./src/styles/brand.css",
+        "./src/styles/brand-install.css",
+        "./src/styles/brand-diagrams.css",
+        "./src/styles/brand-figures.css",
+        "./src/styles/brand-cards.css",
+        "./src/styles/brand-docs.css",
+        "./src/styles/brand-docs-parts.css",
+        "./src/styles/layout-fixes.css",
       ],
       expressiveCode: {
         themes: ["github-dark", "github-light"],
@@ -143,7 +158,17 @@ export default defineConfig({
       sidebar: [
         {
           label: "Start here",
-          items: [{ label: "Getting started", slug: "getting-started" }],
+          items: [
+            { label: "Getting started", slug: "getting-started" },
+            { label: "Troubleshooting", slug: "guides/troubleshooting" },
+          ],
+        },
+        {
+          label: "Security",
+          items: [
+            { label: "Threat model", slug: "security/threat-model" },
+            { label: "Best practices", slug: "security/best-practices" },
+          ],
         },
         {
           label: "Concepts",
@@ -176,13 +201,6 @@ export default defineConfig({
             { label: "First-party plugins", slug: "plugins/first-party" },
             { label: "Authoring", slug: "plugins/authoring" },
             { label: "Governance", slug: "plugins/governance" },
-          ],
-        },
-        {
-          label: "Security",
-          items: [
-            { label: "Threat model", slug: "security/threat-model" },
-            { label: "Best practices", slug: "security/best-practices" },
           ],
         },
       ],

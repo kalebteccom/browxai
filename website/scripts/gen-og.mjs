@@ -38,10 +38,10 @@ const svg = `
 
   <text x="90" y="372" font-family="Helvetica, Arial, sans-serif" font-weight="400" font-size="40" fill="#a99fc0">A browser, built for agents.</text>
 
-  <text x="90" y="170" font-family="Courier New, monospace" font-weight="700" font-size="24" letter-spacing="6" fill="${violet}">MCP-NATIVE BROWSER CONTROL</text>
+  <text x="90" y="170" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="28" fill="${violet}">MCP-native browser control</text>
 
-  <text x="90" y="560" font-family="Courier New, monospace" font-size="26" fill="#736b85">browxai.com</text>
-  <text x="1110" y="560" text-anchor="end" font-family="Courier New, monospace" font-size="26" fill="#736b85">MIT licensed</text>
+  <text x="90" y="560" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#736b85">browxai.com</text>
+  <text x="1110" y="560" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#736b85">MIT licensed</text>
 </svg>`;
 
 await sharp(Buffer.from(svg)).png().toFile(out);

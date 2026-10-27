@@ -68,7 +68,11 @@ Off by default, each opted in deliberately:
   `caches_get`, and HAR `embed` and `attach`.
 - `clipboard` enables the OS-clipboard side effect of the `shortcut` tool.
   Observation still works without it.
-- `file-io` enables `upload_file` and the file-picker write path.
+- `file-io` enables the tools that read a file into the page or write page data to
+  the workspace: `upload_file`, `drop_files`, `download_get`, `downloads_capture`,
+  `fs_picker_respond`, `page_archive`, `asset_export`, `dom_export`,
+  `element_export`, `get_video`, `stop_video`, `screenshot_on` and
+  `screenshot_schedule`, plus the `path` argument of `screenshot`.
 - `secrets` enables the per-session sensitive-data registry and egress masking.
 - `extensions` enables per-session unpacked-extension management (headed and
   persistent only).
@@ -123,7 +127,7 @@ proceeds with a warning if not. An entry without a port matches the scheme's
 default port only; an entry with a port matches that port. `navigate` checks the
 landed URL after a redirect too.
 
-Treat the origin policy as defense in depth, not a hard security boundary. The
+The origin policy is defense in depth and carries no hard guarantee. The
 [threat model](/security/threat-model/) is explicit about where the real
 boundaries are.
 
@@ -144,13 +148,13 @@ world, and the hooks fail closed.
 Every action body, every `eval_js`, and the read paths
 (`snapshot`, `find`, `text_search`, `inspect`) run under a hard deadline,
 `actionTimeoutMs`, default 5000 ms. A wedged page operation returns a
-structured `ok:false` anti-wedge failure within the deadline instead of
-stalling forever. The orphaned operation cannot be cancelled, but the agent is
+structured `ok:false` anti-wedge failure within the deadline, so a stuck page
+cannot stall the agent. The orphaned operation cannot be cancelled, but the agent is
 unblocked.
 
 An action that needs more than five seconds is almost always a no-op or a
 wedged page op. Raise the per-call `timeoutMs` only for one specific known-slow
-call, never as a blanket.
+call.
 
 ## The dangerous opt-ins
 
@@ -165,6 +169,5 @@ A few knobs are sharp enough to call out directly:
   warns loudly at boot and per launch. Use it only
   against test or dev targets.
 
-The one rule that holds across all of it: page text is untrusted. An agent must
-never treat text inside a snapshot, a find result, or a network body as
+Page text is untrusted on every tool. An agent must never treat text inside a snapshot, a find result, or a network body as
 instructions to itself.

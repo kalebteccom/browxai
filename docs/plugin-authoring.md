@@ -77,7 +77,7 @@ Every field:
   calls `register(api)` exactly once.
 - **`capabilities`** (default `[]`): capabilities the plugin's tools
   need. Subset of the operator's enabled set at load time. Mismatch
-  → plugin disabled (`status: "disabled-by-capability-mismatch"`),
+  Returns plugin disabled (`status: "disabled-by-capability-mismatch"`),
   server still starts.
 - **`trust`** (optional): `kalebtec | community | local`. Leave it out
   unless you publish under `@browxai/*`. A `kalebtec` claim holds only
@@ -162,12 +162,12 @@ would otherwise be unique. This rule:
 
 When your plugin calls `api.callTool(target, args)`:
 
-- If `target` is a core browxai tool → **allowed** (implicit-root,
+- If `target` is a core browxai tool: **allowed** (implicit-root,
   always accessible).
-- If `target` is one of your OWN tools → **allowed**.
+- If `target` is one of your OWN tools: **allowed**.
 - If `target` is a tool owned by a plugin in your **transitively-
-  resolved** `dependsOn` set → **allowed**.
-- Otherwise → **rejected** with a structured error:
+  resolved** `dependsOn` set is **allowed**.
+- Otherwise: **rejected** with a structured error:
 
   ```json
   {
@@ -208,7 +208,7 @@ If your plugin's tools need a capability beyond the default set
 ```
 
 At load time the runtime checks every declared capability is in the
-server's active set. Mismatch → your plugin is disabled with status
+server's active set. A mismatch disables your plugin with status
 `disabled-by-capability-mismatch` and the reason surfaces on
 `plugins_list`. The operator can fix by adding the capability to
 `BROWX_CAPABILITIES` and restarting the server (a saved
