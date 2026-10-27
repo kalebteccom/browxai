@@ -15,7 +15,8 @@
 //   overflow    document scroll, elements past the viewport, text overflowing its
 //               box, clipped boxes, key elements covered at their corners,
 //               headings hidden under the sticky header after an anchor jump
-//   tap-target  interactive elements at least 44 px on phone-sized viewports
+//   tap-target  interactive elements at least 44 px on phone-sized viewports; a text link
+//               needs 44 px of height but only 24 px of width (WCAG 2.5.8 minimum)
 //   stability   top and height of the theme control and status lines across themes
 //               and after a copy click (1 px)
 //   safe-area   env(safe-area-inset-*) used by fixed or sticky edge elements
@@ -73,6 +74,8 @@ const THEMES = ["light", "dark"];
 const STRESS = "Wi".repeat(30);
 const TAP_MIN = 44;
 const TOL = 1;
+// A text link is as wide as its words, so its width floor is the WCAG 2.5.8 minimum.
+const LINK_MIN = 24;
 
 function parseArgs(argv) {
   const o = {
@@ -106,7 +109,7 @@ function parseArgs(argv) {
 
 // ---- Page-side audit (serialised into the browser, no outer scope) ---------
 
-async function audit({ theme, phone, scenario, tapMin, tol }) {
+async function audit({ theme, phone, scenario, tapMin, linkMin, tol }) {
   const de = document.documentElement;
   de.dataset.theme = theme;
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -131,7 +134,16 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
     }
     return parts.join(" > ");
   };
-  const add = (check, el, detail, extra) => out.push({ check, sel: sel(el), detail, ...extra });
+  // The component an element lives in (the selector is cut to four levels, which hides it).
+  const ctxOf = (el) => {
+    const c = el.closest(
+      "starlight-toc,mobile-starlight-toc,#starlight__sidebar,#starlight__search,site-search,header.header,footer,main",
+    );
+    return c ? `${c.localName}${c.id ? "#" + c.id : ""}` : "";
+  };
+  const snip = (el) => el.textContent.trim().replace(/\s+/g, " ").slice(0, 30);
+  const add = (check, el, detail, extra) =>
+    out.push({ check, sel: sel(el), ctx: ctxOf(el), detail, ...extra });
   const cs = (el) => getComputedStyle(el);
   const rect = (el) => el.getBoundingClientRect();
   const skipTag = /^(SCRIPT|STYLE|TEMPLATE|NOSCRIPT|LINK|META|OPTION|HEAD|TITLE)$/;
@@ -196,14 +208,26 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
     const s = cs(el);
     if (s.display === "inline") continue;
     const ox = el.scrollWidth - el.clientWidth;
-    if (ox > tol && s.overflowX === "visible" && hasText(el))
-      add("text-overflow", el, `scrollWidth=${el.scrollWidth} clientWidth=${el.clientWidth}`, {
-        lv: "should",
-      });
-    else if (ox > tol && (s.overflowX === "hidden" || s.overflowX === "clip"))
-      add("clipped", el, `scrollWidth=${el.scrollWidth} clientWidth=${el.clientWidth}`, {
-        lv: "should",
-      });
+    if (ox > tol && s.overflowX === "visible" && hasText(el)) {
+      // Name the widest descendant that crosses the right edge, so the hit points at the content.
+      const edge = rect(el).right;
+      let wide = null;
+      for (const k of el.querySelectorAll("*"))
+        if (rect(k).right > edge + tol && (!wide || rect(k).right > rect(wide).right)) wide = k;
+      const who = wide ? ` widest=${sel(wide)} "${snip(wide)}" right=${n1(rect(wide).right)}` : "";
+      add(
+        "text-overflow",
+        el,
+        `scrollWidth=${el.scrollWidth} clientWidth=${el.clientWidth} box.right=${n1(edge)}${who} text="${snip(el)}"`,
+        { lv: "should" },
+      );
+    } else if (ox > tol && (s.overflowX === "hidden" || s.overflowX === "clip"))
+      add(
+        "clipped",
+        el,
+        `scrollWidth=${el.scrollWidth} clientWidth=${el.clientWidth} text="${snip(el)}"`,
+        { lv: "should" },
+      );
     const oy = el.scrollHeight - el.clientHeight;
     if (oy > tol && (s.overflowY === "hidden" || s.overflowY === "clip"))
       add("clipped", el, `scrollHeight=${el.scrollHeight} clientHeight=${el.clientHeight}`, {
@@ -258,10 +282,16 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
         if (inlineInProse && el.localName === "a") continue; // link inside a sentence
       }
       const r = rect(el);
-      if (r.height < tapMin - tol || r.width < tapMin - tol)
-        add("tap-target", el, `w=${n1(r.width)} h=${n1(r.height)} min=${tapMin}`, {
-          lv: r.height < tapMin - tol && !inlineInProse ? "should" : "nit",
-        });
+      // A text link (footer, facts row, table cell) is as wide as its words: 44 px tall, 24 px wide.
+      const textLink = el.localName === "a" && !el.matches(".browx-btn") && labelText(el) !== "";
+      const minW = textLink ? linkMin : tapMin;
+      if (r.height < tapMin - tol || r.width < minW - tol)
+        add(
+          "tap-target",
+          el,
+          `w=${n1(r.width)} h=${n1(r.height)} min=${tapMin}x${minW} text="${snip(el)}"`,
+          { lv: r.height < tapMin - tol && !inlineInProse ? "should" : "nit" },
+        );
     }
   }
 
@@ -350,6 +380,8 @@ async function audit({ theme, phone, scenario, tapMin, tol }) {
     const pt = parseFloat(s.paddingTop);
     const ph = pr.height - pt - parseFloat(s.paddingBottom) - bt - parseFloat(s.borderBottomWidth);
     if (s.flexWrap !== "nowrap" && ph > tallest * 1.6) continue; // wrapped onto several lines
+    // An item that sits wholly below another is on a second line: the row is not a single line.
+    if (rects.some((a) => rects.some((b) => a.top >= b.bottom - tol))) continue;
     const pcy = pr.top + bt + pt + ph / 2;
     kids.forEach((k, idx) => {
       const as = cs(k).alignSelf;
@@ -501,6 +533,7 @@ async function runJob(browser, base, path, kind) {
       phone: Math.min(v.w, v.h) <= 430,
       scenario,
       tapMin: TAP_MIN,
+      linkMin: LINK_MIN,
       tol: TOL,
     });
     for (const h of res) {
@@ -533,6 +566,18 @@ async function runJob(browser, base, path, kind) {
     }, state);
   const stable = async (v, states) => {
     const base = new Map();
+    // content-visibility:auto blocks swap their placeholder height for the real one the first time they
+    // render, which moves everything below them (the status lines sit at the end of the body). Scroll the
+    // page once so every block has a remembered size, then measure.
+    await page.evaluate(async () => {
+      const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      for (let y = 0; y < document.documentElement.scrollHeight; y += window.innerHeight) {
+        window.scrollTo(0, y);
+        await frame();
+      }
+      window.scrollTo(0, 0);
+      await frame();
+    });
     for (const [label, fn] of states) {
       await fn();
       for (const b of await boxes(label)) {
@@ -634,14 +679,16 @@ function loadAllow(file) {
   if (!file || !existsSync(file)) return [];
   return JSON.parse(readFileSync(file, "utf8"));
 }
-const allowed = (allow, h) =>
-  allow.some(
-    (a) =>
-      (a.check === "*" || a.check === h.check) &&
-      (!a.page || a.page === "*" || a.page === h.page) &&
-      (!a.selector || h.sel.includes(a.selector)) &&
-      (!a.variant || a.variant === h.variant),
-  );
+// An entry matches on check, and optionally page, selector (substring), context (the component, see ctxOf),
+// variant and viewport. The other fields (groups, reason, evidence) document it.
+const matches = (a, h) =>
+  (a.check === "*" || a.check === h.check) &&
+  (!a.page || a.page === "*" || a.page === h.page) &&
+  (!a.selector || h.sel.includes(a.selector)) &&
+  (!a.context || a.context === h.ctx) &&
+  (!a.variant || a.variant === h.variant) &&
+  (!a.vp || a.vp === h.vp);
+const allowed = (allow, h) => allow.some((a) => matches(a, h));
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
@@ -699,7 +746,7 @@ async function main() {
       order[a.lv] - order[b.lv] || a.check.localeCompare(b.check) || a.page.localeCompare(b.page),
   );
   for (const g of list) {
-    console.log(`FAIL [${g.lv}] ${g.check} ${g.page} ${g.sel}`);
+    console.log(`FAIL [${g.lv}] ${g.check} ${g.page} ${g.sel}${g.ctx ? ` (in ${g.ctx})` : ""}`);
     for (const c of g.cfgs.slice(0, 3)) console.log(`       ${c}`);
     if (g.cfgs.length > 3) console.log(`       (+${g.cfgs.length - 3} more)`);
   }
@@ -708,6 +755,11 @@ async function main() {
       opts.json,
       JSON.stringify({ hits: failing, allowedCount: all.length - failing.length }, null, 1),
     );
+  // Hits per allowlist entry, so a stale or too wide entry shows up in the log.
+  allow.forEach((a, i) => {
+    const n = all.filter((h) => matches(a, h)).length;
+    console.log(`allowlist #${i + 1} ${a.check} ${a.context ?? a.selector ?? ""}: ${n} hit(s)`);
+  });
   const counts = { blocker: 0, should: 0, nit: 0 };
   for (const g of list) counts[g.lv]++;
   const secs = ((Date.now() - t0) / 1000).toFixed(1);

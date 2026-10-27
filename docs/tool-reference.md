@@ -3306,7 +3306,7 @@ Affine coord-space translation. Two modes:
 
 On discovery success: `{ ok, screenX, screenY, transformDiscovered, adapterHint, warnings:["discovery probes are HEURISTIC — …"] }`.
 
-On discovery failure: `{ ok:false, error:"no transform discoverable — pass `transform` explicitly OR use a canvas-app adapter plugin", code:"no-transform" }`.
+On discovery failure: ``{ ok:false, error:"no transform discoverable — pass `transform` explicitly OR use a canvas-app adapter plugin", code:"no-transform" }``.
 
 **Discovery is HEURISTIC by design.** For production, either pass `transform` explicitly (e.g. read it out of your app's React state via `eval_js`, then feed it to the explicit-mode path) or install a canvas-app adapter plugin that owns the transform discovery for your app.
 
