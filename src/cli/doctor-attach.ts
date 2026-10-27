@@ -6,6 +6,7 @@
 // attach the operator configured will not happen until the capability is added.
 
 import { capabilitiesAssignment, type Capability } from "../util/capabilities.js";
+import { docsUrl } from "../util/docs-links.js";
 import { sanitizeUrl, sanitizeUrlsInText } from "../util/url-sanitizer.js";
 import type { Check } from "./doctor.js";
 
@@ -43,6 +44,6 @@ export function attachCapabilityCheck(
       "BROWX_ATTACH_CDP is set but the `byob-attach` capability is off, so attaching is refused",
     fix:
       "add `byob-attach` to BROWX_CAPABILITIES and keep the defaults in the list " +
-      `(${capabilitiesAssignment("byob-attach")}), then restart the server`,
+      `(${capabilitiesAssignment("byob-attach")}), then restart the server. See ${docsUrl.threatModelConfiguring}`,
   };
 }

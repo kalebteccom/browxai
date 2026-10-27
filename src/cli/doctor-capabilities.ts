@@ -24,6 +24,7 @@ export function capabilitiesRow(env: NodeJS.ProcessEnv = process.env): Capabilit
         name: "capabilities",
         ok: false,
         detail: e instanceof Error ? e.message : String(e),
+        fix: `fix BROWX_CAPABILITIES, see ${docsUrl.threatModelConfiguring}`,
       },
       enabled: new Set(DEFAULT_CAPABILITIES),
     };
@@ -48,12 +49,12 @@ export function capabilitiesRow(env: NodeJS.ProcessEnv = process.env): Capabilit
   }
   if (dangerous.length) {
     fixes.push(
-      `${dangerous.join(",")} on: page text remains untrusted, review ${docsUrl.threatModel}`,
+      `${dangerous.join(",")} on: page text remains untrusted, review ${docsUrl.threatModelCapabilities}`,
     );
   }
   if (!fixes.length && !explicit) {
     fixes.push(
-      `see ${docsUrl.threatModel} for the full set; default is ${DEFAULT_CAPABILITIES.join(",")}`,
+      `see ${docsUrl.threatModelCapabilities} for the full set; default is ${DEFAULT_CAPABILITIES.join(",")}`,
     );
   }
   return {

@@ -73,7 +73,9 @@ const CHROMIUM_ATTACH_WARNING = [
   "    and authed tab is in scope of any page the agent visits.",
   "  - The CDP port is unauthenticated; any local process can attach.",
   "",
-  "  Managed mode (the default) avoids all of the above. See " + docsUrl.threatModel + ".",
+  "  Managed mode (the default) avoids all of the above. See " +
+    docsUrl.threatModelCapabilities +
+    ".",
   "================================================================",
 ].join("\n");
 
@@ -98,7 +100,9 @@ function electronAttachWarning(app: string, electron: string): string {
     "  --user-data-dir matches published EDR rules for infostealer cookie",
     "  theft (MITRE T1539). Expect your endpoint agent to flag it.",
     "",
-    "  Managed mode (the default) avoids all of the above. See " + docsUrl.threatModel + ".",
+    "  Managed mode (the default) avoids all of the above. See " +
+      docsUrl.threatModelCapabilities +
+      ".",
     "================================================================",
   ].join("\n");
 }

@@ -177,7 +177,7 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
       name: "confirm-hooks",
       ok: false,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "fix BROWX_CONFIRM_REQUIRED — see " + docsUrl.threatModel,
+      fix: "fix BROWX_CONFIRM_REQUIRED — see " + docsUrl.threatModelConfiguring,
     });
   }
 
@@ -190,7 +190,8 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
       ok: true,
       detail: describePolicy(policy),
       fix: noAllowlist
-        ? "no allowlist set — defense-in-depth not engaged. Set BROWX_ALLOWED_ORIGINS for the navigation gate."
+        ? "no allowlist set — defense-in-depth not engaged. Set BROWX_ALLOWED_ORIGINS for the navigation gate, see " +
+          docsUrl.threatModelOrigins
         : undefined,
     });
   } catch (e) {
@@ -198,7 +199,9 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
       name: "origins",
       ok: false,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS: comma-separated absolute URLs (https://app.example.com or https://*.example.com)",
+      fix:
+        "BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS: comma-separated absolute URLs (https://app.example.com or https://*.example.com), see " +
+        docsUrl.threatModelOrigins,
     });
   }
 

@@ -2,6 +2,7 @@
 // a tick or a cross, failures first, each with its next step. `--verbose` prints
 // every row, including the opt-in engine rows.
 
+import { docsUrl } from "../util/docs-links.js";
 import type { Check } from "./doctor.js";
 
 /** Row names grouped into the areas the summary shows, in display order. */
@@ -85,8 +86,8 @@ function verbose(checks: readonly Check[], version: string, allOk: boolean): str
   }
   out += `\n${
     allOk
-      ? "all checks passed. Next: add browxai to your MCP client, see https://browxai.com/getting-started/"
-      : "fix the ✗ items above, then run `browxai doctor` again"
+      ? `all checks passed. Next: add browxai to your MCP client, see ${docsUrl.gettingStartedConnect}`
+      : `fix the ✗ items above, then run \`browxai doctor\` again. Common errors: ${docsUrl.troubleshooting}`
   }\n`;
   return out;
 }
@@ -118,11 +119,11 @@ function brief(checks: readonly Check[], version: string, allOk: boolean): strin
       : "All good.";
     out +=
       `${lead} To add browxai to Claude Code: claude mcp add browxai -- npx -y browxai\n` +
-      "For another client, run `npx browxai init <dir>`. Every row: `browxai doctor --verbose`.\n";
+      `For another client, run \`npx browxai init <dir>\` or see ${docsUrl.gettingStartedConnect}. Every row: \`browxai doctor --verbose\`.\n`;
   } else {
     out +=
       `${failed} ${failed === 1 ? "area needs" : "areas need"} a fix. Fix ${failed === 1 ? "it" : "them"}, then run \`browxai doctor\` again.\n` +
-      "Every row: `browxai doctor --verbose`.\n";
+      `Common errors: ${docsUrl.troubleshooting}. Every row: \`browxai doctor --verbose\`.\n`;
   }
   return out;
 }

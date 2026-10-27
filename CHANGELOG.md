@@ -14,6 +14,7 @@ surface" covers.
 
 ### Changed
 
+- Links in refusals, `browxai doctor` rows and startup warnings now open the section that has the fix: "Configuring" for a disabled tool or a missing capability, "The capability set" for what a capability grants, and the origin and credentials sections. The doctor success line opens the MCP wiring step, and `profile-in-use` and `origin-blocked` link a new troubleshooting page.
 - **`browxai doctor` prints a short summary.** One line per area with a tick or a cross, failures first with the next step, and the `claude mcp add browxai -- npx -y browxai` line at the end. `browxai doctor --verbose` prints every row as before. Exit codes are unchanged, and an unknown flag exits 2.
 
 ### Fixed

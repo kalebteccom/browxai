@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { docsUrl } from "../util/docs-links.js";
 import type { Check } from "./doctor.js";
 import { formatDoctor, summarize } from "./doctor-summary.js";
 
@@ -218,7 +219,9 @@ describe("doctor summary", () => {
         "    fix: do y\n" +
         row("−", "d", "off") +
         "    enable with: turn on\n" +
-        "\nfix the ✗ items above, then run `browxai doctor` again\n",
+        "\nfix the ✗ items above, then run `browxai doctor` again. Common errors: " +
+        docsUrl.troubleshooting +
+        "\n",
     );
   });
 
