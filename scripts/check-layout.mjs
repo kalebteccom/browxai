@@ -380,6 +380,8 @@ async function audit({ theme, phone, scenario, tapMin, linkMin, tol }) {
     const pt = parseFloat(s.paddingTop);
     const ph = pr.height - pt - parseFloat(s.paddingBottom) - bt - parseFloat(s.borderBottomWidth);
     if (s.flexWrap !== "nowrap" && ph > tallest * 1.6) continue; // wrapped onto several lines
+    // An item that sits wholly below another is on a second line: the row is not a single line.
+    if (rects.some((a) => rects.some((b) => a.top >= b.bottom - tol))) continue;
     const pcy = pr.top + bt + pt + ph / 2;
     kids.forEach((k, idx) => {
       const as = cs(k).alignSelf;

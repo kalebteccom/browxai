@@ -36,20 +36,11 @@
   },
   {
     "check": "clipped",
-    "context": "#starlight__search",
+    "context": "div#starlight__search",
     "selector": "pagefind-ui__search-clear",
     "groups": 3,
     "why": "Starlight draws the clear button as a masked icon in an overflow hidden box; its text is not shown",
-    "evidence": "@astrojs/starlight components/Search.astro (#starlight__search .pagefind-ui__search-clear: overflow hidden, ::before mask icon). Run 208: /, /getting-started/, /reference/tool-reference/, scrollHeight=64 clientHeight=46"
-  },
-  {
-    "check": "clipped",
-    "context": "header.header",
-    "selector": "a.site-title > span",
-    "variant": "large",
-    "groups": 12,
-    "why": "At 150% text size on a phone the site title shares the header with the search and menu controls; Starlight clips the title so it never covers them. The logo and the link stay",
-    "evidence": "@astrojs/starlight components/Header.astro (.title-wrapper: overflow clip, comment: prevent long titles overflowing and covering the search and menu buttons). Run 208: 320x640 and 390x844, 12 pages"
+    "evidence": "@astrojs/starlight components/Search.astro (#starlight__search .pagefind-ui__search-clear: overflow hidden, ::before mask icon). Run 209: /, /getting-started/, /reference/tool-reference/, scrollHeight=64 clientHeight=46"
   },
   {
     "check": "offscreen",
