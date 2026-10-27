@@ -63,7 +63,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "browxai - the same tools for a web page and a native app",
+            content: "browxai: the same tools for a web page and a native app",
           },
         },
         { tag: "meta", attrs: { property: "og:site_name", content: "browxai" } },
@@ -72,7 +72,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image:alt",
-            content: "browxai - the same tools for a web page and a native app",
+            content: "browxai: the same tools for a web page and a native app",
           },
         },
         { tag: "meta", attrs: { name: "twitter:card", content: "summary_large_image" } },
