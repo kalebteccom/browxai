@@ -39,6 +39,38 @@ const add = (tool, page, label, detail, variant) => {
   groups.get(key).variants.add(variant);
 };
 
+// Element context of an impeccable finding: selector, snippet (80 chars) and measured width, plus any other scalar field.
+const elementContext = (f) => {
+  const pick = (...keys) =>
+    keys.map((k) => f[k]).find((v) => v !== undefined && v !== null && v !== "");
+  const parts = [];
+  const sel = pick("selector", "element", "path", "target");
+  const snip = pick("snippet", "text", "html", "excerpt");
+  if (sel) parts.push(`selector ${clip(typeof sel === "object" ? JSON.stringify(sel) : sel, 160)}`);
+  if (snip)
+    parts.push(`snippet "${clip(typeof snip === "object" ? JSON.stringify(snip) : snip, 80)}"`);
+  const known = new Set([
+    "id",
+    "rule",
+    "antipattern",
+    "name",
+    "message",
+    "description",
+    "selector",
+    "element",
+    "path",
+    "target",
+    "snippet",
+    "text",
+    "html",
+    "excerpt",
+  ]);
+  for (const [k, v] of Object.entries(f))
+    if (!known.has(k) && (typeof v === "number" || (typeof v === "string" && v.length <= 60)))
+      parts.push(`${k}=${v}`);
+  return parts.length ? ` | ${parts.join("; ")}` : "";
+};
+
 const parse = (text) => {
   try {
     return JSON.parse(text);
@@ -72,7 +104,7 @@ for (const file of readdirSync(outDir)
         f.message ?? f.description ?? f.evidence ?? f.snippet ?? JSON.stringify(f),
         200,
       );
-      add("impeccable", page, label, detail, `${theme}/${width}`);
+      add("impeccable", page, label, detail + elementContext(f), `${theme}/${width}`);
     }
   } else if (hm) {
     const [, theme, page] = hm;
@@ -127,6 +159,12 @@ if (tallies.size)
   lines.push(
     `not failing, hallmark: ${[...tallies].map(([grade, n]) => `${grade} ${n}`).join(", ")}`,
   );
+for (const file of readdirSync(outDir)
+  .filter((f) => /^dump-.*\.txt$/.test(f))
+  .sort()) {
+  const text = read(join(outDir, file)).trim();
+  if (text) lines.push(text);
+}
 for (const e of errors) lines.push(`[tool error] ${e}`);
 for (const g of gaps) lines.push(`[gap] ${g}`);
 lines.push("===== DESIGN-AUDIT FINDINGS END =====");

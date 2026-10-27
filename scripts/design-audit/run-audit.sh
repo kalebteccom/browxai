@@ -76,4 +76,12 @@ for theme in $THEMES; do
   done
 done
 
+# Element dump: which elements sit behind rule 58 and line-length. Light theme, 1440 only; loopback fence unchanged.
+for page in $PAGES; do
+  s="$(slug "$page")"
+  tool_env CHROME_PATH="$WRAP" EXTRA_CHROME_FLAGS="$(flags light)" \
+    node "$HERE/element-dump.mjs" "$PPT" "$WRAP" "$BASE$page" "$OUT/hm-light-$s.json" "$OUT/imp-light-1440-$s.json" \
+    > "$OUT/dump-$s.txt" 2>> "$OUT/dump-$s.txt" || true
+done
+
 node "$HERE/summarize.mjs" "$OUT" "$AUDIT/themes"
