@@ -88,7 +88,14 @@ describe("no-trace contract — static source guard", () => {
     // `<workspace>/config.json` (constructor takes the workspace root; the path
     // is `join(workspaceRoot, CONFIG_FILE)` — never cwd). Both explicitly
     // allowlisted as workspace-rooted by construction.
-    const ALLOWED_FILES = new Set(["util/workspace.ts", "util/config-store.ts"]);
+    // cli/init-user-config.ts runs only for `browxai init --write-user-config <client>`.
+    // It writes the MCP client's own user-level config (e.g. ~/.cursor/mcp.json) after
+    // printing the diff, so the path is the one the operator asked for, not the workspace.
+    const ALLOWED_FILES = new Set([
+      "util/workspace.ts",
+      "util/config-store.ts",
+      "cli/init-user-config.ts",
+    ]);
     const files = tsFilesUnder(SRC);
     const offenders: Array<{ file: string; line: string }> = [];
     for (const f of files) {

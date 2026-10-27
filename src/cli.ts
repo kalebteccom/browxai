@@ -41,8 +41,13 @@ const USAGE = `Usage: browxai [subcommand]
                                 --force. Quit that Chrome when done.
   browxai chrome stop           kill the Chrome that \`chrome start\` launched
   browxai chrome status         say whether that Chrome is still running
-  browxai init <workspace>      bootstrap a per-app workspace: writes <workspace>/.mcp.json
-                                (managed + attached entries) and picks test attributes
+  browxai init <workspace>      one-command start: writes <workspace>/.mcp.json, prints the
+                                setup line for each MCP client it finds (Claude Code,
+                                Cursor, Codex, Claude Desktop), then checks that a
+                                headless session can take a snapshot.
+                                --write-user-config <client> prints the change to that
+                                client's user-level config, then writes it.
+                                --no-smoke skips the snapshot check, --no-write prints only.
   browxai serve --socket <p>    long-running server on a Unix socket / named pipe
                                 — accepts MCP-over-socket connections from SDK clients
                                 (\`createBrowxai({ endpoint: "unix:///..." })\`).

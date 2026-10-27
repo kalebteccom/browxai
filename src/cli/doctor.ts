@@ -1,10 +1,11 @@
 // `browxai doctor` — environment + connectivity health-check ().
 //
-// Prints a ✓/✗ checklist + one-line fix per failing check (− marks purely
-// informational rows, which get an `enable with:` line when their lane is not
-// ready; ⚠ marks a warning with a fix line, which never fails doctor). Exits 0
-// iff no check fails, 1 otherwise. Writes to
-// stdout (this is a CLI subcommand, not the MCP server — stdout is fine here).
+// Prints a short summary by default: one ✓/✗ line per area, failures first, each
+// with its next step. `--verbose` prints every row (− marks purely informational
+// rows, which get an `enable with:` line when their lane is not ready; ⚠ marks a
+// warning with a fix line, which never fails doctor). Exits 0 iff no check
+// fails, 1 otherwise, 2 for a bad flag. Writes to stdout (this is a CLI
+// subcommand, not the MCP server — stdout is fine here).
 
 import { existsSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -17,7 +18,7 @@ import { PACKAGE_VERSION } from "../util/version.js";
 import { ConfigStore } from "../util/config-store.js";
 import { pluginChecks } from "./doctor-plugins.js";
 import { probeCdp } from "./doctor-cdp.js";
-import { attachCapabilityCheck } from "./doctor-attach.js";
+import { attachCapabilityCheck, cdpAttachRow } from "./doctor-attach.js";
 import { capabilitiesRow } from "./doctor-capabilities.js";
 import {
   chromeCheck,
@@ -35,6 +36,7 @@ import {
   type EngineKind,
 } from "../engine/index.js";
 import { docsUrl } from "../util/docs-links.js";
+import { formatDoctor } from "./doctor-summary.js";
 
 export interface Check {
   name: string;
@@ -51,7 +53,14 @@ export interface Check {
   warn?: boolean;
 }
 
-export async function runDoctor(): Promise<number> {
+export async function runDoctor(args: readonly string[] = []): Promise<number> {
+  const opts = parseDoctorArgs(args);
+  if (!opts) {
+    process.stderr.write(
+      "usage: browxai doctor [--verbose]\n  --verbose   print every check, including the opt-in engines\n",
+    );
+    return 2;
+  }
   const checks: Check[] = [];
 
   // 0. Node version. package.json `engines` is >=22; npm only warns on a
@@ -126,17 +135,7 @@ export async function runDoctor(): Promise<number> {
   // 4. BROWX_ATTACH_CDP — if set, can we reach it?
   const cdpEnv = process.env.BROWX_ATTACH_CDP?.trim();
   if (cdpEnv) {
-    const reachable = await probeCdp(cdpEnv);
-    checks.push({
-      name: "cdp-attach",
-      ok: reachable.ok,
-      detail: reachable.ok
-        ? `${cdpEnv} reachable — ${reachable.version}`
-        : `${cdpEnv} unreachable (${reachable.error})`,
-      fix: reachable.ok
-        ? undefined
-        : "start a Chrome at this port — `browxai chrome start` or `chrome --remote-debugging-port=9222 …`",
-    });
+    checks.push(cdpAttachRow(cdpEnv, await probeCdp(cdpEnv)));
   } else {
     // Not configured. Probe the default port anyway — adopters with a Chrome
     // already running may want to be told "you could attach to that, you know."
@@ -309,21 +308,20 @@ export async function runDoctor(): Promise<number> {
   }
 
   // Print + exit.
-  let allOk = true;
-  process.stdout.write(`browxai doctor (v${PACKAGE_VERSION}) — environment & connectivity\n\n`);
-  for (const c of checks) {
-    if (!c.ok) allOk = false;
-    const glyph = c.info ? "−" : c.warn ? "⚠" : c.ok ? "✓" : "✗";
-    process.stdout.write(`  ${glyph} ${c.name.padEnd(12)} ${c.detail}\n`);
-    if ((!c.ok || c.warn) && c.fix) process.stdout.write(`    fix: ${c.fix}\n`);
-    if (c.info && c.enable) process.stdout.write(`    enable with: ${c.enable}\n`);
-  }
-  process.stdout.write(
-    `\n${
-      allOk
-        ? `all checks passed. Next: add browxai to your MCP client, see ${docsUrl.gettingStartedConnect}`
-        : `fix the ✗ items above, then run \`browxai doctor\` again. Common errors: ${docsUrl.troubleshooting}`
-    }\n`,
-  );
+  const { text, allOk } = formatDoctor(checks, { verbose: opts.verbose, version: PACKAGE_VERSION });
+  process.stdout.write(text);
   return allOk ? 0 : 1;
+}
+
+interface DoctorOpts {
+  verbose: boolean;
+}
+
+function parseDoctorArgs(args: readonly string[]): DoctorOpts | null {
+  let verbose = false;
+  for (const a of args) {
+    if (a === "--verbose") verbose = true;
+    else return null;
+  }
+  return { verbose };
 }

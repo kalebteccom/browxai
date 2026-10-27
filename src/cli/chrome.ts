@@ -51,12 +51,49 @@ function removePidFiles(root: string): void {
   rmSync(join(root, PROFILE_FILE), { force: true });
 }
 
+/** The flags each subcommand takes: `value` flags read the next argument. */
+const FLAGS: Record<string, { value: readonly string[]; bare: readonly string[] }> = {
+  start: {
+    value: ["--port", "--profile"],
+    bare: ["--force", "--insecure", "--disable-background-throttling"],
+  },
+  login: { value: ["--url", "--profile"], bare: ["--force"] },
+  stop: { value: [], bare: [] },
+  status: { value: [], bare: [] },
+};
+
+/** The first argument the subcommand does not take, or undefined. A value flag
+ *  with its value missing is left to the subcommand's own check. */
+export function unknownChromeArg(sub: string, opts: readonly string[]): string | undefined {
+  const spec = FLAGS[sub];
+  if (!spec) return undefined;
+  for (let i = 0; i < opts.length; i++) {
+    const a = opts[i]!;
+    if (spec.value.includes(a)) {
+      const next = opts[i + 1];
+      if (next !== undefined && !next.startsWith("--")) i++;
+      continue;
+    }
+    if (!spec.bare.includes(a)) return a;
+  }
+  return undefined;
+}
+
 export async function runChrome(args: string[]): Promise<number> {
   const sub = args[0];
+  const unknown = sub === undefined ? undefined : unknownChromeArg(sub, args.slice(1));
+  if (unknown !== undefined) {
+    process.stderr.write(`browxai chrome ${sub}: unknown argument "${unknown}"\n`);
+    return chromeUsage();
+  }
   if (sub === "start") return startChrome(args.slice(1));
   if (sub === "login") return loginChrome(args.slice(1));
   if (sub === "stop") return stopChrome();
   if (sub === "status") return statusChrome();
+  return chromeUsage();
+}
+
+function chromeUsage(): number {
   process.stderr.write(
     "usage: browxai chrome <start [--port N] [--profile NAME] [--force] [--insecure] [--disable-background-throttling] | login [--url URL] [--profile NAME] [--force] | stop | status>\n",
   );
