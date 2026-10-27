@@ -32,7 +32,7 @@ The trust tier is a label describing where code came from. It is not enforcement
 
 ## Run it in a container
 
-This is the one control on this page that is a boundary rather than a policy.
+This is the one control on this page that is a boundary. The rest are policy.
 
 Everything else browxai ships (capability gates, the origin allow/blocklist, confirmation hooks, trust tiers) is administrative. It governs what the tool surface will do on request. None of it constrains what already-running code in the host process can reach, because none of it can: the process has whatever the OS gave it. A capability gate documents what a tool is allowed to reach. It does not contain a plugin that has reached past it.
 

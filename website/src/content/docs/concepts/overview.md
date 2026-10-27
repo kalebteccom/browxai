@@ -1,50 +1,42 @@
 ---
 title: What browxai is
-description: browxai is a browser-control surface designed for AI agents, not for human developers. It owns its own multi-engine transport so it can own the whole session lifecycle.
+description: browxai is a browser-control surface designed for AI agents. It owns its multi-engine transport and the whole session lifecycle.
 ---
 
 browxai is an [MCP](https://modelcontextprotocol.io/) server that hands an AI
-agent a curated browser. It runs over stdio, it speaks to any MCP client, and
-it is built around one idea: the consumer of this surface is a model.
+agent a curated browser. It runs over stdio and speaks to any MCP client.
+The consumer of its surface is a model, and each design choice below follows
+from that.
 
-That single constraint drives every design choice below.
+## Built for an agent
 
-## Built for an agent, not a developer
-
-A human developer reading a page has eyes, a viewport, and infinite patience
-for scrolling. A model has a token budget and no eyes. So the primitives are
-different:
+A human developer reading a page has eyes and a viewport, and scrolls as long
+as needed. A model has a token budget and no eyes. The primitives differ
+accordingly:
 
 - `snapshot()` returns a compact accessibility tree with stable `[ref=eN]`
-  handles, not a DOM dump. It is scoped, paginated, and budgeted on purpose.
+  handles. It is scoped, paginated, and budgeted.
 - `find()` takes a plain-language description and returns ranked candidates
   with evidence: a stability flag, an actionable verdict, and a visible-rect
-  bounding box. It does not return one guess.
+  bounding box.
 - Every action returns a structured `ActionResult` that says what navigated,
   what structure changed, and gives a slice of console and network activity.
   The agent learns the consequences of its click without a second round trip.
 
-The whole surface is shaped so an agent can drive a real page without drowning
-in tokens or guessing at selectors.
+## What browxai owns
 
-## Not a wrapper
-
-browxai is not a thin shell over someone else's MCP server. It owns its own
-multi-engine transport across eight engines in three families: Chromium,
+browxai has its own multi-engine transport across eight engines in three families: Chromium,
 Firefox, WebKit, real Safari and real Chrome-on-Android; native apps on an
 Android emulator and the iOS Simulator; and an attached desktop Electron app.
 Each speaks the automation protocol that fits it, behind one capability-port
-seam. That ownership lets browxai own the full session lifecycle.
-
-Owning the transport is what makes the rest possible: managed profiles,
+seam. Because browxai owns the transport, it also provides managed profiles,
 incognito contexts, attach-to-an-existing-Chrome (BYOB), authenticated and
-resumable sessions, headed and headless, and per-session policies for dialogs,
-permissions, notifications, and file pickers.
+resumable sessions, headed and headless modes, and per-session policies for
+dialogs, permissions, notifications, and file pickers.
 
-## Safe because it has to be
+## Default posture
 
-An agent driving a browser is powerful and dangerous. browxai's default
-posture is closed:
+browxai's default posture is closed:
 
 - Tools are grouped into capabilities. The default set is `read`, `navigation`,
   `action`, and `human`. Arbitrary JavaScript, full response bodies, the OS
@@ -54,7 +46,7 @@ posture is closed:
 - Sensitive actions can route through a human confirmation hook before they
   dispatch.
 - Every call carries a hard anti-wedge deadline, so a stuck page returns a
-  structured failure instead of hanging the agent forever.
+  structured failure and the agent keeps running.
 
 See [Capabilities and safety](/concepts/capabilities-and-safety/) for the model,
 and the [threat model](/security/threat-model/) for the trust boundaries and

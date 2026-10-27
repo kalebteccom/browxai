@@ -78,8 +78,8 @@ Chrome keeps whatever flags it was launched with.
 get the installed Google Chrome, and the bundled Chromium with a logged warning
 when Chrome is not installed. Set it to `chromium` to pin the bundled build, or
 to `msedge` or `chrome-beta` for that installed browser, which then must exist:
-browxai does not download it. The browser version follows the install rather
-than the version browxai pins. Chrome runs without Playwright's
+browxai does not download it. The browser version follows the install and may
+differ from the version browxai pins. Chrome runs without Playwright's
 `--enable-automation` switch; `BROWX_AUTOMATION_SWITCH=1` restores it. Firefox
 has its own `BROWX_FIREFOX_CHANNEL`; WebKit, Safari and Android ignore the key.
 Override per session with `open_session({ channel })`.
