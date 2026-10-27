@@ -12,7 +12,7 @@ steps:
   # (1) Install and build the docs site, and fetch the browser build the cache volume holds for playwright-core.
   - &step
     name: build
-    image: node:22-bookworm
+    image: node:26-bookworm
     depends_on: []
     volumes:
       - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
@@ -25,6 +25,7 @@ steps:
       PLAYWRIGHT_BROWSERS_PATH: /playwright-browsers
       npm_config_store_dir: /pnpm-store
     commands:
+      - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
       - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
       - bash scripts/gate-slot.sh pnpm docs:build
@@ -39,6 +40,7 @@ steps:
     name: fence-test
     depends_on: [build, tools]
     commands:
+      - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
       - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium
       - "bash scripts/design-audit/fence.sh .audit > .audit/wrapper.path"
@@ -54,6 +56,7 @@ steps:
       npm_config_store_dir: /pnpm-store
       GATE_STEP_BUDGET_SECS: "3000"
     commands:
+      - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
       - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium
       - bash scripts/gate-slot.sh bash scripts/design-audit/run-audit.sh .audit
