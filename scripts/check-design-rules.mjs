@@ -80,7 +80,7 @@ function* proseLines(text) {
       continue;
     }
     if (inFence) continue;
-    yield [i + 1, lines[i].replace(/`[^`]*`/g, "``")];
+    yield [i + 1, lines[i].replace(/``.+?``|`[^`]*`/g, "``")];
   }
 }
 
