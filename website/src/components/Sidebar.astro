@@ -1,6 +1,6 @@
 ---
 // Wraps Starlight's default sidebar and pins an llms.txt affordance to the
-// bottom (the surrounding .sidebar-content is made a flex column in brand.css,
+// bottom (the surrounding .sidebar-content is made a flex column in brand-docs.css,
 // so the link sits at the bottom via margin-top: auto).
 import Default from "@astrojs/starlight/components/Sidebar.astro";
 ---
@@ -41,7 +41,7 @@ import Default from "@astrojs/starlight/components/Sidebar.astro";
 </a>
 
 <script>
-  // The groups are always open (see brand.css). pointer-events stops the mouse,
+  // The groups are always open (see brand-docs.css). pointer-events stops the mouse,
   // so take the summaries out of the tab order and swallow the click too.
   document.querySelectorAll("#starlight__sidebar summary").forEach((s) => {
     s.setAttribute("tabindex", "-1");
