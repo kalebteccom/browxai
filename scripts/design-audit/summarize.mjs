@@ -24,7 +24,10 @@ const clip = (text, n) => {
     .trim();
   return flat.length > n ? `${flat.slice(0, n - 3)}...` : flat;
 };
-const themes = read(themesFile).trim().split(/\s+/).filter(Boolean);
+const themes = read(themesFile)
+  .split("\n")
+  .map((line) => line.trim().split(/\s+/)[0])
+  .filter(Boolean);
 
 const groups = new Map(); // key -> { tool, page, label, detail, variants:Set }
 const errors = [];

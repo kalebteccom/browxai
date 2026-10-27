@@ -24,7 +24,8 @@ WIDTHS="320x700 390x844 1440x900"
 for f in "$WRAP" "$IMP" "$HM" "$AUDIT/themes"; do
   [ -e "$f" ] || { echo "run-audit: missing $f" >&2; exit 2; }
 done
-THEMES="$(cat "$AUDIT/themes")"
+# The themes file has one "<theme> <chrome flag>" line per theme the fence test could emulate.
+THEMES="$(awk '{print $1}' "$AUDIT/themes")"
 rm -rf "$OUT" "$HOME_DIR" "$AUDIT/cwd"
 mkdir -p "$OUT" "$HOME_DIR" "$AUDIT/cwd" "$AUDIT/empty"
 
@@ -44,7 +45,7 @@ done
 curl --silent --fail --output /dev/null "$BASE/" || { echo "run-audit: the site did not come up on $BASE" >&2; exit 2; }
 
 slug() { case "$1" in /) echo home ;; *) echo "$1" | sed 's#^/##; s#/$##; s#[/.]#_#g' ;; esac; }
-flags() { if [ "$1" = dark ]; then echo "--blink-settings=preferredColorScheme=1"; else echo "--blink-settings=preferredColorScheme=0"; fi; }
+flags() { awk -v t="$1" '$1 == t {print $2}' "$AUDIT/themes"; }
 # env -i drops CI and everything else the pipeline exports; only what the tools need goes in.
 tool_env() {
   env -i PATH="$PATH" HOME="$HOME_DIR" TMPDIR="$AUDIT/tmp" DO_NOT_TRACK=1 IMPECCABLE_NO_TELEMETRY=1 "$@"

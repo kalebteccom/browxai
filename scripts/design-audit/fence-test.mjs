@@ -5,13 +5,15 @@
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
-const [pptDir, chrome, themesFile] = process.argv.slice(2);
-if (!pptDir || !chrome || !themesFile) {
+const args = process.argv.slice(2);
+if (args.length !== 3 || args.some((a) => !a)) {
   console.error("usage: fence-test.mjs <puppeteer-dir> <chrome-wrapper> <themes-file>");
   process.exit(2);
 }
+// createRequire and the browser launch need absolute paths.
+const [pptDir, chrome, themesFile] = args.map((a) => resolve(a));
 const puppeteer = createRequire(join(pptDir, "x.js"))("puppeteer-core");
 
 const OUTSIDE = [
@@ -55,36 +57,46 @@ const probe = async (extraFlags) => {
 };
 
 let failures = 0;
-try {
-  const light = await probe("--blink-settings=preferredColorScheme=0");
-  if (!light.ok.has(`${base}ok.css`)) {
-    console.error("FENCE FAIL: the loopback stylesheet did not load");
+const checkFence = (label, run) => {
+  if (!run.ok.has(`${base}ok.css`)) {
+    console.error(`FENCE FAIL (${label}): the loopback stylesheet did not load`);
     failures += 1;
   }
   for (const url of OUTSIDE) {
-    if (light.ok.has(url)) {
-      console.error(`FENCE FAIL: reached ${url}`);
+    if (run.ok.has(url)) {
+      console.error(`FENCE FAIL (${label}): reached ${url}`);
       failures += 1;
-    } else if (light.failed.has(url)) {
-      console.log(`fence ok: ${url} failed as required`);
+    } else if (run.failed.has(url)) {
+      console.log(`fence ok (${label}): ${url} failed as required`);
     } else {
-      console.error(`FENCE FAIL: ${url} neither failed nor finished, the test did not observe it`);
+      console.error(
+        `FENCE FAIL (${label}): ${url} neither failed nor finished, so it was not observed`,
+      );
       failures += 1;
     }
   }
-  const dark = await probe("--blink-settings=preferredColorScheme=1");
-  const themes = [];
-  if (light.scheme === "light") themes.push("light");
-  if (dark.scheme === "dark" && light.scheme === "light") themes.push("dark");
-  if (!themes.includes("light")) {
-    console.error(`FENCE FAIL: light probe reported "${light.scheme}"`);
+};
+try {
+  // Blink's preferredColorScheme setting is an enum; the probe finds which value gives which scheme instead of assuming it.
+  const flags = new Map(); // scheme -> chrome flag
+  for (const value of [0, 1]) {
+    const flag = `--blink-settings=preferredColorScheme=${value}`;
+    const run = await probe(flag);
+    checkFence(flag, run);
+    console.log(`${flag} gives ${run.scheme}`);
+    if (!flags.has(run.scheme)) flags.set(run.scheme, flag);
+  }
+  if (!flags.has("light")) {
+    console.error("FENCE FAIL: no flag value gave the light scheme");
     failures += 1;
   }
-  writeFileSync(themesFile, `${themes.join(" ")}\n`);
+  // One line per usable theme: "<theme> <chrome flag>".
+  const lines = ["light", "dark"].filter((t) => flags.has(t)).map((t) => `${t} ${flags.get(t)}`);
+  writeFileSync(themesFile, `${lines.join("\n")}\n`);
   console.log(
-    themes.includes("dark")
+    flags.has("dark")
       ? "themes: light and dark can be emulated"
-      : `GAP: dark cannot be emulated (flag probe gave "${dark.scheme}"); the audit runs light only`,
+      : "GAP: dark cannot be emulated (neither flag value gave dark); the audit runs light only",
   );
 } finally {
   server.close();

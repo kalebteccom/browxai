@@ -8,7 +8,10 @@ set -euo pipefail
 
 AUDIT="${1:?usage: fence.sh <audit-dir>}"
 mkdir -p "$AUDIT/bin"
-REAL_CHROME="$(node -e "process.stdout.write(require('playwright-core').chromium.executablePath())")"
+# Absolute, because the wrapper path is handed to node scripts that resolve nothing against the current directory.
+AUDIT="$(cd "$AUDIT" && pwd)"
+# REAL_CHROME may be preset (local dry runs); in CI it comes from playwright-core.
+REAL_CHROME="${REAL_CHROME:-$(node -e "process.stdout.write(require('playwright-core').chromium.executablePath())")}"
 if [ ! -x "$REAL_CHROME" ]; then
   echo "fence: no chromium at $REAL_CHROME (run playwright-core install chromium first)" >&2
   exit 1

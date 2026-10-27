@@ -8,7 +8,9 @@ if (!lockPath || !version || !integrity) {
   process.exit(2);
 }
 const packages = JSON.parse(readFileSync(lockPath, "utf8")).packages ?? {};
-const entry = packages["node_modules/puppeteer-core"];
+const entry = Object.entries(packages).find(([key]) =>
+  /(^|\/)node_modules\/puppeteer-core$/.test(key),
+)?.[1];
 if (!entry || entry.version !== version || entry.integrity !== integrity) {
   console.error(
     `check-puppeteer-lock: puppeteer-core is ${entry?.version} / ${entry?.integrity}, expected ${version} / ${integrity}`,
