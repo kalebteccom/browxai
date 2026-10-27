@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Changed
+
+- Links in refusals, `browxai doctor` rows and startup warnings now open the section that has the fix: "Configuring" for a disabled tool or a missing capability, "The capability set" for what a capability grants, and the origin and credentials sections. The doctor success line opens the MCP wiring step, and `profile-in-use` and `origin-blocked` link a new troubleshooting page.
+
 ## [0.14.0] - 2026-10-24
 
 This release tightens how browxai handles secrets, plugins, workspace paths and

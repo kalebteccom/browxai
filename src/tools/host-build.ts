@@ -181,7 +181,7 @@ export function buildHost(deps: HostDeps): ToolHost {
               "Add the capability to `BROWX_CAPABILITIES` and restart the browxai server. The variable replaces the default set, so keep the defaults in it, e.g. `" +
               capabilitiesWith("<capability>") +
               '`. `set_config` cannot enable it: capabilities are read once at server start, and a saved list can only narrow them. If it stays off after a restart, run `reset_config` to clear a saved list that omits it, then check `get_config({scope:"resolved"}).capabilities`, which is the set this gate enforces. See ' +
-              docsUrl.threatModel +
+              docsUrl.threatModelConfiguring +
               ".",
           },
           null,

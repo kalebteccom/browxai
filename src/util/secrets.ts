@@ -110,7 +110,7 @@ export class SecretRegistry {
           "registered value and substitute `<NAME>` aliases. `fill`/`press` " +
           "materialise `<NAME>` to the real value at dispatch time. The " +
           "`screenshot` tool is a partial sink — see " +
-          docsUrl.toolReference +
+          docsUrl.toolReferenceSecrets +
           ".",
       );
       this.warnedOnce = true;

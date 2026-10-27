@@ -100,7 +100,9 @@ const ANDROID_ATTACH_WARNING = [
   "  removes the adb forward, but never closes the browser or resets its",
   "  storage. The phone holds your real profile: every cookie, password,",
   "  and authed tab is in scope of any page the agent visits.",
-  "  Managed mode (the default) avoids all of the above. See " + docsUrl.threatModel + ".",
+  "  Managed mode (the default) avoids all of the above. See " +
+    docsUrl.threatModelCapabilities +
+    ".",
   "================================================================",
 ].join("\n");
 
