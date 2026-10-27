@@ -37,12 +37,14 @@ nav.sidebar > button {
     align-items: center;
     min-height: 2.75rem;
   }
+  /* The header controls are 44 CSS px, not 2.75rem: at 150% text size 2.75rem is 66px and
+     leaves the site title about 20px at 320px wide. */
   :root {
-    --sl-menu-button-size: 2.75rem;
+    --sl-menu-button-size: 44px;
   }
   site-search button[data-open-modal] {
-    min-width: 2.75rem;
-    height: 2.75rem;
+    min-width: 44px;
+    height: 44px;
   }
   .pagefind-ui__button {
     min-height: 2.75rem;
@@ -53,6 +55,11 @@ nav.sidebar > button {
     justify-content: center;
     min-width: 2.75rem;
     min-height: 2.75rem;
+  }
+  /* A details toggle in the page body: 44px tall, marker kept (a flex summary drops it). */
+  .sl-markdown-content details > summary {
+    padding-block: var(--space-3);
+    min-height: var(--browx-tap);
   }
   .sl-markdown-content :is(td > a, li > strong > a) {
     display: inline-block;
@@ -95,10 +102,25 @@ starlight-theme-select select:not([data-x]) {
   border-radius: 0.5rem;
 }
 
-/* 404 kicker: a dot after the label mirrors the dot before it, so the label
-   sits on the page centre. */
-.browx-404 .browx-kicker::after {
-  content: "";
-  width: 7px;
-  height: 7px;
+/* Header below 50rem: the gaps and side padding stop growing with the root font size
+   (16px cap) and the logo is 32px, so the site name keeps its full width at 150% text
+   on a 320px screen. At 100% text every value is unchanged. */
+@media (max-width: 49.9375rem) {
+  :root {
+    --sl-nav-gap: min(1rem, 16px);
+    --sl-nav-pad-x: min(1rem, 16px);
+  }
+  .site-title img {
+    height: min(2rem, 32px);
+  }
+  .title-wrapper {
+    flex-shrink: 0;
+    min-width: max-content;
+  }
+}
+
+/* List paragraphs break lines with the plain algorithm: text-wrap: pretty left a long inline
+   code chip 5px past the edge of the box at 320px with 150% text. */
+.sl-markdown-content li > p {
+  text-wrap: wrap;
 }

@@ -151,7 +151,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     log.warn(
       `the saved config asks for looser policy than the server's environment allows (${loosened.join(", ")}); ` +
         "a saved layer can only tighten these keys, so the environment's values hold. See " +
-        docsUrl.threatModel +
+        docsUrl.threatModelConfiguring +
         ".",
     );
   const droppedCaps = configStore.droppedCapabilities();
