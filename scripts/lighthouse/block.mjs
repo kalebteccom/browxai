@@ -50,8 +50,11 @@ const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 /** Selector or snippet of the first NODES_PER_AUDIT offending items of an audit, each trimmed to 100 characters. */
 function offenders(audit) {
   const out = [];
-  for (const item of audit.details?.items ?? []) {
-    const n = item?.node ?? item?.subItems?.items?.find((s) => s?.node)?.node;
+  // details.items is an object on debugdata audits and subItems.items is not always an array.
+  const items = Array.isArray(audit.details?.items) ? audit.details.items : [];
+  for (const item of items) {
+    const sub = Array.isArray(item?.subItems?.items) ? item.subItems.items : [];
+    const n = item?.node ?? sub.find((s) => s?.node)?.node;
     const label = n ? [n.selector, n.snippet].filter(Boolean).join(" | ") : (item?.url ?? "");
     if (label) out.push(clip(label, NODE_CLIP));
     if (out.length === NODES_PER_AUDIT) break;
