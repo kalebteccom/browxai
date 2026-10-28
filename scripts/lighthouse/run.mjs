@@ -92,7 +92,14 @@ for (const page of pages) {
       try {
         runs.push(await once(url, preset));
       } catch (error) {
-        runs.push({ error: String(error?.message ?? error), load: loadavg()[0] });
+        runs.push({
+          error: `${error?.message ?? error} @ ${String(error?.stack ?? "")
+            .split("\n")
+            .slice(1, 5)
+            .map((l) => l.trim().replace(/^at /, ""))
+            .join(" < ")}`,
+          load: loadavg()[0],
+        });
       }
       const r = runs.at(-1);
       console.log(
