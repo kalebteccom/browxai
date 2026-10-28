@@ -493,12 +493,13 @@ describe("composeSnapshot — a snapshot with no a11y tier says why", () => {
   });
 
   it("reports how many nodes the tree held in the low-content warning", async () => {
-    // A bare root: one node, zero interactive. This is the shape a page whose
-    // a11y tier went dark returns, and the count tells it apart from a page
-    // that has many nodes and no controls.
+    // A bare a11y root, zero interactive. The count is read after the DOM walk
+    // merges, so the fixture's one DOM-only button makes it 2: the root plus
+    // that button. The count tells a dark a11y tier apart from a page that has
+    // many nodes and no controls.
     const out = await composeSnapshot(domWalkOnlyCdp(), new RefRegistry(), ["data-testid"]);
     const low = out.warnings.find((w) => w.startsWith("low-content"));
-    expect(low).toContain("0 interactive descendants under root, 1 node(s) in the tree");
+    expect(low).toContain("0 interactive descendants under root, 2 node(s) in the tree");
   });
 
   it("adds no extraction warning when the a11y tier read the page", async () => {
