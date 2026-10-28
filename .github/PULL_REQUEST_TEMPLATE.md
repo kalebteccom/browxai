@@ -24,4 +24,4 @@ What this changes and **why** (the why matters more than the what).
 - [ ] `pnpm typecheck`, `pnpm test`, `pnpm build` green
 - [ ] `pnpm test:keystone` run (if page interaction / sessions / capabilities touched)
 - [ ] `docs/tool-reference.md` updated for any surface change
-- [ ] Conventional, single-line commit subject(s) ≤72 chars
+- [ ] Conventional commit subject(s) ≤72 chars
