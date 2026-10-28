@@ -1,5 +1,5 @@
 # ci-optimised: v1
-# Lighthouse run of the docs site (website/dist) with one pinned third-party tool: lighthouse 13.6.0 (Apache-2.0, npm integrity pinned in scripts/lighthouse/fetch-tools.sh, installed with --ignore-scripts into .audit/tools, never global). MANUAL ONLY: it never runs on push, it is not part of `woodpecker.yml` (`depends_on: [gate, browser]` there does not list it), and it is not a required check. Start it from the Woodpecker UI or `woodpecker-cli pipeline create --branch <branch> <repo>` when the queue is empty.
+# Lighthouse run of the docs site (website/dist) with one pinned third-party tool: lighthouse 13.6.0 (Apache-2.0, npm integrity pinned in scripts/lighthouse/fetch-tools.sh, installed with --ignore-scripts into .audit/tools, never global). MANUAL ONLY: it never runs on push, it is not part of `woodpecker.yml` (`depends_on: [gate, browser]` there does not list it), and it is not a required check. Start it from the Woodpecker UI or `woodpecker-cli pipeline create --branch <branch> --var AUDIT=<design|lighthouse> <repo>` when the queue is empty.
 # Pages: /, /404.html, /guides/configuration/, /guides/troubleshooting/, /reference/tool-reference/, /security/threat-model/, each as mobile (Lighthouse default emulation) and desktop preset, categories performance, accessibility, best-practices and seo. Canonical URLs only, as built (trailing slash): each one is fetched without following redirects before every run and must answer 200, because a redirect inflates TBT.
 # 3 runs per page and preset; the MEDIAN score of each category is what counts, with the run-to-run spread printed beside it (a single run is noisy under box load). The block also prints the box load: uptime and nproc at the start and end of the run, and the 1-minute load average at the start of each run.
 # THRESHOLDS (documented here and at the top of scripts/lighthouse/block.mjs, change both together): the median must reach performance 0.9, accessibility 1, best-practices 1, seo 1. Exit 1 when any median is below its threshold, exit 2 on a tool error (a run that threw on every try, a page that did not answer 200).
@@ -9,8 +9,10 @@
 # Same rules as gate.yml: heavy commands through scripts/gate-slot.sh, images by exact tag, no brace-style variable references (Woodpecker substitutes those in the YAML before the shell sees them), all logic in scripts/lighthouse/.
 labels:
   browser: "true"
+# A manual run starts one audit: pass the variable AUDIT with the value design or lighthouse (API: {"branch":"main","variables":{"AUDIT":"..."}}). Without it neither audit starts, so they never render at the same time.
 when:
   - event: manual
+    evaluate: 'AUDIT == "lighthouse"'
 steps:
   # (1) Install and build the docs site, and fetch the browser build the cache volume holds for playwright-core.
   - &step
