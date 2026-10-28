@@ -138,25 +138,17 @@ describe("acquireTarget", () => {
 });
 
 describe("releaseTarget", () => {
-  it("closes a target the session created", async () => {
+  it.each([
+    { label: "closes a target the session created", created: true },
+    { label: "leaves a pre-existing target the session merely claimed open", created: false },
+  ])("$label", async ({ created }) => {
     const leases = new AttachLeaseTable();
     const page = fakePage();
-    const src = source([], [target("T1", page)]);
+    const src = created ? source([], [target("T1", page)]) : source([target("T1", page)]);
     const acquired = await acquireTarget(leases, src, { sessionId: "a", endpoint: ENDPOINT });
-    expect(acquired.created).toBe(true);
+    expect(acquired.created).toBe(created);
     await releaseTarget(leases, "a", acquired.page);
-    expect(page.close).toHaveBeenCalledTimes(1);
-    expect(leases.leasedTargets(ENDPOINT).size).toBe(0);
-  });
-
-  it("leaves a pre-existing target the session merely claimed open", async () => {
-    const leases = new AttachLeaseTable();
-    const page = fakePage();
-    const src = source([target("T1", page)]);
-    const acquired = await acquireTarget(leases, src, { sessionId: "a", endpoint: ENDPOINT });
-    expect(acquired.created).toBe(false);
-    await releaseTarget(leases, "a", acquired.page);
-    expect(page.close).not.toHaveBeenCalled();
+    expect(page.close).toHaveBeenCalledTimes(created ? 1 : 0);
     expect(leases.leasedTargets(ENDPOINT).size).toBe(0);
   });
 });
@@ -210,14 +202,12 @@ describe("touchAttachLease", () => {
     expect(attachLeases.get("live")!.renewedAt).toBeGreaterThan(0);
   });
 
-  it("refuses when the lease was reclaimed out from under the session", () => {
-    attachLeases.claim({ sessionId: "gone", targetId: "T1", endpoint: EP, owned: false, now: 0 });
-    attachLeases.release("gone");
-    expect(() => touchAttachLease("gone", "T1")).toThrow(/attach-lease-expired/);
-  });
-
-  it("refuses when another session now holds that target id", () => {
-    attachLeases.claim({ sessionId: "s", targetId: "T2", endpoint: EP, owned: false, now: 0 });
+  it.each([
+    { label: "the lease was reclaimed out from under the session", held: "T1", released: true },
+    { label: "another session now holds that target id", held: "T2", released: false },
+  ])("refuses when $label", ({ held, released }) => {
+    attachLeases.claim({ sessionId: "s", targetId: held, endpoint: EP, owned: false, now: 0 });
+    if (released) attachLeases.release("s");
     expect(() => touchAttachLease("s", "T1")).toThrow(/attach-lease-expired/);
   });
 });

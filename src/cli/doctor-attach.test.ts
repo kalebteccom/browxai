@@ -18,13 +18,12 @@ describe("attachCapabilityCheck", () => {
     expect(row!.fix).toContain("BROWX_CAPABILITIES=read,navigation,action,human,byob-attach");
   });
 
-  it("is silent when byob-attach is enabled", () => {
-    expect(attachCapabilityCheck("http://127.0.0.1:9222", WITH_ATTACH)).toBeNull();
-  });
-
-  it("is silent when BROWX_ATTACH_CDP is unset or blank", () => {
-    expect(attachCapabilityCheck(undefined, DEFAULTS)).toBeNull();
-    expect(attachCapabilityCheck("  ", DEFAULTS)).toBeNull();
+  it.each([
+    { label: "byob-attach is enabled", cdp: "http://127.0.0.1:9222", caps: WITH_ATTACH },
+    { label: "BROWX_ATTACH_CDP is unset", cdp: undefined, caps: DEFAULTS },
+    { label: "BROWX_ATTACH_CDP is blank", cdp: "  ", caps: DEFAULTS },
+  ])("is silent when $label", ({ cdp, caps }) => {
+    expect(attachCapabilityCheck(cdp, caps)).toBeNull();
   });
 });
 

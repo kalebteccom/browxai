@@ -76,57 +76,60 @@ describe("toReplayEvent — the browxai envelope around an rrweb event", () => {
 // ---- the targetId rule ---------------------------------------------------
 
 describe("toReplayEvent — targetId is written only on a multi-target session", () => {
-  it("writes targetId when the session holds more than one target", () => {
-    const ev = toReplayEvent({}, { t: 1, targetId: "T1", multiTarget: true });
-    expect(ev.targetId).toBe("T1");
-  });
-
-  it("omits the key when multi-target but no id could be resolved", () => {
-    const ev = toReplayEvent({}, { t: 1, targetId: undefined, multiTarget: true });
-    expect("targetId" in ev).toBe(false);
+  it.each<[string, string | undefined, boolean]>([
+    ["writes targetId when the session holds more than one target", "T1", true],
+    ["omits the key when multi-target but no id could be resolved", undefined, false],
+  ])("%s", (_label, targetId, written) => {
+    const ev = toReplayEvent({}, { t: 1, targetId, multiTarget: true });
+    expect("targetId" in ev).toBe(written);
+    if (written) expect(ev.targetId).toBe(targetId);
   });
 });
 
 // ---- the clock -----------------------------------------------------------
 
 describe("eventTimestamp", () => {
-  it("prefers the rrweb event's own timestamp, relative to clockOrigin", () => {
-    expect(eventTimestamp({ timestamp: 1_000_500 }, 1_000_000, 9_999_999)).toBe(500);
-  });
-
-  it("falls back to arrival time when rrweb carried no usable timestamp", () => {
-    expect(eventTimestamp({}, 1_000_000, 1_000_250)).toBe(250);
-    expect(eventTimestamp({ timestamp: "nope" }, 1_000_000, 1_000_250)).toBe(250);
-    expect(eventTimestamp(null, 1_000_000, 1_000_250)).toBe(250);
+  it.each<[string, unknown, number, number]>([
+    [
+      "prefers the rrweb event's own timestamp, relative to clockOrigin",
+      { timestamp: 1_000_500 },
+      9_999_999,
+      500,
+    ],
+    ["falls back to arrival time when rrweb carried no timestamp", {}, 1_000_250, 250],
+    ["falls back to arrival time when the event is null", null, 1_000_250, 250],
+  ])("%s", (_label, rrwebEvent, arrival, expected) => {
+    expect(eventTimestamp(rrwebEvent, 1_000_000, arrival)).toBe(expected);
   });
 });
 
 // ---- injection wiring ----------------------------------------------------
 
 describe("attachDomCapture — injection", () => {
-  it("registers the emit binding and an init script carrying the rrweb bundle", async () => {
+  it.each<[string, string[] | undefined, string[]]>([
+    [
+      "registers the emit binding and an init script carrying the rrweb bundle",
+      undefined,
+      ["rr.record("],
+    ],
+    [
+      "masks input[type=password] by default and appends the configured selectors",
+      [".pii", "#ssn"],
+      ['"always":"input[type=password]"', '"extra":".pii,#ssn"', '"password"'],
+    ],
+  ])("%s", async (_label, maskSelectors, expected) => {
     const f = fakeContext();
-    await attachDomCapture(f.context, { clockOrigin: 0, onEvent: () => undefined });
+    await attachDomCapture(f.context, {
+      clockOrigin: 0,
+      onEvent: () => undefined,
+      ...(maskSelectors ? { maskSelectors } : {}),
+    });
 
     expect(f.bindings.has("__browx_rrweb_emit")).toBe(true);
     expect(f.initScripts).toHaveLength(1);
     const script = f.initScripts[0]!;
     expect(script).toContain(rrwebBundleSource());
-    expect(script).toContain("rr.record(");
-  });
-
-  it("masks input[type=password] by default and appends the configured selectors", async () => {
-    const f = fakeContext();
-    await attachDomCapture(f.context, {
-      clockOrigin: 0,
-      onEvent: () => undefined,
-      maskSelectors: [".pii", "#ssn"],
-    });
-
-    const script = f.initScripts[0]!;
-    expect(script).toContain('"always":"input[type=password]"');
-    expect(script).toContain('"extra":".pii,#ssn"');
-    expect(script).toContain('"password"');
+    for (const part of expected) expect(script).toContain(part);
   });
 
   it("survives a binding that is already registered by another attach", async () => {

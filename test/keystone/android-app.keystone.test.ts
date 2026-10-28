@@ -204,8 +204,11 @@ describeDevice("android-app keystone — a real Android device over adb", () => 
   );
 
   it(
-    "opens a session against the device and the seam tags it android-app",
+    "opens a session the seam tags android-app, and snapshot composes a REAL UiAutomator hierarchy into the [ref=eN] tree",
     async () => {
+      // THE CRUX OF RFC 0008. No mock can make this claim: the assertion is that
+      // a real view hierarchy from a real device maps onto the snapshot contract
+      // that already ships, with the same refs and the same role/name vocabulary.
       const session = "native-flow";
       const opened = await callJson<{ ok: boolean }>("open_session", { session });
       expect(opened.ok).toBe(true);
@@ -214,18 +217,6 @@ describeDevice("android-app keystone — a real Android device over adb", () => 
         {},
       );
       expect(listed.sessions.find((s) => s.id === session)?.engine).toBe("android-app");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "snapshot composes a REAL UiAutomator hierarchy into the [ref=eN] tree",
-    async () => {
-      // THE CRUX OF RFC 0008. No mock can make this claim: the assertion is that
-      // a real view hierarchy from a real device maps onto the snapshot contract
-      // that already ships, with the same refs and the same role/name vocabulary.
-      const session = "native-flow";
-      await callJson("open_session", { session });
       // The launcher is always present and always settles, which matters because
       // `uiautomator dump` blocks on window idle.
       await callJson("press", { session, key: "home" });

@@ -90,20 +90,20 @@ function virtualClock(): OnClock & { advance(ms: number): void; runWindowEnd(): 
 }
 
 describe("validateOnArgs", () => {
-  it("rejects an unknown trigger", () => {
-    expect(() =>
-      validateOnArgs({ trigger: "bogus" as unknown as Trigger, durationMs: 100, intoDir: "x" }),
-    ).toThrow(/trigger/);
-  });
-  it("rejects durationMs below the floor", () => {
-    expect(() => validateOnArgs({ trigger: "navigation", durationMs: 0, intoDir: "x" })).toThrow(
+  it.each<[string, Parameters<typeof validateOnArgs>[0], RegExp]>([
+    ["an unknown trigger", { trigger: "bogus" as never, durationMs: 100, intoDir: "x" }, /trigger/],
+    [
+      "durationMs below the floor",
+      { trigger: "navigation", durationMs: 0, intoDir: "x" },
       /durationMs/,
-    );
-  });
-  it("rejects durationMs above the ceiling", () => {
-    expect(() =>
-      validateOnArgs({ trigger: "navigation", durationMs: 600_001, intoDir: "x" }),
-    ).toThrow(/durationMs/);
+    ],
+    [
+      "durationMs above the ceiling",
+      { trigger: "navigation", durationMs: 600_001, intoDir: "x" },
+      /durationMs/,
+    ],
+  ])("validateOnArgs rejects %s", (_name, args, error) => {
+    expect(() => validateOnArgs(args)).toThrow(error);
   });
 });
 

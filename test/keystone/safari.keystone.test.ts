@@ -102,7 +102,7 @@ describeSafari("safari keystone — the fifth engine is real (first non-Playwrig
   // window across the assertions (open_session is idempotent on the same id).
   const SESSION = "safari-main";
   it(
-    "opens a real Safari session and the seam tags it engine:safari",
+    "opens a Safari session tagged engine:safari, then navigate (WebDriver Classic) + snapshot (DOM-walk over execute/sync) + find",
     async () => {
       const session = SESSION;
       const opened = await callJson<{ ok: boolean; error?: string }>("open_session", {
@@ -110,23 +110,11 @@ describeSafari("safari keystone — the fifth engine is real (first non-Playwrig
         mode: "persistent",
       });
       expect(opened.ok, `open_session failed: ${JSON.stringify(opened)}`).toBe(true);
-
       const listed = await callJson<{ sessions: Array<{ id: string; engine: string }> }>(
         "list_sessions",
         {},
       );
-      const row = listed.sessions.find((s) => s.id === session);
-      expect(row, "opened session present in list_sessions").toBeTruthy();
-      expect(row!.engine).toBe("safari");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "navigate (WebDriver Classic) + snapshot (DOM-walk over execute/sync) + find on real Safari",
-    async () => {
-      const session = SESSION;
-      await callJson("open_session", { session, mode: "persistent" });
+      expect(listed.sessions.find((s) => s.id === session)?.engine).toBe("safari");
 
       // navigate — routes through safariNavigate → WebDriver Classic POST url
       // (NOT the Playwright action envelope, which needs a Page Safari lacks).

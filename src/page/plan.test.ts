@@ -82,40 +82,40 @@ beforeEach(() => {
 });
 
 describe("clampTtl — descriptor lifetime bounds", () => {
-  it("defaults to 60s when unset / non-finite", () => {
-    expect(clampTtl(undefined)).toBe(60_000);
-    expect(clampTtl(NaN)).toBe(60_000);
-    // Infinity is non-finite → falls back to the default (then clamped a no-op).
-    expect(clampTtl(Infinity)).toBe(60_000);
-  });
-  it("clamps below 1s up and above 30min down", () => {
-    expect(clampTtl(0)).toBe(1_000);
-    expect(clampTtl(-9999)).toBe(1_000);
-    expect(clampTtl(60 * 60_000)).toBe(30 * 60_000);
+  it.each([
+    ["unset defaults to 60s", undefined, 60_000],
+    ["NaN defaults to 60s", NaN, 60_000],
+    ["0 clamps up to 1s", 0, 1_000],
+    ["an hour clamps down to 30min", 60 * 60_000, 30 * 60_000],
+  ])("clampTtl: %s", (_name, input, expected) => {
+    expect(clampTtl(input)).toBe(expected);
   });
 });
 
 describe("validateVerbArgs — per-verb args contract", () => {
-  it("fill requires verbArgs.value (string)", () => {
-    expect(validateVerbArgs("fill", undefined)).toMatch(/value/);
-    expect(validateVerbArgs("fill", {})).toMatch(/value/);
-    expect(validateVerbArgs("fill", { value: "hi" })).toBeNull();
-  });
-  it("press requires a non-empty key", () => {
-    expect(validateVerbArgs("press", {})).toMatch(/key/);
-    expect(validateVerbArgs("press", { key: "" })).toMatch(/key/);
-    expect(validateVerbArgs("press", { key: "Enter" })).toBeNull();
-  });
-  it("select requires a non-empty values[]", () => {
-    expect(validateVerbArgs("select", {})).toMatch(/values/);
-    expect(validateVerbArgs("select", { values: [] })).toMatch(/values/);
-    expect(validateVerbArgs("select", { values: ["a"] })).toBeNull();
-  });
-  it("click button must be left/right/middle when set", () => {
-    expect(validateVerbArgs("click", undefined)).toBeNull();
-    expect(validateVerbArgs("click", { button: "left" })).toBeNull();
-    // @ts-expect-error — feeding an invalid literal on purpose
-    expect(validateVerbArgs("click", { button: "wibble" })).toMatch(/button/);
+  it.each<
+    [
+      string,
+      Parameters<typeof validateVerbArgs>[0],
+      Parameters<typeof validateVerbArgs>[1],
+      RegExp | null,
+    ]
+  >([
+    ["fill with no verbArgs", "fill", undefined, /value/],
+    ["fill with a value", "fill", { value: "hi" }, null],
+    ["press without a key", "press", {}, /key/],
+    ["press with an empty key", "press", { key: "" }, /key/],
+    ["press with a key", "press", { key: "Enter" }, null],
+    ["select without values", "select", {}, /values/],
+    ["select with an empty values[]", "select", { values: [] }, /values/],
+    ["select with values", "select", { values: ["a"] }, null],
+    ["click with no verbArgs", "click", undefined, null],
+    ["click with button left", "click", { button: "left" }, null],
+    ["click with an invalid button", "click", { button: "wibble" as never }, /button/],
+  ])("validateVerbArgs: %s", (_name, verb, args, expected) => {
+    const got = validateVerbArgs(verb, args);
+    if (expected === null) expect(got).toBeNull();
+    else expect(got).toMatch(expected);
   });
 });
 
@@ -179,178 +179,98 @@ describe("validateDescriptor — shape guard at execute() entry", () => {
   });
 });
 
+function descriptorFor(
+  verb: ActionDescriptor["verb"],
+  args: ActionDescriptor["args"],
+  over: Partial<ActionDescriptor> = {},
+): ActionDescriptor {
+  return {
+    id: "abc",
+    ref: "e1",
+    verb,
+    args,
+    evidence: {
+      query: "q",
+      selectorHint: "#x",
+      selectorTier: 1,
+      stability: "high",
+      role: "button",
+      score: 1,
+      actionable: true,
+      warnings: [],
+      alternatives: [],
+    },
+    expiresAt: Date.now() + 60_000,
+    ...over,
+  };
+}
+
 describe("execute() — refusal modes (no dispatch happens)", () => {
-  it("refuses an expired descriptor with reason 'expired' and never calls actions.*", async () => {
-    const refs = new RefRegistry();
-    refs.forKey("k1", { role: "button", name: "Save" });
-    const d: ActionDescriptor = {
-      id: "abc",
-      ref: "e1",
-      verb: "click",
-      args: {},
-      evidence: {
-        query: "q",
-        selectorHint: "#x",
-        selectorTier: 1,
-        stability: "high",
-        role: "button",
-        score: 1,
-        actionable: true,
-        warnings: [],
-        alternatives: [],
-      },
-      expiresAt: 1_000,
-    };
-    const r = await execute(fakeCtx(refs), d, { now: 2_000 });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe("expired");
-    expect(vi.mocked(actions.click)).not.toHaveBeenCalled();
-  });
-
-  it("refuses a ref-gone descriptor with reason 'ref-gone' and never calls actions.*", async () => {
-    const refs = new RefRegistry(); // empty — ref doesn't exist
-    const d: ActionDescriptor = {
-      id: "abc",
-      ref: "e1",
-      verb: "click",
-      args: {},
-      evidence: {
-        query: "q",
-        selectorHint: "#x",
-        selectorTier: 1,
-        stability: "high",
-        role: "button",
-        score: 1,
-        actionable: true,
-        warnings: [],
-        alternatives: [],
-      },
-      expiresAt: Date.now() + 60_000,
-    };
-    const r = await execute(fakeCtx(refs), d);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe("ref-gone");
-    expect(vi.mocked(actions.click)).not.toHaveBeenCalled();
-  });
-
-  it("re-validates verb args at execute time (a hand-edited descriptor that dropped value)", async () => {
-    const refs = new RefRegistry();
-    refs.forKey("k1", { role: "textbox", name: "Email" });
-    const d: ActionDescriptor = {
-      id: "abc",
-      ref: "e1",
-      verb: "fill",
-      args: {}, // value missing
-      evidence: {
-        query: "q",
-        selectorHint: "#x",
-        selectorTier: 1,
-        stability: "high",
-        role: "textbox",
-        score: 1,
-        actionable: true,
-        warnings: [],
-        alternatives: [],
-      },
-      expiresAt: Date.now() + 60_000,
-    };
-    const r = await execute(fakeCtx(refs), d);
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.reason).toBe("invalid");
-      expect(r.error).toMatch(/value/);
-    }
-  });
+  it.each([
+    ["an expired descriptor", "click", {}, { expiresAt: 1_000 }, 2_000, true, "expired", undefined],
+    // empty registry: the ref doesn't exist
+    ["a ref-gone descriptor", "click", {}, {}, undefined, false, "ref-gone", undefined],
+    // a hand-edited descriptor that dropped value
+    ["a fill descriptor missing its value", "fill", {}, {}, undefined, true, "invalid", /value/],
+  ] as Array<
+    [
+      string,
+      ActionDescriptor["verb"],
+      ActionDescriptor["args"],
+      Partial<ActionDescriptor>,
+      number | undefined,
+      boolean,
+      string,
+      RegExp | undefined,
+    ]
+  >)(
+    "execute refuses %s and never calls actions.*",
+    async (_name, verb, args, over, now, mint, reason, error) => {
+      const refs = new RefRegistry();
+      if (mint) refs.forKey("k1", { role: "button", name: "Save" });
+      const r = await execute(
+        fakeCtx(refs),
+        descriptorFor(verb, args, over),
+        now !== undefined ? { now } : {},
+      );
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.reason).toBe(reason);
+        if (error) expect(r.error).toMatch(error);
+      }
+      expect(vi.mocked(actions.click)).not.toHaveBeenCalled();
+      expect(vi.mocked(actions.fill)).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("execute() — dispatch routing per verb", () => {
-  it("click dispatches actions.click with the bound ref + button", async () => {
-    const refs = new RefRegistry();
-    refs.forKey("k1", { role: "button", name: "Save" });
-    const d: ActionDescriptor = {
-      id: "abc",
-      ref: "e1",
-      verb: "click",
-      args: { button: "right" },
-      evidence: {
-        query: "q",
-        selectorHint: "#x",
-        selectorTier: 1,
-        stability: "high",
-        role: "button",
-        score: 1,
-        actionable: true,
-        warnings: [],
-        alternatives: [],
-      },
-      expiresAt: Date.now() + 60_000,
-    };
-    const r = await execute(fakeCtx(refs), d);
-    expect(r.ok).toBe(true);
-    expect(vi.mocked(actions.click)).toHaveBeenCalledTimes(1);
-    const [, args] = vi.mocked(actions.click).mock.calls[0]!;
-    expect(args.target).toEqual({ ref: "e1" });
-    expect(args.button).toBe("right");
-  });
-
-  it("fill dispatches actions.fill with value", async () => {
-    const refs = new RefRegistry();
-    refs.forKey("k1", { role: "textbox", name: "Email" });
-    const d: ActionDescriptor = {
-      id: "abc",
-      ref: "e1",
-      verb: "fill",
-      args: { value: "rowin@example.com" },
-      evidence: {
-        query: "q",
-        selectorHint: "#x",
-        selectorTier: 1,
-        stability: "high",
-        role: "textbox",
-        score: 1,
-        actionable: true,
-        warnings: [],
-        alternatives: [],
-      },
-      expiresAt: Date.now() + 60_000,
-    };
-    const r = await execute(fakeCtx(refs), d);
-    expect(r.ok).toBe(true);
-    const [, args] = vi.mocked(actions.fill).mock.calls[0]!;
-    expect(args.target).toEqual({ ref: "e1" });
-    expect(args.value).toBe("rowin@example.com");
-  });
+  it.each([
+    ["click", { button: "right" }, "button", "right"],
+    ["fill", { value: "rowin@example.com" }, "value", "rowin@example.com"],
+  ] as Array<[ActionDescriptor["verb"], ActionDescriptor["args"], string, string]>)(
+    "%s dispatches its action with the bound ref and verb arg",
+    async (verb, args, key, expected) => {
+      const refs = new RefRegistry();
+      refs.forKey("k1", { role: "button", name: "Save" });
+      const r = await execute(fakeCtx(refs), descriptorFor(verb, args));
+      expect(r.ok).toBe(true);
+      const fn = vi.mocked(actions[verb as "click" | "fill"]);
+      expect(fn).toHaveBeenCalledTimes(1);
+      const [, called] = fn.mock.calls[0]!;
+      expect(called.target).toEqual({ ref: "e1" });
+      expect((called as unknown as Record<string, unknown>)[key]).toBe(expected);
+    },
+  );
 
   it("press / hover / select route to their respective actions.*", async () => {
     const refs = new RefRegistry();
     refs.forKey("k1");
     refs.forKey("k2");
     refs.forKey("k3");
-    const base = (
-      verb: ActionDescriptor["verb"],
-      ref: string,
-      args: ActionDescriptor["args"],
-    ): ActionDescriptor => ({
-      id: "abc",
-      ref,
-      verb,
-      args,
-      evidence: {
-        query: "q",
-        selectorHint: "#x",
-        selectorTier: 1,
-        stability: "high",
-        role: "x",
-        score: 1,
-        actionable: true,
-        warnings: [],
-        alternatives: [],
-      },
-      expiresAt: Date.now() + 60_000,
-    });
-    await execute(fakeCtx(refs), base("press", "e1", { key: "Enter" }));
-    await execute(fakeCtx(refs), base("hover", "e2", {}));
-    await execute(fakeCtx(refs), base("select", "e3", { values: ["foo"] }));
+    await execute(fakeCtx(refs), descriptorFor("press", { key: "Enter" }, { ref: "e1" }));
+    await execute(fakeCtx(refs), descriptorFor("hover", {}, { ref: "e2" }));
+    await execute(fakeCtx(refs), descriptorFor("select", { values: ["foo"] }, { ref: "e3" }));
     expect(vi.mocked(actions.press)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(actions.hover)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(actions.select)).toHaveBeenCalledTimes(1);

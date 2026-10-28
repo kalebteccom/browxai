@@ -102,39 +102,43 @@ function mkCtx(byRef: Map<string, ScriptedLocator>): ActionContext {
 // ---------- pure helpers ----------
 
 describe("summariseTarget — agent-facing error summaries", () => {
-  it("renders selector targets, scoped or unscoped", () => {
-    expect(summariseTarget({ selector: ".x" })).toBe("selector=.x");
-    expect(summariseTarget({ selector: ".x", contextRef: "e2" })).toBe("selector=.x (in e2)");
-  });
-  it("renders coords targets (relevant for the submit slot)", () => {
-    expect(summariseTarget({ coords: { x: 10, y: 20 } })).toBe("coords=10,20");
+  it.each([
+    { name: "an unscoped selector target", target: { selector: ".x" }, summary: "selector=.x" },
+    {
+      name: "a scoped selector target",
+      target: { selector: ".x", contextRef: "e2" },
+      summary: "selector=.x (in e2)",
+    },
+    {
+      name: "a coords target (relevant for the submit slot)",
+      target: { coords: { x: 10, y: 20 } },
+      summary: "coords=10,20",
+    },
+  ])("renders $name", ({ target, summary }) => {
+    expect(summariseTarget(target)).toBe(summary);
   });
 });
 
 describe("validateFillFormArgs — shape guards before touching the page", () => {
-  it("rejects empty `fields`", () => {
-    expect(() => validateFillFormArgs({ fields: [] })).toThrow(/non-empty array/);
-  });
-  it("rejects a field missing `target`", () => {
-    expect(() =>
-      validateFillFormArgs({
-        fields: [{ value: "hi" } as unknown as FillFormField],
-      }),
-    ).toThrow(/target is required/);
-  });
-  it("rejects non-string values", () => {
-    expect(() =>
-      validateFillFormArgs({
-        fields: [{ target: { ref: "e1" }, value: 42 as unknown as string }],
-      }),
-    ).toThrow(/must be a string/);
-  });
-  it("rejects coords targets — fill needs a real input element", () => {
-    expect(() =>
-      validateFillFormArgs({
-        fields: [{ target: { coords: { x: 1, y: 1 } }, value: "hi" }],
-      }),
-    ).toThrow(/coords target/);
+  it.each([
+    { name: "empty `fields`", fields: [], error: /non-empty array/ },
+    {
+      name: "a field missing `target`",
+      fields: [{ value: "hi" } as unknown as FillFormField],
+      error: /target is required/,
+    },
+    {
+      name: "non-string values",
+      fields: [{ target: { ref: "e1" }, value: 42 as unknown as string }],
+      error: /must be a string/,
+    },
+    {
+      name: "coords targets (fill needs a real input element)",
+      fields: [{ target: { coords: { x: 1, y: 1 } }, value: "hi" }],
+      error: /coords target/,
+    },
+  ])("rejects $name", ({ fields, error }) => {
+    expect(() => validateFillFormArgs({ fields })).toThrow(error);
   });
 });
 

@@ -82,7 +82,7 @@ afterAll(async () => {
 
 describe("find keystone — text leaves are not candidates", () => {
   it(
-    "returns the real search button at rank 1, actionable",
+    "returns the real search button at rank 1, actionable, and keeps a named control that merely contains a query word",
     async () => {
       const session = "ks-find-presentational-rank";
       await openOn(session);
@@ -99,23 +99,15 @@ describe("find keystone — text leaves are not candidates", () => {
       // The page says "button" in eight places; none of them is a target.
       expect(found.candidates.map((c) => c.role)).not.toContain("StaticText");
       expect(found.warnings.join(" ")).not.toContain("no visible candidate");
-    },
-    KEYSTONE_TIMEOUT,
-  );
 
-  it(
-    "keeps a named control that merely contains a query word",
-    async () => {
       // The filter is by role, not by name: `heading "Buttons"` is still ranked,
       // so a real control is never dropped for saying a query word.
-      const session = "ks-find-presentational-heading";
-      await openOn(session);
-      const found = await callJson<{ candidates: Candidate[] }>("find", {
+      const heading = await callJson<{ candidates: Candidate[] }>("find", {
         session,
         query: "the Buttons heading",
         maxCandidates: 5,
       });
-      expect(found.candidates.some((c) => c.name === "Buttons")).toBe(true);
+      expect(heading.candidates.some((c) => c.name === "Buttons")).toBe(true);
     },
     KEYSTONE_TIMEOUT,
   );

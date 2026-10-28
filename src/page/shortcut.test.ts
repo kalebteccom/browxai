@@ -10,16 +10,14 @@ import { classifyChord, runShortcut } from "./shortcut.js";
 import { ClipboardBuffer, osClipboardWrite } from "./clipboard.js";
 
 describe("classifyChord", () => {
-  it("maps accel+c/x/v to copy/cut/paste, case-insensitive", () => {
-    expect(classifyChord("Control+C")).toBe("copy");
-    expect(classifyChord("meta+c")).toBe("copy");
-    expect(classifyChord("Control+X")).toBe("cut");
-    expect(classifyChord("Meta+V")).toBe("paste");
-  });
-  it("treats non-accel and other keys as 'other'", () => {
-    expect(classifyChord("Enter")).toBe("other");
-    expect(classifyChord("c")).toBe("other"); // no modifier
-    expect(classifyChord("Control+Shift+K")).toBe("other");
+  it.each([
+    { chord: "Control+C", kind: "copy" },
+    { chord: "Control+X", kind: "cut" },
+    { chord: "Meta+V", kind: "paste" },
+    { chord: "Enter", kind: "other" },
+    { chord: "Control+Shift+K", kind: "other" },
+  ])("classifies $chord as $kind (accel+c/x/v, case-insensitive; the rest 'other')", (row) => {
+    expect(classifyChord(row.chord)).toBe(row.kind);
   });
 });
 

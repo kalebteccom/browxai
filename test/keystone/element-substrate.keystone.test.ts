@@ -161,44 +161,35 @@ describe("verify_* over the element port, on a real DOM", () => {
     KEYSTONE_TIMEOUT,
   );
 
-  it(
-    'a hidden element fails as `source:"app"` with the computed reason',
-    async () => {
-      const body = await callJson<{
-        ok: boolean;
-        failure?: { source: string; actual: string };
-      }>("verify_visible", { selector: '[data-testid="ghost"]' });
-      expect(body.ok).toBe(false);
-      expect(body.failure?.source).toBe("app");
-      expect(body.failure?.actual).toBe("hidden (display:none)");
+  it.each([
+    {
+      name: 'a hidden element fails as `source:"app"` with the computed reason',
+      target: { selector: '[data-testid="ghost"]' },
+      source: "app",
+      actual: "hidden (display:none)",
     },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "a selector that matches nothing is the `app` / stale half of the split",
-    async () => {
-      const body = await callJson<{
-        ok: boolean;
-        failure?: { source: string; actual: string };
-      }>("verify_visible", { selector: "#definitely-absent" });
-      expect(body.ok).toBe(false);
-      expect(body.failure?.source).toBe("app");
-      expect(body.failure?.actual).toBe("missing (locator matched 0 nodes)");
+    {
+      name: "a selector that matches nothing is the `app` / stale half of the split",
+      target: { selector: "#definitely-absent" },
+      source: "app",
+      actual: "missing (locator matched 0 nodes)",
     },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "a ref the registry never held is the `browxai` / no-such-element half",
-    async () => {
+    {
+      name: "a ref the registry never held is the `browxai` / no-such-element half",
+      target: { ref: "e99999" },
+      source: "browxai",
+      actual: "ref no longer in the snapshot",
+    },
+  ])(
+    "verify_visible failure split: $name",
+    async ({ target, source, actual }) => {
       const body = await callJson<{
         ok: boolean;
         failure?: { source: string; actual: string };
-      }>("verify_visible", { ref: "e99999" });
+      }>("verify_visible", target);
       expect(body.ok).toBe(false);
-      expect(body.failure?.source).toBe("browxai");
-      expect(body.failure?.actual).toBe("ref no longer in the snapshot");
+      expect(body.failure?.source).toBe(source);
+      expect(body.failure?.actual).toBe(actual);
     },
     KEYSTONE_TIMEOUT,
   );

@@ -141,34 +141,37 @@ describe("workspace path enforcement", () => {
 });
 
 describe("parseHeapSnapshot", () => {
-  it("rejects non-JSON input", () => {
-    expect(() => parseHeapSnapshot("not json")).toThrow(/not valid JSON/);
-  });
-
-  it("rejects missing snapshot.meta.node_fields", () => {
-    expect(() => parseHeapSnapshot(JSON.stringify({ snapshot: {} }))).toThrow(/node_fields/);
-  });
-
-  it("rejects when nodes/edges/strings are missing", () => {
-    const bad = JSON.stringify({
-      snapshot: { meta: { node_fields: ["type"], edge_fields: ["type"] } },
-    });
-    expect(() => parseHeapSnapshot(bad)).toThrow(/nodes \/ edges \/ strings/);
-  });
-
-  it("rejects when a required field is missing from meta", () => {
-    const bad = JSON.stringify({
-      snapshot: {
-        meta: {
-          node_fields: ["type", "name"], // missing self_size etc.
-          edge_fields: ["type", "name_or_index", "to_node"],
+  it.each([
+    { name: "non-JSON input", input: "not json", error: /not valid JSON/ },
+    {
+      name: "missing snapshot.meta.node_fields",
+      input: JSON.stringify({ snapshot: {} }),
+      error: /node_fields/,
+    },
+    {
+      name: "missing nodes/edges/strings",
+      input: JSON.stringify({
+        snapshot: { meta: { node_fields: ["type"], edge_fields: ["type"] } },
+      }),
+      error: /nodes \/ edges \/ strings/,
+    },
+    {
+      name: "a required field missing from meta",
+      input: JSON.stringify({
+        snapshot: {
+          meta: {
+            node_fields: ["type", "name"], // missing self_size etc.
+            edge_fields: ["type", "name_or_index", "to_node"],
+          },
         },
-      },
-      nodes: [],
-      edges: [],
-      strings: [],
-    });
-    expect(() => parseHeapSnapshot(bad)).toThrow(/required field/);
+        nodes: [],
+        edges: [],
+        strings: [],
+      }),
+      error: /required field/,
+    },
+  ])("rejects $name", ({ input, error }) => {
+    expect(() => parseHeapSnapshot(input)).toThrow(error);
   });
 });
 

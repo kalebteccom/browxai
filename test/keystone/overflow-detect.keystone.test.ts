@@ -183,6 +183,8 @@ describe("overflow-detect keystone — scope:viewport skips off-screen elements"
         types: ["clipped"],
       });
       expect(docR.ok).toBe(true);
+      // The type filter holds: no layout/ellipsis/viewport-horizontal leakage.
+      for (const f of docR.findings) expect(f.type).toBe("clipped");
       const docHadOffscreen = docR.findings.some((f) => f.selector.includes("ks-offscreen"));
       expect(docHadOffscreen).toBe(true);
 
@@ -197,31 +199,6 @@ describe("overflow-detect keystone — scope:viewport skips off-screen elements"
       expect(vpR.scope).toBe("viewport");
       const vpHadOffscreen = vpR.findings.some((f) => f.selector.includes("ks-offscreen"));
       expect(vpHadOffscreen).toBe(false);
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-});
-
-describe("overflow-detect keystone — type filter returns only that type", () => {
-  it(
-    'types:["clipped"] returns ONLY clipped findings — no layout/ellipsis/viewport-horizontal leakage',
-    async () => {
-      const session = "ks-overflow-typefilter";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("set_viewport", { session, width: 400, height: 600 });
-      await callJson("navigate", { session, url: `${fixture.url}/overflow-page` });
-
-      const r = await callJson<OverflowResult>("overflow_detect", {
-        session,
-        types: ["clipped"],
-      });
-      expect(r.ok).toBe(true);
-      expect(r.findings.length).toBeGreaterThan(0);
-      for (const f of r.findings) {
-        expect(f.type).toBe("clipped");
-      }
 
       await callJson("close_session", { session });
     },

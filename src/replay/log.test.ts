@@ -52,12 +52,6 @@ describe("ReplayLog — writing", () => {
     expect(out[1]?.payload).toEqual({ text: "hi" });
   });
 
-  it("rejects a path that escapes the workspace root", async () => {
-    await expect(
-      ReplayLog.open({ workspaceRoot: root, path: "../outside/events.jsonl" }),
-    ).rejects.toThrow(/must resolve inside \$BROWX_WORKSPACE/);
-  });
-
   it("counts events by type, which is what the manifest carries", async () => {
     const log = await ReplayLog.open({ workspaceRoot: root, path: "e.jsonl" });
     log.record("action/call", {});
@@ -68,24 +62,17 @@ describe("ReplayLog — writing", () => {
     expect(stats.counts).toEqual({ "action/call": 2, "assert/result": 1 });
   });
 
-  it("carries targetId only when the caller supplies one", async () => {
+  it("carries targetId only when the caller supplies one, and defaults the payload version to 1", async () => {
     const log = await ReplayLog.open({ workspaceRoot: root, path: "e.jsonl" });
     log.record("page/lifecycle", { name: "load" });
     log.record("page/lifecycle", { name: "load" }, { targetId: "T2" });
+    log.record("dom/rrweb", {}, { v: 4 });
     const stats = await log.close();
 
     const out = lines(stats.path);
     expect(out[0]).not.toHaveProperty("targetId");
     expect(out[1]?.targetId).toBe("T2");
-  });
-
-  it("defaults the payload version to 1 and honours an override", async () => {
-    const log = await ReplayLog.open({ workspaceRoot: root, path: "e.jsonl" });
-    log.record("dom/rrweb", {});
-    log.record("dom/rrweb", {}, { v: 4 });
-    const stats = await log.close();
-
-    expect(lines(stats.path).map((e) => e.v)).toEqual([1, 4]);
+    expect(out.map((e) => e.v)).toEqual([1, 1, 4]);
   });
 });
 
@@ -220,10 +207,17 @@ describe("readEventLog", () => {
     expect(bytes.toString("utf8")).toBe(readFileSync(stats.path, "utf8"));
   });
 
-  it("rejects a path outside the workspace root", async () => {
-    await expect(readEventLog(root, "../escape.jsonl")).rejects.toThrow(
-      /must resolve inside \$BROWX_WORKSPACE/,
-    );
+  it.each<[string, (root: string) => Promise<unknown>]>([
+    [
+      "ReplayLog.open rejects a path that escapes the workspace root",
+      (r) => ReplayLog.open({ workspaceRoot: r, path: "../outside/events.jsonl" }),
+    ],
+    [
+      "readEventLog rejects a path outside the workspace root",
+      (r) => readEventLog(r, "../escape.jsonl"),
+    ],
+  ])("%s", async (_label, attempt) => {
+    await expect(attempt(root)).rejects.toThrow(/must resolve inside \$BROWX_WORKSPACE/);
   });
 });
 

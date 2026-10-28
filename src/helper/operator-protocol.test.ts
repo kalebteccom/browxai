@@ -13,21 +13,30 @@ import {
 } from "./operator-protocol.js";
 
 describe("takeOperatorEnv", () => {
-  it("returns both values and removes them from the environment", () => {
-    const env: NodeJS.ProcessEnv = {
-      BROWX_OPERATOR_SOCKET: " /run/x/d.sock ",
-      BROWX_OPERATOR_TOKEN: "t".repeat(32),
-      KEEP: "1",
-    };
-    expect(takeOperatorEnv(env)).toEqual({ socketPath: "/run/x/d.sock", token: "t".repeat(32) });
-    expect(env).toEqual({ KEEP: "1" });
-  });
-
-  it("treats blank values as unset and still removes them", () => {
-    const env: NodeJS.ProcessEnv = { BROWX_OPERATOR_SOCKET: "  ", BROWX_OPERATOR_TOKEN: "" };
-    expect(takeOperatorEnv(env)).toEqual({ socketPath: undefined, token: undefined });
-    expect(Object.keys(env)).toEqual([]);
-  });
+  it.each([
+    [
+      "returns both values, trimmed, and removes them from the environment",
+      {
+        BROWX_OPERATOR_SOCKET: " /run/x/d.sock ",
+        BROWX_OPERATOR_TOKEN: "t".repeat(32),
+        KEEP: "1",
+      },
+      { socketPath: "/run/x/d.sock", token: "t".repeat(32) },
+      { KEEP: "1" },
+    ],
+    [
+      "treats blank values as unset and still removes them",
+      { BROWX_OPERATOR_SOCKET: "  ", BROWX_OPERATOR_TOKEN: "" },
+      { socketPath: undefined, token: undefined },
+      {},
+    ],
+  ] as Array<[string, NodeJS.ProcessEnv, unknown, NodeJS.ProcessEnv]>)(
+    "%s",
+    (_label, env, taken, left) => {
+      expect(takeOperatorEnv(env)).toEqual(taken);
+      expect(env).toEqual(left);
+    },
+  );
 });
 
 describe("checkOperatorSocket", () => {
@@ -55,41 +64,29 @@ describe("checkOperatorSocket", () => {
     return { dir, path, ready };
   }
 
-  it("accepts a 0600 socket in a 0700 directory", async () => {
-    const l = layout();
-    await l.ready;
-    expect(checkOperatorSocket(l.path)).toEqual({ state: "ok" });
-  });
-
-  it("reports a missing socket as missing, not unsafe", async () => {
-    const l = layout({ sockMode: null });
-    await l.ready;
-    expect(checkOperatorSocket(l.path)).toEqual({ state: "missing" });
-  });
-
-  it("reports a missing directory as missing, so a restarting daemon can come back", () => {
-    expect(checkOperatorSocket(join(tmpdir(), "bx-pc-nope-dir", "d.sock"))).toEqual({
-      state: "missing",
-    });
-  });
-
-  it("refuses a directory that is not 0700", async () => {
-    const l = layout({ dirMode: 0o750 });
-    await l.ready;
-    expect(checkOperatorSocket(l.path)).toMatchObject({
-      state: "unsafe",
-      reason: expect.stringContaining("0700"),
-    });
-  });
-
-  it("refuses a socket that is not 0600", async () => {
-    const l = layout({ sockMode: 0o660 });
-    await l.ready;
-    expect(checkOperatorSocket(l.path)).toMatchObject({
-      state: "unsafe",
-      reason: expect.stringContaining("0600"),
-    });
-  });
+  it.each([
+    ["accepts a 0600 socket in a 0700 directory", {}, { state: "ok" }],
+    ["reports a missing socket as missing, not unsafe", { sockMode: null }, { state: "missing" }],
+    [
+      "refuses a directory that is not 0700",
+      { dirMode: 0o750 },
+      { state: "unsafe", reason: expect.stringContaining("0700") },
+    ],
+    [
+      "refuses a socket that is not 0600",
+      { sockMode: 0o660 },
+      { state: "unsafe", reason: expect.stringContaining("0600") },
+    ],
+  ] as Array<[string, { dirMode?: number; sockMode?: number | null }, Record<string, unknown>]>)(
+    "%s, and never puts the path in the result",
+    async (_label, opts, expected) => {
+      const l = layout(opts);
+      await l.ready;
+      const r = checkOperatorSocket(l.path);
+      expect(r).toMatchObject(expected);
+      expect(JSON.stringify(r)).not.toContain(l.dir);
+    },
+  );
 
   it("refuses a path that is not a socket", async () => {
     const l = layout({ sockMode: null });
@@ -108,15 +105,15 @@ describe("checkOperatorSocket", () => {
     expect(checkOperatorSocket(join(link, "d.sock"))).toMatchObject({ state: "unsafe" });
   });
 
-  it("refuses a relative path", () => {
-    expect(checkOperatorSocket("d.sock")).toMatchObject({ state: "unsafe" });
-  });
-
-  it("never puts the path in the reason", async () => {
-    const l = layout({ dirMode: 0o755 });
-    await l.ready;
-    const r = checkOperatorSocket(l.path);
-    expect(JSON.stringify(r)).not.toContain(l.dir);
+  it.each([
+    [
+      "reports a missing directory as missing, so a restarting daemon can come back",
+      join(tmpdir(), "bx-pc-nope-dir", "d.sock"),
+      { state: "missing" },
+    ],
+    ["refuses a relative path", "d.sock", { state: "unsafe" }],
+  ])("%s", (_label, path, expected) => {
+    expect(checkOperatorSocket(path)).toMatchObject(expected);
   });
 });
 
@@ -162,53 +159,76 @@ describe("checkAnswer", () => {
     choiceCount,
   });
 
-  it("accepts approve and deny on an approval, and nothing else", () => {
-    expect(checkAnswer(approval, { decision: "approve" })).toMatchObject({ ok: true });
-    expect(checkAnswer(approval, { decision: "deny" })).toMatchObject({ ok: true });
-    expect(checkAnswer(approval, { decision: "done" })).toEqual({
-      ok: false,
-      code: "invalid-answer",
-    });
-    expect(checkAnswer(approval, { decision: "yes" })).toMatchObject({ ok: false });
-    expect(checkAnswer(approval, {})).toMatchObject({ ok: false });
-  });
+  const grant = { scope: "session", ttlSeconds: 60 };
+  const invalid = { ok: false, code: "invalid-answer" };
+  const noGrant = { ok: false, code: "grant-not-allowed" };
 
-  it("accepts done and abort on a human request, and not approve", () => {
-    expect(checkAnswer(human("acknowledge"), { decision: "done" })).toMatchObject({ ok: true });
-    expect(checkAnswer(human("acknowledge"), { decision: "abort" })).toMatchObject({ ok: true });
-    expect(checkAnswer(human("acknowledge"), { decision: "approve" })).toMatchObject({ ok: false });
-  });
-
-  it("checks the value against the human kind", () => {
-    expect(checkAnswer(human("confirm"), { decision: "done", value: true })).toMatchObject({
-      ok: true,
-      value: true,
-    });
-    expect(checkAnswer(human("confirm"), { decision: "done", value: "yes" })).toMatchObject({
-      ok: false,
-    });
-    expect(checkAnswer(human("confirm"), { decision: "done" })).toMatchObject({ ok: false });
-    expect(checkAnswer(human("choose", 2), { decision: "done", value: 1 })).toMatchObject({
-      ok: true,
-    });
-    expect(checkAnswer(human("choose", 2), { decision: "done", value: 2 })).toMatchObject({
-      ok: false,
-    });
-    expect(checkAnswer(human("choose", 2), { decision: "done", value: 0.5 })).toMatchObject({
-      ok: false,
-    });
-    expect(checkAnswer(human("input"), { decision: "done", value: "x" })).toMatchObject({
-      ok: true,
-    });
-    expect(checkAnswer(human("input"), { decision: "done", value: 3 })).toMatchObject({
-      ok: false,
-    });
-    expect(checkAnswer(human("acknowledge"), { decision: "done", value: 1 })).toMatchObject({
-      ok: false,
-    });
-    expect(checkAnswer(approval, { decision: "approve", value: true })).toMatchObject({
-      ok: false,
-    });
+  it.each<[string, AnswerRules, Record<string, unknown>, Record<string, unknown>]>([
+    ["approval accepts approve", approval, { decision: "approve" }, { ok: true }],
+    ["approval accepts deny", approval, { decision: "deny" }, { ok: true }],
+    ["approval refuses a human decision", approval, { decision: "done" }, invalid],
+    ["approval refuses an unknown decision", approval, { decision: "yes" }, { ok: false }],
+    ["approval refuses a missing decision", approval, {}, { ok: false }],
+    ["approval refuses a value", approval, { decision: "approve", value: true }, { ok: false }],
+    ["human accepts done", human("acknowledge"), { decision: "done" }, { ok: true }],
+    ["human accepts abort", human("acknowledge"), { decision: "abort" }, { ok: true }],
+    ["human refuses approve", human("acknowledge"), { decision: "approve" }, { ok: false }],
+    [
+      "acknowledge refuses a value",
+      human("acknowledge"),
+      { decision: "done", value: 1 },
+      { ok: false },
+    ],
+    [
+      "confirm takes a boolean",
+      human("confirm"),
+      { decision: "done", value: true },
+      { ok: true, value: true },
+    ],
+    [
+      "confirm refuses a string",
+      human("confirm"),
+      { decision: "done", value: "yes" },
+      { ok: false },
+    ],
+    ["confirm needs a value", human("confirm"), { decision: "done" }, { ok: false }],
+    [
+      "choose takes an index in range",
+      human("choose", 2),
+      { decision: "done", value: 1 },
+      { ok: true },
+    ],
+    [
+      "choose refuses an index past the end",
+      human("choose", 2),
+      { decision: "done", value: 2 },
+      { ok: false },
+    ],
+    [
+      "choose refuses a fractional index",
+      human("choose", 2),
+      { decision: "done", value: 0.5 },
+      { ok: false },
+    ],
+    ["input takes a string", human("input"), { decision: "done", value: "x" }, { ok: true }],
+    ["input refuses a number", human("input"), { decision: "done", value: 3 }, { ok: false }],
+    ["a grant on a deny is refused", approval, { decision: "deny", grant }, noGrant],
+    [
+      "a grant on a plain approval is refused",
+      plainApproval,
+      { decision: "approve", grant },
+      noGrant,
+    ],
+    [
+      "a grant on a human request is refused",
+      human("acknowledge"),
+      { decision: "done", grant },
+      noGrant,
+    ],
+  ])("%s", (_label, rules, answer, expected) => {
+    const got = checkAnswer(rules, answer);
+    if (expected.ok === false && "code" in expected) expect(got).toEqual(expected);
+    else expect(got).toMatchObject(expected);
   });
 
   it("parses a session or workspace grant on an approve of a grantable request", () => {
@@ -244,21 +264,5 @@ describe("checkAnswer", () => {
         grant: { scope: "workspace", ttlSeconds: 86_400 },
       }),
     ).toMatchObject({ ok: true });
-  });
-
-  it("refuses a grant on a deny, and on a request that cannot carry one", () => {
-    const grant = { scope: "session", ttlSeconds: 60 };
-    expect(checkAnswer(approval, { decision: "deny", grant })).toEqual({
-      ok: false,
-      code: "grant-not-allowed",
-    });
-    expect(checkAnswer(plainApproval, { decision: "approve", grant })).toEqual({
-      ok: false,
-      code: "grant-not-allowed",
-    });
-    expect(checkAnswer(human("acknowledge"), { decision: "done", grant })).toEqual({
-      ok: false,
-      code: "grant-not-allowed",
-    });
   });
 });

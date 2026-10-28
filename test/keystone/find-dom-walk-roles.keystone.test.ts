@@ -89,31 +89,20 @@ afterAll(async () => {
 
 describe("find keystone — DOM-walk candidates carry bare HTML tags", () => {
   it(
-    "the DOM-walk fallback contributes its own bare-tag entries",
+    "the DOM walk contributes bare-tag entries, and ranks the `past` link above the higher-scoring nav bar that encloses it",
     async () => {
-      await openOn("ks-find-tag-roles-thin");
-      const snap = (
-        (await handlers["snapshot"]!({ session: "ks-find-tag-roles-thin" })).content[0] as {
-          text: string;
-        }
-      ).text;
+      const session = "ks-find-tag-roles-rank";
+      await openOn(session);
+
+      const snap = ((await handlers["snapshot"]!({ session })).content[0] as { text: string }).text;
       // Both tiers report the links, so each is one `[from-both]` line under
-      // the a11y tier's ARIA role. The `tabindex` div is the DOM walk's alone —
+      // the a11y tier's ARIA role. The `tabindex` div is the DOM walk's alone:
       // the a11y tier exposes it as a nameless `generic` the serialiser emits
-      // no line for — so it keeps its `[from-dom]` line AND its bare tag.
+      // no line for, so it keeps its `[from-dom]` line AND its bare tag.
       expect(snap).toMatch(/link "past".*\[from-both\]/);
       expect(snap).not.toMatch(/a "past"/);
       expect(snap).toMatch(/div .*dom-only-widget.*\[from-dom\]/);
       expect(snap).toContain('"tier":"mixed"');
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "ranks the `past` link above the higher-scoring nav bar that encloses it",
-    async () => {
-      const session = "ks-find-tag-roles-rank";
-      await openOn(session);
 
       const found = await callJson<{ candidates: Candidate[]; warnings: string[] }>("find", {
         session,

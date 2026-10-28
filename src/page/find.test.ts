@@ -38,52 +38,60 @@ function n(
 }
 
 describe("buildSelectorHint preference order", () => {
-  it("tier 1: data-testid beats everything, stability=high", () => {
-    const h = buildSelectorHint({ role: "button", name: "Save", testId: "save-btn" });
-    expect(h.tier).toBe(1);
-    expect(h.stability).toBe("high");
-    expect(h.hint).toBe('[data-testid="save-btn"]');
-  });
-
-  it("tier 2: role+name when no testid, stability=medium", () => {
-    const h = buildSelectorHint({ role: "button", name: "Save" });
-    expect(h.tier).toBe(2);
-    expect(h.stability).toBe("medium");
-    expect(h.hint).toBe('role=button[name="Save"]');
-  });
-
-  it("tier 4: stable HTML id when no testId/name", () => {
-    const h = buildSelectorHint({ role: "div", id: "main-content" });
-    expect(h.tier).toBe(4);
-    expect(h.stability).toBe("low");
-    expect(h.hint).toBe("#main-content");
-  });
-
-  it("tier 4 rejects content-keyed ids and falls through to tier 5", () => {
-    const numeric = buildSelectorHint({ role: "div", id: "12345" });
-    expect(numeric.tier).toBe(5);
-    const mui = buildSelectorHint({ role: "div", id: "mui-1234" });
-    expect(mui.tier).toBe(5);
-    const uuid = buildSelectorHint({ role: "div", id: "550e8400-e29b-41d4-a716-446655440000" });
-    expect(uuid.tier).toBe(5);
-  });
-
-  it("tier 5: role-only fallback when nothing distinguishing, stability=low", () => {
-    const h = buildSelectorHint({ role: "generic" });
-    expect(h.tier).toBe(5);
-    expect(h.stability).toBe("low");
-    expect(h.hint).toBe("role=generic");
-  });
-
-  it("tier 1 honours testIdAttr — emits the matched attribute, not hardcoded data-testid", () => {
-    const h = buildSelectorHint({
-      role: "generic",
-      testId: "feature-panel-language-input",
-      testIdAttr: "data-type",
-    });
-    expect(h.tier).toBe(1);
-    expect(h.stability).toBe("high");
-    expect(h.hint).toBe('[data-type="feature-panel-language-input"]');
+  it.each([
+    {
+      name: "tier 1: data-testid beats everything",
+      input: { role: "button", name: "Save", testId: "save-btn" },
+      tier: 1,
+      stability: "high",
+      hint: '[data-testid="save-btn"]',
+    },
+    {
+      name: "tier 2: role+name when no testid",
+      input: { role: "button", name: "Save" },
+      tier: 2,
+      stability: "medium",
+      hint: 'role=button[name="Save"]',
+    },
+    {
+      name: "tier 4: stable HTML id when no testId/name",
+      input: { role: "div", id: "main-content" },
+      tier: 4,
+      stability: "low",
+      hint: "#main-content",
+    },
+    { name: "tier 4 rejects a numeric id", input: { role: "div", id: "12345" }, tier: 5 },
+    { name: "tier 4 rejects a mui- id", input: { role: "div", id: "mui-1234" }, tier: 5 },
+    {
+      name: "tier 4 rejects a uuid id",
+      input: { role: "div", id: "550e8400-e29b-41d4-a716-446655440000" },
+      tier: 5,
+    },
+    {
+      name: "tier 5: role-only fallback when nothing distinguishing",
+      input: { role: "generic" },
+      tier: 5,
+      stability: "low",
+      hint: "role=generic",
+    },
+    {
+      name: "tier 1 honours testIdAttr, emitting the matched attribute",
+      input: { role: "generic", testId: "feature-panel-language-input", testIdAttr: "data-type" },
+      tier: 1,
+      stability: "high",
+      hint: '[data-type="feature-panel-language-input"]',
+    },
+  ] as Array<{
+    name: string;
+    input: Parameters<typeof buildSelectorHint>[0];
+    tier: number;
+    stability?: string;
+    hint?: string;
+  }>)("buildSelectorHint $name", ({ input, tier, stability, hint }) => {
+    const h = buildSelectorHint(input);
+    expect(h.tier).toBe(tier);
+    if (stability !== undefined) expect(h.stability).toBe(stability);
+    if (hint !== undefined) expect(h.hint).toBe(hint);
   });
 });
 
@@ -130,10 +138,29 @@ describe("scoreNode — natural-language queries name the element inside a phras
   const headline = n("a", "Show HN: I built a tool for the top of the stack");
   const prose = n("a", "The past is a foreign country for the top navigation of the web");
 
-  it("the exact-name nav link outranks every headline that merely shares function words", () => {
-    const navScore = scoreNode(navLink, q, tokens);
-    expect(navScore).toBeGreaterThan(scoreNode(headline, q, tokens));
-    expect(navScore).toBeGreaterThan(scoreNode(prose, q, tokens));
+  it.each([
+    {
+      name: "the exact-name nav link outranks every headline that merely shares function words",
+      query: q,
+      better: navLink,
+      worse: [headline, prose],
+    },
+    {
+      name: "a multi-token name match beats a single-token one inside the same query",
+      query: "click the sign in to your account button at the top",
+      better: n("button", "Sign in to your account"),
+      worse: [n("button", "account")],
+    },
+    {
+      name: "a quoted target token matches the bare accessible name",
+      query: 'the "past" link',
+      better: n("link", "past"),
+      worse: [n("link", "past tense grammar reference for the link layer")],
+    },
+  ])("$name", ({ query, better, worse }) => {
+    const qt = query.split(/\s+/);
+    for (const w of worse)
+      expect(scoreNode(better, query, qt)).toBeGreaterThan(scoreNode(w, query, qt));
   });
 
   it("a name matching only the query's stopwords scores nothing", () => {
@@ -150,56 +177,31 @@ describe("scoreNode — natural-language queries name the element inside a phras
     ).toBe(0);
     expect(scoreNode(n("a", "The"), q, tokens)).toBe(0);
   });
-
-  it("a multi-token name match beats a single-token one inside the same query", () => {
-    const query = "click the sign in to your account button at the top";
-    const qt = query.split(/\s+/);
-    const multi = n("button", "Sign in to your account");
-    const single = n("button", "account");
-    expect(scoreNode(multi, query, qt)).toBeGreaterThan(scoreNode(single, query, qt));
-  });
-
-  it("matches a quoted target token against the bare accessible name", () => {
-    const query = 'the "past" link';
-    const qt = query.split(/\s+/);
-    expect(scoreNode(n("link", "past"), query, qt)).toBeGreaterThan(
-      scoreNode(n("link", "past tense grammar reference for the link layer"), query, qt),
-    );
-  });
 });
 
 describe("scoreNode — icon-only controls", () => {
-  it("amplifies per-testId-token weight when the node has no accessible name", () => {
-    // Two candidates with overlapping testIds. The "target feature tab" is
-    // the intended hit; the "feature other tab" is a neighbouring icon-only
-    // sibling. Both are name-less buttons; both score from testId tokens only.
-    const q = "feature tab in side panel";
-    const tokens = q.split(/\s+/);
-    const target = n("button", undefined, "side-panel-feature-tab");
-    const neighbour = n("button", undefined, "side-panel-other-tab");
-    const targetScore = scoreNode(target, q, tokens);
-    const neighbourScore = scoreNode(neighbour, q, tokens);
-    expect(targetScore).toBeGreaterThan(neighbourScore);
-  });
-
-  it("tooltip/sr-only text lifts an icon-only control over a bare-testId sibling", () => {
-    // Both are name-less; only the target carries a tooltip-derived `text`
-    // that names the intent. The text signal should break the tie.
-    const q = "ai feature panel";
-    const tokens = q.split(/\s+/);
-    const withTooltip = n("button", undefined, "sp-tab-3", { text: "AI feature panel" });
-    const bare = n("button", undefined, "sp-tab-4");
-    expect(scoreNode(withTooltip, q, tokens)).toBeGreaterThan(scoreNode(bare, q, tokens));
-  });
-
-  it("active/selected state disambiguates the live panel tab from inert siblings", () => {
-    // Identical icon-only testId-token signal; the *selected* one is the
-    // feature area the agent means.
-    const q = "side panel feature tab";
-    const tokens = q.split(/\s+/);
-    const active = n("tab", undefined, "side-panel-feature-tab", { selected: true });
-    const inert = n("tab", undefined, "side-panel-feature-tab");
-    expect(scoreNode(active, q, tokens)).toBeGreaterThan(scoreNode(inert, q, tokens));
+  it.each([
+    {
+      name: "amplifies per-testId-token weight when the node has no accessible name",
+      query: "feature tab in side panel",
+      better: n("button", undefined, "side-panel-feature-tab"),
+      worse: n("button", undefined, "side-panel-other-tab"),
+    },
+    {
+      name: "tooltip/sr-only text lifts an icon-only control over a bare-testId sibling",
+      query: "ai feature panel",
+      better: n("button", undefined, "sp-tab-3", { text: "AI feature panel" }),
+      worse: n("button", undefined, "sp-tab-4"),
+    },
+    {
+      name: "active/selected state disambiguates the live panel tab from inert siblings",
+      query: "side panel feature tab",
+      better: n("tab", undefined, "side-panel-feature-tab", { selected: true }),
+      worse: n("tab", undefined, "side-panel-feature-tab"),
+    },
+  ])("icon-only: $name", ({ query, better, worse }) => {
+    const tokens = query.split(/\s+/);
+    expect(scoreNode(better, query, tokens)).toBeGreaterThan(scoreNode(worse, query, tokens));
   });
 
   it("active-state bonus never fabricates a match from nothing (gated on s>0)", () => {
@@ -211,18 +213,25 @@ describe("scoreNode — icon-only controls", () => {
 });
 
 describe("noVisibleCandidateWarning — capability-aware", () => {
-  it("names no fallback tool when none are enabled", () => {
-    const w = noVisibleCandidateWarning(3, { coords: false, evalJs: false });
-    expect(w).toContain("no visible candidate");
-    expect(w).not.toContain("coords");
-    expect(w).not.toContain("eval_js");
-  });
-
-  it("names both when both are enabled, and reports the count", () => {
-    const w = noVisibleCandidateWarning(5, { coords: true, evalJs: true });
-    expect(w).toContain("all 5 match(es)");
-    expect(w).toContain("coords");
-    expect(w).toContain("eval_js");
+  it.each([
+    {
+      name: "names no fallback tool when none are enabled",
+      count: 3,
+      caps: { coords: false, evalJs: false },
+      has: ["no visible candidate"],
+      lacks: ["coords", "eval_js"],
+    },
+    {
+      name: "names both when both are enabled, and reports the count",
+      count: 5,
+      caps: { coords: true, evalJs: true },
+      has: ["all 5 match(es)", "coords", "eval_js"],
+      lacks: [],
+    },
+  ])("$name", ({ count, caps, has, lacks }) => {
+    const w = noVisibleCandidateWarning(count, caps);
+    for (const h of has) expect(w).toContain(h);
+    for (const l of lacks) expect(w).not.toContain(l);
   });
 });
 
@@ -234,49 +243,47 @@ describe("rankByVisibility — visibleOnly partition", () => {
     cand("hiVisible", 90, true),
   ];
 
-  it("default: visible first (score order), hidden appended (not dropped)", () => {
-    const { ranked, visibleCount } = rankByVisibility(mixed, false);
-    expect(ranked.map((c) => c.ref)).toEqual(["loVisible", "hiVisible", "hiHidden", "midDisabled"]);
-    expect(visibleCount).toBe(2);
-  });
-
-  it("visibleOnly: hidden tier dropped entirely", () => {
-    const { ranked, visibleCount } = rankByVisibility(mixed, true);
-    expect(ranked.map((c) => c.ref)).toEqual(["loVisible", "hiVisible"]);
+  it.each([
+    {
+      name: "default: visible first (score order), hidden appended (not dropped)",
+      visibleOnly: false,
+      refs: ["loVisible", "hiVisible", "hiHidden", "midDisabled"],
+    },
+    {
+      name: "visibleOnly: hidden tier dropped entirely",
+      visibleOnly: true,
+      refs: ["loVisible", "hiVisible"],
+    },
+  ])("$name", ({ visibleOnly, refs }) => {
+    const { ranked, visibleCount } = rankByVisibility(mixed, visibleOnly);
+    expect(ranked.map((c) => c.ref)).toEqual(refs);
     expect(visibleCount).toBe(2);
   });
 });
 
 describe("rankByVisibility — container demotion", () => {
-  it("demotes a high-scored structural container below an actionable interactive match", () => {
-    // The reported failure: an enclosing toolbox container scores highest on
-    // an aliased query, the actual tab is rank 4. Containers must sit behind
-    // the interactive control they enclose.
-    const cands = [
-      cand("toolboxRegion", 90, true, "region"),
-      cand("railGroup", 80, true, "group"),
-      cand("featureTab", 30, true, "tab"),
-    ];
-    const { ranked } = rankByVisibility(cands, false);
-    expect(ranked.map((c) => c.ref)).toEqual(["featureTab", "toolboxRegion", "railGroup"]);
-  });
-
-  it("demotes a bare-tag `nav` below a bare-tag `<a>`, not just ARIA-role containers", () => {
-    // DOM-walk candidates carry the HTML tag in `role`, so `nav` / `a` never hit
-    // the ARIA-named CONTAINER_ROLES / INTERACTIVE_ROLES sets directly. Both
-    // sides of the partition have to resolve through `effectiveAriaRole` or an
-    // enclosing nav outranks the link inside it on a semantically thin page.
-    const cands = [cand("navBar", 90, true, "nav"), cand("pastLink", 30, true, "a")];
-    const { ranked } = rankByVisibility(cands, false);
-    expect(ranked.map((c) => c.ref)).toEqual(["pastLink", "navBar"]);
-  });
-
-  it("leaves containers in place when NO actionable interactive candidate matched", () => {
-    // "down-rank the container unless no actionable child matches" — if the
-    // container is the best we have, don't bury it.
-    const cands = [cand("regionA", 50, true, "region"), cand("groupB", 40, true, "group")];
-    const { ranked } = rankByVisibility(cands, false);
-    expect(ranked.map((c) => c.ref)).toEqual(["regionA", "groupB"]);
+  it.each([
+    {
+      name: "demotes a high-scored structural container below an actionable interactive match",
+      cands: [
+        cand("toolboxRegion", 90, true, "region"),
+        cand("railGroup", 80, true, "group"),
+        cand("featureTab", 30, true, "tab"),
+      ],
+      refs: ["featureTab", "toolboxRegion", "railGroup"],
+    },
+    {
+      name: "demotes a bare-tag `nav` below a bare-tag `<a>`, not just ARIA-role containers",
+      cands: [cand("navBar", 90, true, "nav"), cand("pastLink", 30, true, "a")],
+      refs: ["pastLink", "navBar"],
+    },
+    {
+      name: "leaves containers in place when NO actionable interactive candidate matched",
+      cands: [cand("regionA", 50, true, "region"), cand("groupB", 40, true, "group")],
+      refs: ["regionA", "groupB"],
+    },
+  ])("$name", ({ cands, refs }) => {
+    expect(rankByVisibility(cands, false).ranked.map((c) => c.ref)).toEqual(refs);
   });
 });
 
@@ -289,50 +296,58 @@ describe("scoreNode — DOM-walk candidates carry bare HTML tags, not ARIA roles
   const domLink = (name: string) =>
     n("a", name, undefined, { tag: "a", hasHref: true, source: "dom" });
 
-  it("a DOM-walk <a href> gets the interactive bonus a CDP link gets", () => {
-    const q = "past";
-    const tokens = ["past"];
-    const cdpLink = n("link", "past");
-    expect(scoreNode(domLink("past"), q, tokens)).toBe(scoreNode(cdpLink, q, tokens));
-  });
-
-  it("an <a> with no href is not interactive", () => {
-    const q = "past";
-    const tokens = ["past"];
-    const anchor = n("a", "past", undefined, { tag: "a", hasHref: false, source: "dom" });
-    expect(scoreNode(anchor, q, tokens)).toBe(scoreNode(domLink("past"), q, tokens) - 2);
-  });
-
-  it("<input> resolves by type — a checkbox is interactive, a hidden input is not", () => {
-    const q = "agree";
-    const tokens = ["agree"];
-    const checkbox = n("input", "agree", undefined, { tag: "input", inputType: "checkbox" });
-    const hidden = n("input", "agree", undefined, { tag: "input", inputType: "hidden" });
-    expect(scoreNode(checkbox, q, tokens)).toBe(scoreNode(hidden, q, tokens) + 2);
-  });
-
-  it("an explicit role= attribute still wins over the tag", () => {
-    const q = "save";
-    const tokens = ["save"];
-    const roled = n("button", "save", undefined, { tag: "div", source: "dom" });
-    const bare = n("div", "save", undefined, { tag: "div", source: "dom" });
-    expect(scoreNode(roled, q, tokens)).toBe(scoreNode(bare, q, tokens) + 2);
+  it.each([
+    {
+      name: "a DOM-walk <a href> gets the interactive bonus a CDP link gets",
+      q: "past",
+      a: domLink("past"),
+      b: n("link", "past"),
+      delta: 0,
+    },
+    {
+      name: "an <a> with no href is not interactive",
+      q: "past",
+      a: n("a", "past", undefined, { tag: "a", hasHref: false, source: "dom" }),
+      b: domLink("past"),
+      delta: -2,
+    },
+    {
+      name: "<input> resolves by type: a checkbox is interactive, a hidden input is not",
+      q: "agree",
+      a: n("input", "agree", undefined, { tag: "input", inputType: "checkbox" }),
+      b: n("input", "agree", undefined, { tag: "input", inputType: "hidden" }),
+      delta: 2,
+    },
+    {
+      name: "an explicit role= attribute still wins over the tag",
+      q: "save",
+      a: n("button", "save", undefined, { tag: "div", source: "dom" }),
+      b: n("div", "save", undefined, { tag: "div", source: "dom" }),
+      delta: 2,
+    },
+  ])("$name", ({ q, a, b, delta }) => {
+    expect(scoreNode(a, q, [q])).toBe(scoreNode(b, q, [q]) + delta);
   });
 });
 
 describe("isCandidateRole — text and layout leaves are never a target", () => {
-  it("rejects every Blink text leaf", () => {
-    for (const role of ["StaticText", "InlineTextBox", "LineBreak", "ListMarker"]) {
-      expect(isCandidateRole({ role }), role).toBe(false);
-    }
-  });
-
-  it("rejects the document root — its name is the page title, and there is nothing to click", () => {
-    expect(isCandidateRole({ role: "RootWebArea" })).toBe(false);
-    expect(isCandidateRole({ role: "WebArea" })).toBe(false);
-  });
-
-  it("keeps a presentational role the page author addressed by test attribute", () => {
-    expect(isCandidateRole({ role: "StaticText", testId: "price-total" })).toBe(true);
+  it.each([
+    {
+      name: "rejects every Blink text leaf",
+      nodes: ["StaticText", "InlineTextBox", "LineBreak", "ListMarker"].map((role) => ({ role })),
+      expected: false,
+    },
+    {
+      name: "rejects the document root, whose name is the page title",
+      nodes: [{ role: "RootWebArea" }, { role: "WebArea" }],
+      expected: false,
+    },
+    {
+      name: "keeps a presentational role the page author addressed by test attribute",
+      nodes: [{ role: "StaticText", testId: "price-total" }],
+      expected: true,
+    },
+  ])("$name", ({ nodes, expected }) => {
+    for (const node of nodes) expect(isCandidateRole(node), node.role).toBe(expected);
   });
 });

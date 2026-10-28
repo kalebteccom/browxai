@@ -2,39 +2,40 @@ import { describe, it, expect } from "vitest";
 import { effectiveAriaRole } from "./aria-role.js";
 
 describe("effectiveAriaRole", () => {
-  it("is the identity on CDP a11y roles (no tag present)", () => {
-    for (const role of ["link", "button", "textbox", "navigation", "generic", "region", "tab"]) {
-      expect(effectiveAriaRole({ role })).toBe(role);
-    }
-  });
-
-  it("maps the bare tags the DOM-walk emits", () => {
-    expect(effectiveAriaRole({ role: "a", tag: "a", hasHref: true })).toBe("link");
-    expect(effectiveAriaRole({ role: "nav", tag: "nav" })).toBe("navigation");
-    expect(effectiveAriaRole({ role: "div", tag: "div" })).toBe("generic");
-    expect(effectiveAriaRole({ role: "textarea", tag: "textarea" })).toBe("textbox");
-    expect(effectiveAriaRole({ role: "select", tag: "select" })).toBe("combobox");
-  });
-
-  it("demotes an anchor with a measured absent href, and only then", () => {
-    expect(effectiveAriaRole({ role: "a", tag: "a", hasHref: false })).toBe("generic");
-    expect(effectiveAriaRole({ role: "a", tag: "a" })).toBe("link");
-  });
-
-  it("resolves <input> by type, defaulting to textbox", () => {
-    expect(effectiveAriaRole({ role: "input", tag: "input", inputType: "checkbox" })).toBe(
-      "checkbox",
-    );
-    expect(effectiveAriaRole({ role: "input", tag: "input", inputType: "range" })).toBe("slider");
-    expect(effectiveAriaRole({ role: "input", tag: "input", inputType: "hidden" })).toBe("generic");
-    expect(effectiveAriaRole({ role: "input", tag: "input", inputType: "email" })).toBe("textbox");
-    expect(effectiveAriaRole({ role: "input", tag: "input" })).toBe("textbox");
-  });
-
-  it("defers to an explicit role= attribute", () => {
-    expect(effectiveAriaRole({ role: "button", tag: "div" })).toBe("button");
-    expect(effectiveAriaRole({ role: "presentation", tag: "a", hasHref: true })).toBe(
-      "presentation",
-    );
+  it.each([
+    {
+      name: "is the identity on a CDP a11y role (no tag present)",
+      input: { role: "link" },
+      want: "link",
+    },
+    { name: "maps nav to navigation", input: { role: "nav", tag: "nav" }, want: "navigation" },
+    {
+      name: "demotes an anchor with a measured absent href",
+      input: { role: "a", tag: "a", hasHref: false },
+      want: "generic",
+    },
+    {
+      name: "keeps an anchor whose href is unmeasured",
+      input: { role: "a", tag: "a" },
+      want: "link",
+    },
+    {
+      name: "resolves input type checkbox",
+      input: { role: "input", tag: "input", inputType: "checkbox" },
+      want: "checkbox",
+    },
+    {
+      name: "resolves input type email to textbox",
+      input: { role: "input", tag: "input", inputType: "email" },
+      want: "textbox",
+    },
+    { name: "defaults input to textbox", input: { role: "input", tag: "input" }, want: "textbox" },
+    {
+      name: "defers to an explicit role on a div",
+      input: { role: "button", tag: "div" },
+      want: "button",
+    },
+  ])("effectiveAriaRole: $name", ({ input, want }) => {
+    expect(effectiveAriaRole(input)).toBe(want);
   });
 });

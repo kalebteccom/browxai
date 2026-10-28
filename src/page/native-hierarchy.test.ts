@@ -64,19 +64,23 @@ describe("parseHierarchy", () => {
 });
 
 describe("decodeEntities / parseBounds", () => {
-  it("decodes numeric references in both bases", () => {
-    expect(decodeEntities("&#65;&#x42;")).toBe("AB");
-  });
-  it("leaves an unknown entity alone rather than eating it", () => {
-    expect(decodeEntities("&nope;")).toBe("&nope;");
-  });
-  it("parses bounds into an x/y/width/height rect", () => {
-    expect(parseBounds("[10,20][110,220]")).toEqual({ x: 10, y: 20, width: 100, height: 200 });
-  });
-  it("returns null for absent bounds instead of a zero rect", () => {
+  it.each([
+    ["decodes numeric references in both bases", () => decodeEntities("&#65;&#x42;"), "AB"],
+    [
+      "leaves an unknown entity alone rather than eating it",
+      () => decodeEntities("&nope;"),
+      "&nope;",
+    ],
+    [
+      "parses bounds into an x/y/width/height rect",
+      () => parseBounds("[10,20][110,220]"),
+      { x: 10, y: 20, width: 100, height: 200 },
+    ],
     // "no box" and "a zero-sized box at the origin" are different facts and only
     // one of them is tappable.
-    expect(parseBounds("")).toBeNull();
+    ["returns null for absent bounds instead of a zero rect", () => parseBounds(""), null],
+  ])("decodeEntities / parseBounds %s", (_name, run, expected) => {
+    expect(run()).toEqual(expected);
   });
 });
 
@@ -103,55 +107,67 @@ describe("roleFor", () => {
     ...over,
   });
 
-  it("maps a vendor subclass like its base", () => {
-    expect(roleFor(n({ className: "androidx.appcompat.widget.AppCompatEditText" }))).toBe(
+  // The RN rows: `Pressable` / `TouchableOpacity` render as a bare ViewGroup with
+  // clickable="true" and no Button class anywhere. A class-only mapping reports
+  // the app's entire tap surface as `group`, and `find` then ranks real buttons
+  // below inert containers.
+  it.each([
+    [
+      "maps a vendor subclass like its base",
+      { className: "androidx.appcompat.widget.AppCompatEditText" },
       "textbox",
-    );
-  });
-
-  it("reports a clickable React Native ViewGroup as a button", () => {
-    // THE RN CASE. `Pressable` / `TouchableOpacity` render as a bare ViewGroup
-    // with clickable="true" and no Button class anywhere. A class-only mapping
-    // reports the app's entire tap surface as `group`, and `find` then ranks real
-    // buttons below inert containers.
-    expect(roleFor(n({ className: "android.view.ViewGroup", clickable: true }))).toBe("button");
-    expect(roleFor(n({ className: "android.view.ViewGroup" }))).toBe("group");
+    ],
+    [
+      "reports a clickable React Native ViewGroup as a button",
+      { className: "android.view.ViewGroup", clickable: true },
+      "button",
+    ],
+    ["reports a plain ViewGroup as a group", { className: "android.view.ViewGroup" }, "group"],
+  ] as Array<[string, Partial<NativeNode>, string]>)("roleFor %s", (_name, over, role) => {
+    expect(roleFor(n(over))).toBe(role);
   });
 });
 
 describe("nameFor", () => {
   const base: NativeNode = parseHierarchy(dump(node()))[0]!;
 
-  it("prefers the accessibility label over the rendered text", () => {
-    expect(nameFor({ ...base, contentDesc: "Submit order", text: "Submit" })).toBe("Submit order");
-  });
-
-  it("falls back to the rendered text", () => {
-    expect(nameFor({ ...base, text: "Submit" })).toBe("Submit");
-  });
-
-  it("never names a password field after its own contents", () => {
-    // Android reports a secure field's `text` as the typed characters on some
-    // OEM keyboards. Using it as the accessible name would put the value in the
-    // snapshot, the ref hash and the evidence log.
-    expect(nameFor({ ...base, password: true, text: "hunter2" })).toBeUndefined();
-  });
+  // Android reports a secure field's `text` as the typed characters on some OEM
+  // keyboards. Using it as the accessible name would put the value in the
+  // snapshot, the ref hash and the evidence log.
+  it.each([
+    [
+      "prefers the accessibility label over the rendered text",
+      { contentDesc: "Submit order", text: "Submit" },
+      "Submit order",
+    ],
+    ["falls back to the rendered text", { text: "Submit" }, "Submit"],
+    [
+      "never names a password field after its own contents",
+      { password: true, text: "hunter2" },
+      undefined,
+    ],
+  ] as Array<[string, Partial<NativeNode>, string | undefined]>)(
+    "nameFor %s",
+    (_name, over, expected) => {
+      expect(nameFor({ ...base, ...over })).toBe(expected);
+    },
+  );
 });
 
 describe("testIdFor", () => {
   const base: NativeNode = parseHierarchy(dump(node()))[0]!;
 
-  it("strips the package qualifier React Native adds", () => {
-    expect(testIdFor({ ...base, resourceId: "com.acme.app:id/checkout-submit" })).toEqual({
-      testId: "checkout-submit",
-      testIdAttr: "resource-id",
-    });
-  });
-
-  it("ignores the platform's own furniture", () => {
-    // `android:id/content` is on every screen of every app. Anchoring identity to
-    // it would make refs collide across unrelated screens.
-    expect(testIdFor({ ...base, resourceId: "android:id/content" })).toBeUndefined();
+  // `android:id/content` is on every screen of every app. Anchoring identity to
+  // it would make refs collide across unrelated screens.
+  it.each([
+    [
+      "strips the package qualifier React Native adds",
+      "com.acme.app:id/checkout-submit",
+      { testId: "checkout-submit", testIdAttr: "resource-id" },
+    ],
+    ["ignores the platform's own furniture", "android:id/content", undefined],
+  ])("testIdFor %s", (_name, resourceId, expected) => {
+    expect(testIdFor({ ...base, resourceId })).toEqual(expected);
   });
 });
 

@@ -75,16 +75,12 @@ describe("ArtifactsRegistry — save/get/list round-trip", () => {
 });
 
 describe("ArtifactsRegistry — name validation + path safety", () => {
-  it("rejects path separators in the name", () => {
+  it.each([
+    { label: "path separators in the name", names: ["a/b", "a\\b"] },
+    { label: "'..' and leading-dot names", names: ["..", ".hidden"] },
+  ])("rejects $label", ({ names }) => {
     const r = reg();
-    expect(() => r.save("a/b", "x")).toThrow(/artifact name/);
-    expect(() => r.save("a\\b", "x")).toThrow(/artifact name/);
-  });
-
-  it("rejects '..' and leading-dot names", () => {
-    const r = reg();
-    expect(() => r.save("..", "x")).toThrow(/artifact name/);
-    expect(() => r.save(".hidden", "x")).toThrow(/artifact name/);
+    for (const name of names) expect(() => r.save(name, "x")).toThrow(/artifact name/);
   });
 });
 

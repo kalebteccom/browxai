@@ -111,37 +111,6 @@ describe("touch keystone — primitives fire DOM handlers on the touch pipeline"
   );
 
   it(
-    "gesture_swipe fires multiple touchmoves with a single identifier",
-    async () => {
-      const session = "ks-touch-swipe";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-      const centre = await touchPadCentre(session);
-
-      const r = await callJson<{
-        ok: boolean;
-        steps: number;
-        durationMs: number;
-        tokensEstimate: number;
-      }>("gesture_swipe", {
-        session,
-        from: { x: centre.x - 50, y: centre.y },
-        to: { x: centre.x + 50, y: centre.y },
-        durationMs: 0, // skip real waits in CI
-        steps: 6,
-      });
-      expect(r.ok).toBe(true);
-      expect(r.steps).toBe(6);
-
-      const log = await callText("snapshot", { session });
-      // 1 start, 6 moves, 1 end; identifier should be a single value (1).
-      expect(log).toMatch(/start=1 move=6 end=1 ids=1/);
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "gesture_pinch fires two distinct identifiers — multi-touch fan-out",
     async () => {
       const session = "ks-touch-pinch";

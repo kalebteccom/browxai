@@ -30,14 +30,10 @@ afterEach(() => {
 const ARGS = ["--no-write", "--test-attrs", "data-testid"];
 
 describe("browxai init", () => {
-  it("keeps the node and dist/cli.js entry as the default snippet", async () => {
+  it("prints the node and dist/cli.js entry as the default snippet and the npx entry as the portable alternative", async () => {
     expect(await runInit([dir, ...ARGS])).toBe(0);
     expect(out).toContain('"command": "node"');
     expect(out).toMatch(/"args": \[\s*"[^"]*cli\.js"\s*\]/);
-  });
-
-  it("prints the npx entry as the portable alternative", async () => {
-    expect(await runInit([dir, ...ARGS])).toBe(0);
     expect(out).toContain('{ "command": "npx", "args": ["-y", "browxai"] }');
   });
 

@@ -2,29 +2,33 @@ import { describe, it, expect, vi } from "vitest";
 import { WsBuffer, fetchResponseBody } from "./network.js";
 
 describe("fetchResponseBody", () => {
-  it("returns the body for a retained response", async () => {
-    const cdp = { send: vi.fn(async () => ({ body: '{"id":1}', base64Encoded: false })) } as never;
-    const r = await fetchResponseBody(cdp, "req-1");
-    expect(r).toEqual({ ok: true, body: '{"id":1}', base64Encoded: false });
-  });
-
-  it("truncates oversized bodies and flags it", async () => {
-    const big = "x".repeat(10);
-    const cdp = { send: vi.fn(async () => ({ body: big, base64Encoded: false })) } as never;
-    const r = await fetchResponseBody(cdp, "req-1", 4);
-    expect(r.body).toBe("xxxx");
-    expect(r.truncated).toBe(true);
-  });
-
-  it("returns ok:false with a helpful message when the body was discarded", async () => {
-    const cdp = {
-      send: vi.fn(async () => {
+  it.each([
+    {
+      name: "returns the body for a retained response",
+      send: async () => ({ body: '{"id":1}', base64Encoded: false }),
+      max: undefined,
+      exact: true,
+      expected: { ok: true, body: '{"id":1}', base64Encoded: false },
+    },
+    {
+      name: "truncates oversized bodies and flags it",
+      send: async () => ({ body: "x".repeat(10), base64Encoded: false }),
+      max: 4,
+      expected: { body: "xxxx", truncated: true },
+    },
+    {
+      name: "returns ok:false with a helpful message when the body was discarded",
+      send: async (): Promise<never> => {
         throw new Error("No resource with given identifier found");
-      }),
-    } as never;
-    const r = await fetchResponseBody(cdp, "gone");
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/short-lived/);
+      },
+      max: undefined,
+      expected: { ok: false, error: expect.stringMatching(/short-lived/) },
+    },
+  ])("$name", async ({ send, max, exact, expected }) => {
+    const cdp = { send: vi.fn(send) } as never;
+    const r = await fetchResponseBody(cdp, "req-1", max);
+    if (exact) expect(r).toEqual(expected);
+    else expect(r).toMatchObject(expected);
   });
 });
 

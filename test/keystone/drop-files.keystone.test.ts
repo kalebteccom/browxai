@@ -72,15 +72,68 @@ afterAll(async () => {
 }, KEYSTONE_TIMEOUT);
 
 describe("drop_files keystone — synthesized HTML5 drop reaches DOM handlers with bytes intact", () => {
-  it(
-    "contents-mode → one file → drop-zone receives a File with correct name/type/size and bytes",
-    async () => {
-      const session = "ks-drop-contents";
+  it.each([
+    {
+      name: "contents-mode, one file: a File with correct name/type/size and bytes",
+      stage: undefined as { name: string; bytes: Buffer } | undefined,
+      files: [
+        {
+          contents: Buffer.from("HELLO").toString("base64"),
+          name: "hi.txt",
+          mimeType: "text/plain",
+        },
+      ],
+      fileCount: 1,
+      totalBytes: 5,
+      log: [
+        /count=1/,
+        /files=hi\.txt:text\/plain:5/,
+        // base64("HELLO") = "SEVMTE8="
+        /head8=SEVMTE8=/,
+        // "Files" is the type listeners gate on; React-DnD-style apps need it.
+        /types=[^ ]*Files/,
+      ],
+    },
+    {
+      name: "path-mode: reads from $BROWX_WORKSPACE and the bytes arrive in the page",
+      // PDF magic bytes 0x25 0x50 0x44 0x46 then five more
+      stage: {
+        name: "doc.pdf",
+        bytes: Buffer.from([0x25, 0x50, 0x44, 0x46, 0xaa, 0xbb, 0xcc, 0xdd, 0xee]),
+      },
+      files: [{ path: "doc.pdf", mimeType: "application/pdf" }],
+      fileCount: 1,
+      totalBytes: 9,
+      // base64(0x25 0x50 0x44 0x46 0xaa 0xbb 0xcc 0xdd) = "JVBERqq7zN0="
+      log: [/count=1/, /files=doc\.pdf:application\/pdf:9/, /head8=JVBERqq7zN0=/],
+    },
+    {
+      name: "multi-file: two files in one event both appear in DataTransfer.files",
+      stage: undefined,
+      files: [
+        {
+          contents: Buffer.from("abc").toString("base64"),
+          name: "a.txt",
+          mimeType: "text/plain",
+        },
+        {
+          contents: Buffer.from("hi").toString("base64"),
+          name: "b.bin",
+          mimeType: "application/octet-stream",
+        },
+      ],
+      fileCount: 2,
+      totalBytes: 5,
+      log: [/count=2/, /files=a\.txt:text\/plain:3\|b\.bin:application\/octet-stream:2/],
+    },
+  ])(
+    "drop_files $name",
+    async ({ stage, files, fileCount, totalBytes, log }) => {
+      const session = `ks-drop-${fileCount}-${stage ? "path" : "contents"}`;
       await callJson("open_session", { session, mode: "incognito" });
       await callJson("navigate", { session, url: `${fixture.url}/` });
+      if (stage) writeFileSync(join(workspace, stage.name), stage.bytes);
 
-      // 5-byte payload "HELLO" (0x48 0x45 0x4C 0x4C 0x4F)
-      const payload = Buffer.from("HELLO");
       const r = await callJson<{
         ok: boolean;
         fileCount: number;
@@ -88,106 +141,17 @@ describe("drop_files keystone — synthesized HTML5 drop reaches DOM handlers wi
         eventsFired: string[];
         dropDispatched: boolean;
         tokensEstimate: number;
-      }>("drop_files", {
-        session,
-        selector: '[data-testid="drop-zone"]',
-        files: [{ contents: payload.toString("base64"), name: "hi.txt", mimeType: "text/plain" }],
-      });
+      }>("drop_files", { session, selector: '[data-testid="drop-zone"]', files });
       expect(r.ok).toBe(true);
-      expect(r.fileCount).toBe(1);
-      expect(r.totalBytes).toBe(5);
+      expect(r.fileCount).toBe(fileCount);
+      expect(r.totalBytes).toBe(totalBytes);
       expect(r.eventsFired).toEqual(["dragenter", "dragover", "drop"]);
       expect(r.dropDispatched).toBe(true);
       expect(r.tokensEstimate).toBeGreaterThan(0);
 
-      // Read the fixture's drop-log to prove the page-side handler saw
-      // the File with the right name/type/size and the first 8 bytes
-      // match what we sent.
-      const log = await callText("snapshot", { session });
-      expect(log).toMatch(/count=1/);
-      expect(log).toMatch(/files=hi\.txt:text\/plain:5/);
-      // base64("HELLO") = "SEVMTE8="
-      expect(log).toMatch(/head8=SEVMTE8=/);
-      // "Files" is the type listeners gate on; must be present in
-      // dataTransfer.types for React-DnD-style apps to accept the drop.
-      expect(log).toMatch(/types=[^ ]*Files/);
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "path-mode → reads from $BROWX_WORKSPACE → bytes arrive in page",
-    async () => {
-      const session = "ks-drop-path";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-
-      // Stage bytes inside the workspace; the path-mode reader resolves
-      // there. PDF magic bytes (0x25 0x50 0x44 0x46) — easy to verify.
-      const stagedPath = join(workspace, "doc.pdf");
-      writeFileSync(
-        stagedPath,
-        Buffer.from([0x25, 0x50, 0x44, 0x46, 0xaa, 0xbb, 0xcc, 0xdd, 0xee]),
-      );
-
-      const r = await callJson<{ ok: boolean; fileCount: number; totalBytes: number }>(
-        "drop_files",
-        {
-          session,
-          selector: '[data-testid="drop-zone"]',
-          files: [{ path: "doc.pdf", mimeType: "application/pdf" }],
-        },
-      );
-      expect(r.ok).toBe(true);
-      expect(r.fileCount).toBe(1);
-      expect(r.totalBytes).toBe(9);
-
-      const log = await callText("snapshot", { session });
-      expect(log).toMatch(/count=1/);
-      expect(log).toMatch(/files=doc\.pdf:application\/pdf:9/);
-      // base64(0x25 0x50 0x44 0x46 0xaa 0xbb 0xcc 0xdd) = "JVBERqq7zN0="
-      expect(log).toMatch(/head8=JVBERqq7zN0=/);
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "multi-file: drop two files in one event → page sees both in DataTransfer.files",
-    async () => {
-      const session = "ks-drop-multi";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-
-      const r = await callJson<{ ok: boolean; fileCount: number; totalBytes: number }>(
-        "drop_files",
-        {
-          session,
-          selector: '[data-testid="drop-zone"]',
-          files: [
-            {
-              contents: Buffer.from("abc").toString("base64"),
-              name: "a.txt",
-              mimeType: "text/plain",
-            },
-            {
-              contents: Buffer.from("hi").toString("base64"),
-              name: "b.bin",
-              mimeType: "application/octet-stream",
-            },
-          ],
-        },
-      );
-      expect(r.ok).toBe(true);
-      expect(r.fileCount).toBe(2);
-      expect(r.totalBytes).toBe(5); // 3 + 2
-
-      const log = await callText("snapshot", { session });
-      expect(log).toMatch(/count=2/);
-      expect(log).toMatch(/files=a\.txt:text\/plain:3\|b\.bin:application\/octet-stream:2/);
+      // The fixture's drop-log proves the page-side handler saw the files.
+      const text = await callText("snapshot", { session });
+      for (const re of log) expect(text).toMatch(re);
 
       await callJson("close_session", { session });
     },

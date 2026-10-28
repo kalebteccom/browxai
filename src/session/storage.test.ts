@@ -166,7 +166,7 @@ function fakePage(initialUrl: string, store: Record<string, Record<string, strin
     // Recognise the storage-helper expression shapes by string match.
     // The expressions are stable enough (we control the producer) that this
     // is reliable; the alternative — running the expr through `eval` with a
-    // shimmed `window` — adds far more attack surface than the test value.
+    // shimmed `window` — adds far more surface than the test value.
 
     // shared: `var s = window.<kind>;` — capture kind off the expr.
     const kindMatch = expr.match(/var s = window\.(localStorage|sessionStorage)/);
@@ -226,13 +226,18 @@ function fakePage(initialUrl: string, store: Record<string, Record<string, strin
 // ---- validators ------------------------------------------------------------
 
 describe("assertSafeName", () => {
-  it("accepts safe names", () => {
-    expect(() => assertSafeName("test", "alpha")).not.toThrow();
-    expect(() => assertSafeName("test", "alpha.beta-1_2")).not.toThrow();
-  });
-  it("rejects path separators and traversal", () => {
-    for (const bad of ["foo/bar", "../foo", "..", ".", "", "with space", "name\\b"]) {
-      expect(() => assertSafeName("test", bad), `should reject "${bad}"`).toThrow();
+  it.each([
+    { label: "accepts safe names", names: ["alpha", "alpha.beta-1_2"], ok: true },
+    {
+      label: "rejects path separators and dot segments",
+      names: ["foo/bar", "../foo", "..", ".", "", "with space", "name\\b"],
+      ok: false,
+    },
+  ])("$label", ({ names, ok }) => {
+    for (const name of names) {
+      const call = () => assertSafeName("test", name);
+      if (ok) expect(call, `should accept "${name}"`).not.toThrow();
+      else expect(call, `should reject "${name}"`).toThrow();
     }
   });
 });
@@ -243,7 +248,7 @@ describe("resolveWorkspacePath", () => {
       join(ws, "states/a.json"),
     );
   });
-  it("rejects path-traversal", () => {
+  it("rejects a path escaping the workspace", () => {
     expect(() => resolveWorkspacePath(ws, "../escape.json", "dump_storage_state")).toThrow(
       /inside \$BROWX_WORKSPACE/,
     );
@@ -285,21 +290,24 @@ describe("readStorageStateFile", () => {
     const blob = readStorageStateFile(ws, "state.json", "test");
     expect(blob.cookies[0]!.name).toBe("sid");
   });
-  it("rejects a missing file", () => {
-    expect(() => readStorageStateFile(ws, "missing.json", "test")).toThrow(/not found/);
-  });
-  it("rejects invalid JSON", () => {
-    writeFileSync(join(ws, "bad.json"), "{not json");
-    expect(() => readStorageStateFile(ws, "bad.json", "test")).toThrow(/not valid JSON/);
-  });
-  it("rejects a state without cookies/origins arrays", () => {
-    writeFileSync(join(ws, "shape.json"), JSON.stringify({ cookies: "no" }));
-    expect(() => readStorageStateFile(ws, "shape.json", "test")).toThrow(/cookies.*array/);
-  });
-  it("rejects a workspace escape", () => {
-    expect(() => readStorageStateFile(ws, "../escape.json", "test")).toThrow(
-      /inside \$BROWX_WORKSPACE/,
-    );
+  it.each([
+    { label: "a missing file", file: "missing.json", body: undefined, message: /not found/ },
+    { label: "invalid JSON", file: "bad.json", body: "{not json", message: /not valid JSON/ },
+    {
+      label: "a state without cookies/origins arrays",
+      file: "shape.json",
+      body: JSON.stringify({ cookies: "no" }),
+      message: /cookies.*array/,
+    },
+    {
+      label: "a workspace escape",
+      file: "../escape.json",
+      body: undefined,
+      message: /inside \$BROWX_WORKSPACE/,
+    },
+  ])("rejects $label", ({ file, body, message }) => {
+    if (body !== undefined) writeFileSync(join(ws, file), body);
+    expect(() => readStorageStateFile(ws, file, "test")).toThrow(message);
   });
 });
 
@@ -361,11 +369,6 @@ describe("cookies CRUD", () => {
 
     expect(await cookiesGet(ctx as any, { name: "missing" })).toBeNull();
   });
-  it("get requires name", async () => {
-    const { ctx } = fakeContext();
-
-    await expect(cookiesGet(ctx as any, { name: "" })).rejects.toThrow(/name.*required/);
-  });
   it("set requires url OR domain+path", async () => {
     const { ctx } = fakeContext();
 
@@ -389,12 +392,20 @@ describe("cookies CRUD", () => {
     expect(c.args).toMatchObject({ name: "sid", domain: "example.com", path: "/" });
     expect(state.cookies).toHaveLength(0);
   });
-  it("delete rejects invalid url", async () => {
+  it.each([
+    {
+      label: "get requires name",
+      call: (ctx: unknown) => cookiesGet(ctx as any, { name: "" }),
+      message: /name.*required/,
+    },
+    {
+      label: "delete rejects invalid url",
+      call: (ctx: unknown) => cookiesDelete(ctx as any, { name: "x", url: "not a url" }),
+      message: /invalid url/,
+    },
+  ])("$label", async ({ call, message }) => {
     const { ctx } = fakeContext();
-
-    await expect(cookiesDelete(ctx as any, { name: "x", url: "not a url" })).rejects.toThrow(
-      /invalid url/,
-    );
+    await expect(call(ctx)).rejects.toThrow(message);
   });
   it("clear wipes everything", async () => {
     const { ctx, state } = fakeContext(seededState());
@@ -406,7 +417,7 @@ describe("cookies CRUD", () => {
 
 // ---- layer 2: web-storage --------------------------------------------------
 
-describe("webStorage (localStorage / sessionStorage)", () => {
+describe("webStorage (localStorage)", () => {
   it("rejects on about:blank with a navigation hint", async () => {
     const { page } = fakePage("about:blank");
 
@@ -415,58 +426,62 @@ describe("webStorage (localStorage / sessionStorage)", () => {
     ).rejects.toThrow(/origin-scoped/);
   });
 
-  for (const kind of ["localStorage", "sessionStorage"] as const) {
-    describe(`${kind}`, () => {
-      it("round-trips set → get → list → delete → clear", async () => {
-        const { page } = fakePage("https://example.com/");
+  // `kind` only picks the `window.<kind>` member name interpolated into the
+  // expression; the fake page cannot tell localStorage from sessionStorage.
+  const kind = "localStorage" as const;
+  it("round-trips set → get → list → delete → clear", async () => {
+    const { page } = fakePage("https://example.com/");
 
-        const set = await webStorageSet(page as any, kind, { key: "k", value: "v" }, `${kind}_set`);
-        expect(set.ok).toBe(true);
-        expect(set.origin).toBe("https://example.com");
+    const set = await webStorageSet(page as any, kind, { key: "k", value: "v" }, `${kind}_set`);
+    expect(set.ok).toBe(true);
+    expect(set.origin).toBe("https://example.com");
 
-        const got = await webStorageGet(page as any, kind, { key: "k" }, `${kind}_get`);
-        expect(got.value).toBe("v");
+    const got = await webStorageGet(page as any, kind, { key: "k" }, `${kind}_get`);
+    expect(got.value).toBe("v");
 
-        const missing = await webStorageGet(page as any, kind, { key: "nope" }, `${kind}_get`);
-        expect(missing.value).toBeNull();
+    const missing = await webStorageGet(page as any, kind, { key: "nope" }, `${kind}_get`);
+    expect(missing.value).toBeNull();
 
-        const listed = await webStorageList(page as any, kind, `${kind}_list`);
-        expect(listed.entries).toEqual([{ key: "k", value: "v" }]);
+    const listed = await webStorageList(page as any, kind, `${kind}_list`);
+    expect(listed.entries).toEqual([{ key: "k", value: "v" }]);
 
-        await webStorageDelete(page as any, kind, { key: "k" }, `${kind}_delete`);
+    await webStorageDelete(page as any, kind, { key: "k" }, `${kind}_delete`);
 
-        expect((await webStorageList(page as any, kind, `${kind}_list`)).entries).toEqual([]);
+    expect((await webStorageList(page as any, kind, `${kind}_list`)).entries).toEqual([]);
 
-        await webStorageSet(page as any, kind, { key: "x", value: "y" }, `${kind}_set`);
+    await webStorageSet(page as any, kind, { key: "x", value: "y" }, `${kind}_set`);
 
-        await webStorageClear(page as any, kind, `${kind}_clear`);
+    await webStorageClear(page as any, kind, `${kind}_clear`);
 
-        expect((await webStorageList(page as any, kind, `${kind}_list`)).entries).toEqual([]);
-      });
-      it("requires a key on get/set/delete", async () => {
-        const { page } = fakePage("https://example.com/");
-
-        await expect(webStorageGet(page as any, kind, { key: "" }, `${kind}_get`)).rejects.toThrow(
-          /key.*required/,
-        );
-
-        await expect(
-          webStorageSet(page as any, kind, { key: "", value: "v" }, `${kind}_set`),
-        ).rejects.toThrow(/key.*required/);
-
-        await expect(
-          webStorageDelete(page as any, kind, { key: "" }, `${kind}_delete`),
-        ).rejects.toThrow(/key.*required/);
-      });
-      it("requires a string value on set", async () => {
-        const { page } = fakePage("https://example.com/");
-
-        await expect(
-          webStorageSet(page as any, kind, { key: "k", value: 42 as any }, `${kind}_set`),
-        ).rejects.toThrow(/value.*string.*required/);
-      });
-    });
-  }
+    expect((await webStorageList(page as any, kind, `${kind}_list`)).entries).toEqual([]);
+  });
+  it.each([
+    {
+      label: "a key on get",
+      call: (page: unknown) => webStorageGet(page as any, kind, { key: "" }, `${kind}_get`),
+      message: /key.*required/,
+    },
+    {
+      label: "a key on set",
+      call: (page: unknown) =>
+        webStorageSet(page as any, kind, { key: "", value: "v" }, `${kind}_set`),
+      message: /key.*required/,
+    },
+    {
+      label: "a key on delete",
+      call: (page: unknown) => webStorageDelete(page as any, kind, { key: "" }, `${kind}_delete`),
+      message: /key.*required/,
+    },
+    {
+      label: "a string value on set",
+      call: (page: unknown) =>
+        webStorageSet(page as any, kind, { key: "k", value: 42 as any }, `${kind}_set`),
+      message: /value.*string.*required/,
+    },
+  ])("requires $label", async ({ call, message }) => {
+    const { page } = fakePage("https://example.com/");
+    await expect(call(page)).rejects.toThrow(message);
+  });
 });
 
 // ---- layer 3: named auth-states -------------------------------------------

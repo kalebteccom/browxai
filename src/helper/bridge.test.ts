@@ -3,32 +3,30 @@ import { BrowxBridge } from "./bridge.js";
 import type { OperatorAsk, OperatorChannel } from "./operator-channel.js";
 
 describe("BrowxBridge — detach state", () => {
-  it("isDetached() is false until detach() runs", async () => {
+  it("isDetached() is false until detach() runs, and a second detach() is a no-op", async () => {
     const b = new BrowxBridge();
     expect(b.isDetached()).toBe(false);
     await b.detach();
     expect(b.isDetached()).toBe(true);
-  });
-
-  it("awaitSignal() refuses at once when no page carries the human channel", async () => {
-    // An unattached bridge stands in for an engine without CDP: there is no
-    // isolated world to answer from, so a caller must not be left waiting.
-    const b = new BrowxBridge();
-    expect(b.humanChannelAvailable()).toBe(false);
-    await expect(b.awaitSignal("respond", 0)).rejects.toThrow(/^no-human-channel:/);
-  });
-
-  it("awaitSignal() refuses after detach()", async () => {
-    const b = new BrowxBridge();
-    await b.detach();
-    await expect(b.awaitSignal("proceed", 0)).rejects.toThrow(/no-human-channel/);
-  });
-
-  it("detach() is idempotent — second call is a no-op", async () => {
-    const b = new BrowxBridge();
-    await b.detach();
     await b.detach();
     expect(b.isDetached()).toBe(true);
+  });
+
+  it.each<[string, boolean, "respond" | "proceed", RegExp]>([
+    // An unattached bridge stands in for an engine without CDP: there is no
+    // isolated world to answer from, so a caller must not be left waiting.
+    [
+      "awaitSignal() refuses at once when no page carries the human channel",
+      false,
+      "respond",
+      /^no-human-channel:/,
+    ],
+    ["awaitSignal() refuses after detach()", true, "proceed", /no-human-channel/],
+  ])("%s", async (_label, detach, signal, message) => {
+    const b = new BrowxBridge();
+    if (detach) await b.detach();
+    else expect(b.humanChannelAvailable()).toBe(false);
+    await expect(b.awaitSignal(signal, 0)).rejects.toThrow(message);
   });
 });
 

@@ -34,104 +34,118 @@ function parseFirst(res: {
   return JSON.parse(first.text!) as Record<string, unknown>;
 }
 
+// A loaded page answers the typeof probe with true and everything else with `page`.
+function loadedApi(page: unknown) {
+  return makeApi(async (_name, args) => {
+    const expr = (args as { expr: string }).expr;
+    if (expr.includes("typeof window.editor")) return evalEnvelope(true);
+    return evalEnvelope(page);
+  });
+}
+
+interface HappyRow {
+  label: string;
+  tool: keyof typeof handlers;
+  args: Record<string, unknown>;
+  page: unknown;
+  expected: Record<string, unknown>;
+}
+
+interface ErrorRow {
+  label: string;
+  tool: keyof typeof handlers;
+  args: Record<string, unknown>;
+  loaded: boolean;
+  page?: unknown;
+  code: string;
+}
+
+const shape = { id: "shape:1", type: "geo", x: 10, y: 20, props: { w: 100, h: 50 } };
+
 describe("@browxai/plugin-tldraw handlers", () => {
-  describe("get_selected_shapes", () => {
-    it("returns parsed shapes on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.editor")) return evalEnvelope(true);
-        return evalEnvelope({
-          shapes: [{ id: "shape:1", type: "geo", x: 10, y: 20, props: { w: 100, h: 50 } }],
-        });
-      });
-      const res = await handlers.get_selected_shapes(api, {});
-      expect(parseFirst(res)).toEqual({
-        ok: true,
-        shapes: [{ id: "shape:1", type: "geo", x: 10, y: 20, props: { w: 100, h: 50 } }],
-      });
-    });
-
-    it("returns tldraw-not-loaded when editor is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.get_selected_shapes(api, {});
-      expect(parseFirst(res).code).toBe("tldraw-not-loaded");
-    });
+  it.each<HappyRow>([
+    {
+      label: "get_selected_shapes returns the parsed shapes",
+      tool: "get_selected_shapes",
+      args: {},
+      page: { shapes: [shape] },
+      expected: { ok: true, shapes: [shape] },
+    },
+    {
+      label: "get_viewport returns bounds and zoom",
+      tool: "get_viewport",
+      args: {},
+      page: { x: 0, y: 0, w: 1024, h: 768, zoom: 1.25 },
+      expected: { ok: true, x: 0, y: 0, w: 1024, h: 768, zoom: 1.25 },
+    },
+    {
+      label: "create_shape returns shapeId",
+      tool: "create_shape",
+      args: { type: "geo", x: 0, y: 0, props: { w: 10 } },
+      page: { shapeId: "shape:99" },
+      expected: { ok: true, shapeId: "shape:99" },
+    },
+    {
+      label: "delete_shape returns ok and shapeId",
+      tool: "delete_shape",
+      args: { shapeId: "shape:1" },
+      page: { deleted: "shape:1" },
+      expected: { ok: true, shapeId: "shape:1" },
+    },
+    {
+      label: "select_shapes returns ok and shapeIds",
+      tool: "select_shapes",
+      args: { shapeIds: ["shape:1", "shape:2"] },
+      page: { selected: ["shape:1", "shape:2"] },
+      expected: { ok: true, shapeIds: ["shape:1", "shape:2"] },
+    },
+  ])("$label", async (row) => {
+    const res = await handlers[row.tool](loadedApi(row.page), row.args);
+    expect(parseFirst(res)).toEqual(row.expected);
   });
 
-  describe("get_viewport", () => {
-    it("returns viewport bounds + zoom on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.editor")) return evalEnvelope(true);
-        return evalEnvelope({ x: 0, y: 0, w: 1024, h: 768, zoom: 1.25 });
-      });
-      const res = await handlers.get_viewport(api, {});
-      expect(parseFirst(res)).toEqual({ ok: true, x: 0, y: 0, w: 1024, h: 768, zoom: 1.25 });
-    });
-  });
-
-  describe("create_shape", () => {
-    it("returns shapeId on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.editor")) return evalEnvelope(true);
-        return evalEnvelope({ shapeId: "shape:99" });
-      });
-      const res = await handlers.create_shape(api, { type: "geo", x: 0, y: 0, props: { w: 10 } });
-      expect(parseFirst(res)).toEqual({ ok: true, shapeId: "shape:99" });
-    });
-
-    it("returns bad-arg when type missing", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.create_shape(api, { x: 0, y: 0 });
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
-
-    it("returns create-failed when no new shape id detected", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.editor")) return evalEnvelope(true);
-        return evalEnvelope({ shapeId: null });
-      });
-      const res = await handlers.create_shape(api, { type: "geo", x: 0, y: 0 });
-      expect(parseFirst(res).code).toBe("create-failed");
-    });
-  });
-
-  describe("delete_shape", () => {
-    it("returns ok + shapeId on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.editor")) return evalEnvelope(true);
-        return evalEnvelope({ deleted: "shape:1" });
-      });
-      const res = await handlers.delete_shape(api, { shapeId: "shape:1" });
-      expect(parseFirst(res)).toEqual({ ok: true, shapeId: "shape:1" });
-    });
-
-    it("returns bad-arg when shapeId missing", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.delete_shape(api, {});
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
-  });
-
-  describe("select_shapes", () => {
-    it("returns ok + shapeIds on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.editor")) return evalEnvelope(true);
-        return evalEnvelope({ selected: ["shape:1", "shape:2"] });
-      });
-      const res = await handlers.select_shapes(api, { shapeIds: ["shape:1", "shape:2"] });
-      expect(parseFirst(res)).toEqual({ ok: true, shapeIds: ["shape:1", "shape:2"] });
-    });
-
-    it("returns bad-arg when shapeIds contains non-string", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.select_shapes(api, { shapeIds: ["shape:1", 99] });
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
+  it.each<ErrorRow>([
+    {
+      label: "get_selected_shapes returns tldraw-not-loaded when the editor is undefined",
+      tool: "get_selected_shapes",
+      args: {},
+      loaded: false,
+      code: "tldraw-not-loaded",
+    },
+    {
+      label: "create_shape returns bad-arg when type is missing",
+      tool: "create_shape",
+      args: { x: 0, y: 0 },
+      loaded: true,
+      code: "bad-arg",
+    },
+    {
+      label: "create_shape returns create-failed when no new shape id is detected",
+      tool: "create_shape",
+      args: { type: "geo", x: 0, y: 0 },
+      loaded: true,
+      page: { shapeId: null },
+      code: "create-failed",
+    },
+    {
+      label: "delete_shape returns bad-arg when shapeId is missing",
+      tool: "delete_shape",
+      args: {},
+      loaded: true,
+      code: "bad-arg",
+    },
+    {
+      label: "select_shapes returns bad-arg when shapeIds contains a non-string",
+      tool: "select_shapes",
+      args: { shapeIds: ["shape:1", 99] },
+      loaded: true,
+      code: "bad-arg",
+    },
+  ])("$label", async (row) => {
+    const api = row.loaded ? loadedApi(row.page ?? true) : makeApi(async () => evalEnvelope(false));
+    const parsed = parseFirst(await handlers[row.tool](api, row.args));
+    expect(parsed.ok).toBe(false);
+    expect(parsed.code).toBe(row.code);
   });
 });
 

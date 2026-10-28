@@ -170,30 +170,26 @@ describe("the composed A11yNode tree", () => {
     expect(field.value).toBe("4242");
   });
 
-  it("uses the placeholder as the value ONLY when there is no value", () => {
-    const refs2 = new RefRegistry();
-    const withPlaceholder = toA11yTree(
-      node({
-        type: "Application",
-        children: [node({ type: "TextField", label: "Email", placeholder: "you@example.com" })],
-      }),
-      refs2,
+  it.each([
+    {
+      name: "uses the placeholder as the value ONLY when there is no value",
+      child: node({ type: "TextField", label: "Email", placeholder: "you@example.com" }),
+      field: "value" as const,
+      expected: "you@example.com",
+    },
+    {
+      name: "reports disabled as a flag rather than dropping the node",
+      child: node({ type: "Button", label: "Pay", enabled: false }),
+      field: "disabled" as const,
+      expected: true,
+    },
+  ])("$name", ({ child, field, expected }) => {
+    const mapped = toA11yTree(
+      node({ type: "Application", children: [child] }),
+      new RefRegistry(),
       "app://x/",
     );
-    expect(withPlaceholder.children[0]!.value).toBe("you@example.com");
-  });
-
-  it("reports disabled as a flag rather than dropping the node", () => {
-    const refs2 = new RefRegistry();
-    const tree2 = toA11yTree(
-      node({
-        type: "Application",
-        children: [node({ type: "Button", label: "Pay", enabled: false })],
-      }),
-      refs2,
-      "app://x/",
-    );
-    expect(tree2.children[0]!.disabled).toBe(true);
+    expect(mapped.children[0]![field]).toBe(expected);
   });
 
   it("preserves the hierarchy's shape", () => {

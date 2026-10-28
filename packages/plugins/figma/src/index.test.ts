@@ -35,121 +35,128 @@ function parseFirst(res: {
   return JSON.parse(first.text!) as Record<string, unknown>;
 }
 
+// A loaded page answers the typeof probe with true and everything else with `page`.
+function loadedApi(page: unknown, seen: string[] = []) {
+  return makeApi(async (name, args) => {
+    expect(name).toBe("eval_js");
+    const expr = (args as { expr: string }).expr;
+    if (expr.includes("typeof figma")) return evalEnvelope(true);
+    seen.push(expr);
+    return evalEnvelope(page);
+  });
+}
+
+const node = { id: "1:2", name: "Rect", type: "RECTANGLE", x: 10, y: 20, width: 100, height: 50 };
+
+interface HappyRow {
+  label: string;
+  tool: keyof typeof handlers;
+  args: Record<string, unknown>;
+  page: unknown;
+  expected: Record<string, unknown>;
+}
+
+interface ErrorRow {
+  label: string;
+  tool: keyof typeof handlers;
+  args: Record<string, unknown>;
+  loaded: boolean;
+  page?: unknown;
+  code: string;
+}
+
 describe("@browxai/plugin-figma handlers", () => {
-  describe("get_selection", () => {
-    it("returns parsed selection on happy path", async () => {
-      const api = makeApi(async (name, args) => {
-        expect(name).toBe("eval_js");
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof figma")) return evalEnvelope(true);
-        return evalEnvelope({
-          nodes: [
-            { id: "1:2", name: "Rect", type: "RECTANGLE", x: 10, y: 20, width: 100, height: 50 },
-          ],
-        });
-      });
-      const res = await handlers.get_selection(api, {});
-      expect(parseFirst(res)).toEqual({
-        ok: true,
-        nodes: [
-          { id: "1:2", name: "Rect", type: "RECTANGLE", x: 10, y: 20, width: 100, height: 50 },
-        ],
-      });
-    });
-
-    it("returns figma-not-loaded when global is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.get_selection(api, {});
-      const parsed = parseFirst(res);
-      expect(parsed.ok).toBe(false);
-      expect(parsed.code).toBe("figma-not-loaded");
-    });
+  it.each<HappyRow>([
+    {
+      label: "get_selection returns the parsed selection",
+      tool: "get_selection",
+      args: {},
+      page: { nodes: [node] },
+      expected: { ok: true, nodes: [node] },
+    },
+    {
+      label: "get_viewport returns center and zoom",
+      tool: "get_viewport",
+      args: {},
+      page: { center: { x: 100, y: 200 }, zoom: 1.5 },
+      expected: { ok: true, center: { x: 100, y: 200 }, zoom: 1.5 },
+    },
+    {
+      label: "select_node returns ok and nodeId",
+      tool: "select_node",
+      args: { nodeId: "1:2" },
+      page: { found: true, nodeId: "1:2" },
+      expected: { ok: true, nodeId: "1:2" },
+    },
+    {
+      label: "move_node returns the post-move position",
+      tool: "move_node",
+      args: { nodeId: "1:2", dx: 10, dy: 20 },
+      page: { found: true, nodeId: "1:2", x: 110, y: 220 },
+      expected: { ok: true, nodeId: "1:2", x: 110, y: 220 },
+    },
+  ])("$label", async (row) => {
+    const res = await handlers[row.tool](loadedApi(row.page), row.args);
+    expect(parseFirst(res)).toEqual(row.expected);
   });
 
-  describe("get_viewport", () => {
-    it("returns center + zoom on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof figma")) return evalEnvelope(true);
-        return evalEnvelope({ center: { x: 100, y: 200 }, zoom: 1.5 });
-      });
-      const res = await handlers.get_viewport(api, {});
-      expect(parseFirst(res)).toEqual({ ok: true, center: { x: 100, y: 200 }, zoom: 1.5 });
+  it("create_rectangle returns nodeId and sends a fill for fillColor", async () => {
+    const seen: string[] = [];
+    const res = await handlers.create_rectangle(loadedApi({ nodeId: "1:99" }, seen), {
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 50,
+      fillColor: { r: 1, g: 0.5, b: 0 },
     });
+    expect(parseFirst(res)).toEqual({ ok: true, nodeId: "1:99" });
+    expect(seen.at(-1)).toContain("rect.fills");
+    expect(seen.at(-1)).toContain("createRectangle");
   });
 
-  describe("select_node", () => {
-    it("returns ok + nodeId on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof figma")) return evalEnvelope(true);
-        return evalEnvelope({ found: true, nodeId: "1:2" });
-      });
-      const res = await handlers.select_node(api, { nodeId: "1:2" });
-      expect(parseFirst(res)).toEqual({ ok: true, nodeId: "1:2" });
-    });
-
-    it("returns bad-arg when nodeId missing", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.select_node(api, {});
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
-
-    it("returns node-not-found when page-side getNodeById returns null", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof figma")) return evalEnvelope(true);
-        return evalEnvelope({ found: false });
-      });
-      const res = await handlers.select_node(api, { nodeId: "missing" });
-      expect(parseFirst(res).code).toBe("node-not-found");
-    });
-  });
-
-  describe("move_node", () => {
-    it("returns post-move position on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof figma")) return evalEnvelope(true);
-        return evalEnvelope({ found: true, nodeId: "1:2", x: 110, y: 220 });
-      });
-      const res = await handlers.move_node(api, { nodeId: "1:2", dx: 10, dy: 20 });
-      expect(parseFirst(res)).toEqual({ ok: true, nodeId: "1:2", x: 110, y: 220 });
-    });
-
-    it("returns bad-arg when dx missing", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.move_node(api, { nodeId: "1:2", dy: 0 });
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
-  });
-
-  describe("create_rectangle", () => {
-    it("returns nodeId on happy path with fillColor", async () => {
-      let lastExpr = "";
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof figma")) return evalEnvelope(true);
-        lastExpr = expr;
-        return evalEnvelope({ nodeId: "1:99" });
-      });
-      const res = await handlers.create_rectangle(api, {
-        x: 0,
-        y: 0,
-        width: 100,
-        height: 50,
-        fillColor: { r: 1, g: 0.5, b: 0 },
-      });
-      expect(parseFirst(res)).toEqual({ ok: true, nodeId: "1:99" });
-      expect(lastExpr).toContain("rect.fills");
-      expect(lastExpr).toContain("createRectangle");
-    });
-
-    it("returns bad-arg when width is zero", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.create_rectangle(api, { x: 0, y: 0, width: 0, height: 50 });
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
+  it.each<ErrorRow>([
+    {
+      label: "get_selection returns figma-not-loaded when the global is undefined",
+      tool: "get_selection",
+      args: {},
+      loaded: false,
+      code: "figma-not-loaded",
+    },
+    {
+      label: "select_node returns bad-arg when nodeId is missing",
+      tool: "select_node",
+      args: {},
+      loaded: true,
+      code: "bad-arg",
+    },
+    {
+      label: "select_node returns node-not-found when getNodeById returns null",
+      tool: "select_node",
+      args: { nodeId: "missing" },
+      loaded: true,
+      page: { found: false },
+      code: "node-not-found",
+    },
+    {
+      label: "move_node returns bad-arg when dx is missing",
+      tool: "move_node",
+      args: { nodeId: "1:2", dy: 0 },
+      loaded: true,
+      code: "bad-arg",
+    },
+    {
+      label: "create_rectangle returns bad-arg when width is zero",
+      tool: "create_rectangle",
+      args: { x: 0, y: 0, width: 0, height: 50 },
+      loaded: true,
+      code: "bad-arg",
+    },
+  ])("$label", async (row) => {
+    const api = row.loaded ? loadedApi(row.page ?? true) : makeApi(async () => evalEnvelope(false));
+    const res = await handlers[row.tool](api, row.args);
+    const parsed = parseFirst(res);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.code).toBe(row.code);
   });
 });
 

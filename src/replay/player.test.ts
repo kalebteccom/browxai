@@ -74,7 +74,7 @@ function sampleEvents(): ReplayEvent[] {
 }
 
 describe("player timeline model", () => {
-  it("pairs each call with its result and derives before/after from the pair", () => {
+  it("pairs each call with its result, derives before/after, and marks each step by kind", () => {
     const model = buildTimeline(sampleEvents());
     expect(model.steps.map((s) => s.tool)).toEqual([
       "navigate",
@@ -95,6 +95,9 @@ describe("player timeline model", () => {
     });
     expect(model.duration).toBe(280);
     expect(model.domEventCount).toBe(3);
+    // Each step is marked on the strip with the kind it colours by.
+    const kinds = model.markers.filter((m) => m.kind !== "unknown").map((m) => m.kind);
+    expect(kinds).toEqual(["action", "action-failed", "assert-pass", "assert-fail"]);
   });
 
   it("leaves a call with no result as a step with no verdict", () => {
@@ -107,12 +110,6 @@ describe("player timeline model", () => {
     // marked as having succeeded, which is the honest reading of the log.
     expect(model.steps).toHaveLength(1);
     expect(model.steps[0]).toMatchObject({ tool: "wait_for", ok: true, before: 10 });
-  });
-
-  it("marks each step on the timeline with the kind the strip colours by", () => {
-    const model = buildTimeline(sampleEvents());
-    const kinds = model.markers.filter((m) => m.kind !== "unknown").map((m) => m.kind);
-    expect(kinds).toEqual(["action", "action-failed", "assert-pass", "assert-fail"]);
   });
 
   it("closes annotation spans on their end phase and runs an open span to the end", () => {
@@ -146,29 +143,36 @@ describe("player timeline model", () => {
 });
 
 describe("jump to failure", () => {
-  it("prefers the first failed assertion over an earlier failed action", () => {
-    const model = buildTimeline(sampleEvents());
-    // `fill` failed at t=140, the assertion at t=240. The assertion is the
-    // reviewer's acceptance criterion; an action failure is often a retry.
-    expect(findFirstFailure(model)).toMatchObject({ tool: "verify_visible", after: 240 });
-  });
-
-  it("falls back to the first failed action when nothing asserted", () => {
-    const model = buildTimeline([
-      ev(0, "action/call", { tool: "click" }),
-      ev(10, "action/result", { tool: "click", ok: true }),
-      ev(20, "action/call", { tool: "fill" }),
-      ev(30, "action/result", { tool: "fill", ok: false, error: "gone" }),
-    ]);
-    expect(findFirstFailure(model)).toMatchObject({ tool: "fill", error: "gone" });
-  });
-
-  it("reports nothing on a clean run", () => {
-    const model = buildTimeline([
-      ev(0, "action/call", { tool: "click" }),
-      ev(10, "action/result", { tool: "click", ok: true }),
-    ]);
-    expect(findFirstFailure(model)).toBeUndefined();
+  it.each<[string, () => ReplayEvent[], Record<string, unknown> | undefined]>([
+    [
+      // `fill` failed at t=140, the assertion at t=240. The assertion is the
+      // reviewer's acceptance criterion; an action failure is often a retry.
+      "prefers the first failed assertion over an earlier failed action",
+      sampleEvents,
+      { tool: "verify_visible", after: 240 },
+    ],
+    [
+      "falls back to the first failed action when nothing asserted",
+      () => [
+        ev(0, "action/call", { tool: "click" }),
+        ev(10, "action/result", { tool: "click", ok: true }),
+        ev(20, "action/call", { tool: "fill" }),
+        ev(30, "action/result", { tool: "fill", ok: false, error: "gone" }),
+      ],
+      { tool: "fill", error: "gone" },
+    ],
+    [
+      "reports nothing on a clean run",
+      () => [
+        ev(0, "action/call", { tool: "click" }),
+        ev(10, "action/result", { tool: "click", ok: true }),
+      ],
+      undefined,
+    ],
+  ])("%s", (_label, events, expected) => {
+    const failure = findFirstFailure(buildTimeline(events()));
+    if (expected === undefined) expect(failure).toBeUndefined();
+    else expect(failure).toMatchObject(expected);
   });
 });
 
@@ -367,16 +371,14 @@ describe("browser-side artifact reader", () => {
 });
 
 describe("rrweb envelope adapter", () => {
-  it("hands rrweb the payload, not the browxai envelope", () => {
+  it("hands rrweb the payload, not the browxai envelope, and skips a non-object payload", () => {
     const payloads = domPayloads(sampleEvents());
     expect(payloads).toHaveLength(3);
     for (const p of payloads) {
       expect(p).not.toHaveProperty("payload");
       expect(typeof p.type).toBe("number");
     }
-  });
-
-  it("skips a dom/rrweb event whose payload is not an object", () => {
+    // A dom/rrweb event whose payload is not an object is skipped.
     expect(domPayloads([ev(0, "dom/rrweb", null), ev(1, "dom/rrweb", "nope")])).toEqual([]);
   });
 
@@ -465,18 +467,16 @@ function stubRrweb(meta: RrwebMeta): RrwebGlobal {
 }
 
 describe("line parsing agrees with the Node reader", () => {
-  it("defaults a missing envelope field instead of dropping the line", () => {
-    expect(parseEventLine('{"payload":{"a":1}}')).toEqual({
-      t: 0,
-      type: "unknown",
-      v: 0,
-      payload: { a: 1 },
-    });
-  });
-
-  it("rejects a non-object line", () => {
-    expect(parseEventLine("[]")).toBeUndefined();
-    expect(parseEventLine("null")).toBeUndefined();
-    expect(parseEventLine("{oops")).toBeUndefined();
+  it.each<[string, string, unknown]>([
+    [
+      "defaults a missing envelope field instead of dropping the line",
+      '{"payload":{"a":1}}',
+      { t: 0, type: "unknown", v: 0, payload: { a: 1 } },
+    ],
+    ["rejects an empty array line", "[]", undefined],
+    ["rejects a null line", "null", undefined],
+    ["rejects a malformed line", "{oops", undefined],
+  ])("%s", (_label, line, expected) => {
+    expect(parseEventLine(line)).toEqual(expected);
   });
 });

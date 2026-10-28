@@ -35,7 +35,7 @@ function safariHandle(): { handle: SafariSessionHandle; shots: string[] } {
   return { handle, shots };
 }
 
-describe("SafariCaptureSubstrate", () => {
+describe("CaptureSubstrate screenshot (Safari and Playwright adapters)", () => {
   it("returns the full-document PNG from the WebDriver client", async () => {
     const { handle, shots } = safariHandle();
     const sub = new SafariCaptureSubstrate(handle);
@@ -47,56 +47,23 @@ describe("SafariCaptureSubstrate", () => {
     expect(shots).toEqual(["S"]);
   });
 
-  it("refuses element-scoped + path captures cleanly (in the adapter, not the handler)", async () => {
+  // The Safari adapter must refuse on the raw element-scoped signal first and
+  // never call the resolver, so the engine refusal preempts a malformed-target
+  // throw out of `asTarget` (the pre-seam Safari branch never reached it).
+  it("SafariCaptureSubstrate refuses a path capture cleanly (in the adapter, not the handler)", async () => {
     const { handle } = safariHandle();
     const sub: CaptureSubstrate = new SafariCaptureSubstrate(handle);
-    for (const req of [
-      {
-        format: "png" as const,
-        fullPage: false,
-        describe: false,
-        resolveTarget: () => ({ ref: "e1" }),
-      },
-      {
-        format: "png" as const,
-        fullPage: false,
-        describe: false,
-        resolveTarget: () => ({ selector: "#x" }),
-      },
-      { format: "png" as const, fullPage: false, describe: false, path: "shot.png" },
-    ]) {
-      const r = await sub.screenshot(req);
-      expect(r.kind).toBe("refusal");
-      if (r.kind !== "refusal") throw new Error("expected refusal");
-      expect(r.error).toMatch(/Safari engine supports only the default inline PNG/);
-    }
-  });
-
-  it("refuses a MALFORMED target without invoking the resolver (no preempting throw)", async () => {
-    // A multi-target / unbound-`named` request would throw out of `asTarget`. The
-    // Safari adapter must refuse on the raw element-scoped signal first — never
-    // call the resolver — so the engine refusal preempts the throw, not the other
-    // way round (the pre-seam Safari branch never reached `asTarget`).
-    const { handle } = safariHandle();
-    const sub: CaptureSubstrate = new SafariCaptureSubstrate(handle);
-    let called = false;
     const r = await sub.screenshot({
       format: "png",
       fullPage: false,
       describe: false,
-      resolveTarget: () => {
-        called = true;
-        throw new Error("asTarget should not run");
-      },
+      path: "shot.png",
     });
-    expect(called).toBe(false);
     expect(r.kind).toBe("refusal");
     if (r.kind !== "refusal") throw new Error("expected refusal");
     expect(r.error).toMatch(/Safari engine supports only the default inline PNG/);
   });
-});
 
-describe("PlaywrightCaptureSubstrate", () => {
   function playwrightSubstrate(): CaptureSubstrate {
     const page = (() => ({ url: () => "about:blank" })) as unknown as () => Page;
     const deps = {
@@ -108,26 +75,40 @@ describe("PlaywrightCaptureSubstrate", () => {
     return new PlaywrightCaptureSubstrate(page, {} as RefRegistry, {} as never, deps);
   }
 
-  it("refuses fullPage+target before invoking the resolver (no preempting throw)", async () => {
-    // A malformed target would throw out of `asTarget`; the `fullPage:true` +
-    // element-scoped refusal must fire first and never call the resolver — the
-    // byte-identical pre-seam ordering returned this refusal before `asTarget`.
-    const sub = playwrightSubstrate();
-    let called = false;
-    const r = await sub.screenshot({
-      format: "png",
+  // A malformed target would throw out of `asTarget`; the refusal must fire
+  // first and never call the resolver.
+  it.each([
+    {
+      name: "Safari: a MALFORMED target",
+      make: () => new SafariCaptureSubstrate(safariHandle().handle) as CaptureSubstrate,
+      fullPage: false,
+      error: /Safari engine supports only the default inline PNG/,
+    },
+    {
+      name: "Playwright: fullPage+target",
+      make: playwrightSubstrate,
       fullPage: true,
-      describe: false,
-      resolveTarget: () => {
-        called = true;
-        throw new Error("asTarget should not run");
-      },
-    });
-    expect(called).toBe(false);
-    expect(r.kind).toBe("refusal");
-    if (r.kind !== "refusal") throw new Error("expected refusal");
-    expect(r.error).toMatch(/fullPage:true` is mutually exclusive/);
-  });
+      error: /fullPage:true` is mutually exclusive/,
+    },
+  ])(
+    "refuses before invoking the resolver (no preempting throw): $name",
+    async ({ make, fullPage, error }) => {
+      let called = false;
+      const r = await make().screenshot({
+        format: "png",
+        fullPage,
+        describe: false,
+        resolveTarget: () => {
+          called = true;
+          throw new Error("asTarget should not run");
+        },
+      });
+      expect(called).toBe(false);
+      expect(r.kind).toBe("refusal");
+      if (r.kind !== "refusal") throw new Error("expected refusal");
+      expect(r.error).toMatch(error);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

@@ -344,19 +344,15 @@ describe("binding budget — file writer loops, real Chromium", () => {
   }
 
   it(
-    "a real saver, awaiting each chunk or firing 900 at once, writes the whole file",
+    "a real saver writes the whole file awaiting each chunk or firing 900 at once, and a writer over the burst never sees success for a truncated file",
     async () => {
       const awaited = await save("w-await", "awaited.bin");
       expect(awaited).toEqual({ title: "WRITE-ok", bytes: 300 * 1024 });
       const burst = await save("w-burst", "burst.bin");
       expect(burst).toEqual({ title: "WRITE-ok", bytes: 900 * 1024 });
-    },
-    KEYSTONE_TIMEOUT,
-  );
 
-  it(
-    "a writer that fires more chunks than the burst never sees success for a truncated file",
-    async () => {
+      // A writer that fires more chunks than the burst never sees success for
+      // a truncated file.
       const over = await save("w-over", "over.bin");
       expect(over.title, "the page is not told the save worked").not.toBe("WRITE-ok");
       expect(over.bytes ?? 0).toBeLessThan(1500 * 1024);

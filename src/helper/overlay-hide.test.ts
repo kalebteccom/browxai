@@ -30,18 +30,14 @@ describe("applyOverlayHide", () => {
     };
   }
 
-  it("no-ops on an empty selector list (feature off)", async () => {
+  it.each<[string, string[], number]>([
+    ["no-ops on an empty selector list (feature off)", [], 0],
+    ["registers the init script and re-applies to already-open pages", ["#hmr"], 1],
+  ])("%s", async (_label, selectors, calls) => {
     const ctx = fakeContext();
 
-    await applyOverlayHide(ctx as any, []);
-    expect(ctx.addInitScript).not.toHaveBeenCalled();
-  });
-
-  it("registers the init script and re-applies to already-open pages", async () => {
-    const ctx = fakeContext();
-
-    await applyOverlayHide(ctx as any, ["#hmr"]);
-    expect(ctx.addInitScript).toHaveBeenCalledTimes(1);
-    expect(ctx._pages[0]!.evaluate).toHaveBeenCalledTimes(1);
+    await applyOverlayHide(ctx as any, selectors);
+    expect(ctx.addInitScript).toHaveBeenCalledTimes(calls);
+    expect(ctx._pages[0]!.evaluate).toHaveBeenCalledTimes(calls);
   });
 });

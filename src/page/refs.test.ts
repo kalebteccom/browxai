@@ -91,23 +91,15 @@ describe("named refs", () => {
 });
 
 describe("frameId in elementKey", () => {
-  it("two identical node signatures in distinct frames hash differently", async () => {
-    const { elementKey } = await import("./refs.js");
-    const k1 = elementKey({ role: "button", name: "Save", path: "main/form/button" });
-    const k2 = elementKey({
-      role: "button",
-      name: "Save",
-      path: "main/form/button",
-      frameId: "f1",
-    });
-    expect(k1).not.toBe(k2);
-  });
-
-  it("absent / empty frameId hashes byte-identical to legacy (main frame)", async () => {
-    const { elementKey } = await import("./refs.js");
-    const k1 = elementKey({ role: "button", name: "Save", path: "main/form/button" });
-    const k2 = elementKey({ role: "button", name: "Save", path: "main/form/button", frameId: "" });
-    expect(k1).toBe(k2);
+  const sig = { role: "button", name: "Save", path: "main/form/button" };
+  it.each([
+    ["two identical node signatures in distinct frames hash differently", "f1", false],
+    ["absent / empty frameId hashes byte-identical to legacy (main frame)", "", true],
+  ])("frameId in elementKey: %s", (_name, frameId, same) => {
+    const k1 = elementKey(sig);
+    const k2 = elementKey({ ...sig, frameId });
+    if (same) expect(k2).toBe(k1);
+    else expect(k2).not.toBe(k1);
   });
 });
 

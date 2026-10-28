@@ -102,23 +102,19 @@ describe("EmulationRegistry — network_emulate", () => {
 });
 
 describe("EmulationRegistry — cpu_emulate", () => {
-  it("applies throttleRate via Emulation.setCPUThrottlingRate", async () => {
+  it.each([
+    { name: "applies throttleRate via Emulation.setCPUThrottlingRate", rate: 4, reset: false },
+    { name: "throttleRate:1 is the reset path", rate: 1, reset: true },
+  ])("$name", async ({ rate, reset: expectedReset }) => {
     const { cdp, calls } = fakeCdp();
     const page = fakePage();
     const reg = new EmulationRegistry();
-    const { state, reset } = await reg.applyCpu(cdp as never, page as never, { throttleRate: 4 });
-    expect(reset).toBe(false);
-    expect(state.throttleRate).toBe(4);
-    expect(calls).toEqual([{ method: "Emulation.setCPUThrottlingRate", params: { rate: 4 } }]);
-  });
-
-  it("throttleRate:1 is the reset path", async () => {
-    const { cdp, calls } = fakeCdp();
-    const page = fakePage();
-    const reg = new EmulationRegistry();
-    const { reset } = await reg.applyCpu(cdp as never, page as never, { throttleRate: 1 });
-    expect(reset).toBe(true);
-    expect(calls[0]!.params).toEqual({ rate: 1 });
+    const { state, reset } = await reg.applyCpu(cdp as never, page as never, {
+      throttleRate: rate,
+    });
+    expect(reset).toBe(expectedReset);
+    expect(state.throttleRate).toBe(rate);
+    expect(calls).toEqual([{ method: "Emulation.setCPUThrottlingRate", params: { rate } }]);
   });
 
   it("rejects throttleRate < 1 or > 100", async () => {

@@ -121,6 +121,15 @@ describe(" plugin runtime — keystone", () => {
     expect(info.tools.length).toBe(3);
   });
 
+  it("get_config({scope:'resolved'}) reports the live plugin set", async () => {
+    const cfg = await callJson<{
+      scope: string;
+      config: { plugins: string[] };
+    }>("get_config", {});
+    expect(cfg.scope).toBe("resolved");
+    expect(cfg.config.plugins).toContain("@browxai/plugin-example");
+  });
+
   it("delivers arguments to plugin tools over a real MCP connection", async () => {
     const transport = new StdioClientTransport({
       command: join(REPO, "node_modules/.bin/tsx"),

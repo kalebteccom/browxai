@@ -6,21 +6,29 @@ import { describe, it, expect } from "vitest";
 import { resolveEndpointPath } from "../../src/sdk/transport-socket.js";
 
 describe("resolveEndpointPath — unix:// + pipe:// + reject-unknown", () => {
-  it("unix:///tmp/browxai.sock → /tmp/browxai.sock", () => {
-    expect(resolveEndpointPath("unix:///tmp/browxai.sock")).toBe("/tmp/browxai.sock");
-  });
-
-  it("pipe://./pipe/browxai → \\\\.\\pipe\\browxai (Windows named-pipe form)", () => {
-    expect(resolveEndpointPath("pipe://./pipe/browxai")).toBe("\\\\.\\pipe\\browxai");
-  });
-
-  it("rejects http:// schemes with an actionable error", () => {
-    expect(() => resolveEndpointPath("http://localhost:9999/")).toThrow(
-      /unsupported endpoint scheme/,
-    );
-  });
-
-  it("rejects unix:// with an empty path", () => {
-    expect(() => resolveEndpointPath("unix://")).toThrow(/empty unix:\/\/ path/);
+  it.each<{ label: string; endpoint: string; path?: string; error?: RegExp }>([
+    {
+      label: "unix:///tmp/browxai.sock → /tmp/browxai.sock",
+      endpoint: "unix:///tmp/browxai.sock",
+      path: "/tmp/browxai.sock",
+    },
+    {
+      label: "pipe://./pipe/browxai → \\\\.\\pipe\\browxai (Windows named-pipe form)",
+      endpoint: "pipe://./pipe/browxai",
+      path: "\\\\.\\pipe\\browxai",
+    },
+    {
+      label: "rejects http:// schemes with an actionable error",
+      endpoint: "http://localhost:9999/",
+      error: /unsupported endpoint scheme/,
+    },
+    {
+      label: "rejects unix:// with an empty path",
+      endpoint: "unix://",
+      error: /empty unix:\/\/ path/,
+    },
+  ])("$label", ({ endpoint, path, error }) => {
+    if (error) expect(() => resolveEndpointPath(endpoint)).toThrow(error);
+    else expect(resolveEndpointPath(endpoint)).toBe(path);
   });
 });

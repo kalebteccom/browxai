@@ -89,27 +89,29 @@ describe("drag", () => {
 });
 
 describe("drag — preflight", () => {
-  it("preflight probes `from` and does NOT move the mouse", async () => {
+  it.each([
+    {
+      name: "preflight probes `from` and does NOT move the mouse",
+      cursors: ["default", "pointer"],
+      from: { x: 30, y: 40 },
+      resizeRisk: false,
+    },
+    {
+      name: "flags resizeRisk when a press-point layer has a resize cursor",
+      cursors: ["ew-resize", "default"],
+      from: { x: 5, y: 5 },
+      resizeRisk: true,
+    },
+  ])("$name", async ({ cursors, from, resizeRisk }) => {
     const m = fakeMouse();
-    const r = (await drag(pageWithProbe(m, ["default", "pointer"]), refs, {
-      from: { coords: { x: 30, y: 40 } },
+    const r = (await drag(pageWithProbe(m, cursors), refs, {
+      from: { coords: from },
       to: { coords: { x: 0, y: 0 } },
       preflight: true,
     })) as DragPreflight;
-    expect(r.preflight.point).toEqual({ x: 30, y: 40 });
-    expect(r.preflight.resizeRisk).toBe(false);
+    expect(r.preflight.point).toEqual(from);
+    expect(r.preflight.resizeRisk).toBe(resizeRisk);
     expect(m.log).toEqual([]); // nothing dragged
-  });
-
-  it("flags resizeRisk when a press-point layer has a resize cursor", async () => {
-    const m = fakeMouse();
-    const r = (await drag(pageWithProbe(m, ["ew-resize", "default"]), refs, {
-      from: { coords: { x: 5, y: 5 } },
-      to: { coords: { x: 0, y: 0 } },
-      preflight: true,
-    })) as DragPreflight;
-    expect(r.preflight.resizeRisk).toBe(true);
-    expect(m.log).toEqual([]);
   });
 });
 
@@ -195,33 +197,34 @@ function fakeCdp() {
 }
 
 describe("touchAction", () => {
-  it("touch_start dispatches touchStart with default identifier 1", async () => {
+  it.each([
+    {
+      name: "touch_start dispatches touchStart with default identifier 1",
+      action: "start" as const,
+      args: { coords: { x: 10, y: 20 } },
+      report: { ok: true, action: "start", coords: { x: 10, y: 20 }, identifier: 1 },
+      params: { type: "touchStart", touchPoints: [{ x: 10, y: 20, id: 1 }] },
+    },
+    {
+      name: "touch_move propagates a custom identifier (multi-finger fan-out)",
+      action: "move" as const,
+      args: { coords: { x: 5, y: 6 }, identifier: 7 },
+      report: { ok: true, action: "move", coords: { x: 5, y: 6 }, identifier: 7 },
+      params: { type: "touchMove", touchPoints: [{ x: 5, y: 6, id: 7 }] },
+    },
+    {
+      name: "touch_end with no coords dispatches an empty touchPoints[] (all fingers up)",
+      action: "end" as const,
+      args: {},
+      report: { ok: true, action: "end", identifier: 1 },
+      params: { type: "touchEnd", touchPoints: [] },
+    },
+  ])("$name", async ({ action, args, report, params }) => {
     const { cdp, calls } = fakeCdp();
-    const r = await touchAction(cdp, "start", { coords: { x: 10, y: 20 } });
-    expect(r).toEqual({ ok: true, action: "start", coords: { x: 10, y: 20 }, identifier: 1 });
+    expect(await touchAction(cdp, action, args)).toEqual(report);
     expect(calls).toHaveLength(1);
     expect(calls[0]?.method).toBe("Input.dispatchTouchEvent");
-    expect(calls[0]?.params).toMatchObject({
-      type: "touchStart",
-      touchPoints: [{ x: 10, y: 20, id: 1 }],
-    });
-  });
-
-  it("touch_move propagates a custom identifier — multi-finger fan-out", async () => {
-    const { cdp, calls } = fakeCdp();
-    const r = await touchAction(cdp, "move", { coords: { x: 5, y: 6 }, identifier: 7 });
-    expect(r.identifier).toBe(7);
-    expect(calls[0]?.params).toMatchObject({
-      type: "touchMove",
-      touchPoints: [{ x: 5, y: 6, id: 7 }],
-    });
-  });
-
-  it("touch_end with no coords dispatches an empty touchPoints[] (all fingers up)", async () => {
-    const { cdp, calls } = fakeCdp();
-    const r = await touchAction(cdp, "end", {});
-    expect(r).toEqual({ ok: true, action: "end", identifier: 1 });
-    expect(calls[0]?.params).toMatchObject({ type: "touchEnd", touchPoints: [] });
+    expect(calls[0]?.params).toMatchObject(params);
   });
 
   it("touch_start / touch_move without coords reject", async () => {

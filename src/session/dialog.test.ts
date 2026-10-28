@@ -66,21 +66,18 @@ function makeDialog(opts: {
 }
 
 describe("parseDialogPolicyArg", () => {
-  it("defaults to raise when undefined", () => {
-    expect(parseDialogPolicyArg(undefined)).toEqual({ mode: "raise" });
-  });
-
-  it("parses each simple mode", () => {
-    expect(parseDialogPolicyArg("accept")).toEqual({ mode: "accept" });
-    expect(parseDialogPolicyArg("dismiss")).toEqual({ mode: "dismiss" });
-    expect(parseDialogPolicyArg("raise")).toEqual({ mode: "raise" });
-  });
-
-  it("parses accept-prompt-with:<text>", () => {
-    expect(parseDialogPolicyArg("accept-prompt-with:hello world")).toEqual({
-      mode: "accept-prompt-with",
-      text: "hello world",
-    });
+  it.each([
+    { label: "defaults to raise when undefined", input: undefined, expected: { mode: "raise" } },
+    { label: "parses accept", input: "accept", expected: { mode: "accept" } },
+    { label: "parses dismiss", input: "dismiss", expected: { mode: "dismiss" } },
+    { label: "parses raise", input: "raise", expected: { mode: "raise" } },
+    {
+      label: "parses accept-prompt-with:<text>",
+      input: "accept-prompt-with:hello world",
+      expected: { mode: "accept-prompt-with", text: "hello world" },
+    },
+  ])("$label", ({ input, expected }) => {
+    expect(parseDialogPolicyArg(input)).toEqual(expected);
   });
 
   it("rejects unknown values", () => {

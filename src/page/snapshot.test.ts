@@ -27,17 +27,20 @@ describe("serialise", () => {
     expect(out).toContain('button "Cancel" [ref=e4] [disabled]');
   });
 
-  it("includes testid hints with the configured attr name (default data-testid)", () => {
-    const tree: A11yNode = node("button", "Play", "e1", [], { testId: "play-recap" });
-    expect(serialise(tree)).toContain('[data-testid="play-recap"]');
-  });
-
-  it("emits the actual matched attribute (e.g. data-type) when known", () => {
-    const tree: A11yNode = node("generic", undefined, "e2", [], {
-      testId: "stats-pane",
-      testIdAttr: "data-type",
-    });
-    expect(serialise(tree)).toContain('[data-type="stats-pane"]');
+  it.each([
+    {
+      name: "includes testid hints with the configured attr name (default data-testid)",
+      extra: { testId: "play-recap" },
+      hint: '[data-testid="play-recap"]',
+    },
+    {
+      name: "emits the actual matched attribute (e.g. data-type) when known",
+      extra: { testId: "stats-pane", testIdAttr: "data-type" },
+      hint: '[data-type="stats-pane"]',
+    },
+  ])("$name", ({ extra, hint }) => {
+    const tree: A11yNode = node("button", "Play", "e1", [], extra);
+    expect(serialise(tree)).toContain(hint);
   });
 
   it("marks DOM-walk-only nodes with [from-dom] and combined-source nodes with [from-both]", () => {

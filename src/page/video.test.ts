@@ -31,15 +31,21 @@ afterEach(() => {
 });
 
 describe("defaultVideoFilename", () => {
-  it("uses ISO timestamp with colon/dot stripped + safe session id", () => {
-    const name = defaultVideoFilename("agent-a", new Date("2026-06-08T12:34:56.789Z"));
-    expect(name).toBe("agent-a-2026-06-08T12-34-56-789Z.webm");
-  });
-
-  it("scrubs unsafe characters in the session id", () => {
-    const name = defaultVideoFilename("bad/id:with*chars", new Date("2026-06-08T12:00:00.000Z"));
-    expect(name).toMatch(/^bad_id_with_chars-/);
-    expect(name).toMatch(/\.webm$/);
+  it.each([
+    {
+      name: "uses ISO timestamp with colon/dot stripped + safe session id",
+      id: "agent-a",
+      at: "2026-06-08T12:34:56.789Z",
+      expected: /^agent-a-2026-06-08T12-34-56-789Z\.webm$/,
+    },
+    {
+      name: "scrubs unsafe characters in the session id",
+      id: "bad/id:with*chars",
+      at: "2026-06-08T12:00:00.000Z",
+      expected: /^bad_id_with_chars-.*\.webm$/,
+    },
+  ])("$name", ({ id, at, expected }) => {
+    expect(defaultVideoFilename(id, new Date(at))).toMatch(expected);
   });
 });
 
@@ -68,15 +74,21 @@ describe("resolveVideoTargetPath (workspace-rooted)", () => {
 });
 
 describe("resolveVideoStagingDir", () => {
-  it("creates a per-session staging dir under `videos/.staging/`", () => {
-    const d = resolveVideoStagingDir(ws, "session-x", new Date("2026-06-08T12:00:00.000Z"));
-    expect(d).toBe(join(ws, "videos/.staging/session-x-2026-06-08T12-00-00-000Z"));
+  it.each([
+    {
+      name: "creates a per-session staging dir under `videos/.staging/`",
+      id: "session-x",
+      dir: "videos/.staging/session-x-2026-06-08T12-00-00-000Z",
+    },
+    {
+      name: "scrubs unsafe characters in the session id",
+      id: "bad/id:with*chars",
+      dir: "videos/.staging/bad_id_with_chars-2026-06-08T12-00-00-000Z",
+    },
+  ])("$name", ({ id, dir }) => {
+    const d = resolveVideoStagingDir(ws, id, new Date("2026-06-08T12:00:00.000Z"));
+    expect(d).toBe(join(ws, dir));
     expect(existsSync(d)).toBe(true);
-  });
-
-  it("scrubs unsafe characters in the session id", () => {
-    const d = resolveVideoStagingDir(ws, "bad/id:with*chars", new Date("2026-06-08T12:00:00.000Z"));
-    expect(d).toMatch(/videos\/\.staging\/bad_id_with_chars-/);
   });
 });
 
@@ -172,18 +184,13 @@ describe("finalizeVideoOnClose", () => {
     expect(state.finalized).toBe(true);
   });
 
-  it("is a no-op when the recorder isn't active", async () => {
-    const { page, saveAsCalls } = fakePageWithVideo();
+  it.each([
+    { name: "the recorder isn't active", active: false, nullVideo: false },
+    { name: "page.video() is null (best-effort)", active: true, nullVideo: true },
+  ])("is a no-op when $name", async ({ active, nullVideo }) => {
+    const { page, saveAsCalls } = fakePageWithVideo({ nullVideo });
     const state = newVideoRecorderState();
-    await finalizeVideoOnClose(page, state);
-    expect(saveAsCalls).toEqual([]);
-    expect(state.finalized).toBe(false);
-  });
-
-  it("is a no-op when page.video() is null (best-effort)", async () => {
-    const { page, saveAsCalls } = fakePageWithVideo({ nullVideo: true });
-    const state = newVideoRecorderState();
-    state.active = true;
+    state.active = active;
     state.targetPath = join(ws, "videos/missing.webm");
     await finalizeVideoOnClose(page, state);
     expect(saveAsCalls).toEqual([]);

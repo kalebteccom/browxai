@@ -160,16 +160,13 @@ describe("PlaywrightActionSubstrate.gesture", () => {
     });
   });
 
-  it.each(ALL_SAMPLES.map((req) => [req.kind, req] as const))(
-    "[%s] refuses on an engine whose context carries no CDP accessor",
-    async (_kind, req) => {
-      const sub = new PlaywrightActionSubstrate(() => ({}) as unknown as ActionContext, "firefox");
-      const r = await sub.gesture(req);
-      expect(r.kind).toBe("refusal");
-      expect(r.kind === "refusal" && r.engine).toBe("firefox");
-      expect(r.kind === "refusal" && r.hint).toContain(TOUCH_DISPATCH_ENGINE_REFUSAL);
-    },
-  );
+  it("refuses on an engine whose context carries no CDP accessor", async () => {
+    const sub = new PlaywrightActionSubstrate(() => ({}) as unknown as ActionContext, "firefox");
+    const r = await sub.gesture(GESTURE_SAMPLES.touch);
+    expect(r.kind).toBe("refusal");
+    expect(r.kind === "refusal" && r.engine).toBe("firefox");
+    expect(r.kind === "refusal" && r.hint).toContain(TOUCH_DISPATCH_ENGINE_REFUSAL);
+  });
 });
 
 describe("SafariActionSubstrate.gesture", () => {

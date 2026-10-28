@@ -10,26 +10,26 @@ function pageWith(boundingBox: () => Promise<unknown>) {
 }
 
 describe("locatorBoundingBox — Playwright fallback for a bogus CDP null", () => {
-  it("returns the rect when the locator has a real rendered box", async () => {
-    const page = pageWith(async () => ({ x: 12, y: 34, width: 100, height: 20 }));
-    expect(await locatorBoundingBox(page, '[data-testid="x"]')).toEqual({
-      x: 12,
-      y: 34,
-      width: 100,
-      height: 20,
-    });
-  });
-
-  it("returns null for a zero-area box (collapsed / display:none-ish)", async () => {
-    const page = pageWith(async () => ({ x: 0, y: 0, width: 0, height: 0 }));
-    expect(await locatorBoundingBox(page, ".collapsed")).toBeNull();
-  });
-
-  it("swallows locator errors and returns null (best-effort)", async () => {
-    const page = pageWith(async () => {
-      throw new Error("strict mode violation");
-    });
-    expect(await locatorBoundingBox(page, ".dupe")).toBeNull();
+  it.each([
+    {
+      name: "returns the rect when the locator has a real rendered box",
+      box: async () => ({ x: 12, y: 34, width: 100, height: 20 }),
+      want: { x: 12, y: 34, width: 100, height: 20 },
+    },
+    {
+      name: "returns null for a zero-area box (collapsed / display:none-ish)",
+      box: async () => ({ x: 0, y: 0, width: 0, height: 0 }),
+      want: null,
+    },
+    {
+      name: "swallows locator errors and returns null (best-effort)",
+      box: async (): Promise<unknown> => {
+        throw new Error("strict mode violation");
+      },
+      want: null,
+    },
+  ])("locatorBoundingBox: $name", async ({ box, want }) => {
+    expect(await locatorBoundingBox(pageWith(box), ".sel")).toEqual(want);
   });
 
   it("forwards opts.timeoutMs to Playwright's boundingBox — caps the auto-wait on a non-matching selector", async () => {

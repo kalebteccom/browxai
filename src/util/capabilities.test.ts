@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 // bootstrap so the lazy collector is installed and the derived rows are present.
 import "../tools/tool-metadata.js";
 import {
+  capabilitiesAssignment,
   capabilitiesWith,
   DEFAULT_CAPABILITIES,
   isToolEnabled,
@@ -18,6 +19,11 @@ describe("resolveCapabilities (BROWX_CAPABILITIES)", () => {
     expect([...c.enabled].sort()).toEqual([...DEFAULT_CAPABILITIES].sort());
   });
 
+  it("parses an explicit comma-separated list", () => {
+    const c = resolveCapabilities({ BROWX_CAPABILITIES: "read,navigation" });
+    expect([...c.enabled].sort()).toEqual(["navigation", "read"]);
+  });
+
   it("rejects unknown capabilities loudly", () => {
     expect(() => resolveCapabilities({ BROWX_CAPABILITIES: "read,banana" })).toThrow(/banana/);
   });
@@ -28,6 +34,13 @@ describe("resolveCapabilities (BROWX_CAPABILITIES)", () => {
     });
     expect([...c.enabled].sort()).toEqual(["navigation", "read"]); // retired one dropped
     expect(c.warnings.some((w) => /unstable/.test(w) && /retired/.test(w))).toBe(true);
+  });
+
+  it("default set excludes eval / byob-attach / file-io", () => {
+    const c = resolveCapabilities({});
+    expect(c.enabled.has("eval")).toBe(false);
+    expect(c.enabled.has("byob-attach")).toBe(false);
+    expect(c.enabled.has("file-io")).toBe(false);
   });
 
   it("reports disabled tools when a capability is off", () => {
@@ -107,5 +120,11 @@ describe("capabilitiesWith / capabilitiesAssignment", () => {
       [...DEFAULT_CAPABILITIES, "byob-attach"].join(","),
     );
     expect(capabilitiesWith("byob-attach")).toBe("read,navigation,action,human,byob-attach");
+  });
+
+  it("renders the BROWX_CAPABILITIES assignment", () => {
+    expect(capabilitiesAssignment("byob-attach")).toBe(
+      "BROWX_CAPABILITIES=read,navigation,action,human,byob-attach",
+    );
   });
 });

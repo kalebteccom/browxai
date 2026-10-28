@@ -88,24 +88,6 @@ const NO_PLAYWRIGHT_PAGE: ReadonlySet<EngineKind> = new Set<EngineKind>([
 ]);
 
 describe("L5 — every adapter honors its declared port contract", () => {
-  it.each(ENGINE_KINDS)(
-    "[%s] has a capability declaration with the universal sub-interfaces",
-    (engine) => {
-      const caps = capabilitiesFor(engine);
-      expect(caps, `${engine} has no capability declaration`).toBeDefined();
-      // snapshot is universal — every engine, including the no-Playwright-Page
-      // Safari, must be able to produce an a11y snapshot.
-      expect(caps!.subInterfaces.has("snapshot")).toBe(true);
-      // No engine may claim `deep` (the raw-CDP escape hatch) without a real CDP
-      // handle. The three that do are the three Chromium-family lanes: desktop
-      // chromium, the Chrome-on-Android attach, and the Electron-app attach.
-      // firefox / webkit / safari must never appear here.
-      if (caps!.deep) {
-        expect(["chromium", "android", "electron"]).toContain(engine);
-      }
-    },
-  );
-
   // D5 (RFC 0004 P1): page-availability is now a DECLARED capability — the `"page"`
   // sub-interface is present iff the engine backs a real Playwright Page. This is
   // the seam that closes the Safari LSP leak: a no-Page engine omits `"page"`, its

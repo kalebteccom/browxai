@@ -8,27 +8,35 @@ import { describe, it, expect, vi } from "vitest";
 import { WsInteractiveRegistry, globToRegex, WS_PAGE_SCRIPT } from "./ws-interactive.js";
 
 describe("globToRegex", () => {
-  it("treats * as a single-segment wildcard", () => {
-    const r = globToRegex("wss://x/*");
-    expect(r.test("wss://x/foo")).toBe(true);
-    expect(r.test("wss://x/foo/bar")).toBe(false); // single segment only
-  });
-
-  it("treats ** as any-character (including /)", () => {
-    const r = globToRegex("wss://x/**");
-    expect(r.test("wss://x/foo")).toBe(true);
-    expect(r.test("wss://x/foo/bar/baz")).toBe(true);
-  });
-
-  it("escapes regex metacharacters in literal portions", () => {
-    const r = globToRegex("wss://host.example/chat?room=1");
-    expect(r.test("wss://host.example/chat?room=1")).toBe(true);
-    expect(r.test("wssxhostxexample/chat?room=1")).toBe(false);
-  });
-
-  it("anchors the start — a prefix mismatch fails even with **", () => {
-    const r = globToRegex("wss://x/**");
-    expect(r.test("not-wss://x/foo")).toBe(false);
+  it.each([
+    {
+      name: "treats * as a single-segment wildcard",
+      glob: "wss://x/*",
+      matches: ["wss://x/foo"],
+      misses: ["wss://x/foo/bar"], // single segment only
+    },
+    {
+      name: "treats ** as any-character (including /)",
+      glob: "wss://x/**",
+      matches: ["wss://x/foo", "wss://x/foo/bar/baz"],
+      misses: [],
+    },
+    {
+      name: "escapes regex metacharacters in literal portions",
+      glob: "wss://host.example/chat?room=1",
+      matches: ["wss://host.example/chat?room=1"],
+      misses: ["wssxhostxexample/chat?room=1"],
+    },
+    {
+      name: "anchors the start, so a prefix mismatch fails even with **",
+      glob: "wss://x/**",
+      matches: [],
+      misses: ["not-wss://x/foo"],
+    },
+  ])("$name", ({ glob, matches, misses }) => {
+    const r = globToRegex(glob);
+    for (const m of matches) expect(r.test(m), m).toBe(true);
+    for (const m of misses) expect(r.test(m), m).toBe(false);
   });
 });
 
@@ -128,24 +136,17 @@ describe("WsInteractiveRegistry.addInterceptor", () => {
 });
 
 describe("WsInteractiveRegistry.removeInterceptor", () => {
-  it("removes one by pattern", async () => {
+  it.each([
+    { name: "removes one by pattern", arg: { pattern: "a" }, removed: ["a"], active: ["b"] },
+    { name: "with no pattern clears every interceptor", arg: {}, removed: ["a", "b"], active: [] },
+  ])("$name", async ({ arg, removed, active }) => {
     const reg = new WsInteractiveRegistry();
     const f = fakePage();
     await reg.addInterceptor(f.page, { pattern: "a", response: "drop" });
     await reg.addInterceptor(f.page, { pattern: "b", response: "drop" });
-    const r = await reg.removeInterceptor(f.page, { pattern: "a" });
-    expect(r.removed).toEqual(["a"]);
-    expect(r.active).toEqual(["b"]);
-  });
-
-  it("with no pattern clears every interceptor", async () => {
-    const reg = new WsInteractiveRegistry();
-    const f = fakePage();
-    await reg.addInterceptor(f.page, { pattern: "a", response: "drop" });
-    await reg.addInterceptor(f.page, { pattern: "b", response: "drop" });
-    const r = await reg.removeInterceptor(f.page, {});
-    expect(r.removed.sort()).toEqual(["a", "b"]);
-    expect(r.active).toEqual([]);
+    const r = await reg.removeInterceptor(f.page, arg);
+    expect(r.removed.sort()).toEqual(removed);
+    expect(r.active).toEqual(active);
   });
 });
 

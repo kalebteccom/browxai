@@ -15,14 +15,19 @@ function parseFirst(res: {
 }
 
 describe("@browxai/plugin-example handlers", () => {
-  it("echo defaults to empty string when msg is missing", async () => {
-    const res = await handlers.echo({});
-    expect(parseFirst(res)).toEqual({ ok: true, result: "" });
-  });
-
-  it("add defaults missing args to 0", async () => {
-    const res = await handlers.add({});
-    expect(parseFirst(res)).toEqual({ ok: true, sum: 0 });
+  it.each([
+    {
+      label: "echo defaults to empty string when msg is missing",
+      run: () => handlers.echo({}),
+      expected: { ok: true, result: "" },
+    },
+    {
+      label: "add defaults missing args to 0",
+      run: () => handlers.add({}),
+      expected: { ok: true, sum: 0 },
+    },
+  ])("$label", async ({ run, expected }) => {
+    expect(parseFirst(await run())).toEqual(expected);
   });
 
   it("now returns ISO + epoch", async () => {

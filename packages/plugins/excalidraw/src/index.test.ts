@@ -34,110 +34,119 @@ function parseFirst(res: {
   return JSON.parse(first.text!) as Record<string, unknown>;
 }
 
+// A loaded page answers the typeof probe with true and everything else with `page`.
+function loadedApi(page: unknown) {
+  return makeApi(async (_name, args) => {
+    const expr = (args as { expr: string }).expr;
+    if (expr.includes("typeof window.excalidrawAPI")) return evalEnvelope(true);
+    return evalEnvelope(page);
+  });
+}
+
+interface HappyRow {
+  label: string;
+  tool: keyof typeof handlers;
+  args: Record<string, unknown>;
+  page: unknown;
+  expected: Record<string, unknown>;
+}
+
+interface ErrorRow {
+  label: string;
+  tool: keyof typeof handlers;
+  args: Record<string, unknown>;
+  loaded: boolean;
+  page?: unknown;
+  code: string;
+}
+
+const element = { id: "el1", type: "rectangle", x: 0, y: 0, width: 100, height: 50 };
+const appState = { viewBackgroundColor: "#fff", viewModeEnabled: false, zoom: { value: 1 } };
+
 describe("@browxai/plugin-excalidraw handlers", () => {
-  describe("get_scene_state", () => {
-    it("returns parsed scene state on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.excalidrawAPI")) return evalEnvelope(true);
-        return evalEnvelope({
-          elements: [{ id: "el1", type: "rectangle", x: 0, y: 0, width: 100, height: 50 }],
-          appState: { viewBackgroundColor: "#fff", viewModeEnabled: false, zoom: { value: 1 } },
-        });
-      });
-      const res = await handlers.get_scene_state(api, {});
-      const parsed = parseFirst(res);
-      expect(parsed.ok).toBe(true);
-      expect((parsed.elements as unknown[]).length).toBe(1);
-    });
-
-    it("returns excalidraw-not-loaded when excalidrawAPI is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.get_scene_state(api, {});
-      expect(parseFirst(res).code).toBe("excalidraw-not-loaded");
-    });
+  it.each<HappyRow>([
+    {
+      label: "get_scene_state returns the parsed scene state",
+      tool: "get_scene_state",
+      args: {},
+      page: { elements: [element], appState },
+      expected: { ok: true, elements: [element], appState },
+    },
+    {
+      label: "get_viewport returns scroll and zoom",
+      tool: "get_viewport",
+      args: {},
+      page: { scrollX: 100, scrollY: 200, zoom: 2 },
+      expected: { ok: true, scrollX: 100, scrollY: 200, zoom: 2 },
+    },
+    {
+      label: "add_element returns elementId",
+      tool: "add_element",
+      args: { type: "rectangle", x: 0, y: 0, width: 100, height: 50 },
+      page: { elementId: "abc-123" },
+      expected: { ok: true, elementId: "abc-123" },
+    },
+    {
+      label: "delete_element returns ok and elementId",
+      tool: "delete_element",
+      args: { elementId: "el1" },
+      page: { removed: 1 },
+      expected: { ok: true, elementId: "el1" },
+    },
+    {
+      label: "set_scroll returns the new scroll position",
+      tool: "set_scroll",
+      args: { scrollX: 50, scrollY: 75 },
+      page: { scrollX: 50, scrollY: 75 },
+      expected: { ok: true, scrollX: 50, scrollY: 75 },
+    },
+  ])("$label", async (row) => {
+    const res = await handlers[row.tool](loadedApi(row.page), row.args);
+    expect(parseFirst(res)).toEqual(row.expected);
   });
 
-  describe("get_viewport", () => {
-    it("returns scroll + zoom on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.excalidrawAPI")) return evalEnvelope(true);
-        return evalEnvelope({ scrollX: 100, scrollY: 200, zoom: 2 });
-      });
-      const res = await handlers.get_viewport(api, {});
-      expect(parseFirst(res)).toEqual({ ok: true, scrollX: 100, scrollY: 200, zoom: 2 });
-    });
-  });
-
-  describe("add_element", () => {
-    it("returns elementId on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.excalidrawAPI")) return evalEnvelope(true);
-        return evalEnvelope({ elementId: "abc-123" });
-      });
-      const res = await handlers.add_element(api, {
-        type: "rectangle",
-        x: 0,
-        y: 0,
-        width: 100,
-        height: 50,
-      });
-      expect(parseFirst(res)).toEqual({ ok: true, elementId: "abc-123" });
-    });
-
-    it("returns bad-arg when type missing", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.add_element(api, { x: 0, y: 0, width: 100, height: 50 });
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
-  });
-
-  describe("delete_element", () => {
-    it("returns ok on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.excalidrawAPI")) return evalEnvelope(true);
-        return evalEnvelope({ removed: 1 });
-      });
-      const res = await handlers.delete_element(api, { elementId: "el1" });
-      expect(parseFirst(res)).toEqual({ ok: true, elementId: "el1" });
-    });
-
-    it("returns element-not-found when element absent", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.excalidrawAPI")) return evalEnvelope(true);
-        return evalEnvelope({ removed: 0 });
-      });
-      const res = await handlers.delete_element(api, { elementId: "missing" });
-      expect(parseFirst(res).code).toBe("element-not-found");
-    });
-
-    it("returns bad-arg when elementId missing", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.delete_element(api, {});
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
-  });
-
-  describe("set_scroll", () => {
-    it("returns ok on happy path", async () => {
-      const api = makeApi(async (_name, args) => {
-        const expr = (args as { expr: string }).expr;
-        if (expr.includes("typeof window.excalidrawAPI")) return evalEnvelope(true);
-        return evalEnvelope({ scrollX: 50, scrollY: 75 });
-      });
-      const res = await handlers.set_scroll(api, { scrollX: 50, scrollY: 75 });
-      expect(parseFirst(res)).toEqual({ ok: true, scrollX: 50, scrollY: 75 });
-    });
-
-    it("returns bad-arg when scrollY missing", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.set_scroll(api, { scrollX: 50 });
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
+  it.each<ErrorRow>([
+    {
+      label: "get_scene_state returns excalidraw-not-loaded when excalidrawAPI is undefined",
+      tool: "get_scene_state",
+      args: {},
+      loaded: false,
+      code: "excalidraw-not-loaded",
+    },
+    {
+      label: "add_element returns bad-arg when type is missing",
+      tool: "add_element",
+      args: { x: 0, y: 0, width: 100, height: 50 },
+      loaded: true,
+      code: "bad-arg",
+    },
+    {
+      label: "delete_element returns element-not-found when the element is absent",
+      tool: "delete_element",
+      args: { elementId: "missing" },
+      loaded: true,
+      page: { removed: 0 },
+      code: "element-not-found",
+    },
+    {
+      label: "delete_element returns bad-arg when elementId is missing",
+      tool: "delete_element",
+      args: {},
+      loaded: true,
+      code: "bad-arg",
+    },
+    {
+      label: "set_scroll returns bad-arg when scrollY is missing",
+      tool: "set_scroll",
+      args: { scrollX: 50 },
+      loaded: true,
+      code: "bad-arg",
+    },
+  ])("$label", async (row) => {
+    const api = row.loaded ? loadedApi(row.page ?? true) : makeApi(async () => evalEnvelope(false));
+    const parsed = parseFirst(await handlers[row.tool](api, row.args));
+    expect(parsed.ok).toBe(false);
+    expect(parsed.code).toBe(row.code);
   });
 });
 

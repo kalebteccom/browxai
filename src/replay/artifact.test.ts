@@ -201,31 +201,32 @@ describe("integrity", () => {
     await expect(readArtifact(root, "bad.browx")).rejects.toThrow(/digest mismatch/);
   });
 
-  it("refuses a container with no manifest", async () => {
-    writeFileSync(
-      join(root, "nomanifest.browx"),
-      zipBuild([{ name: EVENTS_ENTRY, data: Buffer.from("x") }]),
-    );
-    await expect(readArtifact(root, "nomanifest.browx")).rejects.toThrow(/missing manifest\.json/);
-  });
-
-  it("refuses a container with no event log", async () => {
-    writeFileSync(
-      join(root, "nolog.browx"),
-      zipBuild([
-        {
-          name: MANIFEST_ENTRY,
-          data: Buffer.from(JSON.stringify({ ...manifest(), eventsDigest: "0" })),
-        },
-      ]),
-    );
-    await expect(readArtifact(root, "nolog.browx")).rejects.toThrow(/missing events\.jsonl/);
-  });
-
-  it("refuses a file that is not a zip", async () => {
-    writeFileSync(join(root, "junk.browx"), "definitely not a zip");
-    await expect(readArtifact(root, "junk.browx")).rejects.toThrow(ArtifactIntegrityError);
-    await expect(readArtifact(root, "junk.browx")).rejects.toThrow(/no end-of-central-directory/);
+  it.each<[string, () => Buffer, RegExp]>([
+    [
+      "refuses a container with no manifest",
+      () => zipBuild([{ name: EVENTS_ENTRY, data: Buffer.from("x") }]),
+      /missing manifest\.json/,
+    ],
+    [
+      "refuses a container with no event log",
+      () =>
+        zipBuild([
+          {
+            name: MANIFEST_ENTRY,
+            data: Buffer.from(JSON.stringify({ ...manifest(), eventsDigest: "0" })),
+          },
+        ]),
+      /missing events\.jsonl/,
+    ],
+    [
+      "refuses a file that is not a zip",
+      () => Buffer.from("definitely not a zip"),
+      /no end-of-central-directory/,
+    ],
+  ])("%s", async (_label, build, message) => {
+    writeFileSync(join(root, "broken.browx"), build());
+    await expect(readArtifact(root, "broken.browx")).rejects.toThrow(ArtifactIntegrityError);
+    await expect(readArtifact(root, "broken.browx")).rejects.toThrow(message);
   });
 
   it("refuses a container with a flipped byte inside an entry", async () => {
@@ -294,49 +295,45 @@ describe("forward compatibility", () => {
     });
   });
 
-  it("opens a log written against a newer schema version", async () => {
+  it.each<[string, Partial<ReplayManifest> & Record<string, unknown>]>([
+    [
+      "opens a log written against a newer schema version",
+      { tier: "reexecutable", schemaVersion: 99 },
+    ],
+    ["keeps unknown manifest fields", { futureManifestField: "kept" }],
+  ])("%s", async (_label, over) => {
     await writeArtifact({
       workspaceRoot: root,
-      path: "v99.browx",
-      manifest: { ...manifest({ tier: "reexecutable" }), schemaVersion: 99 },
+      path: "future-manifest.browx",
+      manifest: { ...manifest(), ...over },
       events: futureLog,
     });
-    const art = await readArtifact(root, "v99.browx");
-    expect(art.manifest.schemaVersion).toBe(99);
+    const art = await readArtifact(root, "future-manifest.browx");
+    expect(art.manifest).toMatchObject(over);
     expect(art.events).toHaveLength(3);
-  });
-
-  it("keeps unknown manifest fields", async () => {
-    await writeArtifact({
-      workspaceRoot: root,
-      path: "extra.browx",
-      manifest: { ...manifest(), futureManifestField: "kept" } as Omit<
-        ReplayManifest,
-        "eventsDigest"
-      >,
-      events: futureLog,
-    });
-    const art = await readArtifact(root, "extra.browx");
-    expect(art.manifest).toHaveProperty("futureManifestField", "kept");
   });
 });
 
 describe("parseEventLog", () => {
-  it("quarantines an unparseable line rather than throwing", () => {
-    const out = parseEventLog('{"t":0,"type":"a","v":1,"payload":{}}\n{broken\n');
-    expect(out.events).toHaveLength(1);
-    expect(out.malformed).toEqual(["{broken"]);
-  });
-
-  it("quarantines a line that is valid JSON but not an object", () => {
-    const out = parseEventLog("42\n[1,2]\n");
-    expect(out.events).toEqual([]);
-    expect(out.malformed).toEqual(["42", "[1,2]"]);
-  });
-
-  it("defaults a missing envelope field instead of rejecting the event", () => {
-    const out = parseEventLog('{"type":"legacy/thing","payload":{"a":1}}\n');
-    expect(out.events[0]).toMatchObject({ t: 0, type: "legacy/thing", v: 0, payload: { a: 1 } });
+  it.each<[string, string, unknown[], string[]]>([
+    [
+      "quarantines an unparseable line rather than throwing",
+      '{"t":0,"type":"a","v":1,"payload":{}}\n{broken\n',
+      [{ t: 0, type: "a", v: 1, payload: {} }],
+      ["{broken"],
+    ],
+    ["quarantines a line that is valid JSON but not an object", "42\n[1,2]\n", [], ["42", "[1,2]"]],
+    [
+      "defaults a missing envelope field instead of rejecting the event",
+      '{"type":"legacy/thing","payload":{"a":1}}\n',
+      [{ t: 0, type: "legacy/thing", v: 0, payload: { a: 1 } }],
+      [],
+    ],
+  ])("%s", (_label, raw, events, malformed) => {
+    const out = parseEventLog(raw);
+    expect(out.events).toHaveLength(events.length);
+    expect(out.events).toMatchObject(events);
+    expect(out.malformed).toEqual(malformed);
   });
 });
 
@@ -382,16 +379,13 @@ describe("the zip layer", () => {
     }
   });
 
-  it("stores rather than deflates when deflate would not shrink the entry", () => {
-    const incompressible = randomBytes(4096);
-    const zip = zipBuild([{ name: "r.bin", data: incompressible }]);
-    expect(zip.readUInt16LE(8)).toBe(0);
-    expect(Buffer.from(zipRead(zip).get("r.bin") ?? []).equals(incompressible)).toBe(true);
-  });
-
-  it("deflates an entry that compresses", () => {
-    const zip = zipBuild([{ name: "c.txt", data: Buffer.alloc(8192, 0x61) }]);
-    expect(zip.readUInt16LE(8)).toBe(8);
-    expect(zip.byteLength).toBeLessThan(1000);
+  it.each<[string, Buffer, number]>([
+    ["stores rather than deflates when deflate would not shrink the entry", randomBytes(4096), 0],
+    ["deflates an entry that compresses", Buffer.alloc(8192, 0x61), 8],
+  ])("%s", (_label, data, method) => {
+    const zip = zipBuild([{ name: "r.bin", data }]);
+    expect(zip.readUInt16LE(8)).toBe(method);
+    expect(Buffer.from(zipRead(zip).get("r.bin") ?? []).equals(data)).toBe(true);
+    if (method === 8) expect(zip.byteLength).toBeLessThan(1000);
   });
 });

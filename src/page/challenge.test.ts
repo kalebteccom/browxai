@@ -14,99 +14,103 @@ function markers(over: Partial<ChallengeMarkers> = {}): ChallengeMarkers {
   return { ...CLEAN, ...over };
 }
 
-describe("classifyChallenge — Cloudflare managed challenge", () => {
-  it("detects the interstitial from the challenge-platform script", () => {
-    const r = classifyChallenge(markers({ cfChallengeScript: true }), { status: 403 });
-    expect(r).toEqual({
-      kind: "interstitial",
-      vendor: "cloudflare",
-      evidence: ['script src contains "cdn-cgi/challenge-platform"', "document HTTP status 403"],
-    });
-  });
-
-  it("detects the interstitial from the response header alone when the page probe failed", () => {
-    const r = classifyChallenge(null, { status: 503, cfMitigated: "challenge" });
-    expect(r?.kind).toBe("interstitial");
-    expect(r?.vendor).toBe("cloudflare");
-    expect(r?.evidence).toContain('response header "cf-mitigated: challenge"');
-    expect(r?.evidence).toContain("document HTTP status 503");
-  });
-
-  it("detects the interstitial from the document title", () => {
-    const r = classifyChallenge(markers({ title: "Just a moment..." }), { status: 200 });
-    expect(r?.vendor).toBe("cloudflare");
-    expect(r?.evidence).toEqual(['document title "Just a moment..."']);
-  });
-});
-
-describe("classifyChallenge — Turnstile widget", () => {
-  it("classifies a widget as a widget and carries no HTTP-status evidence", () => {
-    const r = classifyChallenge(markers({ cfTurnstileWidget: true }), { status: 403 });
-    expect(r).toEqual({
-      kind: "widget",
-      vendor: "cloudflare",
-      evidence: ['element ".cf-turnstile[data-sitekey]"'],
-    });
-  });
-
-  it("is shadowed by the interstitial when the gate page also renders a Turnstile", () => {
-    const r = classifyChallenge(
-      markers({ cfChallengeScript: true, cfTurnstileWidget: true, title: "Just a moment..." }),
-      { status: 503, cfMitigated: "challenge" },
-    );
-    expect(r?.kind).toBe("interstitial");
-    expect(r?.evidence).toHaveLength(4);
-  });
-
-  it("is not reported as a generic interstitial from its own verify-you-are-human label", () => {
-    const r = classifyChallenge(
-      markers({ cfTurnstileWidget: true, verificationPhrase: "verify you are human" }),
-      { status: 200 },
-    );
-    expect(r?.kind).toBe("widget");
-  });
-});
-
-describe("classifyChallenge — Anubis", () => {
-  it("detects the proof-of-work interstitial from the asset path and the title", () => {
-    const r = classifyChallenge(
-      markers({ anubisAsset: true, title: "Making sure you're not a bot!" }),
-      { status: 200 },
-    );
-    expect(r).toEqual({
-      kind: "interstitial",
-      vendor: "anubis",
-      evidence: [
-        'asset path contains "/.within.website/x/cmd/anubis/"',
-        'document title "Making sure you\'re not a bot!"',
-      ],
-    });
-  });
-});
-
-describe("classifyChallenge — unknown vendor", () => {
-  it("reports the generic interstitial shape with vendor unknown", () => {
-    const r = classifyChallenge(
-      markers({ title: "Checking your browser", verificationPhrase: "checking your browser" }),
-      { status: 503 },
-    );
-    expect(r?.kind).toBe("interstitial");
-    expect(r?.vendor).toBe("unknown");
-    expect(r?.evidence).toEqual([
-      'document title "Checking your browser"',
-      'page text contains "checking your browser"',
-      "document HTTP status 503",
-    ]);
-  });
-});
-
-describe("classifyChallenge — the common path carries nothing", () => {
-  it("returns undefined for a normal page", () => {
-    expect(classifyChallenge(markers(), { status: 200 })).toBeUndefined();
-  });
-
-  it("returns undefined for a plain 403 with no challenge markers", () => {
-    expect(classifyChallenge(markers({ title: "Forbidden" }), { status: 403 })).toBeUndefined();
+describe("classifyChallenge", () => {
+  it.each([
+    {
+      name: "Cloudflare interstitial from the challenge-platform script",
+      m: markers({ cfChallengeScript: true }),
+      http: { status: 403 },
+      want: {
+        kind: "interstitial",
+        vendor: "cloudflare",
+        evidence: ['script src contains "cdn-cgi/challenge-platform"', "document HTTP status 403"],
+      },
+    },
+    {
+      name: "Cloudflare interstitial from the response header alone when the page probe failed",
+      m: null,
+      http: { status: 503, cfMitigated: "challenge" },
+      want: {
+        kind: "interstitial",
+        vendor: "cloudflare",
+        evidence: expect.arrayContaining([
+          'response header "cf-mitigated: challenge"',
+          "document HTTP status 503",
+        ]),
+      },
+    },
+    {
+      name: "Cloudflare interstitial from the document title",
+      m: markers({ title: "Just a moment..." }),
+      http: { status: 200 },
+      want: {
+        kind: "interstitial",
+        vendor: "cloudflare",
+        evidence: ['document title "Just a moment..."'],
+      },
+    },
+    {
+      name: "Turnstile widget is a widget and carries no HTTP-status evidence",
+      m: markers({ cfTurnstileWidget: true }),
+      http: { status: 403 },
+      want: {
+        kind: "widget",
+        vendor: "cloudflare",
+        evidence: ['element ".cf-turnstile[data-sitekey]"'],
+      },
+    },
+    {
+      name: "Turnstile is shadowed by the interstitial when the gate page also renders it",
+      m: markers({ cfChallengeScript: true, cfTurnstileWidget: true, title: "Just a moment..." }),
+      http: { status: 503, cfMitigated: "challenge" },
+      want: { kind: "interstitial" },
+      evidenceLen: 4,
+    },
+    {
+      name: "Turnstile is not reported as an interstitial from its verify-you-are-human label",
+      m: markers({ cfTurnstileWidget: true, verificationPhrase: "verify you are human" }),
+      http: { status: 200 },
+      want: { kind: "widget" },
+    },
+    {
+      name: "Anubis proof-of-work interstitial from the asset path and the title",
+      m: markers({ anubisAsset: true, title: "Making sure you're not a bot!" }),
+      http: { status: 200 },
+      want: {
+        kind: "interstitial",
+        vendor: "anubis",
+        evidence: [
+          'asset path contains "/.within.website/x/cmd/anubis/"',
+          'document title "Making sure you\'re not a bot!"',
+        ],
+      },
+    },
+    {
+      name: "generic interstitial shape with vendor unknown",
+      m: markers({ title: "Checking your browser", verificationPhrase: "checking your browser" }),
+      http: { status: 503 },
+      want: {
+        kind: "interstitial",
+        vendor: "unknown",
+        evidence: [
+          'document title "Checking your browser"',
+          'page text contains "checking your browser"',
+          "document HTTP status 503",
+        ],
+      },
+    },
+    {
+      name: "nothing for a plain 403 with no challenge markers",
+      m: markers({ title: "Forbidden" }),
+      http: { status: 403 },
+      want: undefined,
+    },
+  ])("classifyChallenge detects: $name", ({ m, http, want, evidenceLen }) => {
+    const r = classifyChallenge(m, http);
+    if (want === undefined) expect(r).toBeUndefined();
+    else if ("vendor" in want && "evidence" in want) expect(r).toEqual(want);
+    else expect(r).toMatchObject(want);
+    if (evidenceLen !== undefined) expect(r?.evidence).toHaveLength(evidenceLen);
   });
 });
 

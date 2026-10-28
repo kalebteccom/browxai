@@ -127,28 +127,26 @@ describe("SDK capability gate — opting in to `network-body` / `file-io` / `sec
 });
 
 describe("SDK session-default behaviour", () => {
-  it("merges the SDK-default `session` into each call when args.session is omitted", async () => {
+  it.each([
+    {
+      label: "merges the SDK-default `session` into each call when args.session is omitted",
+      args: { url: "https://example.com" },
+      expected: { url: "https://example.com", session: "wright-1" },
+    },
+    {
+      label: "does NOT override an explicit args.session",
+      args: { url: "https://example.com", session: "ad-hoc" },
+      expected: { url: "https://example.com", session: "ad-hoc" },
+    },
+  ])("$label", async ({ args, expected }) => {
     const { transport, calls } = mockTransport();
     const client = buildClient({
       transport,
       capabilities: new Set(["read", "navigation", "action", "human"]),
       session: "wright-1",
     });
-    await client.navigate({ url: "https://example.com" });
-    expect(calls).toEqual([
-      { name: "navigate", args: { url: "https://example.com", session: "wright-1" } },
-    ]);
-  });
-
-  it("does NOT override an explicit args.session", async () => {
-    const { transport, calls } = mockTransport();
-    const client = buildClient({
-      transport,
-      capabilities: new Set(["read", "navigation", "action", "human"]),
-      session: "wright-1",
-    });
-    await client.navigate({ url: "https://example.com", session: "ad-hoc" });
-    expect(calls[0]?.args).toMatchObject({ session: "ad-hoc" });
+    await client.navigate(args);
+    expect(calls).toEqual([{ name: "navigate", args: expected }]);
   });
 });
 

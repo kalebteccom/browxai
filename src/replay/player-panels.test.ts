@@ -48,11 +48,16 @@ function sampleEvents(): ReplayEvent[] {
 }
 
 describe("event index", () => {
-  it("buckets by type once, including a type this build has never heard of", () => {
+  it("buckets by type once, including an unknown type, and windows a type inclusive at both ends", () => {
     const index = indexEvents(sampleEvents());
     expect(index.count("net/request")).toBe(2);
     expect(index.events("telemetry/flamechart")).toHaveLength(1);
     expect(index.duration).toBe(130);
+    // One type windows to a time range, inclusive at both ends.
+    expect(index.events("net/request", { from: 20 }).map((e) => e.t)).toEqual([90]);
+    expect(index.events("net/request", { to: 10 }).map((e) => e.t)).toEqual([10]);
+    expect(index.events("net/request", { from: 10, to: 90 }).map((e) => e.t)).toEqual([10, 90]);
+    expect(index.events("net/request", { from: 200, to: 300 })).toEqual([]);
   });
 
   it("orders a bucket whose events did not arrive in time order", () => {
@@ -61,14 +66,6 @@ describe("event index", () => {
       ev(10, "console/message", { type: "log", text: "early" }),
     ]);
     expect(index.events("console/message").map((e) => e.t)).toEqual([10, 90]);
-  });
-
-  it("windows one type to a time range, inclusive at both ends", () => {
-    const index = indexEvents(sampleEvents());
-    expect(index.events("net/request", { from: 20 }).map((e) => e.t)).toEqual([90]);
-    expect(index.events("net/request", { to: 10 }).map((e) => e.t)).toEqual([10]);
-    expect(index.events("net/request", { from: 10, to: 90 }).map((e) => e.t)).toEqual([10, 90]);
-    expect(index.events("net/request", { from: 200, to: 300 })).toEqual([]);
   });
 
   it("clamps a negative or non-numeric t instead of corrupting the search", () => {
@@ -168,7 +165,7 @@ describe("network panel", () => {
 });
 
 describe("websocket panel", () => {
-  it("attaches frames to the connection on their url and reads the close", () => {
+  it("attaches frames to the connection on their url, reads the close, and hides it before the open", () => {
     const conns = buildWsConnections(indexEvents(sampleEvents()));
     expect(conns).toHaveLength(1);
     expect(conns[0]).toMatchObject({ requestId: "w1", url: "wss://a.test/socket", closeT: 100 });
@@ -176,10 +173,8 @@ describe("websocket panel", () => {
     const closed = resolveWs(conns, 130).rows[0]!;
     expect(closed.state).toBe("closed");
     expect(closeText(closed)).toBe("closed: 1001 going away");
-  });
 
-  it("hides a connection that had not opened and keeps a later close as open", () => {
-    const conns = buildWsConnections(indexEvents(sampleEvents()));
+    // Before the open the connection is hidden; a later close still reads as open.
     expect(resolveWs(conns, 10).rows).toHaveLength(0);
     const atFrame = resolveWs(conns, 50).rows[0]!;
     expect(atFrame.state).toBe("open");
@@ -350,16 +345,14 @@ describe("coverage view", () => {
     ev(90, "console/message", { type: "log", text: "after" }),
   ];
 
-  it("groups spans by label and lists the steps that ran inside them", () => {
+  it("groups spans by label, lists the steps inside them, and shows an unclosed span running to the end", () => {
     const groups = buildCoverage(indexEvents(spans()));
     expect(groups.map((g) => g.label)).toEqual(["AC-1", "AC-2"]);
     expect(groups[0]).toMatchObject({ from: 10, to: 50, unclosed: false, failures: 1 });
     expect(groups[0]?.steps.map((s) => s.tool)).toEqual(["click", "verify_text"]);
     expect(groups[0]?.note).toBe("checkout");
-  });
 
-  it("shows an unclosed span as unclosed, running to the end of the log", () => {
-    const groups = buildCoverage(indexEvents(spans()));
+    // A span that never ended shows as unclosed, running to the end of the log.
     const open = groups[1]!;
     expect(open).toMatchObject({ label: "AC-2", unclosed: true, from: 60, to: 90 });
     expect(open.spans[0]?.open).toBe(true);
@@ -443,17 +436,32 @@ describe("forward compatibility — a log this build does not understand", () =>
     expect(buildNetworkRows(index)).toHaveLength(1);
   });
 
-  it("never renders a value as [object Object]", () => {
-    expect(displayText({ frames: [1, 2] })).toBe('{"frames":[1,2]}');
-    expect(displayText(undefined)).toBe("—");
-    expect(formatBytes(undefined)).toBe("—");
-  });
-
-  it("still names a redaction whose reason is missing or not a string", () => {
-    expect(displayText({ redacted: true })).toBe("[redacted]");
-    expect(displayText({ redacted: true, reason: { kind: "future" } })).toBe("[redacted]");
-    expect(displayText({ redacted: true, reason: "" })).toBe("[redacted]");
-    expect(formatBytes({ redacted: true })).toBe("[redacted]");
+  it.each<[string, () => string, string]>([
+    [
+      "renders an object as JSON, never [object Object]",
+      () => displayText({ frames: [1, 2] }),
+      '{"frames":[1,2]}',
+    ],
+    ["renders an absent value as a dash", () => displayText(undefined), "—"],
+    ["renders an absent size as a dash", () => formatBytes(undefined), "—"],
+    ["names a redaction that has no reason", () => displayText({ redacted: true }), "[redacted]"],
+    [
+      "names a redaction whose reason is not a string",
+      () => displayText({ redacted: true, reason: { kind: "future" } }),
+      "[redacted]",
+    ],
+    [
+      "names a redaction whose reason is empty",
+      () => displayText({ redacted: true, reason: "" }),
+      "[redacted]",
+    ],
+    [
+      "names a redacted size that has no reason",
+      () => formatBytes({ redacted: true }),
+      "[redacted]",
+    ],
+  ])("%s", (_label, render, expected) => {
+    expect(render()).toBe(expected);
   });
 });
 

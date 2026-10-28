@@ -180,19 +180,20 @@ describe("Cache API CRUD", () => {
   });
 
   describe("input validation", () => {
-    it("rejects missing cacheName", async () => {
+    it.each([
+      {
+        label: "missing cacheName",
+        call: (page: unknown) => cachesList(page as any, { cacheName: "" }, "caches_list"),
+        message: /cacheName/,
+      },
+      {
+        label: "missing url on get",
+        call: (page: unknown) => cachesGet(page as any, { cacheName: "v1", url: "" }, "caches_get"),
+        message: /url/,
+      },
+    ])("rejects $label", async ({ call, message }) => {
       const { page } = fakePage("https://example.com/");
-
-      await expect(cachesList(page as any, { cacheName: "" }, "caches_list")).rejects.toThrow(
-        /cacheName/,
-      );
-    });
-    it("rejects missing url on get", async () => {
-      const { page } = fakePage("https://example.com/");
-
-      await expect(
-        cachesGet(page as any, { cacheName: "v1", url: "" }, "caches_get"),
-      ).rejects.toThrow(/url/);
+      await expect(call(page)).rejects.toThrow(message);
     });
   });
 });
