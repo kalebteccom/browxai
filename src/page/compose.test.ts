@@ -446,3 +446,67 @@ describe("composeSnapshot — the two tiers report one element once", () => {
     expect(out.stats.domWalkNew).toBe(1);
   });
 });
+
+/** A page whose `Accessibility.getFullAXTree` call is answered by `axTree`, with
+ *  the rest of the CDP surface stubbed to an empty page. */
+function axCdp(axTree: () => Promise<unknown>): CDPSession {
+  return fakeCdp(async (method) => {
+    switch (method) {
+      case "Accessibility.enable":
+        return {};
+      case "Accessibility.getFullAXTree":
+        return axTree();
+      case "DOM.getDocument":
+        return { root: { nodeType: 9, children: [] } };
+      case "Runtime.evaluate":
+        return { result: { value: [] } };
+      default:
+        throw new Error(`unexpected CDP method ${method}`);
+    }
+  });
+}
+
+describe("composeSnapshot — a snapshot with no a11y tier says why", () => {
+  it("names the CDP error when accessibility extraction throws", async () => {
+    const cdp = axCdp(async () => {
+      throw new Error("Accessibility.getFullAXTree: Not supported");
+    });
+    const out = await composeSnapshot(cdp, new RefRegistry(), ["data-testid"]);
+    expect(out.tree).toBeNull();
+    expect(out.stats.a11yInteractive).toBe(0);
+    expect(out.warnings.some((w) => w.includes("Accessibility.getFullAXTree: Not supported"))).toBe(
+      true,
+    );
+    expect(out.warnings.some((w) => w.startsWith("accessibility tree extraction failed"))).toBe(
+      true,
+    );
+  });
+
+  it("says the tree was empty when CDP returns no nodes", async () => {
+    const cdp = axCdp(async () => ({ nodes: [] }));
+    const out = await composeSnapshot(cdp, new RefRegistry(), ["data-testid"]);
+    expect(out.tree).toBeNull();
+    expect(out.warnings.some((w) => w.includes("returned no nodes"))).toBe(true);
+    expect(out.warnings.some((w) => w.startsWith("accessibility tree extraction failed"))).toBe(
+      false,
+    );
+  });
+
+  it("reports how many nodes the tree held in the low-content warning", async () => {
+    // A bare a11y root, zero interactive. The count is read after the DOM walk
+    // merges, so the fixture's one DOM-only button makes it 2: the root plus
+    // that button. The count tells a dark a11y tier apart from a page that has
+    // many nodes and no controls.
+    const out = await composeSnapshot(domWalkOnlyCdp(), new RefRegistry(), ["data-testid"]);
+    const low = out.warnings.find((w) => w.startsWith("low-content"));
+    expect(low).toContain("0 interactive descendants under root, 2 node(s) in the tree");
+  });
+
+  it("adds no extraction warning when the a11y tier read the page", async () => {
+    const out = await composeSnapshot(happyPathCdp(), new RefRegistry(), ["data-testid"]);
+    expect(out.warnings.some((w) => w.startsWith("accessibility tree extraction failed"))).toBe(
+      false,
+    );
+    expect(out.warnings.some((w) => w.includes("returned no nodes"))).toBe(false);
+  });
+});

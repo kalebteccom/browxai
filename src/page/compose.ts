@@ -67,7 +67,14 @@ export async function composeSnapshot(
   // attributes off it, and the merge reads the backend node id that tells it
   // which a11y node a DOM-walk entry is a second sighting of.
   const domIndex = await buildDomIndex(cdp, testAttributes).catch(() => EMPTY_DOM_INDEX);
-  const a11y = await getA11yTree(cdp, refs, testAttributes, domIndex).catch(() => null);
+  // A failed extraction used to read as an empty page: `null` here, a
+  // `low-content` warning that blamed the page's markup, and no trace of the
+  // CDP error. Keep the message so the warning below can say what happened.
+  let a11yFailure: string | undefined;
+  const a11y = await getA11yTree(cdp, refs, testAttributes, domIndex).catch((err: unknown) => {
+    a11yFailure = err instanceof Error ? err.message : String(err);
+    return null;
+  });
   if (a11y) markSource(a11y, "a11y");
 
   const a11yInteractive = a11y ? countInteractive(a11y) : 0;
@@ -104,15 +111,13 @@ export async function composeSnapshot(
   // evidence and 's container-probe references them.
   if (a11y) annotateStructuralContext(a11y);
 
-  const warnings: string[] = [];
-  if (a11yInteractive < LOW_A11Y_THRESHOLD) {
-    warnings.push(
-      `low-content a11y tree (${a11yInteractive} interactive descendants under root); ` +
-        `the DOM-walk fallback supplied ${merge.added} new node(s) (${allEntries.length} total candidates seen). ` +
-        `Heavy SPAs with non-semantic markup often surface useful state through the DOM-walk source — ` +
-        `use [from-dom]-marked entries with their [testid=…] hints when present.`,
-    );
-  }
+  const warnings = a11yTierWarnings({
+    a11y,
+    failure: a11yFailure,
+    interactive: a11yInteractive,
+    domWalkNew: merge.added,
+    domWalkTotal: allEntries.length,
+  });
   if (closedShadowWarning) warnings.push(closedShadowWarning);
   if (closedShadowCount > 0) {
     warnings.push(
@@ -249,4 +254,40 @@ function countInteractive(root: A11yNode): number {
     if (INTERACTIVE_ROLES.has(node.role)) n++;
   }
   return n;
+}
+
+function countNodes(root: A11yNode): number {
+  return Array.from(walk(root)).length;
+}
+
+/** Warnings about the a11y tier: why it is missing, and how thin it is. */
+function a11yTierWarnings(t: {
+  a11y: A11yNode | null;
+  failure: string | undefined;
+  interactive: number;
+  domWalkNew: number;
+  domWalkTotal: number;
+}): string[] {
+  const out: string[] = [];
+  if (t.failure !== undefined) {
+    out.push(
+      `accessibility tree extraction failed (${t.failure}); this snapshot has no a11y tier, so ` +
+        `\`stats.a11yInteractive\` reads 0 whatever the page holds.`,
+    );
+  } else if (!t.a11y) {
+    out.push(
+      "Accessibility.getFullAXTree returned no nodes; this snapshot has no a11y tier, so " +
+        "`stats.a11yInteractive` reads 0 whatever the page holds.",
+    );
+  }
+  if (t.interactive < LOW_A11Y_THRESHOLD) {
+    out.push(
+      `low-content a11y tree (${t.interactive} interactive descendants under root, ` +
+        `${t.a11y ? countNodes(t.a11y) : 0} node(s) in the tree); ` +
+        `the DOM-walk fallback supplied ${t.domWalkNew} new node(s) (${t.domWalkTotal} total candidates seen). ` +
+        `Heavy SPAs with non-semantic markup often surface useful state through the DOM-walk source — ` +
+        `use [from-dom]-marked entries with their [testid=…] hints when present.`,
+    );
+  }
+  return out;
 }

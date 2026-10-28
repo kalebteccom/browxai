@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Fixed
+
+- **`snapshot` says why it has no accessibility tier.** When the CDP accessibility call failed, the error was dropped and the snapshot reported `a11yInteractive: 0` with a warning that blamed the page's markup. It now adds `accessibility tree extraction failed (<error>)`, or `Accessibility.getFullAXTree returned no nodes` when the call succeeded with an empty answer. The low-content warning also gives the node count of the tree it read, so a bare root and a page with many nodes and no controls read differently.
+
 ## [0.15.0] - 2026-10-28
 
 ### Added

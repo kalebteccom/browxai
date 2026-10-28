@@ -277,6 +277,8 @@ Each interactive node gets a stable `[ref=eN]` you can pass back to action tools
 
 When the a11y tree has fewer than 5 interactive descendants under root, a warning is emitted, usually meaning the page is a heavy SPA and the DOM-walk source carried the load.
 
+When the accessibility call fails or returns no nodes, the snapshot has no accessibility tier at all. A warning then names the CDP error (`accessibility tree extraction failed (…)`) or says `Accessibility.getFullAXTree returned no nodes`, and `stats.a11yInteractive` reads 0 whatever the page holds. The low-content warning gives the node count of the tree it read.
+
 `stats.tier` names which tier supplied the interactive content: `a11y`, `dom-walk`, `mixed`, or `empty`. `dom-walk` is the degraded case. The accessibility tier found nothing and the DOM-walk fallback answered on its own. `mixed` means the DOM walk contributed elements the accessibility tier does not have. Non-Chromium engines and child-frame snapshots report `dom-walk` by construction: neither runs a CDP accessibility pass.
 
 `stats.domWalkCombined` counts the DOM-walk entries the accessibility tier already had (the `[from-both]` nodes) and `stats.domWalkNew` the ones it did not (`[from-dom]`); the two sum to `stats.domWalkEntries`. Both describe the snapshot in hand, not the session's history.
