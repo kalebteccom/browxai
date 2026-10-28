@@ -4,18 +4,16 @@
 // asserts exit 0, so a guard that always fails cannot pass here either.
 // scripts/check-layout.mjs needs a browser and is covered by the browser job.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanTrees, makeTree, runNode } from "./_guard-tree.js";
+import { REPO, cleanTrees, makeTree, runNode } from "./_guard-tree.js";
 
 afterEach(cleanTrees);
 
 const SCRIPT = "scripts/check-design-rules.mjs";
-const SCRIPTS = [
-  SCRIPT,
-  "scripts/design-type-rules.mjs",
-  "website/scripts/doc-pipeline.mjs",
-  "website/scripts/lib/strip-code.mjs",
-];
+const SCRIPTS = [SCRIPT, "website/scripts/doc-pipeline.mjs"];
+const OG = "website/scripts/gen-og.mjs";
 const DOCS = [
   "tool-reference",
   "threat-model",
@@ -168,5 +166,23 @@ describe("check-design-rules: css", () => {
   it("flags a missing layout guard", () => {
     const css = BASE_CSS.replace(".sl-markdown-content code { overflow-wrap: anywhere; }", "");
     expectRule("code-wrap", { "website/src/styles/brand.css": css });
+  });
+});
+
+describe("check-design-rules: share card", () => {
+  const realOg = readFileSync(join(REPO, OG), "utf8");
+
+  it("passes on the real gen-og.mjs", () => {
+    const { code, out } = check({ [OG]: realOg });
+    expect(out).toContain("check-design-rules: ok");
+    expect(code).toBe(0);
+  });
+
+  it("fails on a gradient planted in gen-og.mjs, naming the rule", () => {
+    const planted = `${realOg}\nconst fx = '<radialGradient id="g1"/>';\n`;
+    const { code, out } = check({ [OG]: planted });
+    expect(code).toBe(1);
+    expect(out).toContain("website/scripts/gen-og.mjs:");
+    expect(out).toContain(": no-gradient-glow:");
   });
 });
