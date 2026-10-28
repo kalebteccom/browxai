@@ -615,6 +615,72 @@ const THIN_A11Y_PAGE = `<!doctype html>
 </center>
 </body></html>`;
 
+// example.com's markup: no landmarks, no test attributes, one link inside a
+// paragraph inside a bare `<div>`. The page a first-time user snapshots, so the
+// snapshot-interactive keystone pins that its link reaches the a11y tier.
+const EXAMPLE_DOMAIN_PAGE = `<!doctype html>
+<html>
+<head>
+    <title>Example Domain</title>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type="text/css">
+    body { background-color: #f0f0f2; margin: 0; padding: 0;
+        font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    div { width: 600px; margin: 5em auto; padding: 2em; background-color: #fdfdff; border-radius: 0.5em; }
+    a:link, a:visited { color: #38488f; text-decoration: none; }
+    @media (max-width: 700px) { div { margin: 0 auto; width: auto; } }
+    </style>
+</head>
+<body>
+<div>
+    <h1>Example Domain</h1>
+    <p>This domain is for use in illustrative examples in documents. You may use this
+    domain in literature without prior coordination or asking for permission.</p>
+    <p><a href="https://www.iana.org/domains/example">More information...</a></p>
+</div>
+</body>
+</html>`;
+
+// A portal home page of the Wikipedia / GitHub / browxai.com kind: a banner with
+// a logo link, a nav, a search form and a sign-in link, a main region with a
+// heading, a content list, and a footer of links. Landmarks and links only, no
+// test attributes, so the a11y tier is the one that has to carry it.
+const PORTAL_HOME_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Portal home</title></head>
+<body>
+  <header>
+    <a href="/" aria-label="Home"><span>Portal</span></a>
+    <nav aria-label="Primary">
+      <ul>
+        <li><a href="/docs">Docs</a></li>
+        <li><a href="/pricing">Pricing</a></li>
+        <li><a href="/blog">Blog</a></li>
+      </ul>
+    </nav>
+    <form role="search" action="/search">
+      <label for="q">Search</label>
+      <input id="q" name="q" type="search" placeholder="Search the portal" />
+      <button type="submit">Go</button>
+    </form>
+    <a href="/login">Sign in</a>
+  </header>
+  <main>
+    <h1>Welcome to the portal</h1>
+    <p>Pick a topic to get started.</p>
+    <ul>
+      <li><a href="/topics/one">First topic</a></li>
+      <li><a href="/topics/two">Second topic</a></li>
+    </ul>
+  </main>
+  <footer>
+    <a href="/about">About</a>
+    <a href="/privacy">Privacy</a>
+  </footer>
+</body></html>`;
+
 // Interactive content parked under wrappers Chromium marks `ignored` in the CDP
 // accessibility tree. Three shapes, all real:
 //   - `role="presentation"` div          → ignored `<none>`, button exposed
@@ -1244,6 +1310,8 @@ function handleUpgrade(
  *   GET /sw.js            → service worker that answers a message with "pong:<data>"
  *   GET /thin-a11y-page   → table-shaped markup with a thin a11y tree
  *   GET /ignored-wrapper-page → interactive content under CDP-ignored wrappers
+ *   GET /example-domain-page → example.com's markup, one link in a paragraph
+ *   GET /portal-home-page → banner, nav, search form, main list and footer links
  *   GET /find-statictext-page → one real button buried in prose that repeats its words
  *   GET /tier-dedup-page  → elements both snapshot tiers see, for the tier join
  *   GET /marks-page       → ten markable elements, six a11y buttons and four DOM-only tiles
@@ -1322,6 +1390,16 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/ignored-wrapper-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(IGNORED_WRAPPER_PAGE);
+      return;
+    }
+    if (u.pathname === "/example-domain-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(EXAMPLE_DOMAIN_PAGE);
+      return;
+    }
+    if (u.pathname === "/portal-home-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(PORTAL_HOME_PAGE);
       return;
     }
     if (u.pathname === "/tier-dedup-page") {
