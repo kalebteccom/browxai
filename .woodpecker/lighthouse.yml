@@ -1,0 +1,65 @@
+# ci-optimised: v1
+# Lighthouse run of the docs site (website/dist) with one pinned third-party tool: lighthouse 13.6.0 (Apache-2.0, npm integrity pinned in scripts/lighthouse/fetch-tools.sh, installed with --ignore-scripts into .audit/tools, never global). MANUAL ONLY: it never runs on push, it is not part of `woodpecker.yml` (`depends_on: [gate, browser]` there does not list it), and it is not a required check. Start it from the Woodpecker UI or `woodpecker-cli pipeline create --branch <branch> <repo>` when the queue is empty.
+# Pages: /, /404.html, /guides/configuration/, /guides/troubleshooting/, /reference/tool-reference/, /security/threat-model/, each as mobile (Lighthouse default emulation) and desktop preset, categories performance, accessibility, best-practices and seo. Canonical URLs only, as built (trailing slash): each one is fetched without following redirects before every run and must answer 200, because a redirect inflates TBT.
+# 3 runs per page and preset; the MEDIAN score of each category is what counts, with the run-to-run spread printed beside it (a single run is noisy under box load). The block also prints the box load: uptime and nproc at the start and end of the run, and the 1-minute load average at the start of each run.
+# THRESHOLDS (documented here and at the top of scripts/lighthouse/block.mjs, change both together): the median must reach performance 0.9, accessibility 1, best-practices 1, seo 1. Exit 1 when any median is below its threshold, exit 2 on a tool error (a run that threw on every try, a page that did not answer 200).
+# Output: the step log is the only readable result. The `audit` step prints one block between `===== LIGHTHOUSE BEGIN =====` and `===== LIGHTHOUSE END =====`: per page+preset the 4 median scores, then every failed audit (id, title, score, display value, the first 3 offending nodes), under 40 KB, repeated as `LH|n|` lines of at most 1.5 KB so a log service that drops a long line loses nothing.
+# Like browser.yml this runs on the browser-runner agent (label below). No secrets, nothing installed globally, no GitHub Actions. Lighthouse runs through its programmatic API, so the CLI's opt-in error reporting is never loaded; CI=1 and NO_UPDATE_NOTIFIER=1 are set anyway.
+# EGRESS: the only network use outside the loopback fixture is the tools step (npm registry), before any browser starts. Chrome only starts through scripts/design-audit/fence.sh's wrapper (non-loopback hosts do not resolve, non-loopback requests go to a dead proxy), the same files design-audit uses. The `fence-test` step fails the run if a page reaches a non-loopback URL.
+# Same rules as gate.yml: heavy commands through scripts/gate-slot.sh, images by exact tag, no brace-style variable references (Woodpecker substitutes those in the YAML before the shell sees them), all logic in scripts/lighthouse/.
+labels:
+  browser: "true"
+when:
+  - event: manual
+steps:
+  # (1) Install and build the docs site, and fetch the browser build the cache volume holds for playwright-core.
+  - &step
+    name: build
+    image: node:26-bookworm
+    depends_on: []
+    volumes:
+      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
+      - /home/gitops/cache/browxai/corepack:/corepack
+      - /home/gitops/cache/browxai/playwright-browsers:/playwright-browsers
+      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
+    environment:
+      COREPACK_HOME: /corepack
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      PLAYWRIGHT_BROWSERS_PATH: /playwright-browsers
+      npm_config_store_dir: /pnpm-store
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
+      - bash scripts/gate-slot.sh pnpm docs:build
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install chromium
+  # (2) lighthouse 13.6.0 (integrity checked, fail closed) with --ignore-scripts. Runs beside `build`; it only writes .audit/tools.
+  - <<: *step
+    name: tools
+    commands:
+      - bash scripts/gate-slot.sh bash scripts/lighthouse/fetch-tools.sh .audit/tools
+  # (3) Wrapper test, the design-audit one: a fixture page on 127.0.0.1 that references three non-loopback URLs. Every one of them must fail and the loopback stylesheet must load, else this step (and the run) fails. The puppeteer-core that lighthouse depends on launches the probe.
+  - <<: *step
+    name: fence-test
+    depends_on: [build, tools]
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium
+      - "bash scripts/design-audit/fence.sh .audit > .audit/wrapper.path"
+      - 'node scripts/design-audit/fence-test.mjs .audit/tools "$(cat .audit/wrapper.path)" .audit/themes'
+  # (4) Serve website/dist on 127.0.0.1:4322, run Lighthouse 3 times per page and preset (36 runs, about 15 to 25 minutes on a quiet box), print the block.
+  - <<: *step
+    name: audit
+    depends_on: [fence-test]
+    environment:
+      COREPACK_HOME: /corepack
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      PLAYWRIGHT_BROWSERS_PATH: /playwright-browsers
+      npm_config_store_dir: /pnpm-store
+      GATE_STEP_BUDGET_SECS: "3300"
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium
+      - bash scripts/gate-slot.sh bash scripts/lighthouse/run-audit.sh .audit
