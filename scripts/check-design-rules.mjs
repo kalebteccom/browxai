@@ -12,7 +12,9 @@
 //
 //   no-gradient-glow        gradient(), backdrop-filter, filter: blur, a box-shadow
 //                            or text-shadow in an accent colour, and any
-//                            aurora or glow name, outside the logo selectors.
+//                            aurora or glow name, outside the logo selectors. Also
+//                            gradients, glow, blur, shadow, opacity and grid lines
+//                            in website/scripts/gen-og.mjs, the share card.
 //   no-pure-colour          #fff, #000, white, black, rgb(255 255 255) and
 //                            rgba(0,0,0) as paint in site CSS, outside the token
 //                            file (brand-tokens.css).
@@ -35,6 +37,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { stripCodeSpans } from "../website/scripts/lib/strip-code.mjs";
+import { ogEffects } from "./design-og-rules.mjs";
 import { hasMeasure, layoutMissing, noteLayout, typeFinding } from "./design-type-rules.mjs";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
@@ -270,6 +273,8 @@ async function main() {
   }
   checkSource(join(SITE, "astro.config.mjs"));
   checkSource(join(SITE, "scripts", "gen-og.mjs"));
+  for (const [n, detail] of ogEffects(join(SITE, "scripts", "gen-og.mjs")))
+    report(join(SITE, "scripts", "gen-og.mjs"), n, "no-gradient-glow", detail);
 
   if (!motionGuard)
     for (const f of transitionFiles)
