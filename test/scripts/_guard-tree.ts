@@ -4,7 +4,15 @@
 // itself is never scanned.
 
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,18 +26,30 @@ export function cleanTrees(): void {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 }
 
-/** A fresh temp tree holding `files` (relative path to content) and copies of
- *  `scripts` (repo-relative paths, copied to the same path in the tree). */
+/** Every guard module a script can import: scripts/*.mjs and the lib folders.
+ *  Copied wholesale, so a new helper module cannot go missing from the tree. */
+function copyGuardModules(root: string): void {
+  mkdirSync(join(root, "scripts"), { recursive: true });
+  for (const name of readdirSync(join(REPO, "scripts")))
+    if (name.endsWith(".mjs")) cpSync(join(REPO, "scripts", name), join(root, "scripts", name));
+  for (const dir of ["scripts/lib", "website/scripts/lib"])
+    if (existsSync(join(REPO, dir))) cpSync(join(REPO, dir), join(root, dir), { recursive: true });
+}
+
+/** A fresh temp tree holding `files` (relative path to content), every guard
+ *  module (see copyGuardModules) and copies of `scripts` (repo-relative paths,
+ *  copied to the same path in the tree). `files` win over the copies. */
 export function makeTree(files: Record<string, string>, scripts: string[] = []): string {
   const root = mkdtempSync(join(tmpdir(), "browxai-guard-"));
   roots.push(root);
-  for (const [path, content] of Object.entries(files)) {
-    mkdirSync(dirname(join(root, path)), { recursive: true });
-    writeFileSync(join(root, path), content);
-  }
+  copyGuardModules(root);
   for (const path of scripts) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     cpSync(join(REPO, path), join(root, path));
+  }
+  for (const [path, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), content);
   }
   return root;
 }
