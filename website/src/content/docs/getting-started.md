@@ -72,7 +72,9 @@ Cursor, Codex and Claude Desktop it finds, for example `~/.cursor/mcp.json`. It
 prints the change first. A file that exists is merged, and the old copy is kept
 as `<config>.browxai-bak`. Pass `--no-write-user-config` to leave those files
 alone, or `--no-write` to print everything and write nothing. An older
-`--write-user-config` still works and does nothing extra. At the end it opens a
+`--write-user-config` still works and does nothing extra. A file init will not edit
+(not plain JSON, or one that already has a browxai entry) is left as it is. A read
+or write error on a config makes init exit with code 1, after it tried every client. At the end it opens a
 headless private session on a blank page, takes a snapshot and closes it, then
 prints `ok: first snapshot in N ms`. If that fails, init says what to fix and
 exits with code 1. Add `--no-smoke` to skip that check.

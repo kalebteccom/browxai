@@ -612,7 +612,7 @@ describe("browxai init user-level config, on by default", () => {
       expect(existsSync(DESKTOP(home))).toBe(true);
     });
 
-    it("whose write fails is named, and the run carries on without a failing exit", async () => {
+    it("whose write fails is named, exits 1, and the other clients are still written", async () => {
       installAll();
       const applyConfig = vi.fn().mockImplementationOnce(() => {
         throw Object.assign(new Error("EACCES"), { code: "EACCES" });
@@ -622,9 +622,32 @@ describe("browxai init user-level config, on by default", () => {
         applyConfig,
         readConfig: () => undefined,
       });
-      expect(code).toBe(0);
+      expect(code).toBe(1);
       expect(out).toContain("could not write");
       expect(applyConfig).toHaveBeenCalledTimes(3);
+    });
+
+    it("that cannot be read exits 1, and the other clients are still written", async () => {
+      installAll();
+      const readConfig = vi.fn().mockImplementationOnce(() => {
+        throw Object.assign(new Error("EACCES SECRET"), { code: "EACCES" });
+      });
+      readConfig.mockReturnValue(undefined);
+      const applyConfig = vi.fn();
+      const code = await runInit([dir, ...BASE], { system: sys(), readConfig, applyConfig });
+      expect(code).toBe(1);
+      expect(out).toContain("can't be read (permission denied)");
+      expect(out).not.toContain("SECRET");
+      expect(readConfig).toHaveBeenCalledTimes(3);
+      expect(applyConfig).toHaveBeenCalledTimes(2);
+    });
+
+    it("a refusal alone leaves the exit code at 0", async () => {
+      installAll();
+      writeFileSync(CODEX(home), 'mcp_servers = { other = { command = "y" } }\n');
+      const code = await runInit([dir, ...BASE], { system: sys() });
+      expect(code).toBe(0);
+      expect(out).toContain("already mentions browxai or sets mcp_servers inline");
     });
   });
 });

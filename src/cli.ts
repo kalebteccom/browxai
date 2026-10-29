@@ -44,10 +44,12 @@ const USAGE = `Usage: browxai [subcommand]
   browxai init <workspace>      one-command start: writes <workspace>/.mcp.json, prints the
                                 setup line for each MCP client it finds (Claude Code,
                                 Cursor, Codex, Claude Desktop), adds browxai to the
-                                user-level config of each one that has a file (prints
-                                the change, merges into an existing file and keeps the
-                                old copy as <config>.browxai-bak), then checks that a
-                                headless session can take a snapshot.
+                                user-level config of each one it finds (prints the
+                                change, merges into an existing file and keeps the old
+                                copy as <config>.browxai-bak), then checks that a
+                                headless session can take a snapshot. A file it will not
+                                edit exits 0 with by-hand steps; a read or write error
+                                exits 1 after every client was tried.
                                 --no-write-user-config leaves those client files alone.
                                 --write-user-config [<client>] is a no-op kept for older
                                 scripts; a client limits the write to that one.
