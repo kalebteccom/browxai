@@ -1,4 +1,5 @@
 import { defineRouteMiddleware } from "@astrojs/starlight/route-data";
+import { toolReferencePages } from "../scripts/tool-reference-pages.mjs";
 
 // Pages under reference/, security/ and plugins/ are generated from docs/*.md
 // by scripts/sync-docs.mjs and git-ignored, so the default edit link (which
@@ -7,6 +8,10 @@ import { defineRouteMiddleware } from "@astrojs/starlight/route-data";
 const EDIT_BASE = "https://github.com/kalebteccom/browxai/edit/main/docs/";
 const SOURCES: Record<string, string> = {
   "reference/tool-reference": "tool-reference.md",
+  // The section pages are cut from the same source file.
+  ...Object.fromEntries(
+    toolReferencePages.map((p) => [`reference/tool-reference/${p.slug}`, "tool-reference.md"]),
+  ),
   "security/threat-model": "threat-model.md",
   "security/best-practices": "security-best-practices-for-adopters.md",
   "plugins/overview": "plugins.md",
