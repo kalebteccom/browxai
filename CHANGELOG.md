@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Changed
+
+- **`browxai init` writes the user-level client config by default.** It used to write only the project `.mcp.json` unless you passed `--write-user-config <client>`. Now it adds browxai to the user-level config of each of Cursor, Codex and Claude Desktop it finds (for example `~/.cursor/mcp.json`), after printing the change. A config that exists is merged and the old copy kept as `<config>.browxai-bak`. A missing one is created. One that already has a `browxai` entry, or that browxai cannot edit safely, is left untouched and does not fail the run. A read or write error on a config exits 1 after the other clients were tried. Pass `--no-write-user-config` to get the old behaviour, or `--no-write` to write nothing. `--write-user-config` is still accepted and does nothing extra, and with a client it limits the write to that client as before.
+
 ### Fixed
 
 - **`snapshot` says why it has no accessibility tier.** When the CDP accessibility call failed, the error was dropped and the snapshot reported `a11yInteractive: 0` with a warning that blamed the page's markup. It now adds `accessibility tree extraction failed (<error>)`, or `Accessibility.getFullAXTree returned no nodes` when the call succeeded with an empty answer. The low-content warning also gives the node count of the tree it read, so a bare root and a page with many nodes and no controls read differently.

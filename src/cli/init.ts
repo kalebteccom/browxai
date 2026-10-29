@@ -36,6 +36,9 @@ interface InitOpts {
   workspace: string;
   testAttrs?: string;
   noWrite?: boolean;
+  /** `--no-write-user-config`: leave every client's own config file alone. */
+  noWriteUserConfig?: boolean;
+  /** `--write-user-config <client>`: limit the user-level write to one client. */
   writeUserConfig?: ClientId;
   noSmoke?: boolean;
 }
@@ -55,12 +58,20 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   if (!opts) {
     process.stderr.write(
       "usage: browxai init <workspace> [--test-attrs data-testid,data-type,...] [--no-write]\n" +
-        "                          [--write-user-config <client>] [--no-smoke]\n" +
+        "                          [--no-write-user-config] [--no-smoke]\n" +
         "  <workspace>                 per-app dir to host browxai state (e.g. ~/site-docs/<app>)\n" +
         "  --no-write                  print the .mcp.json snippet without creating files\n" +
-        "  --write-user-config <client>  print the change to that client's user-level config,\n" +
-        "                              then write it. Add --no-write to only print it.\n" +
-        `                              <client> is one of: ${CLIENT_IDS.join(", ")}\n` +
+        "                              (also prints, and does not write, each client change)\n" +
+        "  --no-write-user-config      leave the user-level config of Cursor, Codex and Claude\n" +
+        "                              Desktop alone. By default init prints the change to each\n" +
+        "                              one it finds, then writes it. An existing file is merged\n" +
+        "                              and the old copy kept as <config>.browxai-bak. A file it will\n" +
+        "                              not edit (not plain JSON) or that already has an entry\n" +
+        "                              exits 0. A read or write error exits 1, after every\n" +
+        "                              client was tried.\n" +
+        "  --write-user-config [<client>]  accepted for older scripts, and a no-op: that is\n" +
+        "                              already the default. With a client it limits the write\n" +
+        `                              to that client, one of: ${CLIENT_IDS.join(", ")}\n` +
         "  --no-smoke                  skip the headless first-snapshot check at the end\n" +
         "                              (also skipped under --no-write)\n",
     );
@@ -155,10 +166,11 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
     env: { BROWX_WORKSPACE: browxDir, BROWX_TEST_ATTRIBUTES: testAttrs },
   };
   const system = deps.system ?? realSystem();
-  process.stdout.write(clientsReport(detectClients(system), userEntry, system) + "\n");
-  const userConfigOk = opts.writeUserConfig
-    ? writeUserConfigStep(opts.writeUserConfig, userEntry, system, !!opts.noWrite, deps)
-    : true;
+  const found = detectClients(system);
+  const reportMode =
+    opts.writeUserConfig || opts.noWrite ? "none" : opts.noWriteUserConfig ? "skipped" : "auto";
+  process.stdout.write(clientsReport(found, userEntry, system, reportMode) + "\n");
+  const userConfigOk = userConfigSweep(opts, userEntry, system, deps);
   process.stdout.write(
     `next steps:\n  1) open Claude Code with cwd=${workspace} so this .mcp.json is picked up\n` +
       `  2) use the \`browxai\` MCP server for managed mode. It needs no more setup: it launches your installed Chrome, or the bundled Chromium without one\n` +
@@ -178,6 +190,37 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   return userConfigOk && smokeOk ? 0 : 1;
 }
 
+/**
+ * The user-level write. A named client (`--write-user-config <client>`) is the
+ * old behaviour: any problem with it fails the run. Without one, every detected
+ * client that has a config file is handled, and all of them are tried before the
+ * run ends. A client browxai declines to edit (`refuse`, or a file that already
+ * has a browxai entry) prints its by-hand steps and leaves the exit code alone.
+ * A read or write error (EACCES, a failed rename) fails the run with exit 1.
+ * `--no-write-user-config` skips the step.
+ */
+function userConfigSweep(
+  opts: InitOpts,
+  entry: ServerEntry,
+  system: ClientSystem,
+  deps: InitDeps,
+): boolean {
+  if (opts.noWriteUserConfig) return true;
+  const dryRun = !!opts.noWrite;
+  if (opts.writeUserConfig) {
+    return writeUserConfigStep(opts.writeUserConfig, entry, system, dryRun, deps) === "ok";
+  }
+  let allOk = true;
+  for (const id of detectClients(system)) {
+    if (userConfigPath(id, system) === undefined) continue;
+    if (writeUserConfigStep(id, entry, system, dryRun, deps) === "failed") allOk = false;
+  }
+  return allOk;
+}
+
+/** `ok` wrote or left the file as it is, `refused` declined to edit it, `failed` hit an I/O error. */
+type StepResult = "ok" | "refused" | "failed";
+
 /** Print the change to a client's user-level config, then write it unless dryRun. */
 function writeUserConfigStep(
   id: ClientId,
@@ -185,7 +228,7 @@ function writeUserConfigStep(
   system: ClientSystem,
   dryRun: boolean,
   deps: InitDeps,
-): boolean {
+): StepResult {
   let plan: UserConfigPlan;
   try {
     plan = planUserConfig(id, entry, system, deps.readConfig);
@@ -201,11 +244,11 @@ function writeUserConfigStep(
     process.stdout.write(
       `  ✗ ${path} can't be read (${why}): add the entry by hand with:\n${clientInstructions(id, entry, system)}\n\n`,
     );
-    return false;
+    return "failed";
   }
   if (plan.kind === "refuse") {
     process.stdout.write(`  ✗ ${plan.message}\n\n`);
-    return false;
+    return "refused";
   } else if (plan.kind === "present") {
     process.stdout.write(`  ✓ ${plan.path} already has a browxai entry, left as it is\n\n`);
   } else {
@@ -221,12 +264,12 @@ function writeUserConfigStep(
         process.stdout.write(
           `  ✗ could not write ${plan.path} (${(e as NodeJS.ErrnoException).code ?? "write failed"}): add the entry by hand with:\n${clientInstructions(id, entry, system)}\n\n`,
         );
-        return false;
+        return "failed";
       }
       process.stdout.write(`  ✓ wrote ${plan.path}. Restart the client to pick it up.\n\n`);
     }
   }
-  return true;
+  return "ok";
 }
 
 function parseArgs(args: string[]): InitOpts | null {
@@ -234,14 +277,24 @@ function parseArgs(args: string[]): InitOpts | null {
   const positional: string[] = [];
   let testAttrs: string | undefined;
   let noWrite = false;
+  let noWriteUserConfig = false;
   let writeUserConfig: ClientId | undefined;
+  let sawWriteUserConfig = false;
   let noSmoke = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
     if (a === "--write-user-config") {
-      const id = args[++i];
-      if (!id || !(CLIENT_IDS as readonly string[]).includes(id)) return null;
-      writeUserConfig = id as ClientId;
+      sawWriteUserConfig = true;
+      // A bare flag is the old opt-in with nothing to say: writing is the default.
+      const next = args[i + 1];
+      if (next === undefined || next.startsWith("--")) continue;
+      if (!(CLIENT_IDS as readonly string[]).includes(next)) return null;
+      writeUserConfig = next as ClientId;
+      i++;
+      continue;
+    }
+    if (a === "--no-write-user-config") {
+      noWriteUserConfig = true;
       continue;
     }
     if (a === "--no-smoke") {
@@ -259,8 +312,17 @@ function parseArgs(args: string[]): InitOpts | null {
     }
     positional.push(a);
   }
+  // Asking for the write, bare or for one client, and for no write contradict each other.
+  if (noWriteUserConfig && sawWriteUserConfig) return null;
   if (positional.length !== 1) return null;
-  return { workspace: positional[0]!, testAttrs, noWrite, writeUserConfig, noSmoke };
+  return {
+    workspace: positional[0]!,
+    testAttrs,
+    noWrite,
+    noWriteUserConfig,
+    writeUserConfig,
+    noSmoke,
+  };
 }
 
 /**

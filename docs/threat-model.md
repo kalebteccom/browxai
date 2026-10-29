@@ -156,6 +156,14 @@ contract. Defenses:
 - **Every output path roots at `$BROWX_WORKSPACE`** at startup. `cwd` is never used for
   paths. Verified in `workspace.test.ts` and the (deferred) no-trace CI test will spawn the
   server against a fake-consumer-repo cwd and assert it stays untouched.
+- **`browxai init` writes outside the workspace, to the clients' own config files.** It is
+  a CLI subcommand, so no MCP tool or agent call reaches it. By default it adds the `browxai`
+  entry to the user-level config of each client it finds (Cursor, Codex, Claude Desktop). It
+  prints the diff first, merges into an existing file, keeps the old copy as
+  `<config>.browxai-bak` and leaves a file with a `browxai` entry or one it cannot parse alone.
+  `--no-write-user-config` skips the write. The entry it adds carries no capability beyond the
+  default set (`read,navigation,action,human`). `byob-attach` stays in the separate
+  `browxai-attached` entry of the project `.mcp.json`.
 
 ### 6. Clicking a control the operator cannot see
 

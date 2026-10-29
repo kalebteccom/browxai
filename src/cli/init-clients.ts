@@ -1,6 +1,7 @@
 // `browxai init`: find the MCP clients on this machine and say how to wire browxai
 // into each one. Detection and printing only. Nothing here writes a file; the
-// user-level write lives in init-user-config.ts and runs only on an explicit flag.
+// user-level write lives in init-user-config.ts and runs unless
+// `--no-write-user-config` or `--no-write` is given.
 
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -144,11 +145,20 @@ export function clientInstructions(id: ClientId, entry: ServerEntry, sys: Client
   }
 }
 
+/**
+ * What the closing line of the clients block says about the user-level write:
+ * `auto` (init is about to write, and says how to stop it), `skipped` (the user
+ * passed `--no-write-user-config`, and is told how to turn it back on) or
+ * `none` (the write step prints its own result, so there is nothing to add).
+ */
+export type UserConfigNote = "auto" | "skipped" | "none";
+
 /** The whole "clients found" block, ready to print. */
 export function clientsReport(
   found: readonly ClientId[],
   entry: ServerEntry,
   sys: ClientSystem,
+  note: UserConfigNote = "auto",
 ): string {
   if (found.length === 0) {
     return (
@@ -158,8 +168,11 @@ export function clientsReport(
   }
   const blocks = found.map((id) => clientInstructions(id, entry, sys));
   const writable = found.filter((id) => userConfigPath(id, sys) !== undefined);
-  const tail = writable.length
-    ? `\nTo have browxai edit a user-level config for you, run again with --write-user-config <client> (${writable.join(", ")}). It prints the change, then writes it. Add --no-write to only print it.\n`
-    : "";
+  const tail =
+    writable.length === 0 || note === "none"
+      ? ""
+      : note === "auto"
+        ? `\nbrowxai adds itself to the user-level config of ${writable.join(", ")}: it prints each change, then writes it. A file that exists is merged and the old copy kept as <config>.browxai-bak. Pass --no-write-user-config to leave those files alone.\n`
+        : `\nNot editing the user-level config of ${writable.join(", ")} (--no-write-user-config). Run again without it to have browxai add the entry.\n`;
   return `MCP clients found on this machine:\n\n${blocks.join("\n\n")}\n${tail}`;
 }

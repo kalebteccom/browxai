@@ -67,12 +67,17 @@ browxai init .
 
 It writes a `.mcp.json` in that directory, finds the MCP clients on your machine
 (Claude Code, Cursor, Codex and Claude Desktop) and prints the exact command or
-snippet for each one. It changes nothing outside the project. To have it add
-browxai to a client's user-level config, run it again with
-`--write-user-config cursor` (or `codex`, `claude-desktop`). It prints the change,
-then writes it without asking. Add `--no-write` to only print it. At the end it opens a headless private session on a blank page,
-takes a snapshot and closes it, then prints `ok: first snapshot in N ms`. Add
-`--no-smoke` to skip that check.
+snippet for each one. It also adds browxai to the user-level config of each of
+Cursor, Codex and Claude Desktop it finds, for example `~/.cursor/mcp.json`. It
+prints the change first. A file that exists is merged, and the old copy is kept
+as `<config>.browxai-bak`. Pass `--no-write-user-config` to leave those files
+alone, or `--no-write` to print everything and write nothing. An older
+`--write-user-config` still works and does nothing extra. A file init will not edit
+(not plain JSON, or one that already has a browxai entry) is left as it is. A read
+or write error on a config makes init exit with code 1, after it tried every client. At the end it opens a
+headless private session on a blank page, takes a snapshot and closes it, then
+prints `ok: first snapshot in N ms`. If that fails, init says what to fix and
+exits with code 1. Add `--no-smoke` to skip that check.
 
 To do it by hand instead, add browxai to your client's MCP server config. In
 Claude Code, one command does it:

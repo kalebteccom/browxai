@@ -1,6 +1,8 @@
-// `browxai init --write-user-config <client>`: add the browxai entry to a client's
-// user-level config file. It prints the change, then writes it. This is the only code in init
-// that touches a file outside the project, and it runs only on that flag.
+// `browxai init`: add the browxai entry to a client's user-level config file. It
+// prints the change, then writes it. A file that exists is merged, never replaced
+// wholesale, and its old contents are kept in `<config>.browxai-bak`. This is the
+// only code in init that touches a file outside the project. It runs by default for
+// each client init finds, and `--no-write-user-config` or `--no-write` stops it.
 
 import { randomBytes } from "node:crypto";
 import {
