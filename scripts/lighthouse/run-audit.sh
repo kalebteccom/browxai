@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Serve the built docs site on 127.0.0.1 and run Lighthouse (mobile and desktop, 3 runs each) on the key pages, then print the block.
+# Serve the built docs site on 127.0.0.1 (brotli or gzip and the Cache-Control rules of website/public/_headers, as Netlify does; see serve.mjs) and run Lighthouse (mobile and desktop, 3 runs each) on the key pages, then print the block.
 # Usage: run-audit.sh <audit-dir>   (from the repo root; needs website/dist, <audit-dir>/tools from fetch-tools.sh and <audit-dir>/bin/chrome-fenced from design-audit/fence.sh)
 # Chrome only ever starts through the fenced wrapper. Node runs in a minimal environment: CI=1, update notices and telemetry off, throwaway HOME.
 # Exit status: 0 every median at or above the thresholds (performance 0.9, accessibility 1, best-practices 1, seo 1; see block.mjs), 1 below one of them, 2 a tool error.
@@ -20,6 +20,7 @@ PAGES="/ /404.html /guides/configuration/ /guides/troubleshooting/ /reference/to
 for f in "$WRAP" "$TOOLS/node_modules/lighthouse/package.json"; do
   [ -e "$f" ] || { echo "run-audit: missing $f" >&2; exit 2; }
 done
+[ -f "$DIST/_headers" ] || { echo "run-audit: missing $DIST/_headers (copied from website/public by the build)" >&2; exit 2; }
 for p in $PAGES; do
   f="$DIST$p"
   case "$p" in */) f="${f}index.html" ;; esac
@@ -28,7 +29,7 @@ done
 rm -rf "$AUDIT/home" "$AUDIT/tmp" "$RESULTS"
 mkdir -p "$AUDIT/home" "$AUDIT/tmp"
 
-node "$ROOT/scripts/design-audit/serve.mjs" "$DIST" "$PORT" > "$AUDIT/server.log" 2>&1 &
+node "$HERE/serve.mjs" "$DIST" "$PORT" "$DIST/_headers" > "$AUDIT/server.log" 2>&1 &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null || true' EXIT
 for _ in $(seq 1 30); do
