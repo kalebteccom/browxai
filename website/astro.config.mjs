@@ -206,6 +206,11 @@ export default defineConfig({
         },
       ],
       lastUpdated: true,
+      // No per-heading anchor link. Starlight wraps each heading in a div with a
+      // link, an icon span, an svg and a screen-reader label: six elements and
+      // about 830 bytes a heading, 172 headings on the tool reference. Astro still
+      // gives every heading its id, so the page outline and #fragment links work.
+      markdown: { headingLinks: false },
     }),
   ],
 });

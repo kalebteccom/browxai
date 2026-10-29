@@ -1,4 +1,4 @@
-/* Docs pages: the trust-boundary figure, copyable code, anchors, pagination, search, small screens and product shots. */
+/* Docs pages: the trust-boundary figure, copyable code, pagination, search, small screens and product shots. */
 
 /* ---- Trust-boundary diagram (security/threat-model) --------------------- */
 /* The svg is embedded in docs/threat-model.md, which the site publishes. */
@@ -116,14 +116,6 @@
 }
 .browx-copyable[data-copy-state="failed"]::after {
   content: "Copy failed";
-}
-
-/* Heading anchors: an outline on keyboard focus. Starlight already reveals the
-   icon on hover and focus where a pointer can hover, and always on touch. */
-.sl-markdown-content .sl-anchor-link:focus-visible {
-  outline: 2px solid var(--sl-color-text-accent);
-  outline-offset: 3px;
-  border-radius: 0.25rem;
 }
 
 /* Previous and next. The title reads at heading scale, and the card takes the
