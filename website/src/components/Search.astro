@@ -1,17 +1,18 @@
 ---
-// Wraps Starlight's search button. The button's visible text is the "Ctrl K"
-// shortcut hint (the "Search" label span is aria-hidden), and the accessible
-// name is "Search", so the visible text is not in the name (WCAG 2.5.3, the
-// Lighthouse label-content-name-mismatch audit). The shortcut is already exposed
-// through aria-keyshortcuts, so the hint is hidden from assistive technology.
-// Starlight's own inline script sets the Ctrl or Command label and shows the
-// hint; this one runs after it and only adds the attribute.
+// Wraps Starlight's search button. The visible text is "Search" plus the "Ctrl K"
+// shortcut hint, and the accessible name is "Search" alone, so the visible text is
+// not fully in the name (WCAG 2.5.3, the Lighthouse label-content-name-mismatch
+// audit; hiding the hint with aria-hidden did not satisfy it). The script sets the
+// name to the visible text once Starlight's own script has written the hint.
 import Default from "@astrojs/starlight/components/Search.astro";
 ---
 
 <Default {...Astro.props}><slot /></Default>
 <script is:inline>
-  document
-    .querySelectorAll("site-search button[data-open-modal] kbd")
-    .forEach((hint) => hint.setAttribute("aria-hidden", "true"));
+  addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("site-search button[data-open-modal]").forEach((button) => {
+      const visible = button.textContent.replace(/\s+/g, " ").trim();
+      if (visible) button.setAttribute("aria-label", visible);
+    });
+  });
 </script>
