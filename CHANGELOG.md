@@ -8,6 +8,8 @@ surface" covers.
 
 ## Unreleased
 
+## [0.16.0] - 2026-10-29
+
 ### Changed
 
 - **The tool reference on browxai.com is split into nine section pages.** `/reference/tool-reference/` is now an index with the intro, a list of the sections and the stability policy. Each section has its own page under it (for example `/reference/tool-reference/sessions/`), so no page should pass about 135 KB of HTML (estimated) where the single page was 951 KB. A link to an old `#fragment` on the index no longer lands on its heading, except `#stability-and-semver`; the page list on the index says where each tool went. `docs/tool-reference.md` is unchanged and stays the one source, and `/reference/tool-reference.md` still serves the whole file as plain text.
