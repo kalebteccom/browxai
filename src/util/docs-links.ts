@@ -23,6 +23,9 @@ export function docLink(path: string, anchor?: string): string {
 
 const THREAT_MODEL = "/security/threat-model/";
 const TOOL_REFERENCE = "/reference/tool-reference/";
+// The tool reference is one file in docs/ and several pages on the site. The
+// secrets and credentials sections live on this page (website/scripts/tool-reference-pages.mjs).
+const TOOL_REFERENCE_GATED = "/reference/tool-reference/gated-capabilities/";
 
 export const docsUrl = {
   threatModel: docLink(THREAT_MODEL),
@@ -34,9 +37,12 @@ export const docsUrl = {
   threatModelOrigins: docLink(THREAT_MODEL, "origin-allowblocklist"),
   toolReference: docLink(TOOL_REFERENCE),
   /** The `secrets` section: what is masked and the partial `screenshot` sink. */
-  toolReferenceSecrets: docLink(TOOL_REFERENCE, "secrets-registry-capability-secrets"),
+  toolReferenceSecrets: docLink(TOOL_REFERENCE_GATED, "secrets-registry-capability-secrets"),
   /** The `credentials` section: providers, `BROWX_CREDENTIAL_ORIGINS`, account names. */
-  toolReferenceCredentials: docLink(TOOL_REFERENCE, "credentials-hook-capability-credentials"),
+  toolReferenceCredentials: docLink(
+    TOOL_REFERENCE_GATED,
+    "credentials-hook-capability-credentials",
+  ),
   /** Wiring browxai into an MCP client, the step after a clean `doctor`. */
   gettingStartedConnect: docLink("/getting-started/", "wire-it-into-an-mcp-client"),
   troubleshooting: docLink("/guides/troubleshooting/"),

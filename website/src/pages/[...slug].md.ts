@@ -22,16 +22,26 @@ const DOCS_ROOT = join(process.cwd(), "..", "docs");
 // Pages that are not part of the markdown surface.
 const SKIP = new Set(["index", "404"]);
 
+// The tool reference is one file in docs/ and several pages on the site. Its
+// plaintext twin stays the whole file, so the per-section pages get none.
+const TOOL_REFERENCE = "reference/tool-reference";
+
 type PageProps = { title: string; body: string };
 
 export const getStaticPaths = (async () => {
   const docs = await getCollection("docs");
   const fromHtml = docs
     .map((e) => ({ ...e, slug: e.id.replace(/\.(md|mdx)$/, "") }))
-    .filter((e) => !SKIP.has(e.slug))
+    .filter((e) => !SKIP.has(e.slug) && !e.slug.startsWith(`${TOOL_REFERENCE}/`))
     .map((e) => ({
       params: { slug: e.slug },
-      props: { title: e.data.title, body: e.body ?? "" } as PageProps,
+      props: {
+        title: e.data.title,
+        body:
+          e.slug === TOOL_REFERENCE
+            ? transformText(readFileSync(join(DOCS_ROOT, "tool-reference.md"), "utf8"))
+            : (e.body ?? ""),
+      } as PageProps,
     }));
   const agentOnly = agentOnlyPages.map((p) => {
     const raw = readFileSync(join(DOCS_ROOT, p.src), "utf8");
