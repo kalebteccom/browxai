@@ -50,7 +50,7 @@ steps:
       - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium
       - "bash scripts/design-audit/fence.sh .audit > .audit/wrapper.path"
       - 'node scripts/design-audit/fence-test.mjs .audit/tools "$(cat .audit/wrapper.path)" .audit/themes'
-  # (4) Serve website/dist on 127.0.0.1:4322, run Lighthouse 3 times per page and preset (36 runs, about 15 to 25 minutes on a quiet box), print the block.
+  # (4) Serve website/dist on 127.0.0.1:4322 (brotli or gzip and the Cache-Control rules of website/public/_headers, like Netlify; scripts/lighthouse/serve.mjs), run Lighthouse 3 times per page and preset (36 runs, about 15 to 25 minutes on a quiet box), print the block.
   - <<: *step
     name: audit
     depends_on: [fence-test]
