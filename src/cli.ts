@@ -43,10 +43,14 @@ const USAGE = `Usage: browxai [subcommand]
   browxai chrome status         say whether that Chrome is still running
   browxai init <workspace>      one-command start: writes <workspace>/.mcp.json, prints the
                                 setup line for each MCP client it finds (Claude Code,
-                                Cursor, Codex, Claude Desktop), then checks that a
+                                Cursor, Codex, Claude Desktop), adds browxai to the
+                                user-level config of each one that has a file (prints
+                                the change, merges into an existing file and keeps the
+                                old copy as <config>.browxai-bak), then checks that a
                                 headless session can take a snapshot.
-                                --write-user-config <client> prints the change to that
-                                client's user-level config, then writes it.
+                                --no-write-user-config leaves those client files alone.
+                                --write-user-config [<client>] is a no-op kept for older
+                                scripts; a client limits the write to that one.
                                 --no-smoke skips the snapshot check, --no-write prints only.
   browxai serve --socket <p>    long-running server on a Unix socket / named pipe
                                 — accepts MCP-over-socket connections from SDK clients

@@ -80,11 +80,11 @@ Needs Node 22 or later.
 ```bash
 npm install -g browxai
 cd your-project
-browxai init .                                # one command: writes .mcp.json, shows the setup line for your MCP client, checks a first snapshot
+browxai init .                                # one command: writes .mcp.json and your MCP client config, checks a first snapshot
 npx playwright-core@1.64.1 install chromium   # optional, ~150 MB: the fallback when Chrome is missing
 ```
 
-`browxai init` writes a `.mcp.json` in the directory you give it and prints the exact command or snippet for each MCP client it finds on the machine: Claude Code, Cursor, Codex and Claude Desktop. It changes nothing outside the project. To have it add browxai to a client's user-level config, run it again with `--write-user-config cursor` (or `codex`, `claude-desktop`). It prints the change, then writes it without asking. Add `--no-write` to only print it. It ends by opening a headless private session on `about:blank`, taking one snapshot and closing it, then prints `ok: first snapshot in N ms`, or says what to fix. `--no-smoke` skips that check.
+`browxai init` writes a `.mcp.json` in the directory you give it and prints the exact command or snippet for each MCP client it finds on the machine: Claude Code, Cursor, Codex and Claude Desktop. It also adds browxai to the user-level config of each of Cursor, Codex and Claude Desktop it finds, such as `~/.cursor/mcp.json`. It prints the change first, merges into a file that exists and keeps the old copy as `<config>.browxai-bak`. Pass `--no-write-user-config` to leave those files alone, or `--no-write` to print everything and write nothing. (`--write-user-config` from earlier versions still works and does nothing extra.) It ends by opening a headless private session on `about:blank`, taking one snapshot and closing it, then prints `ok: first snapshot in N ms`, or says what to fix and exits 1. `--no-smoke` skips that check.
 
 `browxai doctor` checks the machine and prints one line per area, with the next step under anything that fails. `browxai doctor --verbose` prints every check.
 

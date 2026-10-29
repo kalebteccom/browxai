@@ -207,9 +207,10 @@ describe("clientsReport", () => {
     expect(clientsReport([], ENTRY, fakeSystem())).toContain("No MCP client found");
   });
 
-  it("offers --write-user-config only for clients with a config file", () => {
+  it("names the clients it edits, and the opt-out, by default", () => {
     const out = clientsReport(["claude-code", "cursor"], ENTRY, fakeSystem());
-    expect(out).toContain("--write-user-config <client> (cursor)");
+    expect(out).toContain("adds itself to the user-level config of cursor");
+    expect(out).toContain("Pass --no-write-user-config to leave those files alone.");
   });
 
   it("lists every writable client when all four are found", () => {
@@ -222,25 +223,35 @@ describe("clientsReport", () => {
     for (const label of ["Claude Code", "Cursor", "Codex", "Claude Desktop"]) {
       expect(out).toContain(label);
     }
-    expect(out).toContain("--write-user-config <client> (cursor, codex, claude-desktop)");
-    expect(out).toContain("Add --no-write to only print it.");
+    expect(out).toContain("user-level config of cursor, codex, claude-desktop");
   });
 
-  it("offers nothing to write when only Claude Code is found", () => {
+  it("says how to turn the write back on when it was skipped", () => {
+    const out = clientsReport(["cursor"], ENTRY, fakeSystem(), "skipped");
+    expect(out).toContain("Not editing the user-level config of cursor (--no-write-user-config)");
+    expect(out).not.toContain("adds itself");
+  });
+
+  it("adds no closing line when the write step reports for itself", () => {
+    const out = clientsReport(["cursor"], ENTRY, fakeSystem(), "none");
+    expect(out).not.toContain("user-level config of");
+  });
+
+  it("has nothing to say about writing when only Claude Code is found", () => {
     const out = clientsReport(["claude-code"], ENTRY, fakeSystem());
     expect(out).toContain("claude mcp add-json");
-    expect(out).not.toContain("--write-user-config");
+    expect(out).not.toContain("--no-write-user-config");
   });
 
-  it("does not offer Codex under a relative CODEX_HOME", () => {
+  it("does not name Codex under a relative CODEX_HOME", () => {
     const sys = fakeSystem({ env: { PATH: "", CODEX_HOME: "rel" } });
-    expect(clientsReport(["codex"], ENTRY, sys)).not.toContain("--write-user-config");
+    expect(clientsReport(["codex"], ENTRY, sys)).not.toContain("--no-write-user-config");
   });
 
-  it("does not offer Claude Desktop on Linux", () => {
+  it("does not name Claude Desktop on Linux", () => {
     const sys = fakeSystem({ platform: "linux" });
     const out = clientsReport(["claude-desktop", "cursor"], ENTRY, sys);
-    expect(out).toContain("--write-user-config <client> (cursor)");
+    expect(out).toContain("user-level config of cursor:");
   });
 
   it("names the npx fallback when no client is found", () => {
