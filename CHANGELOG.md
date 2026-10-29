@@ -12,6 +12,7 @@ surface" covers.
 
 ### Changed
 
+- **The tool reference on browxai.com is split into nine section pages.** `/reference/tool-reference/` is now an index with the intro, a list of the sections and the stability policy. Each section has its own page under it (for example `/reference/tool-reference/sessions/`), so no page should pass about 135 KB of HTML (estimated) where the single page was 951 KB. A link to an old `#fragment` on the index no longer lands on its heading, except `#stability-and-semver`; the page list on the index says where each tool went. `docs/tool-reference.md` is unchanged and stays the one source, and `/reference/tool-reference.md` still serves the whole file as plain text.
 - **`browxai init` writes the user-level client config by default.** It used to write only the project `.mcp.json` unless you passed `--write-user-config <client>`. Now it adds browxai to the user-level config of each of Cursor, Codex and Claude Desktop it finds (for example `~/.cursor/mcp.json`), after printing the change. A config that exists is merged and the old copy kept as `<config>.browxai-bak`. A missing one is created. One that already has a `browxai` entry, or that browxai cannot edit safely, is left untouched and does not fail the run. A read or write error on a config exits 1 after the other clients were tried. Pass `--no-write-user-config` to get the old behaviour, or `--no-write` to write nothing. `--write-user-config` is still accepted and does nothing extra, and with a client it limits the write to that client as before.
 
 ### Fixed

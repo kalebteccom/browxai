@@ -15,7 +15,7 @@ WRAP="$AUDIT/bin/chrome-fenced"
 TOOLS="$AUDIT/tools"
 RESULTS="$AUDIT/lighthouse-results.json"
 # Canonical URLs only, as built: directory pages with their trailing slash, the 404 page as its file.
-PAGES="/ /404.html /guides/configuration/ /guides/troubleshooting/ /reference/tool-reference/ /security/threat-model/"
+PAGES="/ /404.html /guides/configuration/ /guides/troubleshooting/ /reference/tool-reference/ /reference/tool-reference/read-only-tools/ /security/threat-model/"
 
 for f in "$WRAP" "$TOOLS/node_modules/lighthouse/package.json"; do
   [ -e "$f" ] || { echo "run-audit: missing $f" >&2; exit 2; }

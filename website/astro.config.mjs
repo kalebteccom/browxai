@@ -6,6 +6,7 @@ import { unified } from "@astrojs/markdown-remark";
 import starlightLinksValidator from "starlight-links-validator";
 import rehypeStripAgentAsides from "./plugins/rehype-strip-agent-asides.mjs";
 import rehypeTableWrap from "./plugins/rehype-table-wrap.mjs";
+import { toolReferencePages } from "./scripts/tool-reference-pages.mjs";
 
 // The published version comes from the repo root package.json, so the
 // structured data never drifts from a release.
@@ -191,7 +192,16 @@ export default defineConfig({
         {
           label: "Reference",
           items: [
-            { label: "Tool reference", slug: "reference/tool-reference" },
+            {
+              label: "Tool reference",
+              items: [
+                { label: "Overview", slug: "reference/tool-reference" },
+                ...toolReferencePages.map((p) => ({
+                  label: p.label,
+                  slug: `reference/tool-reference/${p.slug}`,
+                })),
+              ],
+            },
             { label: "FAQ", slug: "reference/faq" },
           ],
         },
