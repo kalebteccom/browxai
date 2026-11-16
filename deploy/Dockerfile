@@ -6,8 +6,8 @@
 # The boundary is this file.
 #
 # Base image ships Chromium plus its system dependencies and a non-root `pwuser`.
-# Keep the tag's Playwright version aligned with the `playwright-core` range in
-# package.json — a mismatch means the bundled browser and the driver disagree.
+# Keep the tag's Playwright version aligned with the exact `playwright-core` version in
+# package.json. A mismatch means the bundled browser and the driver disagree.
 FROM mcr.microsoft.com/playwright:v1.64.1-noble
 
 # BROWX_HEADLESS=1: the container has no display, and browxai launches headed

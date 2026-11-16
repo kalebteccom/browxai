@@ -14,6 +14,10 @@ surface" covers.
 - **The warning on the first `register_secret` call is two short sentences.** It now reads `a secret was registered: its value is now masked in tool output, but screenshots are not masked (see <docs link>). Remove secrets from BROWX_CAPABILITIES to turn it off.` in place of a paragraph with an em dash and capitals. It still prints once per session registry.
 - **The 17 capability startup warnings are one or two short sentences.** Each says what the capability lets an agent do and to remove it from `BROWX_CAPABILITIES` to turn it off, in place of paragraphs that mostly ran past 500 characters with em dashes, capitals and a design-note reference. The same 17 capabilities warn, once at start and in the same order. The `live-view` text still says secret masking does not cover pixels, and `secrets` still says screenshots are not masked.
 
+### Fixed
+
+- **The `playwright-core` dependency is pinned to the exact version the docs name, so the browser a newcomer downloads from the getting-started page is the one the installed browxai launches.**
+
 ## [0.17.0] - 2026-11-16
 
 **Upgrading from 0.16.** A script that passed a misspelled or extra argument to `browxai serve`, or ran `browxai init --test-attrs` with no value, now fails with exit 2 and usage. `toolList` stays `all` by default, so `tools/list` is unchanged.
