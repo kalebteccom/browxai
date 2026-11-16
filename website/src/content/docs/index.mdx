@@ -112,14 +112,14 @@ import Shot from "../../components/Shot.astro";
     <span class="browx-card-mark">Native</span>
     <h3>Native apps, same tools</h3>
     <div class="browx-card-text">
-      <code>native-device</code> drives apps on an Android emulator or the iOS Simulator with the same refs, <code>find</code> and <code>click</code> as a page. The Android engine is verified on a live emulator. The iOS engine has only run against a stand-in WebDriverAgent server. <a href="/concepts/overview/#native-apps-desktop-apps-and-sessions">Native apps in detail</a>.
+      <code>native-device</code> drives apps on an <a href="/concepts/overview/#native-apps-desktop-apps-and-sessions">Android emulator and the iOS Simulator</a> with the same refs as a page.
     </div>
   </div>
   <div class="browx-card">
     <span class="browx-card-mark">Capabilities</span>
     <h3>Four on, the rest off</h3>
     <div class="browx-card-text">
-      <code>read</code>, <code>navigation</code>, <code>action</code> and <code>human</code> are on. Every other capability is off until you enable it, and each has a test that checks its gate blocks. Arbitrary JS, response bodies, the clipboard and attaching to your Chrome are among them.
+      Four capabilities are on by default, and each of the rest is off behind a <a href="/concepts/capabilities-and-safety/">tested gate</a>.
     </div>
   </div>
   <div class="browx-card">

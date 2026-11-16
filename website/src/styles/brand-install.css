@@ -162,7 +162,7 @@
   text-decoration-thickness: 2px;
 }
 
-/* Version, license, status and links, under the hero. */
+/* License, Node, engines and MCP clients, under the hero. */
 .browx-facts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
@@ -184,12 +184,6 @@
   color: var(--sl-color-gray-2);
   line-height: 1.45;
 }
-/* The links row lays out as a flex line so each 44px link sits on one baseline. */
-.browx-facts dd:has(.sep) {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-}
 .browx-facts a {
   display: inline-flex;
   align-items: center;
@@ -201,10 +195,6 @@
 }
 .browx-facts a:active {
   color: var(--sl-color-accent-high);
-}
-.browx-facts .sep {
-  margin: 0 var(--space-1h);
-  opacity: 0.5;
 }
 
 /* The product window on the right of the hero: a solid surface with a flat border. */

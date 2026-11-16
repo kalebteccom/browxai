@@ -63,8 +63,9 @@ what browxai deliberately does not defend against.
 Switch on `native-device` and `find`, `click` and `fill` drive an app on an
 Android emulator or the iOS Simulator. The tree comes off the app's view
 hierarchy, with the same refs a page gets. Android is verified against a live
-emulator; the iOS lane is newer and needs a WebDriverAgent you run. Native apps
-run on an emulator or simulator only, with no real-device lane.
+emulator; the iOS lane is newer and needs a WebDriverAgent you run. The iOS
+engine has only run against a stand-in WebDriverAgent server, not yet a real
+one. Native apps run on an emulator or simulator only, with no real-device lane.
 
 ### The Electron app you have open
 
