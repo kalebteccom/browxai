@@ -6,7 +6,7 @@
 import "./crash.mjs";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { emit, layout, secs, size } from "./block.mjs";
+import { BUDGETS, emit, layout, secs, size } from "./block.mjs";
 import { docFacts, downloadedBytes } from "./doc-facts.mjs";
 import { checkDoctor, checkInit } from "./install-checks.mjs";
 import { cleanEnv, run } from "./proc.mjs";
@@ -17,7 +17,7 @@ if (!ROOT || !WORK || !OUT) {
   console.error("install: FR_ROOT, FR_WORK and FR_OUT must be set (run.sh does that)");
   process.exit(2);
 }
-const BUDGET = 8000;
+const BUDGET = BUDGETS.install;
 const HERE = new URL(".", import.meta.url).pathname;
 const proj = join(WORK, "project");
 // Playwright's default browser directory on Linux, under the throwaway HOME.

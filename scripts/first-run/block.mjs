@@ -3,13 +3,17 @@
 //
 // OUTPUT CONTRACT: every section prints one block between `===== FIRST-RUN BEGIN =====` and `===== FIRST-RUN END =====`:
 // the plain text, then the same text again as `<TAG>|n|<line>` lines in chunks of about 1.5 KB, so a log service that
-// drops a long line still leaves it readable. The text of the three sections together stays under 14 KB, so all three
-// blocks (text and chunked copy) stay under 30 KB.
+// drops a long line still leaves it readable. The text of the four sections together stays under 14 KB (BUDGETS), so all
+// four blocks (text and chunked copy) stay under 30 KB.
 
 export const BEGIN = "===== FIRST-RUN BEGIN =====";
 export const END = "===== FIRST-RUN END =====";
 export const CHUNK_BYTES = 1500;
 export const MAX_LINE = 130;
+
+/** Plain-text budget in bytes of each section's block. The sum is at most 13800: the text and its chunked copy print twice,
+ *  plus the chunk prefixes and the markers, and that has to stay under 30 KB. A section that needs more takes it from another. */
+export const BUDGETS = { install: 5800, snapshot: 2100, sizes: 2500, paths: 3400 };
 
 // Glyphs doctor and init print, shown as plain words so the log stays ASCII.
 const GLYPHS = { "✓": "OK", "✗": "NO", "⚠": "WARN", "−": "-" };
