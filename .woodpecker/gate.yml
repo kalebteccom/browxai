@@ -77,12 +77,13 @@ steps:
     depends_on: [install]
     commands:
       - bash scripts/gate-slot.sh node scripts/check-copy-rules.mjs
-  # Example commands and config blocks in the README and docs: BROWX_* names, CLI subcommands and flags, MCP config JSON. This step has no dist/, so the CLI probes are skipped; package-contents repeats the check after the build and runs them.
+  # Example commands and config blocks in the README and docs: BROWX_* names, CLI subcommands and flags, MCP config JSON. The second command checks every `npx playwright-core@X.Y.Z` pin in the docs against the version pnpm-lock.yaml resolves. This step has no dist/, so the CLI probes are skipped; package-contents repeats the check after the build and runs them.
   - <<: *step
     name: examples
     depends_on: [install]
     commands:
       - bash scripts/gate-slot.sh node scripts/check-examples.mjs
+      - bash scripts/gate-slot.sh node scripts/check-playwright-pin.mjs
   # Design rules on the docs site: no em or en dashes in copy, no monospace or tracked uppercase outside real code.
   - <<: *step
     name: design-rules

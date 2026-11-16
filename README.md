@@ -79,7 +79,7 @@ Needs Node 22 or later.
 
 ```bash
 npm install -g browxai
-npx playwright-core@1.64.1 install chromium   # only without Google Chrome, ~150 MB: the fallback browser
+npx playwright-core@1.64.1 install chromium   # only without Google Chrome: Chromium plus headless shell, about 300 MB download, 700 MB on disk
 cd your-project
 browxai init .                                # one command: writes .mcp.json and your MCP client config, checks a first snapshot
 ```

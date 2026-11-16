@@ -14,6 +14,11 @@ For a diff that touches the public surface, confirm before pushing:
 - [ ] `CHANGELOG.md`: entry under `## Unreleased ### Added` / `Changed` / `Fixed` / `Deprecated`.
 - [ ] `docs/ai-context/architecture/capability-posture-map.md`: only if posture changed.
 
+For a diff that bumps `playwright-core` (a Dependabot PR included):
+
+- [ ] Every `npx playwright-core@X.Y.Z install ...` in `README.md`, `website/src/content/`, `docs/` and `harness/` is set to the new version, in the same PR. `scripts/check-playwright-pin.mjs` runs in the `examples` gate step and fails on any pin that differs from the version in `pnpm-lock.yaml`, so a bump PR stays red until the docs match. A newcomer who copies a stale pin downloads a browser build the installed package will not launch.
+- [ ] `deploy/Dockerfile` keeps its Playwright base-image tag aligned with the new version.
+
 For a diff that touches discipline (commit rules, daemon-restart, etc.):
 
 - [ ] `AGENTS.md`: if the rule needs to apply across harnesses.
