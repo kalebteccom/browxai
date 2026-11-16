@@ -163,7 +163,8 @@ describe("trimToolListing with a filter", () => {
     const transport = new ListingTrimTransport(inner, (name) => name === "click");
     transport.onmessage = () => undefined;
     inner.onmessage?.(listRequest(2));
-    await transport.send(listing(tools, 2));
+    // Only named tools here: an entry with no readable name is kept on purpose.
+    await transport.send(listing(tools.slice(0, 2), 2));
     expect(toolsOf(inner.sent[0]!.message).map((t) => t.name)).toEqual(["click"]);
   });
 });
