@@ -37,7 +37,7 @@ export type { PackageManager, PmOperation } from "./pm-runner.js";
 export { NO_PACKAGE_MANAGER_ERROR, detectPackageManager, pmArgs } from "./pm-runner.js";
 
 const RESTART_NOTICE =
-  "Server restart required — plugins are resolved ONCE at server start, so changes only take effect after a fresh `browxai` start.";
+  "Server restart required: plugins are loaded once, when the server starts, so a change only takes effect after a fresh `browxai` start.";
 
 function readPluginsJson(paths: PluginPaths): {
   plugins: Record<string, { enabled?: boolean; trust?: string }>;
@@ -336,14 +336,14 @@ async function cmdSync(): Promise<number> {
 function help(): number {
   process.stdout.write(
     `Usage: browxai plugin <subcommand>\n\n` +
-      `  install <pkg>     install a plugin from npm (or file:./path) into the workspace\n` +
+      `  install <pkg>     install a plugin from npm or file:./path into the workspace\n` +
       `  remove <pkg>      remove a plugin\n` +
       `  list              list declared plugins\n` +
       `  info <pkg>        full manifest + lock entry for one plugin\n` +
       `  upgrade [<pkg>]   upgrade one plugin (or all when omitted)\n` +
       `  sync              reconcile installed node_modules with plugins.json\n\n` +
-      `Every command writes to <workspace>/. Plugin lifecycle is\n` +
-      `resolved ONCE at server start — restart the server after any change.\n`,
+      `Every command writes to <workspace>/. Plugins are loaded once, when the\n` +
+      `server starts, so restart the server after any change.\n`,
   );
   return 0;
 }

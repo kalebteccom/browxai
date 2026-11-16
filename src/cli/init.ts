@@ -57,23 +57,30 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   const opts = parseArgs(args);
   if (!opts) {
     process.stderr.write(
-      "usage: browxai init <workspace> [--test-attrs data-testid,data-type,...] [--no-write]\n" +
-        "                          [--no-write-user-config] [--no-smoke]\n" +
-        "  <workspace>                 per-app dir to host browxai state (e.g. ~/site-docs/<app>)\n" +
-        "  --no-write                  print the .mcp.json snippet without creating files\n" +
-        "                              (also prints, and does not write, each client change)\n" +
-        "  --no-write-user-config      leave the user-level config of Cursor, Codex and Claude\n" +
-        "                              Desktop alone. By default init prints the change to each\n" +
-        "                              one it finds, then writes it. An existing file is merged\n" +
-        "                              and the old copy kept as <config>.browxai-bak. A file it will\n" +
-        "                              not edit (not plain JSON) or that already has an entry\n" +
-        "                              exits 0. A read or write error exits 1, after every\n" +
-        "                              client was tried.\n" +
-        "  --write-user-config [<client>]  accepted for older scripts, and a no-op: that is\n" +
-        "                              already the default. With a client it limits the write\n" +
-        `                              to that client, one of: ${CLIENT_IDS.join(", ")}\n` +
-        "  --no-smoke                  skip the headless first-snapshot check at the end\n" +
-        "                              (also skipped under --no-write)\n",
+      "usage: browxai init <workspace> [--test-attrs a,b,...] [--no-write]\n" +
+        "                                [--no-write-user-config] [--no-smoke]\n" +
+        "  <workspace>               per-app dir that holds browxai state\n" +
+        "                            (for example ~/site-docs/<app>)\n" +
+        "  --test-attrs a,b,...      test attributes to try, in order, for\n" +
+        "                            BROWX_TEST_ATTRIBUTES. Default: sniffed from the\n" +
+        "                            source next to the workspace.\n" +
+        "  --no-write                print the .mcp.json snippet and each client\n" +
+        "                            change, and write nothing\n" +
+        "  --no-write-user-config    leave the user-level config of Cursor, Codex and\n" +
+        "                            Claude Desktop alone. By default init prints the\n" +
+        "                            change to each one it finds, then writes it. An\n" +
+        "                            existing file is merged and the old copy kept as\n" +
+        "                            <config>.browxai-bak. A file init will not edit\n" +
+        "                            (not plain JSON), or one that already has an\n" +
+        "                            entry, exits 0. A read or write error exits 1,\n" +
+        "                            after every client was tried.\n" +
+        "  --write-user-config [<client>]\n" +
+        "                            accepted for older scripts, and a no-op: writing\n" +
+        "                            is already the default. With a client it limits\n" +
+        "                            the write to that client, one of:\n" +
+        `                            ${CLIENT_IDS.join(", ")}\n` +
+        "  --no-smoke                skip the headless first-snapshot check at the end\n" +
+        "                            (also skipped under --no-write)\n",
     );
     return 2;
   }
@@ -119,7 +126,7 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   };
   const mcpJsonText = JSON.stringify(mcpJson, null, 2);
 
-  process.stdout.write(`browxai init — bootstrap workspace at ${workspace}\n\n`);
+  process.stdout.write(`browxai init: setting up the workspace at ${workspace}\n\n`);
 
   if (!opts.noWrite) {
     if (!existsSync(browxDir)) {
@@ -131,7 +138,7 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
     const mcpPath = join(workspace, ".mcp.json");
     if (existsSync(mcpPath)) {
       process.stdout.write(
-        `  ⚠  ${mcpPath} exists — printing snippet below; merge manually so no existing entries are clobbered\n`,
+        `  ⚠  ${mcpPath} already exists, so it was left alone. Merge the snippet below into it by hand.\n`,
       );
     } else {
       writeFileSync(mcpPath, mcpJsonText + "\n", "utf8");
@@ -184,7 +191,7 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   if (!opts.noSmoke && !opts.noWrite) {
     process.stdout.write("\nchecking that a headless session can take a snapshot...\n");
     const smoke = await (deps.smoke ?? runSmoke)({ distCli });
-    process.stdout.write(`${smoke.message}\n`);
+    process.stdout.write(`  ${smoke.message}\n`);
     smokeOk = smoke.ok;
   }
   return userConfigOk && smokeOk ? 0 : 1;
@@ -303,7 +310,9 @@ function parseArgs(args: string[]): InitOpts | null {
     }
     if (a.startsWith("--") && a !== "--test-attrs" && a !== "--no-write") return null;
     if (a === "--test-attrs") {
-      testAttrs = args[++i];
+      const value = args[++i];
+      if (value === undefined || value.startsWith("--")) return null;
+      testAttrs = value;
       continue;
     }
     if (a === "--no-write") {

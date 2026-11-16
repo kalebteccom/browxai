@@ -77,7 +77,7 @@ export function formatDoctor(
 }
 
 function verbose(checks: readonly Check[], version: string, allOk: boolean): string {
-  let out = `browxai doctor (v${version}) — environment & connectivity\n\n`;
+  let out = `browxai doctor (v${version}): environment and connectivity\n\n`;
   for (const c of checks) {
     const glyph = c.info ? "−" : c.warn ? "⚠" : c.ok ? "✓" : "✗";
     out += `  ${glyph} ${c.name.padEnd(12)} ${c.detail}\n`;
