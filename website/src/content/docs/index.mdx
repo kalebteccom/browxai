@@ -1,6 +1,6 @@
 ---
-title: The same tools for a web page and a native app
-description: One MCP tool surface over eight engines in three families. Five browsers, including real Safari and real Chrome on an Android device, two native-app engines on an Android emulator and the iOS Simulator, and a desktop Electron app attached over CDP, plus the OS clipboard, password managers and a workspace directory.
+title: Drive a web page or a native app with the same tools
+description: browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools.
 template: splash
 tableOfContents: false
 editUrl: false
@@ -19,20 +19,12 @@ import Shot from "../../components/Shot.astro";
 
 <div class="browx-hero not-content">
   <div class="browx-hero-copy">
-    <p class="browx-kicker">Open source MCP server</p>
     <div class="browx-wordmark">brow<span class="x">x</span>ai</div>
     <div class="browx-lede">
-      browxai lets an AI agent drive a web page or a native app.
-    </div>
-    <div class="browx-about">
-      Agents get a compact page view and a short tool list; capabilities past the default four start off.
-    </div>
-    <div class="browx-cta">
-      <a href="/getting-started/" class="browx-btn browx-btn--primary">Get started</a>
-      <a href="/reference/tool-reference/" class="browx-btn browx-btn--ghost">Tool reference</a>
+      browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools.
     </div>
     <InstallCommand command="npm install -g browxai" />
-    <p class="browx-install-note">Node 22+. <a href="/getting-started/#wire-it-into-an-mcp-client">Wire it into your MCP client</a>.</p>
+    <a href="/getting-started/" class="browx-hero-link">Get started</a>
   </div>
 
   <div class="browx-window" aria-hidden="true">
@@ -71,6 +63,7 @@ import Shot from "../../components/Shot.astro";
 </div>
 
 <div class="browx-shots not-content">
+  <span class="browx-shot-step">Read</span>
   <Shot
     name="snapshot"
     alt={{
@@ -83,75 +76,32 @@ import Shot from "../../components/Shot.astro";
       narrow: "The same sample app at 390 px, in its mobile layout.",
     }}
   />
-</div>
-
-<ProjectFacts />
-
-<div class="browx-diagram not-content">
-  <div
-    class="browx-loop"
-    role="img"
-    aria-label="The agent loop runs as a cycle: navigate to a URL, snapshot the page into refs, find the target, act on it, then the ActionResult feeds the next pass. The four steps repeat."
-  >
-    <svg class="browx-loop-arcs" viewBox="0 0 320 320" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-      <defs>
-        <marker id="bx-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
-          <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-text-accent)" />
-        </marker>
-      </defs>
-      <path class="bx-arc" d="M196 54 A118 118 0 0 1 266 124" marker-end="url(#bx-arrow)" />
-      <path class="bx-arc" d="M266 196 A118 118 0 0 1 196 266" marker-end="url(#bx-arrow)" />
-      <path class="bx-arc" d="M124 266 A118 118 0 0 1 54 196" marker-end="url(#bx-arrow)" />
-      <path class="bx-arc" d="M54 124 A118 118 0 0 1 124 54" marker-end="url(#bx-arrow)" />
-    </svg>
-
-    <span class="bx-hub" aria-hidden="true">ActionResult<small>closes the loop</small></span>
-
-    <div class="bx-step bx-step--n" aria-hidden="true">
-      <span class="bx-step-k">navigate</span>
-      <span class="bx-step-d">go to a URL</span>
-    </div>
-    <div class="bx-step bx-step--e" aria-hidden="true">
-      <span class="bx-step-k">snapshot</span>
-      <span class="bx-step-d">read the page as refs</span>
-    </div>
-    <div class="bx-step bx-step--s" aria-hidden="true">
-      <span class="bx-step-k">find</span>
-      <span class="bx-step-d">locate a target</span>
-    </div>
-    <div class="bx-step bx-step--w" aria-hidden="true">
-      <span class="bx-step-k">act</span>
-      <span class="bx-step-d">click, fill, verify</span>
-    </div>
-
-  </div>
-
-  <div class="browx-shots">
-    <span class="browx-shot-step">Find</span>
-    <Shot
-      name="marks"
-      alt={{
-        wide: "The sample projects app at desktop width, run through browxai, with numbered boxes over eight elements, each number mapped to a ref. Mark 3 is e7, the Account button, and mark 8 is e13, the first Open button.",
-        narrow: "The sample projects app at 390 px wide in its mobile layout, run through browxai, with numbered boxes over six elements, each number mapped to a ref. Mark 6 is e13, the first Open button.",
-      }}
-      caption={{
-        wide: "Sample app run through browxai: number the candidates, then say click 3.",
-        narrow: "Sample app at 390 px, mobile layout: number the candidates, then say click 6.",
-      }}
-    />
-    <span class="browx-shot-step">Act</span>
-    <Shot
-      name="act-diff"
-      alt={{
-        wide: "The sample projects app at desktop width, run through browxai, with the Account menu open after one click and the diff browxai returned: aria-expanded false to true and 6 nodes added.",
-        narrow: "The sample projects app at 390 px wide in its mobile layout, run through browxai, with the Account menu open after one click and the diff browxai returned: aria-expanded false to true and 6 nodes added.",
-      }}
-      caption={{
-        wide: "Sample app run through browxai: one click, one diff.",
-        narrow: "Sample app at 390 px, mobile layout: one click, one diff.",
-      }}
-    />
-  </div>
+  <span class="browx-shot-step">Find</span>
+  <Shot
+    name="marks"
+    alt={{
+      wide: "The sample projects app at desktop width, run through browxai, with numbered boxes over eight elements, each number mapped to a ref. Mark 3 is e7, the Account button, and mark 8 is e13, the first Open button.",
+      narrow:
+        "The sample projects app at 390 px wide in its mobile layout, run through browxai, with numbered boxes over six elements, each number mapped to a ref. Mark 6 is e13, the first Open button.",
+    }}
+    caption={{
+      wide: "Sample app run through browxai: number the candidates, then say click 3.",
+      narrow: "Sample app at 390 px, mobile layout: number the candidates, then say click 6.",
+    }}
+  />
+  <span class="browx-shot-step">Act</span>
+  <Shot
+    name="act-diff"
+    alt={{
+      wide: "The sample projects app at desktop width, run through browxai, with the Account menu open after one click and the diff browxai returned: aria-expanded false to true and 6 nodes added.",
+      narrow:
+        "The sample projects app at 390 px wide in its mobile layout, run through browxai, with the Account menu open after one click and the diff browxai returned: aria-expanded false to true and 6 nodes added.",
+    }}
+    caption={{
+      wide: "Sample app run through browxai: one click, one diff.",
+      narrow: "Sample app at 390 px, mobile layout: one click, one diff.",
+    }}
+  />
 </div>
 
 <div class="browx-section not-content">
@@ -159,55 +109,32 @@ import Shot from "../../components/Shot.astro";
 
 <div class="browx-grid">
   <div class="browx-card">
-    <span class="browx-card-mark">Surface</span>
-    <h3>Token-efficient</h3>
+    <span class="browx-card-mark">Native</span>
+    <h3>Native apps, same tools</h3>
+    <div class="browx-card-text">
+      <code>native-device</code> drives apps on an Android emulator or the iOS Simulator with the same refs, <code>find</code> and <code>click</code> as a page. The Android engine is verified on a live emulator. The iOS engine has only run against a stand-in WebDriverAgent server. <a href="/concepts/overview/#native-apps-desktop-apps-and-sessions">Native apps in detail</a>.
+    </div>
+  </div>
+  <div class="browx-card">
+    <span class="browx-card-mark">Capabilities</span>
+    <h3>Four on, the rest off</h3>
+    <div class="browx-card-text">
+      <code>read</code>, <code>navigation</code>, <code>action</code> and <code>human</code> are on. Every other capability is off until you enable it, and each has a test that checks its gate blocks. Arbitrary JS, response bodies, the clipboard and attaching to your Chrome are among them.
+    </div>
+  </div>
+  <div class="browx-card">
+    <span class="browx-card-mark">Snapshots</span>
+    <h3>Compact snapshots</h3>
     <div class="browx-card-text">
       <code>snapshot()</code> is scoped and budgeted; <code>find()</code> ranks candidates.
     </div>
   </div>
   <div class="browx-card">
-    <span class="browx-card-mark">Native</span>
-    <h3>Native apps, same tools</h3>
-    <div class="browx-card-text">
-      <code>native-device</code> drives Android emulator and iOS Simulator apps.
-    </div>
-  </div>
-  <div class="browx-card">
-    <span class="browx-card-mark">Host</span>
-    <h3>Reaches past the tab</h3>
-    <div class="browx-card-text">Host features such as the clipboard start off.</div>
-  </div>
-  <div class="browx-card">
-    <span class="browx-card-mark">Safety</span>
-    <h3>Default capabilities</h3>
-    <div class="browx-card-text">Arbitrary JS and response bodies start off.</div>
-  </div>
-  <div class="browx-card">
     <span class="browx-card-mark">Clients</span>
-    <h3>Model-agnostic</h3>
-    <div class="browx-card-text">Any MCP client over stdio, typed TypeScript SDK.</div>
-  </div>
-  <div class="browx-card">
-    <span class="browx-card-mark">Sessions</span>
-    <h3>Sessions and lifecycle</h3>
-    <div class="browx-card-text">Installed Chrome, one default profile per workspace.</div>
+    <h3>Any MCP client</h3>
+    <div class="browx-card-text">Runs over stdio for any MCP client, and ships a typed TypeScript SDK.</div>
   </div>
 </div>
-
-<p class="browx-section-sub">
-  <a href="/concepts/overview/#native-apps-desktop-apps-and-sessions">Native apps and sessions in detail</a>.
-  <a href="/guides/sites-behind-bot-protection/">Bot protection</a>.
-</p>
 </div>
 
-<div class="browx-cta browx-cta--center not-content">
-  <a href="/getting-started/" class="browx-btn browx-btn--primary">
-    Get started
-  </a>
-  <a href="/security/threat-model/" class="browx-btn browx-btn--ghost">
-    Threat model
-  </a>
-  <a href="https://github.com/kalebteccom/browxai" class="browx-btn browx-btn--ghost">
-    GitHub
-  </a>
-</div>
+<ProjectFacts />
