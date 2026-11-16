@@ -128,21 +128,21 @@ export function registerConfigApprovalTools(host: ToolHost): void {
           body.toolListPendingRestart = {
             active: liveToolList,
             persisted: persistedToolList,
-            note: "`toolList` was changed via set_config (or env) but is read ONCE at server start: the difference takes effect only after a browxai server RESTART. `tools/list` follows `active`.",
+            note: "`toolList` was changed via set_config or the environment, but the server reads it once at start. The change applies after you restart the browxai server. `tools/list` follows `active` until then.",
           };
         }
         if (live.join(",") !== persisted.join(",")) {
           body.capabilitiesPendingRestart = {
             active: live,
             persisted,
-            note: "`capabilities` was changed via set_config (or env) but is resolved ONCE at server start — the difference takes effect only after a browxai server RESTART. Tool gating enforces `active`.",
+            note: "`capabilities` was changed via set_config or the environment, but the server resolves it once at start. The change applies after you restart the browxai server. Tool gating enforces `active` until then.",
           };
         }
         if (livePlugins.join(",") !== persistedPlugins.join(",")) {
           body.pluginsPendingRestart = {
             active: livePlugins,
             persisted: persistedPlugins,
-            note: "`plugins` was changed via set_config but is resolved ONCE at server start — the difference takes effect only after a browxai server RESTART. Plugin tool registration enforces `active`.",
+            note: "`plugins` was changed via set_config, but the server resolves it once at start. The change applies after you restart the browxai server. Plugin tool registration enforces `active` until then.",
           };
         }
       } else {

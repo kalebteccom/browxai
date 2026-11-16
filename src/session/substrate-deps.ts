@@ -28,7 +28,7 @@ import type { SubstrateDeps } from "../engine/registry.js";
 export function hostFreeSubstrateDeps(caller: string): SubstrateDeps {
   const refuse = (closure: string, owner: string): never => {
     throw new Error(
-      `${caller}: ${closure} must not be reached — this caller holds none of the ` +
+      `${caller}: ${closure} must not be reached. This caller holds none of the ` +
         `server's host config (${owner}).`,
     );
   };

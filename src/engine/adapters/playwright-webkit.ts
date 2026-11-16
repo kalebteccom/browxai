@@ -99,13 +99,10 @@ export class PlaywrightWebKitAdapter {
   attach(_endpoint: string): Promise<EngineLaunchHandles> {
     return Promise.reject(
       new Error(
-        "webkit-attach-not-supported: browxai cannot attach to a running WebKit/Safari over CDP " +
-          "or BiDi. WebKit has no CDP escape hatch, and Safari has not shipped WebDriver BiDi as " +
-          "of June 2026 (safaridriver is WebDriver-Classic-only and hard-isolates automation into " +
-          "a clean ephemeral window — attach-to-the-live-session is impossible by design). The " +
-          "WebKit engine lane is correctness-only (managed sessions); real-Safari BYOB " +
-          "is a separate, tiered companion surface (AppleScript / Web-Extension), not a browxai " +
-          "engine adapter. Use a managed WebKit session, or a chromium session for CDP-attach BYOB.",
+        "webkit-attach-not-supported: browxai cannot attach to a running WebKit or Safari over " +
+          "CDP or BiDi. WebKit has no CDP, and Safari does not offer WebDriver BiDi, so automation " +
+          "always runs in a clean managed window. Use a managed WebKit session, or a chromium " +
+          "session if you need to attach to a running browser.",
       ),
     );
   }

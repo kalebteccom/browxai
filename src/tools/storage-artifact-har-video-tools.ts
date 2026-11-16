@@ -288,7 +288,7 @@ export function registerStorageArtifactHarVideoTools(
             ? { har: inline, inlineBytes: Buffer.byteLength(inline, "utf8") }
             : {}),
           hint: r.nativeRecord
-            ? "HAR was wired at session creation via `open_session({har})` — the native `recordHar` primitive can't be toggled off mid-session. The file will be written when `close_session` runs."
+            ? "This HAR was set up at session creation through `open_session({har})`, and Playwright cannot turn that recording off mid-session. The file is written when `close_session` runs."
             : r.wasActive
               ? "Recording route removed. The .har file is finalized when `close_session` runs (Playwright constraint). To re-record in this session: call `start_har` again with a new `path`."
               : "No HAR recorder was active.",
@@ -351,7 +351,7 @@ export function registerStorageArtifactHarVideoTools(
           pendingFinalize: r.pendingFinalize,
           finalized: r.finalized,
           finalizesOn: "close_session",
-          hint: "Playwright finalizes the .webm only when the context closes. Call `close_session` to flush; then `get_video` to read the file. There is no mid-context flush on the native recordVideo primitive — same constraint shape as `open_session({har})`.",
+          hint: "Playwright finalizes the .webm only when the context closes. Call `close_session` to flush; then `get_video` to read the file. Playwright has no mid-context flush for `recordVideo`, the same as for `open_session({har})`.",
         });
       } catch (err) {
         return errText("stop_video", err);

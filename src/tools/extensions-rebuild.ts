@@ -199,7 +199,7 @@ export async function rebuildPersistentForExtensions(
   if (caps.enabled.has("stealth")) {
     await applyStealth(requirePage(sess).context()).catch((err) => {
       log.warn(
-        `stealth: rebuild failed to apply init script — ${err instanceof Error ? err.message : String(err)}`,
+        `stealth: rebuild failed to apply init script: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
   }

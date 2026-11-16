@@ -145,7 +145,7 @@ describe("refuseIfUnsupported", () => {
       mode: "attached",
       headless: false,
       error: /attached\/BYOB sessions/,
-      hint: /not-owned/,
+      hint: /does not own/,
     },
     {
       label: "incognito sessions",

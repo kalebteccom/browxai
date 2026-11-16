@@ -173,7 +173,7 @@ export function registerInputTools(host: ToolHost): void {
                 text: JSON.stringify(
                   {
                     ok: false,
-                    error: `${action}: close all sessions first (close_sessions({all:true})) — copying a profile directory while Chromium has it open corrupts it`,
+                    error: `${action}: close all sessions first (close_sessions({all:true})), because copying a profile directory while Chromium has it open corrupts it.`,
                     openSessions: registry.list().map((s) => s.id),
                   },
                   null,

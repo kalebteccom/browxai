@@ -193,9 +193,9 @@ function normaliseDevice(api: DeviceApi, d: SyntheticDevice, index: number): Syn
  *  page that the agent told "you have a hardware device". Surfaced when
  *  `open_session({mode:"attached"})` engages with `device-emulation` on. */
 export const BYOB_DEVICE_EMU_WARNING =
-  "BYOB caveat: device-emulation wrappers patch `navigator.bluetooth` / `navigator.usb` / `navigator.hid` " +
-  "on an attached (not-owned) Chrome session. The wrappers are scoped to the context browxai opened, " +
-  "but the operator's main Chrome shares the same browser binary; treat any page reached during the " +
-  "session as having believed the synthetic catalog while it was set. Clearing the catalog (`emulate_*({devices:[]})`) " +
-  "restores the user-dismissed-picker shape on the next requestDevice; the wrapper itself stays installed " +
+  "BYOB caveat: device-emulation wrappers patch `navigator.bluetooth`, `navigator.usb` and `navigator.hid` " +
+  "on an attached Chrome that browxai does not own. The wrappers are scoped to the context browxai opened, " +
+  "but the operator's main Chrome shares the same browser binary, so treat any page reached while a " +
+  "synthetic catalog was set as having believed it. Clearing the catalog (`emulate_*({devices:[]})`) " +
+  "restores the dismissed-picker shape on the next requestDevice. The wrapper itself stays installed " +
   "for the life of the context.";

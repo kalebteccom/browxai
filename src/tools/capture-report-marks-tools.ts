@@ -203,7 +203,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
                 ? { ok: true, ...r }
                 : {
                     ok: false,
-                    error: `no region named "${name}" — call name_region first`,
+                    error: `no region named "${name}". Call name_region first, or pick one of the names in \`known\`.`,
                     known: e.regions.list().map((x) => x.name),
                   },
               null,

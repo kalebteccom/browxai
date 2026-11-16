@@ -274,7 +274,7 @@ export async function profileStatus(
         );
   if (discovered.filter((p) => p.name === LEGACY_PROFILE_NAME).length > 1) {
     warnings.push(
-      `two directories are named "${LEGACY_PROFILE_NAME}" — <workspace>/${LEGACY_PROFILE_SUBDIR} ` +
+      `two directories are named "${LEGACY_PROFILE_NAME}": <workspace>/${LEGACY_PROFILE_SUBDIR} ` +
         `and <workspace>/${PROFILES_SUBDIR}/${LEGACY_PROFILE_NAME}. Tools that take a \`profile\` ` +
         `name resolve "${LEGACY_PROFILE_NAME}" to the former; the latter is reachable only as the ` +
         `default session's own directory. Read each row's \`path\` to tell them apart.`,

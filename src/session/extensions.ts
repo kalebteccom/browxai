@@ -93,13 +93,15 @@ export function resolveExtensionPath(workspaceRoot: string, p: string, tool: str
   const resolved = isAbsolute(raw) ? resolve(raw) : resolve(workspaceRoot, raw);
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
     throw new Error(
-      `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}" (resolved to "${resolved}"). ` +
+      `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE, got "${p}". ` +
         `Stage the unpacked extension directory under the workspace.`,
     );
   }
   assertReadableWorkspacePath(workspaceRoot, resolved, tool);
   if (!existsSync(resolved)) {
-    throw new Error(`${tool}: extension directory not found at "${resolved}"`);
+    throw new Error(
+      `${tool}: extension directory not found at "${resolved}". Check the path is relative to $BROWX_WORKSPACE.`,
+    );
   }
   let st;
   try {
@@ -216,8 +218,8 @@ export function refuseIfUnsupported(input: {
       error: `${input.tool}: extension management is refused on attached/BYOB sessions`,
       hint:
         "The human's Chrome (attached over CDP) already has its own extension set installed by the human. " +
-        "browxai is not-owned on attached sessions — we don't install or uninstall extensions there. " +
-        "Use a managed (persistent) session if you need to drive an extension via browxai.",
+        "browxai does not own an attached Chrome, so it does not install or uninstall extensions there. " +
+        "Use a managed (persistent) session to drive an extension through browxai.",
     };
   }
   if (input.mode === "incognito") {
@@ -262,7 +264,7 @@ export function applyInstall(
   const id = extensionIdFromPath(install.path);
   if (reg.loaded.some((e) => e.id === id)) {
     throw new Error(
-      `${tool}: extension id collision for "${install.path}" (id "${id}") — this should not happen; report it.`,
+      `${tool}: extension id collision for "${install.path}" (id "${id}"). This should not happen, so report it.`,
     );
   }
   const next: LoadedExtension = {

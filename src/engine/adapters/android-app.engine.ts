@@ -67,8 +67,8 @@ async function pickSerial(): Promise<string> {
   throw new NativeDeviceError(
     "native-device-ambiguous",
     `${devices.length} ready devices are attached (${devices.map((d) => d.serial).join(", ")}). ` +
-      `Set ${SERIAL_ENV} to the one this server should drive — browxai never picks a device for ` +
-      "you, because driving the wrong one is indistinguishable from a broken app.",
+      `Set ${SERIAL_ENV} to the one this server should drive. browxai does not pick a device for ` +
+      "you, because driving the wrong one looks the same as a broken app.",
   );
 }
 
@@ -78,7 +78,7 @@ function lease(serial: string, sessionId: string): () => Promise<void> {
   if (holder && holder !== sessionId) {
     throw new NativeDeviceError(
       "native-device-leased",
-      `device "${serial}" is already leased by session "${holder}". Only ONE UiAutomator client ` +
+      `device "${serial}" is already leased by session "${holder}". Only one UiAutomator client ` +
         "can hold a device: a second `uiautomator dump` fails for both. Close that session, or " +
         `boot a second emulator and point ${SERIAL_ENV} at it.`,
     );

@@ -39,12 +39,10 @@ export class WedgeTracker {
   /** Agent-facing recovery hint for a wedged session. */
   hint(): string {
     return (
-      `${this.consecutive} consecutive anti-wedge timeouts on this session — ` +
-      `it is wedged. STOP retrying it: raising \`timeoutMs\` or re-navigating ` +
-      `in place will NOT recover a wedged session. Discard it with ` +
-      `\`close_session\`, then \`open_session\` (or any call on a fresh id) ` +
-      `to get a clean session. Page state in the wedged session is lost — ` +
-      `restart that work in the new session.`
+      `${this.consecutive} consecutive anti-wedge timeouts on this session, so it is wedged. ` +
+      `Stop retrying it: raising \`timeoutMs\` or re-navigating does not recover it. ` +
+      `Call \`close_session\`, then \`open_session\` (or any call on a fresh id) ` +
+      `for a clean session. Page state is lost, so redo the work in the new session.`
     );
   }
 }

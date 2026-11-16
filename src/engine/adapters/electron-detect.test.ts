@@ -49,14 +49,14 @@ describe("profileAttachedBrowser — which app is on the other end", () => {
     // The warning names the app, the live logged-in session and the EDR signature.
     expect(profile.warning).toContain("Code/1.122.1");
     expect(profile.warning).toContain("T1539");
-    expect(profile.warning).toMatch(/navigate. is REFUSED/);
+    expect(profile.warning).toMatch(/navigate. is refused/);
   });
 
   it("reads ordinary Chrome as chromium, with target creation intact", async () => {
     const profile = await profileAttachedBrowser(fakeBrowser({ userAgent: CHROME_UA }));
     expect(profile.engine).toBe("chromium");
     expect(profile.canCreateTargets).toBe(true);
-    expect(profile.warning).toContain("EXTERNAL Chrome over CDP");
+    expect(profile.warning).toContain("external Chrome over CDP");
   });
 
   it.each([

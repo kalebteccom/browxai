@@ -346,7 +346,7 @@ export function registerSessionDialogPermissionTools(
             };
           } catch (err) {
             throw new Error(
-              `fs_picker_respond: failed to read \`path\` ${JSON.stringify(f.path)} — ${err instanceof Error ? err.message : String(err)}`,
+              `fs_picker_respond: failed to read \`path\` ${JSON.stringify(f.path)}: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
         });

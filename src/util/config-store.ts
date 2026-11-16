@@ -226,7 +226,9 @@ export class ConfigStore {
           `config: ${this.filePath} is malformed (${why}). Fix or remove it; browxai will not ` +
             "start on a config file it cannot read, because ignoring it would drop saved restrictions.",
         );
-      log.warn(`config: ${CONFIG_FILE} is malformed — ignoring persistent layers`, { error: why });
+      log.warn(`config: ${CONFIG_FILE} is malformed, so the saved layers are ignored`, {
+        error: why,
+      });
       this.persisted = {};
     }
   }

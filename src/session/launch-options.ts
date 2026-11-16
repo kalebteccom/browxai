@@ -134,10 +134,9 @@ export async function finalizeManagedSession(
   // is visible.
   if (opts.storageState) {
     log.warn(
-      "session.managed: applying storageState to a persistent profile — " +
-        "this CLEARS existing cookies/localStorage/IndexedDB on the profile " +
-        `at "${profileDir}" before seeding. Use incognito mode for a fresh ` +
-        "context without touching a persistent profile.",
+      "session.managed: applying storageState to a persistent profile clears its " +
+        `existing cookies, localStorage and IndexedDB (profile at "${profileDir}") before seeding. ` +
+        "Use incognito mode for a fresh context that leaves a persistent profile alone.",
     );
     await context.setStorageState(opts.storageState);
   }

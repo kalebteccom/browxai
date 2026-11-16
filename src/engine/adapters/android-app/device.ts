@@ -157,7 +157,7 @@ export class AndroidDevice {
       "native-hierarchy-unavailable",
       `UiAutomator returned no hierarchy XML (got ${JSON.stringify(raw.slice(0, 200))}). ` +
         "Another UiAutomator client (a second driver, an Espresso run, a manual `uiautomator " +
-        "dump`, or an accessibility service) may hold the connection — only one owner per device.",
+        "dump`, or an accessibility service) may hold the connection, and only one owner is allowed per device.",
     );
   }
 

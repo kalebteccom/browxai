@@ -18,7 +18,7 @@ const requireFromHere = createRequire(import.meta.url);
 const pkg = requireFromHere("../../package.json") as { version?: unknown };
 
 if (typeof pkg.version !== "string" || pkg.version.length === 0) {
-  throw new Error("browxai: package.json#version missing or empty — corrupt install");
+  throw new Error("browxai: package.json#version is missing or empty. Reinstall browxai.");
 }
 
 /** The browxai package version (package.json#version) — single source of truth. */

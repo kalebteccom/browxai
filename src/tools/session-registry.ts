@@ -52,7 +52,11 @@ import { Recorder } from "../page/recording.js";
 import { ReplaySession } from "../replay/session.js";
 import { FeedbackMemory } from "../page/learning.js";
 import { log } from "../util/logging.js";
-import { capabilityMissing, type CapabilityConfig } from "../util/capabilities.js";
+import {
+  capabilitiesAssignment,
+  capabilityMissing,
+  type CapabilityConfig,
+} from "../util/capabilities.js";
 import { refuseHeldProfile } from "./ask-human-gate.js";
 import { refuseAttachWithoutCapability } from "./byob-attach-gate.js";
 import {
@@ -172,10 +176,10 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       if (engineCapability && capabilityMissing(engineCapability, caps)) {
         throw new Error(
           `capability-required: session "${id}": the "${effectiveEngine}" engine needs the ` +
-            `\`${engineCapability}\` capability, which is OFF by default. It installs and ` +
+            `\`${engineCapability}\` capability, which is off by default. It installs and ` +
             "launches applications and drives an OS-level input pipeline on a device, so it is " +
-            `opt-in. Add it to BROWX_CAPABILITIES (e.g. BROWX_CAPABILITIES=read,navigation,` +
-            `action,human,${engineCapability}) and restart the server. See ${docsUrl.threatModelConfiguring} ` +
+            `opt-in. Add it to BROWX_CAPABILITIES and keep the defaults in the list ` +
+            `(${capabilitiesAssignment(engineCapability)}), then restart the server. See ${docsUrl.threatModelConfiguring} ` +
             "for what it grants.",
         );
       }
@@ -238,17 +242,17 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         }
         if (creationStorageState) {
           log.warn(
-            `session "${id}": ignoring storageState/authState for attached/BYOB session — ` +
-              "the consumer's Chrome is not-owned and we don't seed it. Use inject_storage_state " +
-              "explicitly if you really mean to overwrite the attached browser's state.",
+            `session "${id}": ignoring storageState/authState for an attached session. ` +
+              "browxai does not seed a Chrome it does not own. Call inject_storage_state " +
+              "if you do mean to overwrite the attached browser's state.",
           );
         }
         if (creationRecordHar) {
           log.warn(
-            `session "${id}": ignoring \`har\` recording for attached/BYOB session — ` +
-              "the consumer's Chrome is not-owned and we don't wire context-creation primitives on it. " +
-              "Use `start_har` post-attach if you really want HAR on a BYOB session " +
-              "(it routes via runtime `routeFromHAR`, with the same finalize-on-context-close caveat).",
+            `session "${id}": ignoring \`har\` recording for an attached session. ` +
+              "browxai cannot set up recording on a Chrome it did not create. " +
+              "Call `start_har` after attaching to get a HAR on this session. " +
+              "The file is finalized when the context closes.",
           );
           creationRecordHar = undefined;
           creationRecordHarResolved = undefined;
@@ -258,18 +262,18 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           // expose mid-context video start), so a silent ignore would leave
           // the agent expecting a .webm that never lands. Surface it loudly.
           throw new Error(
-            `session "${id}": \`recordVideo\` is not supported on attached / BYOB sessions — ` +
-              "Playwright's `recordVideo` is a context-creation primitive and we don't " +
-              "wire context-creation primitives on the consumer's Chrome (not-owned). " +
+            `session "${id}": \`recordVideo\` is not supported on attached sessions. ` +
+              "Playwright can only start recording when it creates the browser context, " +
+              "and browxai did not create this one. " +
               'Open a managed session (open_session({mode:"persistent"}) or {mode:"incognito"}) ' +
               "with {recordVideo:{...}} to record.",
           );
         }
         if (spec?.channel || backgroundThrottling) {
           log.warn(
-            `session "${id}": ignoring \`channel\` / \`backgroundThrottling\` for attached/BYOB ` +
-              "session — both are launch-time settings and the consumer's Chrome was already " +
-              "launched by whoever started it. Use `browxai chrome start` (which takes " +
+            `session "${id}": ignoring \`channel\` and \`backgroundThrottling\` for an attached ` +
+              "session. Both are launch-time settings, and whoever started that Chrome already " +
+              "launched it. Use `browxai chrome start` (which takes " +
               "--disable-background-throttling) or your own launch flags for the attach target.",
           );
         }

@@ -144,11 +144,9 @@ export class AndroidCdpAdapter {
   launch(): Promise<never> {
     return Promise.reject(
       new Error(
-        "android-launch-not-supported: the android engine is ATTACH-ONLY. managed / ephemeral " +
-          "launch means spawning a browser process browxai owns, which is not a thing on a phone " +
-          "the user controls — the user opens Chrome on their device, and browxai attaches over " +
-          'adb + CDP. Open the session with mode:"attached" (BROWX_ATTACH_CDP ' +
-          "is loopback-enforced; the adb forward is loopback by construction).",
+        "android-launch-not-supported: the android engine only attaches. browxai cannot launch " +
+          "Chrome on a phone you control. Open Chrome on the device yourself, then attach over " +
+          'adb with open_session({ mode: "attached" }).',
       ),
     );
   }

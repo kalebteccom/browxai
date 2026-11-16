@@ -92,7 +92,7 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
         };
         if (e.mode === "attached") {
           body.warning =
-            'BYOB / attached Chrome: this virtual-clock policy stays in effect on the attached browser even after browxai detaches — release it (mode:"release"), reload, or close the page when you\'re done. A page with a frozen wall clock is a debugging trap.';
+            'BYOB / attached Chrome: this virtual-clock policy stays in effect on the attached browser after browxai detaches. Release it (mode:"release"), reload, or close the page when you\'re done, or the page keeps a frozen wall clock.';
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
         return {
@@ -146,7 +146,7 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
         const body: Record<string, unknown> = { ok: true, applied: state };
         if (e.mode === "attached") {
           body.warning =
-            "BYOB / attached Chrome: this Math.random override is installed on the attached browser's context and stays in effect for as long as the context lives — close the tab / context when you're done to drop it.";
+            "BYOB / attached Chrome: this Math.random override is installed on the attached browser's context and stays in effect for as long as the context lives. Close the tab or context when you're done to drop it.";
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
         return {

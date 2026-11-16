@@ -36,13 +36,10 @@
 export class InvariantError extends Error {
   constructor(message: string) {
     super(
-      `invariant violated: ${message}. This is a browxai-internal contract failure ` +
-        `(NOT an application or page error) — browxai reached a state one of its own ` +
-        `modules guarantees cannot happen, so it refused instead of returning a wrong ` +
-        `answer or crashing the dispatch loop. This is a RECOVERABLE signal: the tool ` +
-        `returned a structured refusal. Treat it as a defect to report (it indicates a ` +
-        `bug in browxai, not in your usage); the session itself is usually unaffected ` +
-        `— retry the call, and if it recurs, capture the message and file it.`,
+      `invariant violated: ${message}. browxai reached a state its own code guarantees ` +
+        `cannot happen, so it returned this error instead of a wrong answer. This is a bug ` +
+        `in browxai and has nothing to do with the page or your call. The session is ` +
+        `usually fine. Retry once, and if it recurs, report the message as a browxai defect.`,
     );
     this.name = "InvariantError";
   }

@@ -111,7 +111,7 @@ async function resolveShadowScope(
         );
     } else {
       warnings.push(
-        `ref=${ref} not found in the current snapshot; walking from the document root instead.`,
+        `unknown ref "${ref}". Refs reset when the page changes: call snapshot() or find() for a fresh one. Walking from the document root instead.`,
       );
     }
   } catch (err) {

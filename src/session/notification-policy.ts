@@ -95,7 +95,7 @@ export interface NotificationRecord {
 /** Hint emitted on `ActionResult.failure.hint` when `raise` mode fired.
  *  Stable, agent-facing string — referenced in docs/tool-reference.md. */
 export const UNHANDLED_NOTIFICATION_HINT =
-  "unhandled notification — set notificationPolicy (open_session/set_notification_policy) " +
+  "unhandled notification: set notificationPolicy (open_session/set_notification_policy) " +
   'to "allow", "deny", or "ask-human" before driving an action that may construct ' +
   "a Notification. The constructor was rejected page-side (NotAllowedError) so the page " +
   "is not deadlocked, but the app effect is the deny branch.";
@@ -155,7 +155,7 @@ export class NotificationPolicyState {
 function normalise(p: NotificationPolicy): NotificationPolicy {
   if (!isPolicyMode(p.mode)) {
     throw new Error(
-      `notificationPolicy: invalid mode "${String(p.mode)}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+      `notificationPolicy: invalid mode "${String(p.mode)}". Use "allow", "deny", "raise" or "ask-human".`,
     );
   }
   return { mode: p.mode };
@@ -174,7 +174,7 @@ export function parseNotificationPolicyArg(
   if (typeof v === "object") return normalise(v);
   if (isPolicyMode(v)) return { mode: v };
   throw new Error(
-    `notificationPolicy: invalid value "${v}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+    `notificationPolicy: invalid value "${v}". Use "allow", "deny", "raise" or "ask-human".`,
   );
 }
 

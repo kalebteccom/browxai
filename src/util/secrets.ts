@@ -73,8 +73,8 @@ export class SecretRegistry {
     if (!/^[A-Z][A-Z0-9_]*$/.test(entry.name)) {
       throw new Error(
         `register_secret: name "${entry.name}" must match /^[A-Z][A-Z0-9_]*$/ ` +
-          `(uppercase identifier, e.g. PASSWORD / OTP / SESSION_TOKEN) — the ` +
-          `\`<NAME>\` mask format is the stable contract for agents to recognise.`,
+          `(uppercase letters, digits and underscores, e.g. PASSWORD, OTP or SESSION_TOKEN), ` +
+          `so the \`<NAME>\` mask is unambiguous.`,
       );
     }
     if (typeof entry.value !== "string" || entry.value.length === 0) {
@@ -90,8 +90,8 @@ export class SecretRegistry {
     }
     if (!this.byName.has(entry.name) && this.byName.size >= this.cap) {
       throw new Error(
-        `register_secret: capacity ${this.cap} reached — remove an existing ` +
-          `secret (close_session or restart) before registering more`,
+        `register_secret: capacity ${this.cap} reached. Close the session or restart ` +
+          `the server to clear secrets before registering more.`,
       );
     }
     this.byName.set(entry.name, { ...entry });
@@ -173,7 +173,7 @@ export class SecretRegistry {
         value,
         error:
           `value "<${name}>" looks like a secret alias but no secret named ` +
-          `"${name}" is registered on this session — call register_secret({name,value}) first`,
+          `"${name}" is registered on this session. Call register_secret({name,value}) first.`,
       };
     }
     const origins = this.originsByName.get(name);

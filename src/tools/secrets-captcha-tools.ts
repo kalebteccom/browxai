@@ -110,7 +110,7 @@ function pageForSiteKeyRead(
       refusal: captchaJsonResult({
         ok: false,
         provider,
-        error: `solve_captcha: cannot read a site-key from a selector on this session — ${
+        error: `solve_captcha: cannot read a site-key from a selector on this session: ${
           err instanceof Error ? err.message : String(err)
         }`,
         hint: "Pass `siteKey` explicitly (the widget's `data-sitekey` value). Deriving it from a selector needs a Playwright page; the solve itself does not.",
@@ -281,7 +281,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
           ok: false,
           provider: null,
           error: cfg.error ?? "captcha provider config is incomplete",
-          hint: "Set BROWX_CAPTCHA_PROVIDER and BROWX_CAPTCHA_API_KEY together. browxai does NOT bundle a solver and does NOT auto-purchase credits.",
+          hint: "Set BROWX_CAPTCHA_PROVIDER and BROWX_CAPTCHA_API_KEY together. browxai does not bundle a solver and does not buy credits for you.",
         });
       }
       const e = await entryFor(session);

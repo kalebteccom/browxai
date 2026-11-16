@@ -113,7 +113,7 @@ export interface PermissionRecord {
 /** Hint emitted on `ActionResult.failure.hint` when `raise` mode fired.
  *  Stable, agent-facing string — referenced in docs/tool-reference.md. */
 export const UNHANDLED_PERMISSION_HINT =
-  "unhandled permission request — set permissionPolicy (open_session/set_permission_policy) " +
+  "unhandled permission request: set permissionPolicy (open_session/set_permission_policy) " +
   'to "allow", "deny", or "ask-human" before driving an action that may trigger one. ' +
   "The request was rejected page-side (NotAllowedError) so the page is not deadlocked, but " +
   "the app effect is the deny branch.";
@@ -122,9 +122,9 @@ export const UNHANDLED_PERMISSION_HINT =
  *  `Browser.setPermission` mutates the human's Chrome and is not cleanly
  *  revertable on detach — same posture class as the BYOB emulation warning. */
 export const BYOB_PERMISSION_WARNING =
-  "BYOB caveat: this permission policy is enforced via CDP `Browser.setPermission` " +
-  "on an attached (not-owned) Chrome. The override PERSISTS on that browser after " +
-  "browxai detaches; the human's Chrome must navigate / restart to fully clear it.";
+  "BYOB caveat: this permission policy is enforced through CDP `Browser.setPermission` " +
+  "on an attached Chrome that browxai does not own. The override stays on that browser " +
+  "after browxai detaches, until the person using it navigates or restarts it.";
 
 /** Mutable per-session state. The page-side check binding reads `current(name)`
  *  on every request, so a `set_permission_policy` call takes effect on the
@@ -197,7 +197,7 @@ export class PermissionPolicyState {
 function normalise(p: PermissionPolicy): PermissionPolicy {
   if (!isPolicyMode(p.mode)) {
     throw new Error(
-      `permissionPolicy: invalid mode "${String(p.mode)}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+      `permissionPolicy: invalid mode "${String(p.mode)}". Use "allow", "deny", "raise" or "ask-human".`,
     );
   }
   if (p.perPermission) {
@@ -205,13 +205,13 @@ function normalise(p: PermissionPolicy): PermissionPolicy {
     for (const [name, mode] of Object.entries(p.perPermission)) {
       if (!SUPPORTED_PERMISSIONS.includes(name as SupportedPermission)) {
         throw new Error(
-          `permissionPolicy.perPermission: unknown permission "${name}" — supported: ${SUPPORTED_PERMISSIONS.join(", ")}`,
+          `permissionPolicy.perPermission: unknown permission "${name}". Supported: ${SUPPORTED_PERMISSIONS.join(", ")}.`,
         );
       }
       if (mode === undefined) continue;
       if (!isPolicyMode(mode)) {
         throw new Error(
-          `permissionPolicy.perPermission["${name}"]: invalid mode "${String(mode)}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+          `permissionPolicy.perPermission["${name}"]: invalid mode "${String(mode)}". Use "allow", "deny", "raise" or "ask-human".`,
         );
       }
       cleaned[name as SupportedPermission] = mode;
@@ -234,7 +234,7 @@ export function parsePermissionPolicyArg(
   if (typeof v === "object") return normalise(v);
   if (isPolicyMode(v)) return { mode: v };
   throw new Error(
-    `permissionPolicy: invalid value "${v}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+    `permissionPolicy: invalid value "${v}". Use "allow", "deny", "raise" or "ask-human".`,
   );
 }
 

@@ -63,7 +63,7 @@ export class EngineNotYetSupportedError extends Error {
   readonly engine: EngineKind;
   constructor(engine: EngineKind) {
     super(
-      `engine-not-yet-supported: "${engine}" is declared but not yet implemented — ` +
+      `engine-not-yet-supported: "${engine}" is declared but not yet implemented. ` +
         `${IMPLEMENTED_ENGINES.join(", ")} are wired today. ` +
         `Use browserType:"chromium" (the default) or any of ${IMPLEMENTED_ENGINES.slice(1)
           .map((k) => `"${k}"`)

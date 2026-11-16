@@ -118,7 +118,7 @@ export function registerDeepPerfTools(host: ToolHost): void {
         };
         if (r.restarted) {
           body.warning =
-            "A prior perf_start was still active — it has been cleanly stopped (events discarded) and a fresh trace started.";
+            "A prior perf_start was still active. It was stopped and its events were discarded, and a fresh trace started.";
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
         return {
@@ -168,7 +168,7 @@ export function registerDeepPerfTools(host: ToolHost): void {
           const body = {
             ok: true,
             notRunning: true,
-            hint: "No trace was active for this session — perf_stop is idempotent; call perf_start first.",
+            hint: "No trace was running on this session, so there was nothing to stop. Call perf_start first to record one.",
           };
           const tokensEstimate = estimateTokens(JSON.stringify(body));
           return {

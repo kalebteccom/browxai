@@ -68,7 +68,7 @@ export async function launchIosSession(deps: IosAdapterDeps = {}): Promise<IosNa
   const env = iosEnvFrom(deps.env ?? process.env);
   if (!env.appId) {
     throw new Error(
-      "ios-app-no-bundle-id: the ios-app engine drives ONE application, named by its bundle id. " +
+      "ios-app-no-bundle-id: the ios-app engine drives one application, named by its bundle id. " +
         "Set BROWX_IOS_APP_ID (e.g. `com.acme.checkout`), and BROWX_IOS_APP_PATH as well when the " +
         "app is not installed on the simulator yet.",
     );
@@ -115,7 +115,7 @@ async function makeIosAdapter(opts: SessionOptions): Promise<BrowserSession> {
   const mode = opts.launchMode ?? "managed";
   if (mode === "incognito") {
     throw new Error(
-      "ios-app-incognito-not-supported: incognito is a separate browser CONTEXT, which is a " +
+      "ios-app-incognito-not-supported: incognito is a separate browser context, which is a " +
         "Playwright concept a simulator has no equivalent for. To start an app from a known " +
         "state, erase the device (`xcrun simctl erase <udid>`) or reinstall the app before " +
         "opening the session.",

@@ -413,7 +413,7 @@ export function registerSessionLifecycleTools(
                 {
                   ok: false,
                   error:
-                    "close_sessions: pass `prefix`, `idleMs`, and/or `all:true` — refusing to close nothing/everything implicitly",
+                    "close_sessions: pass `prefix`, `idleMs` and/or `all:true` to say which sessions to close.",
                 },
                 null,
                 2,

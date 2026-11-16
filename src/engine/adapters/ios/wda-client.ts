@@ -37,8 +37,8 @@ export class WdaUnreachableError extends Error {
   constructor(url: string, detail: string) {
     super(
       `wda-unreachable: no WebDriverAgent answered at ${url} (${detail}). The ios-app engine reads ` +
-        "the XCUITest element hierarchy through WebDriverAgent, which browxai does NOT bundle, " +
-        "build or install — it is operator-supplied, like Xcode itself. Build and run it against " +
+        "the XCUITest element hierarchy through WebDriverAgent, which browxai does not bundle, " +
+        "build or install. It is operator-supplied, like Xcode itself. Build and run it against " +
         "your booted simulator (`xcodebuild -project WebDriverAgent.xcodeproj -scheme " +
         "WebDriverAgentRunner -destination 'id=<udid>' test`), then point BROWX_IOS_WDA_URL at its " +
         "port. Simulator and application lifecycle (boot / install / launch / terminate / " +
