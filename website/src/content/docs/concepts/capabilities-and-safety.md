@@ -51,7 +51,8 @@ This page is the working summary.
 ## Capabilities
 
 Tools are grouped into capability categories, resolved once at server start. A
-tool whose capability is disabled returns a structured error when called.
+tool whose capability is disabled returns a structured error when called. It
+still appears in `tools/list`, unless the `toolList` config key is `enabled`.
 
 The default set is:
 

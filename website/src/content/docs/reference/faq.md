@@ -95,7 +95,9 @@ itself.
 
 Use `set_config({ scope, patch })`. The `BROWX_*` environment variables still
 work as a legacy compatibility layer, but the managed config store is the
-recommended path. See [Configuration](/guides/configuration/).
+recommended path. Enabling a capability is the exception: it needs
+`BROWX_CAPABILITIES` in the server's environment. See
+[Configuration](/guides/configuration/).
 
 ## Is it open source?
 
