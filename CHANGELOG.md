@@ -8,10 +8,16 @@ surface" covers.
 
 ## Unreleased
 
+## [0.17.2] - 2026-11-16
+
 ### Fixed
 
-- **The README SDK example reads the extracted value from the right place.** `browxai.extract()` returns the MCP envelope, and its `data` field is the tool's own result: `{ ok, data, evidence, warnings }`. The example destructured `data` and read `data.title`, which is `undefined`. It now reads `result.data.title`, and the comment names `result.warnings` and the `{ ok: false, failure }` shape. The SDK itself is unchanged.
+- **The SDK example in the README, which ships in the npm package, read the title from the wrong place.** `extract()` returns `{ content, data }`, and `data` is the tool's own result, so the extracted title is at `result.data.title`. The example read `data.title`, which is `undefined`. It now reads `result.data.title`, and the comment names `result.warnings` and the `{ ok: false, failure }` shape. The SDK itself is unchanged.
 - **A headed launch on a machine with no display now names `BROWX_HEADLESS=1`.** The Playwright text said to set `headless: true` or run `xvfb-run`, neither of which a browxai user can do. The text is kept and a line is added: "a headed browser needs a display, so set BROWX_HEADLESS=1 to launch headless." It applies to `open_session` and to the first call that opens a session on its own, on the Chromium, Firefox and WebKit engines. Nothing is added when the launch is already headless.
+
+### Changed
+
+- **The docs match the code on confirm hooks, `tools/list` and the capability lists.** `BROWX_CONFIRM_REQUIRED` accepts four names, and only `navigate_off_allowlist` and `byob_action` fire: `file_download` and `file_upload` are accepted but reserved, because no tool consults them yet. The threat model, the agent guidance page and the adopter checklist (which now says to set `BROWX_HEADLESS=1` in a container) are corrected against the source. The roadmap gains measured first-run figures.
 
 ## [0.17.1] - 2026-11-16
 
