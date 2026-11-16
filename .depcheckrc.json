@@ -5,7 +5,8 @@
     "coverage",
     "artifacts",
     "packages/plugins/*/dist",
-    "website/dist"
+    "website/dist",
+    "scripts/first-run/sdk-quickstart.mjs"
   ],
   "ignores": [
     "@types/*",

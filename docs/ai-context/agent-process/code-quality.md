@@ -17,6 +17,8 @@ pnpm build
 
 CI runs the same gate (see `.woodpecker/gate.yml` and `.woodpecker/browser.yml`). Pushing a diff that the local gate would reject is a self-inflicted CI failure. The zero-ignores discipline (no `// @ts-ignore`, no `eslint-disable` without justified comment) applies on top of this gate.
 
+Three manual workflows sit beside the gate, none of them required: `.woodpecker/design-audit.yml`, `.woodpecker/lighthouse.yml` and `.woodpecker/first-run.yml`, picked with `AUDIT == "design"`, `"lighthouse"` or `"first-run"`. `first-run.yml` measures the published package from a clean `npm install browxai@latest`: it follows `website/src/content/docs/getting-started.md` command by command and lists every difference from what the page says, takes a first snapshot against a loopback page, and records the `tools/list` size (tool count, characters, estimated tokens) with `BROWX_TOOL_LIST` unset and `enabled`, on the default capabilities and on all of them. Its logic lives in `scripts/first-run/`, and when the getting-started page changes, a run shows whether the page and the package still agree.
+
 If a residual issue remains (e.g. an external dependency emits a warning you can't suppress), document the owner and reason in the PR. Don't leave unexplained global debt.
 
 ## Commit subject contract
