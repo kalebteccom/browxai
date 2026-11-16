@@ -115,7 +115,7 @@ import { createBrowxai } from "browxai";
 
 const browxai = await createBrowxai(); // in-process, single-script
 await browxai.navigate({ url: "https://example.com" });
-const { data } = await browxai.extract({
+const { data: result } = await browxai.extract({
   schema: {
     type: "object",
     properties: {
@@ -123,8 +123,9 @@ const { data } = await browxai.extract({
     },
   },
 });
-// data.title is "Example Domain". A selector that matches nothing adds a
-// line to `warnings` on the result.
+// `result` is the tool's own result: { ok: true, data: { title: ... }, evidence, ... }.
+// `result.data.title` is "Example Domain". A selector that matches nothing adds a
+// line to `result.warnings`, and a failed extract is { ok: false, failure }.
 await browxai.close();
 ```
 
