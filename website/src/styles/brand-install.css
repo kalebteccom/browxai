@@ -232,7 +232,10 @@
   color: var(--sl-color-text-accent);
 }
 
-/* The compact snapshot tree, laid out on a grid so columns line up. */
+/* The compact snapshot tree, laid out on a grid so columns line up. A row is
+   role, "name" and [ref=eN], the three things `snapshot` prints on a plain
+   row. Columns are sized in ch, so they track the monospace face and the
+   widest cell (`textbox`, `"Password"`, `[ref=e3]`) always fits. */
 .browx-snap {
   margin: 0;
   padding: var(--space-4) var(--space-4h) var(--space-4h);
@@ -247,7 +250,7 @@
 }
 .browx-snap .row {
   display: grid;
-  grid-template-columns: 4.6rem 9rem 5rem 1fr;
+  grid-template-columns: 7ch 10ch 8ch;
   gap: var(--space-2);
   white-space: nowrap;
 }
@@ -267,14 +270,13 @@
   color: var(--sl-color-text-accent);
 }
 /* Shrink the snapshot on small screens so it fits without an inner scroll. At
-   360px the card body is 294px wide; these columns need about 280px. */
+   320px the three columns plus the indent need about 200px. */
 @media (max-width: 34rem) {
   .browx-snap {
     font-size: 0.72rem;
     padding: var(--space-3) var(--space-4) var(--space-4);
   }
   .browx-snap .row {
-    grid-template-columns: 3.1rem 4.6rem 3.7rem 1fr;
     gap: var(--space-1h);
   }
   .browx-snap .row.indent {
