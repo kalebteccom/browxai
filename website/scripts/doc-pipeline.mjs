@@ -51,7 +51,7 @@ export const htmlPages = [
     out: "reference/tool-reference.md",
     title: "Tool reference",
     description:
-      "Every browxai tool: inputs, outputs, example calls, the configuration and session model, capabilities, and the stability policy.",
+      "The browxai tool reference index: the intro, the list of section pages, and the stability policy.",
   },
   {
     src: "roadmap.md",
