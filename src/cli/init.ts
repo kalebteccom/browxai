@@ -53,35 +53,38 @@ export interface InitDeps {
   applyConfig?: typeof applyUserConfig;
 }
 
+/** Printed to stdout for `--help` (exit 0, from `cli.ts`) and to stderr when
+ *  the arguments are wrong (exit 2). */
+export const INIT_USAGE =
+  "usage: browxai init <workspace> [--test-attrs a,b,...] [--no-write]\n" +
+  "                                [--no-write-user-config] [--no-smoke]\n" +
+  "  <workspace>               per-app dir that holds browxai state\n" +
+  "                            (for example ~/site-docs/<app>)\n" +
+  "  --test-attrs a,b,...      test attributes to try, in order, for\n" +
+  "                            BROWX_TEST_ATTRIBUTES. Default: sniffed from the\n" +
+  "                            source next to the workspace.\n" +
+  "  --no-write                print the .mcp.json snippet and each client\n" +
+  "                            change, and write nothing\n" +
+  "  --no-write-user-config    leave the user-level config of Cursor, Codex and\n" +
+  "                            Claude Desktop alone. By default init prints the\n" +
+  "                            change to each one it finds, then writes it. An\n" +
+  "                            existing file is merged and the old copy kept as\n" +
+  "                            <config>.browxai-bak. A file init will not edit\n" +
+  "                            (not plain JSON), or one that already has an\n" +
+  "                            entry, exits 0. A read or write error exits 1,\n" +
+  "                            after every client was tried.\n" +
+  "  --write-user-config [<client>]\n" +
+  "                            accepted for older scripts, and a no-op: writing\n" +
+  "                            is already the default. With a client it limits\n" +
+  "                            the write to that client, one of:\n" +
+  `                            ${CLIENT_IDS.join(", ")}\n` +
+  "  --no-smoke                skip the headless first-snapshot check at the end\n" +
+  "                            (also skipped under --no-write)\n";
+
 export async function runInit(args: string[], deps: InitDeps = {}): Promise<number> {
   const opts = parseArgs(args);
   if (!opts) {
-    process.stderr.write(
-      "usage: browxai init <workspace> [--test-attrs a,b,...] [--no-write]\n" +
-        "                                [--no-write-user-config] [--no-smoke]\n" +
-        "  <workspace>               per-app dir that holds browxai state\n" +
-        "                            (for example ~/site-docs/<app>)\n" +
-        "  --test-attrs a,b,...      test attributes to try, in order, for\n" +
-        "                            BROWX_TEST_ATTRIBUTES. Default: sniffed from the\n" +
-        "                            source next to the workspace.\n" +
-        "  --no-write                print the .mcp.json snippet and each client\n" +
-        "                            change, and write nothing\n" +
-        "  --no-write-user-config    leave the user-level config of Cursor, Codex and\n" +
-        "                            Claude Desktop alone. By default init prints the\n" +
-        "                            change to each one it finds, then writes it. An\n" +
-        "                            existing file is merged and the old copy kept as\n" +
-        "                            <config>.browxai-bak. A file init will not edit\n" +
-        "                            (not plain JSON), or one that already has an\n" +
-        "                            entry, exits 0. A read or write error exits 1,\n" +
-        "                            after every client was tried.\n" +
-        "  --write-user-config [<client>]\n" +
-        "                            accepted for older scripts, and a no-op: writing\n" +
-        "                            is already the default. With a client it limits\n" +
-        "                            the write to that client, one of:\n" +
-        `                            ${CLIENT_IDS.join(", ")}\n` +
-        "  --no-smoke                skip the headless first-snapshot check at the end\n" +
-        "                            (also skipped under --no-write)\n",
-    );
+    process.stderr.write(INIT_USAGE);
     return 2;
   }
   const workspace = resolve(opts.workspace);

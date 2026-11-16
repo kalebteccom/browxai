@@ -15,8 +15,8 @@ import { createServer } from "./server.js";
 // for their side effect populates the map; `commandFor` resolves the SAME
 // handler the old `switch (subcommand)` case did.
 import "./cli/register-commands.js";
-import { commandFor, registeredCommands } from "./cli/command-registry.js";
-import { wantsHelp } from "./cli/help.js";
+import { commandFor, registeredCommands, usageFor } from "./cli/command-registry.js";
+import { helpTarget, wantsHelp } from "./cli/help.js";
 import { log } from "./util/logging.js";
 import { resolveConfig } from "./util/config.js";
 import { isHeadlessEnv } from "./util/config-store.js";
@@ -77,7 +77,8 @@ Usage: browxai [subcommand]
                                 android implies attach mode (real Chrome on
                                 Android over adb, no BROWX_ATTACH_CDP needed).
   --version, -v                 print the browxai version
-  --help, -h, help              print this text (also works after a subcommand)
+  --help, -h, help              print this text. After a subcommand, print that
+                                subcommand's usage (\`browxai chrome --help\`).
 
   BROWX_TOOL_LIST=enabled       make tools/list report only the tools this server's
                                 capabilities allow (default: all, which lists every
@@ -96,10 +97,14 @@ async function main(): Promise<void> {
   // the same precedence the old `switch` encoded by case order: a registered
   // subcommand wins, then the flag literals, then the server fallthrough.
   // Help first, for every subcommand: nothing may run when help is asked for.
-  // `plugin` has its own longer help text, so it gets its `help` verb.
-  if (wantsHelp(process.argv.slice(2))) {
-    if (subcommand === "plugin") process.exit(await commandFor("plugin")!(["help"]));
-    process.stdout.write(USAGE);
+  // A registered subcommand prints its own usage (`chrome start --help`,
+  // `help chrome`); `plugin` has its own longer help text, so it gets its `help`
+  // verb. Everything else prints the top-level text.
+  const argv = process.argv.slice(2);
+  if (wantsHelp(argv)) {
+    const target = helpTarget(argv, (name) => commandFor(name) !== undefined);
+    if (target === "plugin") process.exit(await commandFor("plugin")!(["help"]));
+    process.stdout.write((target !== undefined ? usageFor(target) : undefined) ?? USAGE);
     process.exit(0);
   }
   if (subcommand !== undefined) {

@@ -51,7 +51,9 @@ function parseFlagString(args: string[], flag: string): string | undefined {
   return v;
 }
 
-const SERVE_USAGE =
+/** Printed to stdout for `--help` (exit 0, from `cli.ts`) and to stderr when
+ *  the arguments are wrong (exit 2). */
+export const SERVE_USAGE =
   "usage: browxai serve --socket <path> [--engine <kind>]\n" +
   "  <path>   a Unix socket path, or a Windows named pipe\n" +
   "  Example (macOS, Linux): browxai serve --socket /tmp/browxai.sock\n" +
