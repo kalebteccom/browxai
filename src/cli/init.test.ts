@@ -140,20 +140,18 @@ describe("browxai init", () => {
     const WRITE = ["--test-attrs", "data-testid", "--no-write-user-config"];
 
     it("prints the result line last and exits 0 when it passes", async () => {
-      const smoke = vi
-        .fn()
-        .mockResolvedValue({ ok: true, message: "ok: first snapshot in 812 ms" });
+      const smoke = vi.fn().mockResolvedValue({ ok: true, message: "✓ first snapshot in 812 ms" });
       expect(await runInit([dir, ...WRITE], { smoke })).toBe(0);
       expect(smoke).toHaveBeenCalledOnce();
-      expect(out.trimEnd().endsWith("ok: first snapshot in 812 ms")).toBe(true);
+      expect(out.trimEnd().endsWith("✓ first snapshot in 812 ms")).toBe(true);
     });
 
     it("prints the error and exits 1 when it fails", async () => {
       const smoke = vi
         .fn()
-        .mockResolvedValue({ ok: false, message: "error: no browser. Run `browxai doctor`." });
+        .mockResolvedValue({ ok: false, message: "✗ no browser. Run `browxai doctor`." });
       expect(await runInit([dir, ...WRITE], { smoke })).toBe(1);
-      expect(out).toContain("error: no browser");
+      expect(out).toContain("✗ no browser");
     });
 
     it("does not run under --no-smoke", async () => {
@@ -413,14 +411,14 @@ describe("browxai init --write-user-config", () => {
   });
 
   it("exits 1 when the config was written and the smoke test failed", async () => {
-    const smoke = vi.fn().mockResolvedValue({ ok: false, message: "error: no browser" });
+    const smoke = vi.fn().mockResolvedValue({ ok: false, message: "✗ no browser" });
     const code = await runInit(
       [dir, "--test-attrs", "data-testid", "--write-user-config", "cursor"],
       { system: homeSystem(home), smoke },
     );
     expect(code).toBe(1);
     expect(existsSync(join(home, ".cursor", "mcp.json"))).toBe(true);
-    expect(out).toContain("error: no browser");
+    expect(out).toContain("✗ no browser");
   });
 });
 
@@ -733,6 +731,8 @@ describe("browxai init arguments", () => {
     ["two workspaces", ["a", "b"]],
     ["a flag with a typo", ["w", "--no-writes"]],
     ["--test-attrs=value", ["w", "--test-attrs=data-testid"]],
+    ["--test-attrs with no value", ["w", "--test-attrs"]],
+    ["--test-attrs followed by a flag", ["w", "--test-attrs", "--no-write"]],
     ["an unknown client", ["w", "--write-user-config", "vim"]],
     ["a workspace taken as the client", ["--write-user-config", "w"]],
     [
@@ -757,6 +757,6 @@ describe("browxai init arguments", () => {
     const args = [dir, "--test-attrs", "data-testid", "--no-smoke", "--no-write-user-config"];
     expect(await runInit(args)).toBe(0);
     expect(readFileSync(join(dir, ".mcp.json"), "utf8")).toBe("mine\n");
-    expect(out).toContain("exists — printing snippet below");
+    expect(out).toContain("already exists, so it was left alone");
   });
 });

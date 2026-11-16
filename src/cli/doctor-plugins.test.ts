@@ -202,7 +202,7 @@ describe("lock health", () => {
     const checks = run();
     const row = find(checks, /contentSha256 MISMATCH/);
     expect(row?.ok).toBe(false);
-    expect(row?.detail).toMatch(/NOT what was pinned/);
+    expect(row?.detail).toMatch(/not what was pinned/i);
     expect(row?.fix).toMatch(/do not trust the install until audited/);
     expect(row?.fix).toContain("browxai plugin sync");
   });

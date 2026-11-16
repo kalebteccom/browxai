@@ -151,7 +151,8 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
       checks.push({
         name: "cdp-attach",
         ok: true,
-        detail: "BROWX_ATTACH_CDP unset — managed-mode default. No --cdp Chrome to attach to.",
+        detail:
+          "BROWX_ATTACH_CDP is not set, so browxai launches its own browser (managed mode). Nothing to attach to.",
       });
     }
   }
@@ -178,7 +179,7 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
       name: "confirm-hooks",
       ok: false,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "fix BROWX_CONFIRM_REQUIRED — see " + docsUrl.threatModelConfiguring,
+      fix: "fix BROWX_CONFIRM_REQUIRED, see " + docsUrl.threatModelConfiguring,
     });
   }
 
@@ -194,7 +195,7 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
       ok: true,
       detail: describePolicy(policy),
       fix: noAllowlist
-        ? "no allowlist set — defense-in-depth not engaged. Set BROWX_ALLOWED_ORIGINS for the navigation gate, see " +
+        ? "no allowlist set, so navigation is not limited to chosen sites. Set BROWX_ALLOWED_ORIGINS to limit it, see " +
           docsUrl.threatModelOrigins
         : undefined,
     });
@@ -284,7 +285,7 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
       ok: true,
       info: true,
       detail:
-        `${selectedEngine}${explicit ? "" : " (default)"} — ${readinessRow}; ` +
+        `${selectedEngine}${explicit ? "" : " (default)"}, ${readinessRow}; ` +
         `implemented: ${IMPLEMENTED_ENGINES.join(", ")}`,
     });
   }

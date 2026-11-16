@@ -18,6 +18,7 @@
 // platform lacks refuses one layer down, from `NativeLifecycle`, with
 // `NativeUnsupportedError` naming the engine and the missing primitive.
 
+import { capabilitiesAssignment } from "../util/capabilities.js";
 import type { NativeSessionHandle } from "./native-types.js";
 
 /** A session shape carrying the optional native accessor plus its engine tag.
@@ -38,10 +39,11 @@ export function requireNative(session: NativeCapable): NativeSessionHandle {
   if (!session.native) {
     throw new Error(
       `${NATIVE_ENGINE_REQUIRED}: engine "${session.engine}" is not a native engine, and this ` +
-        "tool drives a device. Device and app lifecycle have no browser analogue — there is no " +
+        "tool drives a device. Device and app lifecycle have no browser analogue, so there is no " +
         "package to launch and no foreground app to report. Open a native session with " +
-        '`open_session({browserType:"ios-app"})` or `open_session({browserType:"android-app"})`, ' +
-        "either of which needs the off-by-default `native-device` capability.",
+        '`open_session({browserType:"ios-app"})` or `open_session({browserType:"android-app"})`. ' +
+        "Either needs the `native-device` capability, which is off by default: set " +
+        `${capabilitiesAssignment("native-device")} and restart the server.`,
     );
   }
   return session.native();

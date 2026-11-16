@@ -51,14 +51,37 @@ function parseFlagString(args: string[], flag: string): string | undefined {
   return v;
 }
 
+const SERVE_USAGE =
+  "usage: browxai serve --socket <path> [--engine <kind>]\n" +
+  "  <path>   a Unix socket path, or a Windows named pipe\n" +
+  "  Example (macOS, Linux): browxai serve --socket /tmp/browxai.sock\n" +
+  "  Example (Windows):      browxai serve --socket \\\\.\\pipe\\browxai\n";
+
+/** The first argument `serve` does not take, or undefined. `--socket` and
+ *  `--engine` read the next argument as their value. */
+export function unknownServeArg(args: readonly string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a.startsWith("--engine=")) continue;
+    if (a === "--socket" || a === "--engine") {
+      const next = args[i + 1];
+      if (next !== undefined && !next.startsWith("--")) i++;
+      continue;
+    }
+    return a;
+  }
+  return undefined;
+}
+
 export async function runServe(rawArgs: string[]): Promise<number> {
+  const unknown = unknownServeArg(rawArgs);
+  if (unknown !== undefined) {
+    process.stderr.write(`browxai serve: unknown argument "${unknown}"\n${SERVE_USAGE}`);
+    return 2;
+  }
   const socketPath = parseFlagString(rawArgs, "--socket");
   if (!socketPath) {
-    process.stderr.write(
-      "usage: browxai serve --socket <unix-socket-path-or-windows-pipe-name>\n" +
-        "  Example (macOS/Linux): browxai serve --socket /tmp/browxai.sock\n" +
-        "  Example (Windows):     browxai serve --socket \\\\\\\\.\\\\pipe\\\\browxai\n",
-    );
+    process.stderr.write(SERVE_USAGE);
     return 2;
   }
   const attachCdp = process.env.BROWX_ATTACH_CDP?.trim() || undefined;

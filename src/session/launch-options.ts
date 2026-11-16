@@ -61,15 +61,16 @@ export function buildManagedLaunch(
   if (opts.disableWebSecurity) {
     if (engine !== "chromium") {
       log.warn(
-        `⚠  session.managed: disableWebSecurity is not wired on the ${engine} engine — ` +
-          "the --disable-web-security flag form is Chromium-only. Launching with SOP/CORS ON. " +
-          "Use a chromium session if you need web-security-off.",
+        `session.managed: disableWebSecurity is not wired on the ${engine} engine. ` +
+          "The --disable-web-security flag only exists in Chromium, so this session launches with the same-origin policy and CORS on. " +
+          "Use a chromium session if you need web security off.",
       );
     } else {
       insecureArgs.push("--disable-web-security", "--disable-site-isolation-trials");
       log.warn(
-        "⚠  session.managed: disableWebSecurity is ON — launching with --disable-web-security. " +
-          "SOP/CORS is OFF for the whole browser session. Use only against test/dev targets.",
+        "session.managed: disableWebSecurity is ON. Launching with --disable-web-security, " +
+          "which turns off the same-origin policy (SOP) and CORS for the whole browser session. " +
+          "Use it only against test or dev sites.",
       );
     }
   }
@@ -177,14 +178,15 @@ export function buildIncognitoLaunchOptions(
   if (opts.disableWebSecurity) {
     if (engine !== "chromium") {
       log.warn(
-        `⚠  session.incognito: disableWebSecurity is not wired on the ${engine} engine — ` +
-          "the --disable-web-security flag form is Chromium-only. Launching with SOP/CORS ON.",
+        `session.incognito: disableWebSecurity is not wired on the ${engine} engine. ` +
+          "The --disable-web-security flag only exists in Chromium, so this session launches with the same-origin policy and CORS on.",
       );
     } else {
       insecureArgs.push("--disable-web-security", "--disable-site-isolation-trials");
       log.warn(
-        "⚠  session.incognito: disableWebSecurity is ON — launching with --disable-web-security. " +
-          "SOP/CORS is OFF for the whole browser session. Use only against test/dev targets.",
+        "session.incognito: disableWebSecurity is ON. Launching with --disable-web-security, " +
+          "which turns off the same-origin policy (SOP) and CORS for the whole browser session. " +
+          "Use it only against test or dev sites.",
       );
     }
   }

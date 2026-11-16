@@ -226,7 +226,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   });
   if (resolvedConfig.disableWebSecurity)
     log.warn(
-      "disableWebSecurity is ENABLED — managed/incognito sessions launch with SOP/CORS OFF (--disable-web-security). Use only against test/dev targets.",
+      "disableWebSecurity is ENABLED: managed and incognito sessions launch with --disable-web-security, which turns off the same-origin policy (SOP) and CORS. Use it only against test or dev sites. Unset BROWX_DISABLE_WEB_SECURITY to turn it off.",
     );
   if (process.env.BROWX_EXTRACT_STRICT === "1")
     log.warn(

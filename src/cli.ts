@@ -24,50 +24,60 @@ import { resolveWorkspace } from "./util/workspace.js";
 import { PACKAGE_VERSION } from "./util/version.js";
 import { resolveEngineSelection, UnknownEngineError } from "./engine/index.js";
 
-const USAGE = `Usage: browxai [subcommand]
+const USAGE = `browxai drives a browser for an AI agent over MCP (Model Context Protocol).
 
-  browxai                       start the MCP server (stdio)            — default
-  browxai doctor                env + connectivity health-check (run this first)
-  browxai chrome start [opts]   launch a Chrome that browxai can attach to (BYOB,
-                                bring your own browser) on the installed Google
-                                Chrome and the workspace profile.
-                                --port N, --profile NAME, --force,
-                                --insecure,
-                                --disable-background-throttling (keep timers and
-                                rAF running while a tab is backgrounded)
-  browxai chrome login [opts]   open the same Chrome and profile with NO debug
+Usage: browxai [subcommand]
+
+  browxai                       start the MCP server on stdio (the default)
+  browxai doctor [--verbose]    check this machine and its setup (run this
+                                first). --verbose prints every check.
+  browxai chrome start [opts]   launch a Chrome that browxai can attach to
+                                (BYOB, bring your own browser): the installed
+                                Google Chrome on the workspace profile.
+                                --port N, --profile NAME, --force, --insecure,
+                                --disable-background-throttling (keep timers
+                                and animation frames running in a background
+                                tab)
+  browxai chrome login [opts]   open the same Chrome and profile with no debug
                                 port, for a person to clear a bot-protection
-                                challenge and sign in. --url URL, --profile NAME,
-                                --force. Quit that Chrome when done.
-  browxai chrome stop           kill the Chrome that \`chrome start\` launched
+                                challenge and sign in. Quit that Chrome when
+                                done. --url URL, --profile NAME, --force
+  browxai chrome stop           stop the Chrome that \`chrome start\` launched
   browxai chrome status         say whether that Chrome is still running
-  browxai init <workspace>      one-command start: writes <workspace>/.mcp.json, prints the
-                                setup line for each MCP client it finds (Claude Code,
-                                Cursor, Codex, Claude Desktop), adds browxai to the
-                                user-level config of each one it finds (prints the
-                                change, merges into an existing file and keeps the old
-                                copy as <config>.browxai-bak), then checks that a
-                                headless session can take a snapshot. A file it will not
-                                edit exits 0 with by-hand steps; a read or write error
-                                exits 1 after every client was tried.
-                                --no-write-user-config leaves those client files alone.
-                                --write-user-config [<client>] is a no-op kept for older
-                                scripts; a client limits the write to that one.
-                                --no-smoke skips the snapshot check, --no-write prints only.
-  browxai serve --socket <p>    long-running server on a Unix socket / named pipe
-                                — accepts MCP-over-socket connections from SDK clients
+  browxai init <workspace>      one-command setup. Writes <workspace>/.mcp.json,
+                                prints the setup line for each MCP client it
+                                finds (Claude Code, Cursor, Codex, Claude
+                                Desktop), adds browxai to the user-level config
+                                of each one it can edit (prints the change,
+                                merges into an existing file and keeps the old
+                                copy as <config>.browxai-bak), then checks that
+                                a headless session can take a snapshot. A file
+                                it will not edit exits 0 with by-hand steps. A
+                                read or write error exits 1, after every client
+                                was tried.
+                                --test-attrs a,b,...   test attribute order
+                                --no-write-user-config leave client files alone
+                                --write-user-config [<client>]  does nothing
+                                  extra (kept for older scripts); a client
+                                  limits the write to that one
+                                --no-smoke             skip the snapshot check
+                                --no-write             print only, write nothing
+  browxai serve --socket <p>    long-running server on a Unix socket or a
+                                Windows named pipe, for SDK clients
                                 (\`createBrowxai({ endpoint: "unix:///..." })\`).
-                                Off-by-default; explicit operator opt-in.
-  browxai plugin <sub>          install / remove / list / info / upgrade / sync
-                                plugins. All ops are workspace-rooted.
+                                Off by default: you opt in by running it.
+                                --engine <kind> sets the default engine.
+  browxai plugin <sub>          install, remove, list, info, upgrade or sync
+                                plugins. Everything stays in the workspace.
+                                \`browxai plugin help\` lists them.
 
-  --engine <kind>               engine for the MCP server: chromium (default) |
-                                firefox | webkit | android | safari | ios-app |
-                                android-app | electron. Overrides
-                                BROWX_ENGINE. android implies attach-mode (real
-                                Chrome-on-Android over adb — no BROWX_ATTACH_CDP).
+  --engine <kind>               engine for the MCP server: chromium (default),
+                                firefox, webkit, android, safari, ios-app,
+                                android-app or electron. Overrides BROWX_ENGINE.
+                                android implies attach mode (real Chrome on
+                                Android over adb, no BROWX_ATTACH_CDP needed).
   --version, -v                 print the browxai version
-  --help, -h, help              print this usage text (also works after a subcommand)
+  --help, -h, help              print this text (also works after a subcommand)
 
   BROWX_TOOL_LIST=enabled       make tools/list report only the tools this server's
                                 capabilities allow (default: all, which lists every
@@ -182,8 +192,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log.error("browxai could not start. Run `browxai doctor` to check this machine.", {
-    error: err instanceof Error ? err.message : String(err),
-  });
+  // The reason goes in the message itself: a field at the end of the line is easy to miss.
+  const reason = (err instanceof Error ? err.message : String(err)).trim().replace(/[.\s]+$/, "");
+  log.error(`browxai could not start: ${reason}. Run \`browxai doctor\` to check this machine.`);
   process.exit(1);
 });

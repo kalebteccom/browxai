@@ -101,7 +101,7 @@ describe("runSmoke against a fake server", () => {
   it("opens an incognito session, takes a snapshot, and closes it", async () => {
     const res = await runSmoke({ distCli: DIST_CLI });
     expect(res.ok).toBe(true);
-    expect(res.message).toMatch(/^ok: first snapshot in \d+ ms$/);
+    expect(res.message).toMatch(/^✓ first snapshot in \d+ ms$/);
     expect(fake.requests).toEqual([
       { name: "open_session", arguments: { session: "init-smoke", mode: "incognito" } },
       { name: "snapshot", arguments: { session: "init-smoke" } },
@@ -155,7 +155,7 @@ describe("runSmoke against a fake server", () => {
     const res = await runSmoke({ distCli: DIST_CLI });
     expect(res).toEqual({
       ok: false,
-      message: `error: the server did not start (Error: Cannot find module 'x'). ${NEXT}`,
+      message: `✗ the server did not start (Error: Cannot find module 'x'). ${NEXT}`,
     });
     expect(fake.requests).toEqual([]);
     expect(fake.closed).toBe(1);
@@ -165,7 +165,7 @@ describe("runSmoke against a fake server", () => {
   it("falls back to the connect error when the server printed nothing", async () => {
     fake.connect = () => Promise.reject(new Error("spawn ENOENT\nmore"));
     const res = await runSmoke({ distCli: DIST_CLI });
-    expect(res.message).toBe(`error: the server did not start (spawn ENOENT). ${NEXT}`);
+    expect(res.message).toBe(`✗ the server did not start (spawn ENOENT). ${NEXT}`);
   });
 
   it("explains a session that would not open because the browser is missing", async () => {
@@ -176,7 +176,7 @@ describe("runSmoke against a fake server", () => {
     const res = await runSmoke({ distCli: DIST_CLI });
     expect(res.ok).toBe(false);
     expect(res.message).toBe(
-      `error: could not open a browser session: No browser found. Run npx playwright install. ${NEXT}`,
+      `✗ could not open a browser session: No browser found. Run npx playwright install. ${NEXT}`,
     );
     expect(names()).toEqual(["open_session"]);
   });
@@ -184,7 +184,7 @@ describe("runSmoke against a fake server", () => {
   it("reports an error result from open_session by its first line", async () => {
     fake.call = () => Promise.resolve(textReply("Launch failed\n    at stack"));
     const res = await runSmoke({ distCli: DIST_CLI });
-    expect(res.message).toBe(`error: could not open a browser session: Launch failed ${NEXT}`);
+    expect(res.message).toBe(`✗ could not open a browser session: Launch failed ${NEXT}`);
     expect(names()).toEqual(["open_session"]);
   });
 
@@ -192,7 +192,7 @@ describe("runSmoke against a fake server", () => {
     fake.call = () => Promise.resolve({ isError: true, content: [] });
     const res = await runSmoke({ distCli: DIST_CLI });
     expect(res.message).toBe(
-      `error: could not open a browser session: no detail from the server. ${NEXT}`,
+      `✗ could not open a browser session: no detail from the server. ${NEXT}`,
     );
   });
 
@@ -204,7 +204,7 @@ describe("runSmoke against a fake server", () => {
     const res = await runSmoke({ distCli: DIST_CLI });
     expect(res).toEqual({
       ok: false,
-      message: `error: the snapshot failed: Page crashed. ${NEXT}`,
+      message: `✗ the snapshot failed: Page crashed. ${NEXT}`,
     });
     expect(names()).toEqual(["open_session", "snapshot", "close_session"]);
   });
@@ -217,7 +217,7 @@ describe("runSmoke against a fake server", () => {
     const res = await runSmoke({ distCli: DIST_CLI });
     expect(res).toEqual({
       ok: false,
-      message: `error: MCP error -32001: Request timed out. ${NEXT}`,
+      message: `✗ MCP error -32001: Request timed out. ${NEXT}`,
     });
     expect(names()).toEqual(["open_session", "snapshot", "close_session"]);
     expect(fake.closed).toBe(1);
@@ -226,7 +226,7 @@ describe("runSmoke against a fake server", () => {
   it("reports a server that dies while the session opens", async () => {
     fake.call = () => Promise.reject(new Error("MCP error -32000: Connection closed"));
     const res = await runSmoke({ distCli: DIST_CLI });
-    expect(res.message).toBe(`error: MCP error -32000: Connection closed. ${NEXT}`);
+    expect(res.message).toBe(`✗ MCP error -32000: Connection closed. ${NEXT}`);
     expect(names()).toEqual(["open_session"]);
     expect(existsSync(fake.params!.env.BROWX_WORKSPACE!)).toBe(false);
   });
@@ -234,7 +234,7 @@ describe("runSmoke against a fake server", () => {
   it("cuts a long error to 300 characters", async () => {
     fake.call = () => Promise.reject(new Error("x".repeat(500)));
     const res = await runSmoke({ distCli: DIST_CLI });
-    expect(res.message).toContain(`error: ${"x".repeat(300)}. `);
+    expect(res.message).toContain(`✗ ${"x".repeat(300)}. `);
     expect(res.message).not.toContain("x".repeat(301));
   });
 });

@@ -16,6 +16,7 @@ import type { Page } from "playwright-core";
 import type { RefRegistry } from "./refs.js";
 import { locatorFor, type ActionTarget } from "./locator.js";
 import { ClipboardBuffer, osClipboardWrite, type ClipOp } from "./clipboard.js";
+import { capabilitiesAssignment } from "../util/capabilities.js";
 
 type ChordKind = "copy" | "cut" | "paste" | "other";
 
@@ -207,7 +208,8 @@ export async function runShortcut(
       ? {}
       : {
           clipboardNote:
-            "clipboard capability disabled — keys dispatched and observed, but no OS clipboard read/write and no per-session buffer update (enable BROWX_CAPABILITIES=…,clipboard)",
+            "clipboard capability disabled: keys were dispatched and observed, but the OS clipboard was not read or written and the per-session buffer did not change. " +
+            `To enable it, set ${capabilitiesAssignment("clipboard")} and restart the server.`,
         }),
   };
 }

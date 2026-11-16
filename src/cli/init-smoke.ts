@@ -14,7 +14,7 @@ import type { BrowxaiContentItem } from "../sdk/types.js";
 
 export interface SmokeResult {
   ok: boolean;
-  /** The line to print: `ok: first snapshot in N ms`, or what went wrong and what to do. */
+  /** The line to print: `✓ first snapshot in N ms`, or `✗` and what to do next. */
   message: string;
 }
 
@@ -32,7 +32,7 @@ export async function runSmoke(opts: SmokeOptions): Promise<SmokeResult> {
   if (!existsSync(opts.distCli)) {
     return {
       ok: false,
-      message: `error: ${opts.distCli} does not exist. Reinstall browxai, or run \`pnpm build\` in a source checkout. ${NEXT}`,
+      message: `✗ ${opts.distCli} does not exist. Reinstall browxai, or run \`pnpm build\` in a source checkout. ${NEXT}`,
     };
   }
   const timeout = opts.timeoutMs ?? 60_000;
@@ -75,7 +75,7 @@ export async function runSmoke(opts: SmokeOptions): Promise<SmokeResult> {
     } catch (e) {
       return {
         ok: false,
-        message: `error: the server did not start (${firstLine(stderrTail) || errText(e)}). ${NEXT}`,
+        message: `✗ the server did not start (${firstLine(stderrTail) || errText(e)}). ${NEXT}`,
       };
     }
     const started = Date.now();
@@ -83,20 +83,20 @@ export async function runSmoke(opts: SmokeOptions): Promise<SmokeResult> {
     if (opened.failed) {
       return {
         ok: false,
-        message: `error: could not open a browser session: ${opened.why} ${NEXT}`,
+        message: `✗ could not open a browser session: ${opened.why} ${NEXT}`,
       };
     }
     try {
       const snap = await call("snapshot", { session: SESSION });
       if (snap.failed) {
-        return { ok: false, message: `error: the snapshot failed: ${snap.why} ${NEXT}` };
+        return { ok: false, message: `✗ the snapshot failed: ${snap.why} ${NEXT}` };
       }
-      return { ok: true, message: `ok: first snapshot in ${Date.now() - started} ms` };
+      return { ok: true, message: `✓ first snapshot in ${Date.now() - started} ms` };
     } finally {
       await call("close_session", { session: SESSION }).catch(() => undefined);
     }
   } catch (e) {
-    return { ok: false, message: `error: ${errText(e)}. ${NEXT}` };
+    return { ok: false, message: `✗ ${errText(e)}. ${NEXT}` };
   } finally {
     offSignal();
     await client.close().catch(() => undefined);

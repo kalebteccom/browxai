@@ -108,7 +108,7 @@ describe("doctor summary", () => {
 
   it("verbose prints every row, as before", () => {
     const { text } = formatDoctor(OK, { ...OPTS, verbose: true });
-    expect(text).toContain("browxai doctor (v9.9.9) — environment & connectivity");
+    expect(text).toContain("browxai doctor (v9.9.9): environment and connectivity");
     expect(text).toContain("−");
     expect(text).toContain("enable with: install it");
     expect(text).toContain("all checks passed.");
@@ -211,7 +211,7 @@ describe("doctor summary", () => {
     const row = (glyph: string, name: string, detail: string) =>
       `  ${glyph} ${name.padEnd(12)} ${detail}\n`;
     expect(text).toBe(
-      "browxai doctor (v9.9.9) — environment & connectivity\n\n" +
+      "browxai doctor (v9.9.9): environment and connectivity\n\n" +
         row("✓", "a", "fine") +
         row("⚠", "b", "careful") +
         "    fix: do x\n" +
