@@ -93,15 +93,18 @@ export async function runChrome(args: string[]): Promise<number> {
   return chromeUsage();
 }
 
+/** Printed to stdout for `--help` (exit 0, from `cli.ts`) and to stderr when
+ *  the arguments are wrong (exit 2). */
+export const CHROME_USAGE =
+  "usage: browxai chrome <start|login|stop|status> [flags]\n" +
+  "  start   [--port N] [--profile NAME] [--force] [--insecure]\n" +
+  "          [--disable-background-throttling]\n" +
+  "  login   [--url URL] [--profile NAME] [--force]\n" +
+  "  stop\n" +
+  "  status\n";
+
 function chromeUsage(): number {
-  process.stderr.write(
-    "usage: browxai chrome <start|login|stop|status> [flags]\n" +
-      "  start   [--port N] [--profile NAME] [--force] [--insecure]\n" +
-      "          [--disable-background-throttling]\n" +
-      "  login   [--url URL] [--profile NAME] [--force]\n" +
-      "  stop\n" +
-      "  status\n",
-  );
+  process.stderr.write(CHROME_USAGE);
   return 2;
 }
 

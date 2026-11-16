@@ -20,11 +20,20 @@
 export type CommandHandler = (rest: string[]) => Promise<number>;
 
 const COMMANDS = new Map<string, CommandHandler>();
+const USAGES = new Map<string, string>();
 
 /** Register a subcommand handler. Add-only: a new command is one
- *  `registerCommand(...)` call, never a new `case` in `cli.ts`. */
-export function registerCommand(name: string, handler: CommandHandler): void {
+ *  `registerCommand(...)` call, never a new `case` in `cli.ts`. `usage` is the
+ *  text `browxai <name> --help` prints; a command that answers help itself
+ *  (`plugin`) leaves it out. */
+export function registerCommand(name: string, handler: CommandHandler, usage?: string): void {
   COMMANDS.set(name, handler);
+  if (usage !== undefined) USAGES.set(name, usage);
+}
+
+/** The usage text registered for a subcommand, or `undefined`. */
+export function usageFor(name: string): string | undefined {
+  return USAGES.get(name);
 }
 
 /** Resolve a subcommand handler, or `undefined` when the token is not a

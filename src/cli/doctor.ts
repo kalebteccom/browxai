@@ -54,12 +54,15 @@ export interface Check {
   warn?: boolean;
 }
 
+/** Printed to stdout for `--help` (exit 0, from `cli.ts`) and to stderr when
+ *  the arguments are wrong (exit 2). */
+export const DOCTOR_USAGE =
+  "usage: browxai doctor [--verbose]\n  --verbose   print every check, including the opt-in engines\n";
+
 export async function runDoctor(args: readonly string[] = []): Promise<number> {
   const opts = parseDoctorArgs(args);
   if (!opts) {
-    process.stderr.write(
-      "usage: browxai doctor [--verbose]\n  --verbose   print every check, including the opt-in engines\n",
-    );
+    process.stderr.write(DOCTOR_USAGE);
     return 2;
   }
   const checks: Check[] = [];

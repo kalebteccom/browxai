@@ -9,16 +9,18 @@
 // the dispatch is byte-identical.
 
 import { registerCommand } from "./command-registry.js";
-import { runDoctor } from "./doctor.js";
-import { runChrome } from "./chrome.js";
-import { runInit } from "./init.js";
-import { runServe } from "./serve.js";
+import { runDoctor, DOCTOR_USAGE } from "./doctor.js";
+import { runChrome, CHROME_USAGE } from "./chrome.js";
+import { runInit, INIT_USAGE } from "./init.js";
+import { runServe, SERVE_USAGE } from "./serve.js";
 import { runPlugin } from "../plugin/cli.js";
 
 // Each handler consumes `rest` (`runDoctor` reads `--verbose`).
 // `runPlugin` accepts a `ReadonlyArray<string>`, which `string[]` satisfies.
-registerCommand("doctor", (rest) => runDoctor(rest));
-registerCommand("chrome", (rest) => runChrome(rest));
-registerCommand("init", (rest) => runInit(rest));
-registerCommand("serve", (rest) => runServe(rest));
+// The third argument is the text `browxai <name> --help` prints. `plugin` has
+// none: it prints its own help when `cli.ts` hands it the `help` verb.
+registerCommand("doctor", (rest) => runDoctor(rest), DOCTOR_USAGE);
+registerCommand("chrome", (rest) => runChrome(rest), CHROME_USAGE);
+registerCommand("init", (rest) => runInit(rest), INIT_USAGE);
+registerCommand("serve", (rest) => runServe(rest), SERVE_USAGE);
 registerCommand("plugin", (rest) => runPlugin(rest, process.cwd()));

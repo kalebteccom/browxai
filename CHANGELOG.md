@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Fixed
+
+- **`browxai chrome start --help` prints the `chrome` usage.** `--help` and `-h` after a subcommand exited 0 and ran nothing, but printed the text of `browxai --help` for every subcommand. Each of `chrome` (and `chrome start`, `login`, `stop`, `status`), `doctor`, `init` and `serve` now prints its own usage to stdout, `browxai plugin --help` prints the plugin help, and `browxai help chrome` is the same as `browxai chrome --help`. `browxai --help` is unchanged apart from one line. A wrong argument still prints usage to stderr and exits 2.
+
 ### Changed
 
 - **The anti-wedge timeout, the wedged-session hint and the failure hints are short and plain.** The timeout error is four sentences where it was a paragraph with capitals and em dashes: retry once, discard the session with `close_session` then `open_session` if it keeps timing out, and raise `timeoutMs` only for one slow call. The `failure.hint` texts and the internal-check (invariant) error lost an internal rule number and the capitals. They still start with `anti-wedge timeout` and `invariant violated`, and `failure.source` is unchanged.
