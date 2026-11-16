@@ -140,9 +140,7 @@ describe("browxai init", () => {
     const WRITE = ["--test-attrs", "data-testid", "--no-write-user-config"];
 
     it("prints the result line last and exits 0 when it passes", async () => {
-      const smoke = vi
-        .fn()
-        .mockResolvedValue({ ok: true, message: "✓ first snapshot in 812 ms" });
+      const smoke = vi.fn().mockResolvedValue({ ok: true, message: "✓ first snapshot in 812 ms" });
       expect(await runInit([dir, ...WRITE], { smoke })).toBe(0);
       expect(smoke).toHaveBeenCalledOnce();
       expect(out.trimEnd().endsWith("✓ first snapshot in 812 ms")).toBe(true);

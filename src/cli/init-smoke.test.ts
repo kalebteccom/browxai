@@ -21,7 +21,7 @@ describe("runSmoke", () => {
   it("says what to do when the built cli is missing, without starting anything", async () => {
     const res = await runSmoke({ distCli: join(tmpdir(), "browxai-no-such-dir", "cli.js") });
     expect(res.ok).toBe(false);
-    expect(res.message).toMatch(/^error: /);
+    expect(res.message).toMatch(/^✗ /);
     expect(res.message).toContain("pnpm build");
     expect(res.message).toContain("--no-smoke");
   });
