@@ -51,7 +51,7 @@ See [`docs/plugin-authoring.md`](./plugin-authoring.md) for the full author guid
 
 ## Configuration
 
-browxai is configured through the **MCP-managed config store**. No env vars and no hand-edited files are required. Precedence, lowest to highest:
+browxai is configured through the **MCP-managed config store**, so no hand-edited files are required. Enabling a capability still takes `BROWX_CAPABILITIES` in the server's environment, because a saved list can only narrow it. Precedence, lowest to highest:
 
 ```
 built-in defaults  <  env (legacy BROWX_*)  <  user  <  project  <  session (open_session)
@@ -346,6 +346,7 @@ Find candidate elements by natural-language description and return them ranked, 
       "selectorTier": 1, // 1..5 preference order
       "bbox": { "x": 12, "y": 200, "width": 80, "height": 30 }, // visible-rect
       "clipped": false, // true → bbox: null (element fully off-screen / clipped)
+      "actionable": true, // or "disabled" | "off-screen" | "covered": why not
       "score": 17,
       "context": {
         // structural neighbourhood when this candidate
@@ -495,7 +496,7 @@ For multimodal agents filling a constrained context window, `format: "jpeg", qua
 **Scope / output knobs:**
 
 - `fullPage: boolean`: default `false`. When `true`, captures the whole document (Playwright's `page.screenshot({fullPage:true})`) and not only the viewport. Mutually exclusive with `ref` / `selector` / `named`, since element-scoped captures are already bounded by the element's box; combining them returns a structured rejection.
-- `path: string`: workspace-rooted file path. When set, writes the bytes to disk and the result swaps the inline `image` content part for a JSON envelope `{ ok, path, bytes, format, fullPage, caption?, tokensEstimate }`. Path-traversal is rejected (must resolve under `$BROWX_WORKSPACE`, the same chokepoint as `pdf_save` / `start_har` / `dump_storage_state`). Parent directories are auto-created. **Requires the `file-io` capability** (in addition to the tool's own `read` gate); a request with `path` set against a server without `file-io` returns a structured `requiredCapability: "file-io"` rejection. Default mode (no `path`) is unchanged and needs no extra capability.
+- `path: string`: workspace-rooted file path. When set, writes the bytes to disk and the result swaps the inline `image` content part for a JSON envelope `{ ok, path, bytes, format, fullPage, caption?, tokensEstimate }`. A path outside the workspace is rejected (must resolve under `$BROWX_WORKSPACE`, the same chokepoint as `pdf_save` / `start_har` / `dump_storage_state`). Parent directories are auto-created. **Requires the `file-io` capability** (in addition to the tool's own `read` gate); a request with `path` set against a server without `file-io` returns a structured `requiredCapability: "file-io"` rejection. Default mode (no `path`) is unchanged and needs no extra capability.
 
 **Inputs:** `{ ref?, selector?, named?, describe?: boolean, fullPage?: boolean, path?: string }` _(pass at most one of ref/selector/named; none = viewport unless `fullPage:true`)_
 
@@ -1469,7 +1470,7 @@ Two formats:
 - `directory` (default): writes `<path>/index.html` plus a `<path>/assets/` sidecar containing every fetched resource (images, fonts, scripts, stylesheets, CSS background images discovered via `getComputedStyle`). The HTML's `src`/`href` references are rewritten to relative `assets/<kind>/<file>` paths so the directory opens directly in any browser. Best for large pages: no inline-data size cliff.
 - `single-file`: one self-contained `.html` file at `<path>` with every linked resource inlined as a `data:` URI. The MHTML-equivalent without the MIME-multipart format (which modern browsers no longer support well). One file to copy around, but **browsers commonly struggle past ~150 MB**; very large pages should prefer `directory`.
 
-Output `path` is resolved **inside `$BROWX_WORKSPACE` only** (path-traversal rejected, the same posture as `pdf_save` / `dump_storage_state`). Omit it for a default `archives/<sessionId>-<ISO>` (directory) or `archives/<sessionId>-<ISO>.html` (single-file). `maxSizeMb` caps the total archive (default 200). Resources past the budget land in `droppedCount` with a warning explaining which cap was hit. Returns `{ ok, format, path, sizeBytes, resourceCount, droppedCount, warnings[] }`.
+Output `path` is resolved **inside `$BROWX_WORKSPACE` only** (a path outside the workspace is rejected, the same posture as `pdf_save` / `dump_storage_state`). Omit it for a default `archives/<sessionId>-<ISO>` (directory) or `archives/<sessionId>-<ISO>.html` (single-file). `maxSizeMb` caps the total archive (default 200). Resources past the budget land in `droppedCount` with a warning explaining which cap was hit. Returns `{ ok, format, path, sizeBytes, resourceCount, droppedCount, warnings[] }`.
 
 **Resource fetching runs inside the page.** The tool walks the DOM (`document.querySelectorAll`) to discover URLs and then `await fetch(url, { credentials: 'include' })` from page context, so cookies / auth headers travel correctly. The flip side: page CSP `connect-src` applies: cross-origin fetches the policy refuses are caught, dropped, and surfaced in `droppedCount` + `warnings[]`. Cross-origin iframes are similarly unreachable and are dropped.
 
@@ -1492,7 +1493,7 @@ The captured snippet is wrapped in a minimal standalone `<html><head><style>…<
 
 Resource discovery walks **only the element subtree** (not the whole document) for `[src]` / `[href]` / `background-image: url(...)`. Same in-page `await fetch(url, { credentials: 'include' })` posture as `page_archive`: cookies / auth headers travel correctly, but page CSP `connect-src` applies: refused fetches are caught, dropped, and surfaced in `droppedCount` + `warnings[]`.
 
-`ref` must come from a prior `snapshot()` / `find()`. A stale or fabricated ref is a structured error, not a silent miss. `intoDir` is resolved **inside `$BROWX_WORKSPACE` only** (path-traversal rejected). Omit it for a default `elements/<sessionId>-<ISO>-<ref>` (directory) or `elements/<sessionId>-<ISO>-<ref>.html` (single-file). `maxSizeMb` caps the total export (default 50, smaller than `page_archive`'s 200, since a snippet is meant to be a slice). Returns `{ ok, format, ref, path, sizeBytes, resourceCount, droppedCount, warnings[] }`.
+`ref` must come from a prior `snapshot()` / `find()`. A stale or fabricated ref is a structured error, not a silent miss. `intoDir` is resolved **inside `$BROWX_WORKSPACE` only** (a path outside the workspace is rejected). Omit it for a default `elements/<sessionId>-<ISO>-<ref>` (directory) or `elements/<sessionId>-<ISO>-<ref>.html` (single-file). `maxSizeMb` caps the total export (default 50, smaller than `page_archive`'s 200, since a snippet is meant to be a slice). Returns `{ ok, format, ref, path, sizeBytes, resourceCount, droppedCount, warnings[] }`.
 
 **Judgment call: iframe contents.** The same-document subtree walk picks up an `<iframe>` element's own `src` attribute (best-effort, treated as `other`), but never enters the iframe's contentDocument. Cross-origin iframes are unreachable for the same reason the page can't read cross-origin stylesheets; same-origin iframes could in principle be walked, but the discovered subtree's `outerHTML` already terminates at the iframe boundary, and there's no faithful way to splice the inner document's HTML in without diverging from "this is what the element subtree actually is". Adopters who need an iframe interior should `navigate` into it as its own page and call `page_archive`.
 
@@ -1509,9 +1510,9 @@ Two formats:
 - `html` (default): `document.documentElement.outerHTML` written verbatim to a workspace-rooted `.html` file. **Important**: the platform serializer does NOT include shadow-DOM content (open OR closed), even for elements that have one. Web Component interiors are invisible to `outerHTML`. The result envelope surfaces this in `warnings[]` whenever custom elements are detected.
 - `jsonl`: one JSON object per line, depth-first walk: `{ tag, role?, attrs, text?, ref?, depth }`. A grep-friendly serialization for cases where the agent needs to scan structure without parsing HTML. `attrs` is a flat attribute-name to value map. `text` is set only for nodes whose **direct** text content is non-empty (whitespace-trimmed), and direct so a deeply-nested phrase isn't smeared across every ancestor. `ref` echoes a `data-browx-ref` attribute if the agent annotated the DOM; refs are NOT minted by this tool.
 
-**Shadow-DOM traversal.** `includeShadow:true` (the default, jsonl mode only) descends into every **open** shadow root (`Element.shadowRoot` when not null). Closed shadow roots are inaccessible by web-platform design: `shadowRoot` returns null and the tree behind them is genuinely unreachable from any tool. The `warnings[]` array surfaces the closed-shadow limitation when custom elements are present in the document, so the adopter doesn't wonder where a Web Component's interior went.
+**Shadow-DOM descent.** `includeShadow:true` (the default, jsonl mode only) descends into every **open** shadow root (`Element.shadowRoot` when not null). Closed shadow roots are inaccessible by web-platform design: `shadowRoot` returns null and the tree behind them is genuinely unreachable from any tool. The `warnings[]` array surfaces the closed-shadow limitation when custom elements are present in the document, so the adopter doesn't wonder where a Web Component's interior went.
 
-`path` is resolved **inside `$BROWX_WORKSPACE` only** (path-traversal rejected, the same posture as `pdf_save` / `page_archive`). Omit it for a default `dom-dumps/<sessionId>-<ISO>.html` or `dom-dumps/<sessionId>-<ISO>.jsonl`. Returns `{ ok, format, path, sizeBytes, nodeCount, shadowRootCount, warnings[] }`.
+`path` is resolved **inside `$BROWX_WORKSPACE` only** (a path outside the workspace is rejected, the same posture as `pdf_save` / `page_archive`). Omit it for a default `dom-dumps/<sessionId>-<ISO>.html` or `dom-dumps/<sessionId>-<ISO>.jsonl`. Returns `{ ok, format, path, sizeBytes, nodeCount, shadowRootCount, warnings[] }`.
 
 **Secrets-masking caveat (deliberate gap).** Same posture as `page_archive`. The dump is intentionally **UNMASKED**: running the per-session egress masking layer over the bytes would corrupt inline JSON state blobs and break the file. The `warnings[]` array always carries the caveat as its first entry.
 
@@ -1661,7 +1662,7 @@ holds them. Treat dumps and saved named states as sensitive.
 
 ##### `dump_storage_state({ path?, session? })`
 
-Wraps Playwright's `BrowserContext.storageState()`, returning `{cookies, origins:[{origin, localStorage}]}`. Always returns the blob inline; with `path`, also writes the JSON to a workspace-rooted file (path-traversal rejected; must resolve under `$BROWX_WORKSPACE`). Read-only.
+Wraps Playwright's `BrowserContext.storageState()`, returning `{cookies, origins:[{origin, localStorage}]}`. Always returns the blob inline; with `path`, also writes the JSON to a workspace-rooted file (a path outside the workspace is rejected; must resolve under `$BROWX_WORKSPACE`). Read-only.
 
 ##### `inject_storage_state({ state, mode?, session? })`
 
@@ -2355,7 +2356,7 @@ get_video({ session: "rec", format: "path" })
 "This click took 4s. Why?" has no diagnostic surface in the read-only tools: a screenshot/snapshot/network slice shows _what_ happened and nothing about why it was slow. These three tools wrap CDP `Tracing.start` / `Tracing.end` to produce a chromium-format trace file (the same shape DevTools' Performance panel and `chrome://tracing` consume), then extract structured insights from it. Per-session; one trace lifecycle at a time. All three are under capability `action` (`perf_stop` writes a file).
 
 - `perf_start({ categories?, session? })`: arm a CDP trace on this session. Omit `categories` for the DevTools-Performance-equivalent default (`devtools.timeline`, `loading`, `blink.user_timing`, frame, latency). **Idempotent restart:** calling `perf_start` while a trace is already running cleanly stops the in-flight one (events discarded) and starts fresh, so an agent that lost track of state always recovers by calling again. Returns `{ ok, running:true, categories, restarted, warning?, tokensEstimate }`.
-- `perf_stop({ path?, session? })`: stop the in-flight trace and flush events to a workspace-rooted JSON file. Default path: `<workspace>/perf-traces/<sessionId>-<ts>.json` (path-traversal rejected; `path` must resolve under `$BROWX_WORKSPACE`). **Safe to call any number of times:** if no trace is running, returns `notRunning:true` instead of an error. Returns `{ ok, path, bytes, eventCount, categories, durationMs, summary:{ longTaskCount, layoutShiftCount, renderBlockingCount, lcpCandidateCount }, hint, warning?, tokensEstimate }`. The summary is the one-glance answer; `perf_insights` is the detailed read.
+- `perf_stop({ path?, session? })`: stop the in-flight trace and flush events to a workspace-rooted JSON file. Default path: `<workspace>/perf-traces/<sessionId>-<ts>.json` (a path outside the workspace is rejected; `path` must resolve under `$BROWX_WORKSPACE`). **Safe to call any number of times:** if no trace is running, returns `notRunning:true` instead of an error. Returns `{ ok, path, bytes, eventCount, categories, durationMs, summary:{ longTaskCount, layoutShiftCount, renderBlockingCount, lcpCandidateCount }, hint, warning?, tokensEstimate }`. The summary is the one-glance answer; `perf_insights` is the detailed read.
 - `perf_insights({ tracePath, session? })`: read a written trace JSON and return structured insights: `longTasks` (≥50 ms blocking work, sorted longest-first, top-50), `layoutShifts` (per-shift score + `hadRecentInput`), `renderBlocking` (CSS / sync-JS critical-path resources with duration), `lcpCandidates` (final candidate = effective LCP), `navigation` (FP / FCP / DCL / load milestones relative to `navigationStart`), plus `totals` aggregates. `tracePath` is workspace-rooted; rejected if it escapes `$BROWX_WORKSPACE`. Same JSON format the DevTools Performance panel consumes, so bring-your-own trace works too. Returns `{ ok, tracePath, eventCount, metadata, insights, tokensEstimate }`.
 
 **Composition**: typical "diagnose a slow click" sequence as a single `batch`: `perf_start`, then the action (`click` / `fill` / etc.), then `perf_stop`, then `perf_insights({tracePath})`. All four are batch-allowed; the per-call capability gates still apply.
@@ -2380,7 +2381,7 @@ perf_insights({ tracePath: "perf-traces/default-1765540264.json" })
 
 "This page slowly leaks memory. What's still holding the old DOM tree alive?" has no diagnostic surface in the read-only tools either: a `snapshot` shows what's on the page now, not what's still retained from a previous state. These two tools wrap CDP `HeapProfiler.takeHeapSnapshot` to produce a V8 `.heapsnapshot` (the format `chrome://inspect`'s Memory panel consumes on drag-and-drop) and run a structured retainer query against it. One-shot (a heap snapshot is a point-in-time capture, not a recording window; no start/stop pair). Both are under capability `action` (`heap_snapshot` writes a file; `heap_retainers` is kept under the same capability so a memory-diagnosis batch doesn't have to juggle two grants).
 
-- `heap_snapshot({ path?, session? })`: take a V8 heap snapshot on this session's target. Default file path: `<workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot` (path-traversal rejected; `path` must resolve under `$BROWX_WORKSPACE`). Snapshots are heavy (tens to hundreds of MiB on a real page); don't take them in a tight loop. Returns `{ ok, path, bytes, hint, warning?, tokensEstimate }`. Drag-and-drop the file onto `chrome://inspect`'s Memory panel for the full interactive view.
+- `heap_snapshot({ path?, session? })`: take a V8 heap snapshot on this session's target. Default file path: `<workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot` (a path outside the workspace is rejected; `path` must resolve under `$BROWX_WORKSPACE`). Snapshots are heavy (tens to hundreds of MiB on a real page); don't take them in a tight loop. Returns `{ ok, path, bytes, hint, warning?, tokensEstimate }`. Drag-and-drop the file onto `chrome://inspect`'s Memory panel for the full interactive view.
 - `heap_retainers({ snapshotPath, query:{ name?, type?, nameMatch? }, session? })`: parse a written snapshot and report top retainers (sorted by retainer self-size desc, capped at 50) of nodes matching the query. `query.name` defaults to exact string match against the node's V8 string-table name; use `nameMatch:"substring"` for containment. `query.type` filters by V8 node-type (`"closure"`, `"object"`, `"hidden"`, …). At least one of `name` / `type` is required; a match-everything query is never the right answer. `snapshotPath` is workspace-rooted; rejected if it escapes `$BROWX_WORKSPACE`. Pure file read + in-process parse, no CDP touch, so it works against snapshots saved by `heap_snapshot` OR exported from DevTools. Returns `{ ok, snapshotPath, summary:{nodeCount,edgeCount,stringCount,totalSelfSize}, matchCount, retainers:[{ retainerName, retainerType, retainerSelfSize, edgesToMatches, sampleHeldNodes:[] }], sampleMatches:[], warnings?, tokensEstimate }`.
 
 **Composition**: typical "find the leak" sequence as a single `batch`: trigger the suspect interaction (`click` / `fill` / …), then `heap_snapshot`, then `heap_retainers({ snapshotPath, query:{ name:"MyClass" } })`. Both are batch-allowed; the per-call capability gates still apply.
@@ -2522,7 +2523,7 @@ inspect-style: it does NOT end the recording (use `end_recording` separately
 for the YAML flow-file).
 
 With `path`, ALSO writes the source to a workspace-rooted `.spec.ts` file
-(path-traversal rejected; must resolve under `$BROWX_WORKSPACE`).
+(a path outside the workspace is rejected; must resolve under `$BROWX_WORKSPACE`).
 
 Capability `read`. Returns `{ ok, name, source, stats: { steps, handled, unhandled, fragile }, path?, bytes?, tokensEstimate }`.
 
@@ -2617,7 +2618,7 @@ Checkpoint and reset a persistent session's profile directory for repeatable des
 
 - `profile_snapshot({ snapshot, profile? })`: copy the profile dir into `<workspace>/profile-snapshots/<snapshot>`. `profile` defaults to `"default"`.
 - `profile_restore({ snapshot, profile? })`: copy a named snapshot back over the profile dir. Refuses a snapshot `profile_snapshot` did not write, or whose files changed after it was taken: each snapshot carries a manifest with a digest of its files, MACed with a workspace key. Snapshots from earlier versions have no manifest and must be taken again. `profile-snapshots/` is write-protected against every other tool.
-- **All sessions must be closed first** (`close_sessions({all:true})`): copying a profile dir while Chromium has it open corrupts it; both tools refuse while any session is live. Names are letters/digits/`._-` only (no path traversal).
+- **All sessions must be closed first** (`close_sessions({all:true})`): copying a profile dir while Chromium has it open corrupts it; both tools refuse while any session is live. Names are letters/digits/`._-` only (no path separators).
 
 **Example (repeatable destructive test).**
 
@@ -2940,7 +2941,7 @@ cannot be loaded on incognito or attached sessions.
 Load an unpacked extension (MV3 or MV2 directory containing
 `manifest.json`) into the session's managed-profile launch.
 
-- `path`: workspace-rooted directory. Traversal (`..`), absolute paths
+- `path`: workspace-rooted directory. A `..` segment, absolute paths
   outside `$BROWX_WORKSPACE`, files (vs directories), and directories
   missing `manifest.json` all reject with a structured error. Packed
   `.crx` archives must be unpacked first.

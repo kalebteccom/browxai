@@ -45,9 +45,9 @@ to reason over.
 
 ```text
 form "Sign in" [ref=e3]
-  textbox "Email"    [ref=e4]  actionable
-  textbox "Password" [ref=e5]  actionable
-  button  "Continue" [ref=e6]  actionable
+  textbox "Email" [ref=e4]
+  textbox "Password" [ref=e5]
+  button "Continue" [ref=e6]
 ```
 
 ## find
@@ -55,7 +55,7 @@ form "Sign in" [ref=e3]
 When you know what you want but not its ref, `find({ query })` takes a
 plain-language description and returns ranked candidates with evidence: a
 `stability` flag (`high` / `medium` / `low`), an `actionable` verdict, and a
-visible-rect `bbox`. It returns ranked options with reasons for each.
+visible-rect `bbox`.
 
 ```ts
 const res = await find({ query: "the Continue button" });

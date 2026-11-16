@@ -43,7 +43,10 @@ the result.
 2. Run `browxai chrome login --url https://the-site.example/`. It opens the
    installed Chrome on the workspace's default profile (the one persistent
    sessions use; add `--profile NAME` for `profiles/NAME`) with no remote
-   debugging port and no automation flags.
+   debugging port and no automation flags. Run it with the same
+   `BROWX_WORKSPACE` your MCP entry sets. The entries `browxai init` writes use
+   `<dir>/.browxai`, and a command without it opens `~/.browxai/profile`, a
+   different profile.
 3. Clear the challenge and sign in by hand.
 4. Quit that Chrome completely. The cookies are written and the profile is
    released only on quit.
@@ -105,11 +108,12 @@ sent. The provider solves on its own infrastructure, and browxai polls it until
 an answer arrives or the timeout passes.
 
 `solve_captcha` takes a `type` (`recaptcha2`, `recaptcha3`, `hcaptcha`,
-`turnstile` or `image`) plus a `siteKey`, or a `selector` whose element carries
-`data-sitekey`. It returns `{ ok, provider, solution, taskId, elapsedMs }`. It
-does not submit anything: you put the token into the page yourself, and how that
+`turnstile` or `image`). A widget captcha also takes a `siteKey`, or a `selector`
+whose element carries `data-sitekey`. An `image` captcha takes `imageBase64`. It
+returns `{ ok, provider, solution, taskId, elapsedMs }`. It does not submit anything: you put the token into the page yourself, and how that
 works differs per site. It does not read `ActionResult.challenge`.
 
 For a gate you want a person to clear, use `await_human` or the `chrome login`
-flow above. The [tool reference](/reference/tool-reference/) has the full
+flow above. The
+[tool reference](/reference/tool-reference/gated-capabilities/) has the full
 contract, and the [threat model](/security/threat-model/) has the posture row.

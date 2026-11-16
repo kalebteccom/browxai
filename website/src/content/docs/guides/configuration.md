@@ -3,9 +3,12 @@ title: Configuration
 description: How browxai resolves config across layers, the keys you can set, and the legacy BROWX_ environment variables kept for compatibility.
 ---
 
-browxai is configured through an MCP-managed config store. No environment
-variables and no hand-edited files are required. You read and write config with
-tools, and it takes effect for sessions opened after the change.
+browxai is configured through an MCP-managed config store, so no hand-edited
+files are required. You read and write config with tools, and it takes effect for
+sessions opened after the change.
+
+Enabling a capability is the exception. It needs `BROWX_CAPABILITIES` in the
+server's environment, because a saved list can only narrow it.
 
 ## Precedence
 
@@ -125,5 +128,7 @@ not config.
 - `BROWX_CONFIG_READONLY`, unset. `1` or `true` leaves out the write tools and refuses config writes.
 - `BROWX_CREDENTIAL_ORIGINS`, unset. Origins each `get_credential` account may be typed into, as `acct=https://app.example.com|https://sso.example.com,other=host`. `get_credential` refuses an account that is not listed, before the vault is asked. An entry that does not parse is ignored with a startup warning. Read at start.
 
-For the complete configuration and session surface, see the
-[tool reference](/reference/tool-reference/).
+For every key and variable, see
+[CLI and configuration](/reference/tool-reference/cli-and-configuration/) in the
+tool reference. Session options are in its
+[Sessions](/reference/tool-reference/sessions/) section.
