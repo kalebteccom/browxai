@@ -12,6 +12,7 @@ const SOURCES: Record<string, string> = {
   ...Object.fromEntries(
     toolReferencePages.map((p) => [`reference/tool-reference/${p.slug}`, "tool-reference.md"]),
   ),
+  "reference/roadmap": "roadmap.md",
   "security/threat-model": "threat-model.md",
   "security/best-practices": "security-best-practices-for-adopters.md",
   "plugins/overview": "plugins.md",

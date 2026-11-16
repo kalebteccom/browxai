@@ -54,6 +54,13 @@ export const htmlPages = [
       "Every browxai tool: inputs, outputs, example calls, the configuration and session model, capabilities, and the stability policy.",
   },
   {
+    src: "roadmap.md",
+    out: "reference/roadmap.md",
+    title: "Roadmap",
+    description:
+      "What browxai plans to build next, ranked, with the evidence, size and risk of each item, and what is not planned.",
+  },
+  {
     src: "threat-model.md",
     out: "security/threat-model.md",
     title: "Threat model",
@@ -116,6 +123,7 @@ export const agentOnlyPages = [
 const pageLinks = {
   "threat-model.md": ["Threat model", "/security/threat-model/"],
   "tool-reference.md": ["Tool reference", "/reference/tool-reference/"],
+  "roadmap.md": ["Roadmap", "/reference/roadmap/"],
   "plugins.md": ["Plugins overview", "/plugins/overview/"],
   "plugins-first-party.md": ["First-party plugins", "/plugins/first-party/"],
   "plugin-authoring.md": ["Authoring plugins", "/plugins/authoring/"],

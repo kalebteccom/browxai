@@ -18,6 +18,7 @@ const DOCS = [
   "plugin-governance",
   "plugins-first-party",
   "plugins",
+  "roadmap",
   "security-best-practices-for-adopters",
   "threat-model",
   "tool-reference",
