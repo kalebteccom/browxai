@@ -19,6 +19,8 @@ For a diff that touches discipline (commit rules, daemon-restart, etc.):
 - [ ] `AGENTS.md`: if the rule needs to apply across harnesses.
 - [ ] `docs/ai-context/agent-process/<topic>.md`: the discipline note.
 
+The `playwright-core` dependency in `package.json` is an exact version, not a range. A bump changes that version, the `deploy/Dockerfile` base-image tag and every `playwright-core@<version>` pin in the docs and README together.
+
 For a diff that touches an architectural boundary, meaning an engine seam, a
 substrate port, the tool-registration host, the dependency layering or a budget:
 
