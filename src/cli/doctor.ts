@@ -245,9 +245,10 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
   // Chrome" are all reported states, never failures.
   checks.push(await electronCheck());
 
-  // 8b. SELECTED browser engine. Resolves the operator's choice exactly as the
-  // MCP server does: explicit `--engine <kind>` > `BROWX_ENGINE` env > default
-  // chromium (see src/engine/select.ts). Reports which engine the server WOULD
+  // 8b. SELECTED browser engine. Resolves the operator's choice from
+  // `BROWX_ENGINE`, falling back to chromium (see src/engine/select.ts). Doctor
+  // rejects `--engine` in its own argument parser, so only the env var counts
+  // here. Reports which engine the server WOULD
   // run on, and points at the per-engine availability row above (chromium /
   // firefox / webkit / android / safari / electron — those checks always run) so
   // the operator can see the selected engine's readiness in one glance. Chromium + Firefox + WebKit +
@@ -258,7 +259,7 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
   let selectedEngine: EngineKind = "chromium";
   let engineSelectionError: string | undefined;
   try {
-    selectedEngine = resolveEngineSelection(process.argv.slice(2)) ?? "chromium";
+    selectedEngine = resolveEngineSelection([]) ?? "chromium";
   } catch (e) {
     engineSelectionError =
       e instanceof UnknownEngineError ? e.message : e instanceof Error ? e.message : String(e);
@@ -271,9 +272,7 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
       fix: `set BROWX_ENGINE (or --engine) to one of: ${IMPLEMENTED_ENGINES.join(", ")}`,
     });
   } else {
-    const explicit =
-      !!process.env.BROWX_ENGINE?.trim() ||
-      process.argv.slice(2).some((a) => a === "--engine" || a.startsWith("--engine="));
+    const explicit = !!process.env.BROWX_ENGINE?.trim();
     // The availability row matching the selected engine ran above (chromium ✓,
     // firefox/webkit/android −). Name it so doctor's engine line is self-contained.
     const readinessRow =
