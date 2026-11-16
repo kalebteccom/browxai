@@ -22,6 +22,7 @@ const DOCS = [
   "plugins-first-party",
   "plugin-authoring",
   "plugin-governance",
+  "roadmap",
   "agent-guidance",
 ];
 const PAGE = "website/src/content/docs/page.md";

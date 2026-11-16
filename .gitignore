@@ -13,6 +13,7 @@ website/.astro/
 # source of truth; do not commit or hand-edit the generated copies.
 website/src/content/docs/reference/tool-reference.md
 website/src/content/docs/reference/tool-reference/
+website/src/content/docs/reference/roadmap.md
 website/src/content/docs/security/threat-model.md
 website/src/content/docs/security/best-practices.md
 website/src/content/docs/plugins/overview.md
