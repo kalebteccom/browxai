@@ -1,6 +1,7 @@
-// Unit cover for the pure helpers behind the manual first-run workflow (scripts/first-run/block.mjs and doc-facts.mjs):
-// the token estimate, the byte budget, the FRX| chunking and the Playwright download-size parser. The run itself needs the
-// npm registry and a browser and only happens in the manual Woodpecker workflow.
+// Unit cover for the pure helpers behind the manual first-run workflow (scripts/first-run/block.mjs, doc-facts.mjs,
+// path-facts.mjs and procs.mjs): the token estimate, the byte budgets, the FRX| chunking, the Playwright download-size parser,
+// what the docs quote for the documented-paths section, and the process-table filters. The run itself needs the npm registry
+// and a browser and only happens in the manual Woodpecker workflow.
 
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -23,6 +24,7 @@ const block = (await import(join(REPO, "scripts/first-run/block.mjs"))) as {
   chunk: (tag: string, text: string) => string[];
   render: (tag: string, text: string) => string;
   worst: (codes: number[]) => number;
+  BUDGETS: Record<"install" | "snapshot" | "sizes" | "paths", number>;
 };
 const facts = (await import(join(REPO, "scripts/first-run/doc-facts.mjs"))) as {
   docFacts: (root: string) => {
@@ -36,6 +38,53 @@ const facts = (await import(join(REPO, "scripts/first-run/doc-facts.mjs"))) as {
   };
   downloadedBytes: (output: string) => number | undefined;
 };
+
+interface ProcRow {
+  pid: number;
+  ppid: number;
+  state: string;
+  argv: string[];
+  cmd: string;
+}
+const procs = (await import(join(REPO, "scripts/first-run/procs.mjs"))) as {
+  chromeMains: (rows: ProcRow[], work: string) => ProcRow[];
+  isBrowxaiProcess: (p: ProcRow) => boolean;
+  waitUntil: (
+    fn: () => unknown,
+    ms: number,
+    step?: number,
+  ) => Promise<{ ok: boolean; ms: number; value: unknown }>;
+};
+const pathFacts = (await import(join(REPO, "scripts/first-run/path-facts.mjs"))) as {
+  refusalFacts: (root: string) => {
+    quote?: string;
+    tool?: string;
+    capability?: string;
+    list?: string;
+    mentions: string[];
+    link?: string;
+  };
+  cliFacts: (root: string) => {
+    signatures: Array<{ path: string; flags: string[] }>;
+    flags: string[];
+    chromeStartFlags: string[];
+    pluginSubs: string[];
+    doctorAreas: string[];
+    socketMode?: string;
+  };
+  pluginFacts: (root: string) => {
+    name?: string;
+    showsInstall: boolean;
+    showsLocalInstall?: string;
+  };
+};
+const row = (pid: number, argv: string[], state = "S"): ProcRow => ({
+  pid,
+  ppid: 1,
+  state,
+  argv,
+  cmd: argv.join(" "),
+});
 
 describe("first-run block helpers", () => {
   it("estimates tokens as characters over 4, rounded up", () => {
@@ -109,6 +158,21 @@ describe("first-run block helpers", () => {
     expect(block.END).toBe("===== FIRST-RUN END =====");
   });
 
+  it("keeps the four section budgets, and the four rendered blocks, under 30 KB", () => {
+    const tags = { install: "FRINSTALL", snapshot: "FRSNAP", sizes: "FRSIZES", paths: "FRPATHS" };
+    const budgets = block.BUDGETS;
+    expect(Object.values(budgets).reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(13800);
+    let total = 0;
+    for (const [section, tag] of Object.entries(tags)) {
+      // Lines of 100 bytes, as many as the budget holds: a block that uses its whole budget.
+      const rows = Math.floor((budgets[section as keyof typeof budgets] + 1) / 101);
+      const text = Array.from({ length: rows }, () => "x".repeat(100)).join("\n");
+      expect(block.bytes(text)).toBeLessThanOrEqual(budgets[section as keyof typeof budgets]);
+      total += block.bytes(block.render(tag, text));
+    }
+    expect(total).toBeLessThan(30_000);
+  });
+
   it("takes the worst exit status, a tool error over a difference over a pass", () => {
     expect(block.worst([0, 0, 0])).toBe(0);
     expect(block.worst([0, 1, 0])).toBe(1);
@@ -140,5 +204,98 @@ describe("first-run doc facts", () => {
     ].join("\n");
     expect(facts.downloadedBytes(out)).toBe(150 * 1024 ** 2);
     expect(facts.downloadedBytes("nothing printed")).toBeUndefined();
+  });
+});
+
+describe("first-run documented-paths facts", () => {
+  it("reads the disabled-tool refusal the troubleshooting page quotes", () => {
+    const f = pathFacts.refusalFacts(REPO);
+    expect(f.quote).toBe(
+      'tool "eval_js" is disabled: its capability "eval" is not enabled on this server',
+    );
+    expect(f.tool).toBe("eval_js");
+    expect(f.capability).toBe("eval");
+    expect(f.list).toBe("read,navigation,action,human,eval");
+    expect(f.mentions).toEqual(["set_config", "reset_config", "restart"]);
+    expect(f.link).toBe("/security/threat-model/#configuring");
+  });
+
+  it("reads the CLI signatures, flags, plugin subcommands and doctor areas from the tool reference", () => {
+    const c = pathFacts.cliFacts(REPO);
+    expect(c.chromeStartFlags.sort()).toEqual(
+      ["--disable-background-throttling", "--force", "--insecure", "--port", "--profile"].sort(),
+    );
+    expect(c.signatures.map((s) => s.path)).toEqual(
+      expect.arrayContaining([
+        "doctor",
+        "chrome start",
+        "chrome login",
+        "chrome stop",
+        "chrome status",
+        "init",
+        "serve",
+        "plugin",
+      ]),
+    );
+    expect(c.flags).toEqual(
+      expect.arrayContaining([
+        "--verbose",
+        "--socket",
+        "--engine",
+        "--no-write",
+        "--no-write-user-config",
+        "--no-smoke",
+        "--write-user-config",
+      ]),
+    );
+    // Flags of other programs the docs mention in passing are not browxai flags.
+    expect(c.flags).not.toContain("--with-deps");
+    expect(c.flags).not.toContain("--remote-debugging-port");
+    expect(c.flags).not.toContain("--disable-web-security");
+    expect(c.pluginSubs).toEqual(["install", "remove", "list", "info", "upgrade", "sync"]);
+    expect(c.doctorAreas).toContain("attach");
+    expect(c.socketMode).toBe("0600");
+  });
+
+  it("finds the first-party plugin docs/plugins.md installs by name", () => {
+    const p = pathFacts.pluginFacts(REPO);
+    expect(p.name).toBe("@browxai/plugin-example");
+    expect(p.showsInstall).toBe(true);
+    expect(p.showsLocalInstall).toMatch(/^browxai plugin install file:\.\/packages\/plugins\//);
+  });
+});
+
+describe("first-run process table filters", () => {
+  const work = "/tmp/browxai-first-run.AbC123";
+  const chrome = `${work}/home/.cache/ms-playwright/chromium-1/chrome-linux/chrome.real`;
+
+  it("counts Chrome main processes from this run only", () => {
+    const rows = [
+      row(10, [chrome, "--headless", `--user-data-dir=${work}/tmp/p1`]),
+      row(11, [chrome, "--type=renderer", `--user-data-dir=${work}/tmp/p1`]),
+      row(12, [chrome, "--type=zygote"]),
+      row(13, [`${work}/home/.cache/ms-playwright/x/chrome_crashpad_handler`, `--db=${work}/tmp`]),
+      row(14, [chrome, "--headless"], "Z"),
+      row(15, ["/opt/google/chrome/chrome", "--headless", "--user-data-dir=/home/other/profile"]),
+      row(16, [`${work}/home/.cache/ms-playwright/h/headless_shell.real`, "--headless"]),
+    ];
+    expect(procs.chromeMains(rows, work).map((p) => p.pid)).toEqual([10, 16]);
+  });
+
+  it("recognises the browxai server a spawn of the bin makes", () => {
+    const bin = row(20, ["node", `${work}/project/node_modules/.bin/browxai`]);
+    const cli = row(21, ["node", `${work}/project/node_modules/browxai/dist/cli.js`, "serve"]);
+    expect(procs.isBrowxaiProcess(bin)).toBe(true);
+    expect(procs.isBrowxaiProcess(cli)).toBe(true);
+    expect(procs.isBrowxaiProcess(row(22, ["bash", "-c", "browxai doctor"]))).toBe(false);
+    expect(procs.isBrowxaiProcess({ ...bin, state: "Z" })).toBe(false);
+  });
+
+  it("polls until the condition holds or the time is up", async () => {
+    let n = 0;
+    const quick = await procs.waitUntil(() => ++n >= 3, 2000, 5);
+    expect(quick.ok).toBe(true);
+    const never = await procs.waitUntil(() => false, 30, 5);
+    expect(never.ok).toBe(false);
   });
 });

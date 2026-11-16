@@ -6,7 +6,9 @@
     "artifacts",
     "packages/plugins/*/dist",
     "website/dist",
-    "scripts/first-run/sdk-quickstart.mjs"
+    "scripts/first-run/sdk-quickstart.mjs",
+    "scripts/first-run/sdk-socket-clients.mjs",
+    "scripts/first-run/sdk-stdio-child.mjs"
   ],
   "ignores": [
     "@types/*",

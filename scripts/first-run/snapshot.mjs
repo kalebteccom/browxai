@@ -6,7 +6,7 @@
 import "./crash.mjs";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { emit, estTokens, layout, secs } from "./block.mjs";
+import { BUDGETS, emit, estTokens, layout, secs } from "./block.mjs";
 import { DONE_TEXT, EMAIL, PAGE_TITLE, startFixture } from "./fixture.mjs";
 import { startMcp } from "./mcp-client.mjs";
 import { cleanEnv, runAsync } from "./proc.mjs";
@@ -17,7 +17,7 @@ if (!ROOT || !WORK || !OUT) {
   console.error("snapshot: FR_ROOT, FR_WORK and FR_OUT must be set (run.sh does that)");
   process.exit(2);
 }
-const BUDGET = 2400;
+const BUDGET = BUDGETS.snapshot;
 const proj = join(WORK, "project");
 const rec = recorder(join(OUT, "first-run", "snapshot"));
 const headers = ["section: first-snapshot (stdio client, static form page on 127.0.0.1)"];

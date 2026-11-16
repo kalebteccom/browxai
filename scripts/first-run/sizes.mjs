@@ -7,7 +7,7 @@ import "./crash.mjs";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { emit, estTokens, layout } from "./block.mjs";
+import { BUDGETS, emit, estTokens, layout } from "./block.mjs";
 import { startMcp } from "./mcp-client.mjs";
 import { cleanEnv } from "./proc.mjs";
 import { recorder } from "./recorder.mjs";
@@ -23,7 +23,7 @@ const headers = [
   "section: tool-list-sizes (tools/list over stdio; chars = JSON length of the result; tokens = chars / 4, an ESTIMATE)",
 ];
 const finish = (code, rows = []) => {
-  emit("FRSIZES", layout(headers, rows, rec.tail(code), 3400, 0));
+  emit("FRSIZES", layout(headers, rows, rec.tail(code), BUDGETS.sizes, 0));
   process.exit(code);
 };
 if (!existsSync(join(proj, "node_modules/.bin/browxai"))) {
