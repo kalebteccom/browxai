@@ -142,7 +142,7 @@ const fenced = run("bash", [join(HERE, "fence-browsers.sh"), BROWSERS, join(WORK
 });
 const check =
   fenced.code === 0
-    ? run("node", [join(HERE, "fence-check.mjs"), BROWSERS, WORK], { env })
+    ? run("node", [join(HERE, "fence-check.mjs"), BROWSERS, WORK, proj], { env })
     : fenced;
 rec.add("fence: wrap Playwright's Chrome binaries, prove loopback only", {
   ...check,
