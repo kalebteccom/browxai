@@ -135,9 +135,10 @@ boundaries are.
 ## Confirmation hooks
 
 Sensitive actions can route through a human confirmation before they dispatch.
-The `confirmRequired` set selects which policy hooks ask first. Valid hooks are
-`navigate_off_allowlist`, `file_download`, `file_upload`, and `byob_action`;
-the default is `navigate_off_allowlist` and `byob_action`. Each routes through
+The `confirmRequired` set selects which policy hooks ask first. Two hooks fire:
+`navigate_off_allowlist` and `byob_action`, and both are on by default. The
+names `file_download` and `file_upload` are accepted but reserved: no tool
+consults them yet. A hook that fires routes through
 the `await_human` mechanism, which is human-paced and hard-capped so it can
 never wait forever. The human answers from DevTools in the console context the
 prompt names, a per-session isolated world the page's own scripts cannot reach,
