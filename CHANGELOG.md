@@ -10,6 +10,7 @@ surface" covers.
 
 ### Fixed
 
+- **The README SDK example reads the extracted value from the right place.** `browxai.extract()` returns the MCP envelope, and its `data` field is the tool's own result: `{ ok, data, evidence, warnings }`. The example destructured `data` and read `data.title`, which is `undefined`. It now reads `result.data.title`, and the comment names `result.warnings` and the `{ ok: false, failure }` shape. The SDK itself is unchanged.
 - **A headed launch on a machine with no display now names `BROWX_HEADLESS=1`.** The Playwright text said to set `headless: true` or run `xvfb-run`, neither of which a browxai user can do. The text is kept and a line is added: "a headed browser needs a display, so set BROWX_HEADLESS=1 to launch headless." It applies to `open_session` and to the first call that opens a session on its own, on the Chromium, Firefox and WebKit engines. Nothing is added when the launch is already headless.
 
 ## [0.17.1] - 2026-11-16

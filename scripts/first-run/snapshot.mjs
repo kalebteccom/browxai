@@ -149,7 +149,9 @@ try {
     );
     if (!res.ok) rec.diff(`the README SDK quickstart failed: ${res.error}`);
     else if (res.title !== PAGE_TITLE)
-      rec.diff(`SDK extract returned title "${res.title}", the page's h1 is "${PAGE_TITLE}"`);
+      rec.diff(
+        `SDK extract returned title "${res.title}", the page's h1 is "${PAGE_TITLE}"${res.raw ? `. The result, first 600 characters: ${res.raw}` : ""}`,
+      );
     else if (res.warnings?.length)
       rec.note(`SDK extract warnings: ${first(JSON.stringify(res.warnings))}`);
   }
