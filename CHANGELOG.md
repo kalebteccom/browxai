@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+## [0.17.0] - 2026-11-16
+
+**Upgrading from 0.16.** A script that passed a misspelled or extra argument to `browxai serve`, or ran `browxai init --test-attrs` with no value, now fails with exit 2 and usage. `toolList` stays `all` by default, so `tools/list` is unchanged.
+
 ### Added
 
 - **`toolList` config key (`BROWX_TOOL_LIST`) to list only the tools the server can run.** `tools/list` still returns every tool by default (`all`), including the ones whose capability is off. Set `toolList` to `enabled` and the listing leaves out each tool whose capability is not in the server's active set, using the same capability the call-time gate reads, plugin tools included. A tool that is left out still returns the same refusal with its hint when called by name. Capabilities are read once at start, so the listing does not change while the server runs and no `tools/list_changed` notification is sent. `toolList` is not a policy key, so `set_config` can change it in either direction and a saved value overrides the env. `get_config` reports the live value and flags a saved one that differs until a restart. An unknown value stops the server at start, and `browxai doctor` shows the setting as the server resolves it, saved config included.
@@ -20,12 +24,12 @@ surface" covers.
 - **The `--insecure` and `disableWebSecurity` warnings spell out the same-origin policy.** They no longer use the bare acronym or the warning sign, and the server warning says to unset `BROWX_DISABLE_WEB_SECURITY` to turn it off.
 - **Doctor rows and the fatal start line read as sentences.** The unset `BROWX_ATTACH_CDP` row no longer mentions a `--cdp` flag that does not exist, the empty-allowlist hint says what it means, and the engine rows lost their em dashes. A start that fails prints the reason in the message: `browxai could not start: <reason>. Run \`browxai doctor\` ...`.
 - **One description of browxai everywhere.** The README, the `package.json` description, browxai.com and its social card now say the same sentence: browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools. The landing page lost its kicker, second button, install note and loop diagram, and the "Token-efficient" claim became "Compact snapshots".
+- **`browxai serve` exits 2 with usage on an argument it does not take.** Behavior change: `--sockt`, `--socket=PATH` and stray words were ignored before and now stop the command. The Windows pipe example in its usage also printed doubled backslashes.
+- **`browxai init --test-attrs` with no value exits 2 with usage.** Behavior change: it used to carry on and sniff the attributes.
 
 ### Fixed
 
 - **`browxai doctor` prints the electron endpoint without userinfo, query or fragment.** The `electron` row printed `BROWX_ATTACH_CDP` as written, so a token in the URL reached the terminal. The `cdp-attach` row already stripped it.
-- **`browxai serve` exits 2 with usage on an argument it does not take.** `--sockt`, `--socket=PATH` and stray words were ignored. The Windows pipe example in its usage also printed doubled backslashes.
-- **`browxai init --test-attrs` with no value exits 2 with usage.** It used to carry on and sniff the attributes.
 - **`browxai chrome start` sends the "already running" refusal to stderr.** It no longer names the requested port as if it were the running one.
 
 ## [0.16.0] - 2026-10-29
