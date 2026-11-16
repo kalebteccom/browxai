@@ -1,37 +1,25 @@
 ---
-// Version, license, status and links in one place, so a skimmer (or the
-// Kalebtec Tools page linking here) finds them without reading the page.
-import { LICENSE_URL, NPM_URL, REPO_URL, packageVersion } from "../lib/package-info";
-const version = packageVersion();
+// The four facts a newcomer checks first, kept short so the landing page stays
+// near 80 words a screen. Version, status and repo links live in the footer and
+// the docs.
+import { LICENSE_URL } from "../lib/package-info";
 ---
 
 <dl class="browx-facts not-content">
-  {
-    version && (
-      <div>
-        <dt>Version</dt>
-        <dd>
-          <a href={NPM_URL}>v{version}</a>
-        </dd>
-      </div>
-    )
-  }
   <div>
     <dt>License</dt>
     <dd><a href={LICENSE_URL}>MIT</a></dd>
   </div>
   <div>
-    <dt>Status</dt>
-    <dd>Pre-1.0, semver. The default tool surface is stable; gated capabilities are experimental.</dd>
+    <dt>Node</dt>
+    <dd>22 or newer</dd>
   </div>
   <div>
-    <dt>Links</dt>
-    <dd>
-      <a href={REPO_URL}>GitHub</a>
-      <span class="sep" aria-hidden="true">·</span>
-      <a href={NPM_URL}>npm</a>
-      <span class="sep" aria-hidden="true">·</span>
-      <a href="/getting-started/">Docs</a>
-    </dd>
+    <dt>Engines</dt>
+    <dd><a href="/reference/faq/#which-engines-does-it-drive">5 browser engines</a></dd>
+  </div>
+  <div>
+    <dt>MCP clients</dt>
+    <dd><a href="/getting-started/#wire-it-into-an-mcp-client">Any, over stdio</a></dd>
   </div>
 </dl>
