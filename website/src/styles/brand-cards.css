@@ -32,7 +32,6 @@
 /* MDX wraps the multi-line text inside these <div>s in its own <p>. Neutralize
    that inner paragraph so only the container controls spacing. */
 .browx-lede > p,
-.browx-about > p,
 .browx-section-sub > p,
 .browx-card-text > p {
   margin: 0;

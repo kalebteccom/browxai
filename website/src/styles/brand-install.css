@@ -58,7 +58,7 @@
   pointer-events: none;
 }
 
-/* Install one-liner under the CTAs. */
+/* Install one-liner: the landing's one call to action. */
 .browx-install {
   margin-top: var(--space-6);
   max-width: 100%;
@@ -142,16 +142,24 @@
   color: var(--sl-color-red-high);
 }
 
-/* One line under the install command: the Node floor and the next step. */
-.browx-install-note {
-  margin: var(--space-4) 0 0;
-  font-size: 0.88rem;
-  line-height: 1.5;
-  color: var(--sl-color-gray-3);
-}
-.browx-install-note a {
+/* The one plain link under the install command. A block-level flex box, so it
+   sits on its own line, and 44px tall. */
+.browx-hero-link {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  min-height: var(--browx-tap);
+  margin-top: var(--space-2);
+  font-weight: 500;
   color: var(--sl-color-text-accent);
   text-underline-offset: 0.18em;
+}
+.browx-hero-link:hover {
+  text-decoration-thickness: 2px;
+}
+.browx-hero-link:active {
+  color: var(--sl-color-accent-high);
+  text-decoration-thickness: 2px;
 }
 
 /* Version, license, status and links, under the hero. */

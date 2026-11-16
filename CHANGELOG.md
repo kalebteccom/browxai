@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Changed
+
+- **One description of browxai everywhere.** The README, the `package.json` description, browxai.com and its social card now say the same sentence: browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools. The landing page lost its kicker, second button, install note and loop diagram, and the "Token-efficient" claim became "Compact snapshots".
+
 ## [0.16.0] - 2026-10-29
 
 ### Changed
