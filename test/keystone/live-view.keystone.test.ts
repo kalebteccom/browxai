@@ -258,8 +258,8 @@ describe("live view — capability set, managed Chromium", () => {
 
   it("warns at start that masking does not cover pixels", () => {
     const out = stderrLog.join("");
-    expect(out).toContain("live-view capability is ENABLED");
-    expect(out).toContain("SECRET MASKING DOES NOT COVER PIXELS");
+    expect(out).toContain("live-view is on");
+    expect(out).toContain("secret masking does not cover pixels");
   });
 
   it("streams JPEG frames at the 5 fps cap, each line under the 64 KiB limit", async () => {

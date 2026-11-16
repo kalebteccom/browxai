@@ -191,8 +191,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // Loud one-time warnings for every ENABLED off-by-default capability, driven
   // by the CAPABILITY_WARNINGS data table (src/util/capabilities.ts) so this
   // composition root stays wiring-only. The table is ordered; iterating it
-  // preserves the exact emission order, text, and the set of capabilities that
-  // warn. The two dynamic rows (credentials provider, diagnostics retention)
+  // preserves the emission order and the set of capabilities that warn. The
+  // two dynamic rows (credentials provider, diagnostics retention)
   // render from the runtime context.
   for (const { capability, message } of CAPABILITY_WARNINGS) {
     if (!caps.enabled.has(capability)) continue;
