@@ -8,15 +8,21 @@ surface" covers.
 
 ## Unreleased
 
-### Changed
+## [0.17.1] - 2026-11-16
 
-- **The `act_and_sample` description names the real return shape.** It said `{ action, ...sampleResult }`, and the tool returns `{ action, sample }`, so it now says that. The returned value is unchanged. The `tools/list` text for that tool is a few characters shorter.
-- **The warning on the first `register_secret` call is two short sentences.** It now reads `a secret was registered: its value is now masked in tool output, but screenshots are not masked (see <docs link>). Remove secrets from BROWX_CAPABILITIES to turn it off.` in place of a paragraph with an em dash and capitals. It still prints once per session registry.
-- **The 17 capability startup warnings are one or two short sentences.** Each says what the capability lets an agent do and to remove it from `BROWX_CAPABILITIES` to turn it off, in place of paragraphs that mostly ran past 500 characters with em dashes, capitals and a design-note reference. The same 17 capabilities warn, once at start and in the same order. The `live-view` text still says secret masking does not cover pixels, and `secrets` still says screenshots are not masked.
+**Upgrading from 0.17.0.** A fresh install of 0.17.0 resolves `playwright-core` to the newest 1.x (1.65.1), while the getting-started page names the 1.64.1 browser build. On a machine without Google Chrome, `npx playwright-core@1.64.1 install chromium` then downloads a build the installed package cannot launch (`Executable doesn't exist at .../chromium_headless_shell-1255/...`). 0.17.1 pins the exact version the docs name. If you are on 0.17.0, run `npx playwright-core@1.65.1 install chromium` or upgrade to 0.17.1.
 
 ### Fixed
 
-- **The `playwright-core` dependency is pinned to the exact version the docs name, so the browser a newcomer downloads from the getting-started page is the one the installed browxai launches.**
+- **`playwright-core` is pinned to the exact version the docs name, 1.64.1.** The range `^1.64.1` let a fresh install pick 1.65.1, so the browser a newcomer downloads from the getting-started page was not the one the installed browxai launches. A new check, `pnpm check:playwright-pin`, fails when an `npx playwright-core@X.Y.Z` pin in the README, the docs or the harness differs from the version the lockfile resolves, so a dependency bump stays red until the pins match.
+
+### Changed
+
+- **The 17 capability startup warnings are one or two short sentences.** Each says what the capability lets an agent do and to remove it from `BROWX_CAPABILITIES` to turn it off. Em dashes and internal references are removed. The same 17 capabilities warn, once at start and in the same order. The `live-view` text still says secret masking does not cover pixels, and `secrets` still says screenshots are not masked.
+- **The warning on the first `register_secret` call is two short sentences.** It now reads `a secret was registered: its value is now masked in tool output, but screenshots are not masked (see <docs link>). Remove secrets from BROWX_CAPABILITIES to turn it off.` in place of a paragraph with an em dash and capitals. It still prints once per session registry.
+- **The `act_and_sample` description names the real return shape.** It said `{ action, ...sampleResult }`, and the tool returns `{ action, sample }`, so it now says that. The returned value is unchanged. The `tools/list` text for that tool is a few characters shorter.
+- **The README install steps match what a first run needs.** The browser download comes before `browxai init`, and its size reads about 300 MB to download and 700 MB on disk, where it said about 150 MB. The `init` paragraph says it creates `.browxai/` and that the `browxai` and `browxai-attached` entries set `BROWX_WORKSPACE` to that folder.
+- **The docs match the code in the places a first run touches.** The tool reference and the site now say that enabling a capability still takes `BROWX_CAPABILITIES` in the server's environment, that notifications default to `allow` while dialogs, permissions and pickers default to `raise`, that a tool stays in `tools/list` unless `toolList` is `enabled`, and that the iOS engine has only run against a stand-in WebDriverAgent server. The sample `snapshot()` output no longer shows an `actionable` column, which snapshot rows do not have.
 
 ## [0.17.0] - 2026-11-16
 
