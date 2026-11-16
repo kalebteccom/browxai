@@ -1,5 +1,6 @@
 // The README's SDK quickstart, pointed at the loopback fixture. run by snapshot.mjs from inside the throwaway project, so
-// `import "browxai"` resolves to the package npm installed from the registry. Prints one `FR_SDK {json}` line.
+// `import "browxai"` resolves to the package npm installed from the registry, so .depcheckrc.json ignores this file
+// (depcheck would report the import as a missing dependency of the repo). Prints one `FR_SDK {json}` line.
 import { createBrowxai } from "browxai";
 
 const url = process.argv[2];
