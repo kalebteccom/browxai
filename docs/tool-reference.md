@@ -2776,7 +2776,7 @@ are short enough to turn up by chance.
 **Capability gate.** Off by default. Add `secrets` to
 `BROWX_CAPABILITIES` to enable. A one-time loud warning fires at server
 boot (when the capability is on) and at the first `register_secret` call
-(naming the egress sinks now engaged). Mirrors the
+(saying values are now masked in tool output and screenshots are not). Mirrors the
 `eval` / `network-body` / `disableWebSecurity` posture documented in
 `docs/threat-model.md`.
 
