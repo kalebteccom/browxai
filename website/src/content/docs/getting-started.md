@@ -34,7 +34,8 @@ or a cross and the next step under anything that fails. It exits 0 when nothing
 failed. `browxai doctor --verbose` prints every check.
 
 On a machine with no Google Chrome, doctor fails until you add a browser: install
-Chrome, or fetch the bundled Chromium (about 150 MB).
+Chrome, or fetch the bundled Chromium. That is Chromium plus its headless shell,
+about 300 MB to download and about 700 MB on disk.
 
 ```bash
 npx playwright-core@1.64.1 install chromium
