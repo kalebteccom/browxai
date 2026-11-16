@@ -2,6 +2,8 @@
 // Usage: node summarize.mjs <out-dir> <themes-file>
 // Reads imp-<theme>-<width>-<page>.{json,rc,err} (impeccable) and hm-<theme>-<page>.{json,rc,err} (hallmark).
 // Identical findings across themes and widths are merged into one line with the variants listed.
+// The block is grouped by page. A finding that repeats on SITEWIDE_PAGES or more pages (a template or vendor element) is printed once as sitewide.
+// At most PER_TOOL_CAP findings are printed per tool (the rest are only counted), so the log stays inside LOG_BUDGET bytes.
 // Exit status of this script: 2 on a tool error or no runs, 1 on findings that are not kept, 0 clean.
 // Exit codes: impeccable 0 clean, 2 findings, anything else a tool error. hallmark 0 clean, 1 findings, anything else a tool error.
 import { readdirSync, readFileSync } from "node:fs";
@@ -13,6 +15,11 @@ if (!outDir || !themesFile) {
   console.error("usage: summarize.mjs <out-dir> <themes-file>");
   process.exit(2);
 }
+const PER_TOOL_CAP = 25;
+const SITEWIDE_PAGES = 4;
+const MAX_ERRORS = 12;
+const DUMP_BUDGET = 4500; // bytes of element dump lines, home, tool-reference and threat-model first
+const LOG_BUDGET = 24000; // bytes for the whole block; the dumps and then the finding details give way first
 const read = (path) => {
   try {
     return readFileSync(path, "utf8");
@@ -154,24 +161,112 @@ for (const [key, g] of groups)
     );
     groups.delete(key);
   }
+// pages.txt (written by run-audit.sh): "<slug> <path> <1 for a fixed page>" per page. skipped.txt: paths the soft deadline left out.
+const pageRows = read(join(outDir, "pages.txt"))
+  .split("\n")
+  .map((l) => l.trim().split(/\s+/))
+  .filter((r) => r.length >= 3);
+const pagePath = new Map(pageRows.map(([slug, path]) => [slug, path]));
+const fixedCount = pageRows.filter((r) => r[2] === "1").length;
+const skipped = read(join(outDir, "skipped.txt"))
+  .split("\n")
+  .map((l) => l.trim())
+  .filter(Boolean);
+if (skipped.length)
+  errors.push(
+    `the soft deadline passed: ${skipped.length} of ${pageRows.length} pages were not audited: ${skipped.join(" ")}`,
+  );
+const where = (page) => pagePath.get(page) ?? page;
+
+// Sitewide: the same tool, label and detail on SITEWIDE_PAGES or more pages becomes one entry that lists its pages.
+const bySame = new Map();
+for (const g of groups.values()) {
+  const k = `${g.tool}|${g.label}|${g.detail}`;
+  if (!bySame.has(k)) bySame.set(k, []);
+  bySame.get(k).push(g);
+}
+const entries = []; // { tool, pages:[page], label, detail, variants:Set, sitewide }
+for (const list of bySame.values()) {
+  if (list.length >= SITEWIDE_PAGES) {
+    const variants = new Set(list.flatMap((g) => [...g.variants]));
+    entries.push({
+      tool: list[0].tool,
+      pages: list.map((g) => g.page).sort(),
+      label: list[0].label,
+      detail: list[0].detail,
+      variants,
+      sitewide: true,
+    });
+  } else
+    for (const g of list)
+      entries.push({
+        tool: g.tool,
+        pages: [g.page],
+        label: g.label,
+        detail: g.detail,
+        variants: g.variants,
+        sitewide: false,
+      });
+}
+const tools = ["impeccable", "hallmark"];
+const perTool = (tool) => entries.filter((e) => e.tool === tool);
+const countLine = (tool) => {
+  const perPage = new Map();
+  for (const e of perTool(tool)) for (const p of e.pages) perPage.set(p, (perPage.get(p) ?? 0) + 1);
+  const rows = [...perPage].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return rows.length ? rows.map(([p, n]) => `${where(p)} ${n}`).join(", ") : "none";
+};
+
 const lines = [];
 lines.push("===== DESIGN-AUDIT FINDINGS BEGIN =====");
+const pageCount = pageRows.length || undefined;
 lines.push(
-  `runs: ${runs}, themes: ${themes.join(", ") || "none"}, widths: impeccable 320/390/1440, hallmark fixed set`,
+  `runs: ${runs}, themes: ${themes.join(", ") || "none"}, pages: ${pageCount ?? "unknown"}, widths: impeccable 320/390/1440 on every page, hallmark fixed set (${fixedCount} pages)`,
 );
-lines.push(`findings: ${groups.size} distinct, tool errors: ${errors.length}`);
-const byTool = [...groups.values()].sort((a, b) =>
-  `${a.tool}${a.page}${a.label}`.localeCompare(`${b.tool}${b.page}${b.label}`),
+lines.push(
+  `findings: ${groups.size} distinct (${tools.map((t) => `${t} ${[...groups.values()].filter((g) => g.tool === t).length}`).join(", ")}), tool errors: ${errors.length}`,
 );
-for (const g of byTool) {
-  lines.push(`[${g.tool}] ${g.page} ${g.label} (${[...g.variants].sort().join(" ")})`);
-  if (g.detail) lines.push(`    ${g.detail}`);
-}
-for (const k of kept) lines.push(k);
-if (tallies.size)
-  lines.push(
-    `not failing, hallmark: ${[...tallies].map(([grade, n]) => `${grade} ${n}`).join(", ")}`,
+lines.push(
+  `sitewide (same finding on ${SITEWIDE_PAGES}+ pages, printed once): ${entries.filter((e) => e.sitewide).length}`,
+);
+
+// Details, capped per tool. Ranked by how many theme/width variants hit, then grouped by page below.
+const detail = [];
+for (const tool of tools) {
+  const all = perTool(tool).sort(
+    (a, b) =>
+      Number(b.sitewide) - Number(a.sitewide) ||
+      b.variants.size - a.variants.size ||
+      `${a.pages[0]}${a.label}`.localeCompare(`${b.pages[0]}${b.label}`),
   );
+  const shown = all.slice(0, PER_TOOL_CAP);
+  detail.push(`-- ${tool}: ${all.length} findings, showing ${shown.length}`);
+  detail.push(`   per page: ${countLine(tool)}`);
+  const sitewide = shown.filter((e) => e.sitewide);
+  for (const e of sitewide) {
+    detail.push(
+      `[${tool}] sitewide ${e.label} on ${e.pages.length} pages (${[...e.variants].sort().join(" ")})`,
+    );
+    detail.push(`    ${e.detail}`);
+    detail.push(
+      `    pages: ${e.pages.slice(0, 6).map(where).join(" ")}${e.pages.length > 6 ? " ..." : ""}`,
+    );
+  }
+  const pages = [...new Set(shown.filter((e) => !e.sitewide).map((e) => e.pages[0]))].sort();
+  for (const page of pages) {
+    detail.push(`  page ${where(page)}`);
+    for (const e of shown.filter((x) => !x.sitewide && x.pages[0] === page)) {
+      detail.push(`    [${tool}] ${e.label} (${[...e.variants].sort().join(" ")})`);
+      if (e.detail) detail.push(`        ${e.detail}`);
+    }
+  }
+  if (all.length > shown.length)
+    detail.push(`   ... ${all.length - shown.length} more ${tool} findings not printed`);
+}
+const kept2 = kept.slice(0, 10);
+if (kept.length > kept2.length)
+  kept2.push(`[kept] ${kept.length - kept2.length} more kept findings not printed`);
+
 // Dumps print home, tool-reference and threat-model first so a truncated log still has them.
 const first = ["dump-home", "dump-reference_tool-reference", "dump-security_threat-model"];
 const rank = (f) => {
@@ -179,17 +274,51 @@ const rank = (f) => {
   return i < 0 ? first.length : i;
 };
 let dumpBytes = 0;
+const dumps = [];
 for (const file of readdirSync(outDir)
   .filter((f) => /^dump-.*\.txt$/.test(f))
   .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))) {
   const text = read(join(outDir, file)).trim();
   if (!text) continue;
-  dumpBytes += text.length + 1;
-  lines.push(text.slice(0, 1500));
+  const part = text.slice(0, 1500);
+  if (dumpBytes + part.length + 1 > DUMP_BUDGET) {
+    dumps.push("[dump] more element dumps not printed (budget)");
+    break;
+  }
+  dumpBytes += part.length + 1;
+  dumps.push(part);
 }
-lines.push(`[dump] total ${dumpBytes} bytes`);
-for (const e of errors) lines.push(`[tool error] ${e}`);
-for (const g of gaps) lines.push(`[gap] ${g}`);
-lines.push("===== DESIGN-AUDIT FINDINGS END =====");
+
+const tail = [];
+if (tallies.size)
+  tail.push(
+    `not failing, hallmark: ${[...tallies].map(([grade, n]) => `${grade} ${n}`).join(", ")}`,
+  );
+tail.push(`[dump] total ${dumpBytes} bytes`);
+for (const e of errors.slice(0, MAX_ERRORS)) tail.push(`[tool error] ${e}`);
+if (errors.length > MAX_ERRORS)
+  tail.push(`[tool error] ${errors.length - MAX_ERRORS} more tool errors not printed`);
+for (const g of gaps) tail.push(`[gap] ${g}`);
+tail.push("===== DESIGN-AUDIT FINDINGS END =====");
+
+// Over LOG_BUDGET: drop the dumps first, then cut the finding details from the end. The counts above and the tail always stay.
+const size = (arr) => arr.reduce((n, l) => n + l.length + 1, 0);
+let body = [...detail, ...kept2, ...dumps];
+if (size(lines) + size(body) + size(tail) > LOG_BUDGET) body = [...detail, ...kept2];
+let room = LOG_BUDGET - size(lines) - size(tail) - 80;
+if (size(body) > room) {
+  const cut = [];
+  let used = 0;
+  for (const l of body) {
+    if (used + l.length + 1 > room) break;
+    cut.push(l);
+    used += l.length + 1;
+  }
+  cut.push(
+    `[cut] log budget of ${LOG_BUDGET} bytes reached, ${body.length - cut.length} lines not printed`,
+  );
+  body = cut;
+}
+lines.push(...body, ...tail);
 console.log(lines.join("\n"));
 process.exit(errors.length > 0 || runs === 0 ? 2 : groups.size > 0 ? 1 : 0);
