@@ -18,7 +18,7 @@ const GLYPHS = { "✓": "OK", "✗": "NO", "⚠": "WARN", "−": "-" };
 export const ascii = (s) =>
   String(s ?? "")
     .replace(/\s+/g, " ")
-    .replace(/[\u200b-\u200f\u2060\ufe00-\ufe0f\ufeff]/g, "")
+    .replace(/[\u200b-\u200f\u2060\ufeff]|[\ufe00-\ufe0f]/g, "")
     .replace(/[✓✗⚠−]/g, (g) => GLYPHS[g])
     .replace(/[^\x20-\x7e]/g, "?");
 
