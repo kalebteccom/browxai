@@ -10,6 +10,7 @@ surface" covers.
 
 ### Changed
 
+- **The `act_and_sample` description names the real return shape.** It said `{ action, ...sampleResult }`, and the tool returns `{ action, sample }`, so it now says that. The returned value is unchanged. The `tools/list` text for that tool is a few characters shorter.
 - **The warning on the first `register_secret` call is two short sentences.** It now reads `a secret was registered: its value is now masked in tool output, but screenshots are not masked (see <docs link>). Remove secrets from BROWX_CAPABILITIES to turn it off.` in place of a paragraph with an em dash and capitals. It still prints once per session registry.
 - **The 17 capability startup warnings are one or two short sentences.** Each says what the capability lets an agent do and to remove it from `BROWX_CAPABILITIES` to turn it off, in place of paragraphs that mostly ran past 500 characters with em dashes, capitals and a design-note reference. The same 17 capabilities warn, once at start and in the same order. The `live-view` text still says secret masking does not cover pixels, and `secrets` still says screenshots are not masked.
 
