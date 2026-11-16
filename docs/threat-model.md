@@ -114,13 +114,14 @@ state. Defenses:
 The agent might call `eval_js` or attach via BYOB without realising the implications.
 Defenses:
 
-- **Capability gating.** Tools live in coarse categories (`navigation`, `read`, `action`,
-  `eval`, `network-read`, `file-io`, `byob-attach`); each is independently enable/disable-able
-  at server start. The default set is _restrictive_: `eval_js` and `byob-attach` are
-  off-by-default-with-warnings.
+- **Capability gating.** Tools live in capabilities (`read`, `navigation`, `action` and `human`
+  on by default; `eval`, `network-body`, `file-io`, `byob-attach` and the rest off); each is
+  independently enable/disable-able at server start. The default set is _restrictive_: `eval_js`
+  and `byob-attach` are off-by-default-with-warnings.
 - **Confirmation hooks.** The `confirmRequired` config key (`BROWX_CONFIRM_REQUIRED`) names
-  actions that block on `await_human` first: file downloads, file uploads, BYOB-mode
-  actions and navigation off the allowlist.
+  actions that block on `await_human` first: BYOB-mode actions and navigation off the
+  allowlist. The names `file_download` and `file_upload` are accepted but reserved: no tool
+  consults them yet.
 - **Loud one-time warnings.** Anything that crosses a known-dangerous threshold
   (`BROWX_ATTACH_CDP` set, `--insecure` chrome, `eval_js` enabled) prints a stderr warning
   naming what's exposed before the first tool call goes out.
@@ -154,8 +155,8 @@ A bug that causes browxai to write into the consumer's cwd would compromise the 
 contract. Defenses:
 
 - **Every output path roots at `$BROWX_WORKSPACE`** at startup. `cwd` is never used for
-  paths. Verified in `workspace.test.ts` and the (deferred) no-trace CI test will spawn the
-  server against a fake-consumer-repo cwd and assert it stays untouched.
+  paths. Verified in `workspace.test.ts`, and `no-trace.test.ts` scans the source for
+  cwd-relative writes.
 - **`browxai init` writes outside the workspace, to the clients' own config files.** It is
   a CLI subcommand, so no MCP tool or agent call reaches it. By default it adds the `browxai`
   entry to the user-level config of each client it finds (Cursor, Codex, Claude Desktop). It
@@ -646,6 +647,10 @@ Tools group into capabilities, with the default for each one marked. The read-si
 detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 `scroll` / `set_viewport` fall under `navigation`.
 
+A tool whose capability is off still appears in `tools/list`, unless `toolList` is `enabled`
+(see "Configuring"). The listing is a choice and not a policy: a call to the tool gets the gate
+refusal either way.
+
 - `read`, default **on**. Tools: `snapshot`, `find`, `text_search`, `inspect`, `screenshot`, `console_read`, `network_read`, `ws_read`, `list_named_refs`, `profile_status`.
 
   Read-only; can't change page state. Always safe to enable.
@@ -656,7 +661,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
   Viewport/history movement. Honoured by the origin allowlist when set.
 
-- `action`, default **on**. Tools: `click`, `fill`, `press`, `hover`, `select`, `choose_option`, `wait_for`.
+- `action`, default **on**. Tools: `click`, `fill`, `press`, `hover`, `select`, `choose_option`, `drag`, `wait_for`, `route`, and the `set_*` emulation and policy tools other than `set_viewport`.
 
   The core agentic surface. Confirmation hook gates the irreversible sub-cases (see policy).
 
@@ -670,7 +675,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `self-approval`, default **off**. Tools: `approve_actions`.
 
-  Lets the agent pre-approve confirm-required scopes (`byob_action`, `navigate_off_allowlist`, `file_download`, `file_upload`) for a TTL window, after which the matching confirm hooks pass without asking the human. The hooks exist to hold the agent's own actions until someone says yes, so a tool that lets the agent say yes has to be the operator's opt-in. Without the capability `approve_actions` returns the standard gate refusal (`requiredCapability: "self-approval"`) and grants nothing; under `BROWX_CONFIG_READONLY=1` it is not registered at all. Every grant and every consume is logged. When one hook is the only thing in the way, removing it from `BROWX_CONFIRM_REQUIRED` is narrower than enabling this. Loud one-time warning at server boot. Pinned by `test/keystone/approval-config-gate.keystone.test.ts`.
+  Lets the agent pre-approve confirm-required scopes (`byob_action`, `navigate_off_allowlist`, and the reserved `file_download` and `file_upload`) for a TTL window, after which the matching confirm hooks pass without asking the human. The hooks exist to hold the agent's own actions until someone says yes, so a tool that lets the agent say yes has to be the operator's opt-in. Without the capability `approve_actions` returns the standard gate refusal (`requiredCapability: "self-approval"`) and grants nothing; under `BROWX_CONFIG_READONLY=1` it is not registered at all. Every grant and every consume is logged. When one hook is the only thing in the way, removing it from `BROWX_CONFIRM_REQUIRED` is narrower than enabling this. Loud one-time warning at server boot. Pinned by `test/keystone/approval-config-gate.keystone.test.ts`.
 
 - `human-gate-override`, default **off**. Tools: none; it gates one branch of `set_permission_policy`, `set_fs_picker_policy`, `set_notification_policy` and `grant_permissions`.
 
@@ -761,7 +766,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `file-io`, default **off**. Tools: `upload_file`, `drop_files`, `download_get`, `downloads_capture`, `fs_picker_respond`, `screenshot_on`, `screenshot_schedule`, `page_archive`, `asset_export`, `dom_export`, `element_export`, `get_video`, `stop_video`, and the `path` argument of `screenshot`.
 
-  Tools that read a file into the page or write page-derived bytes to disk. Every path goes through `resolveWorkspacePath` in `src/util/workspace.ts`, so a path that escapes `$BROWX_WORKSPACE` is rejected. The `file_upload` and `file_download` confirm hooks (see `BROWX_CONFIRM_REQUIRED`) can route these through a human. Downloaded and exported files carry real page content and are as sensitive as the session that produced them.
+  Tools that read a file into the page or write page-derived bytes to disk. Every path goes through `resolveWorkspacePath` in `src/util/workspace.ts`, so a path that escapes `$BROWX_WORKSPACE` is rejected. The `file_upload` and `file_download` confirm hooks (see `BROWX_CONFIRM_REQUIRED`) are reserved names that no tool consults yet, so the `file-io` gate and the workspace path rules are what hold these tools. Downloaded and exported files carry real page content and are as sensitive as the session that produced them.
 
 - `canvas`, default **off**. Tools: `canvas_capture`, `gesture_chain`, `canvas_world_to_screen`, `canvas_screen_to_world`, `canvas_query` (`canvas_diff` is pure-byte math under `read`).
 
@@ -818,6 +823,13 @@ default where the environment leaves a key unset):
 | `blockedOrigins`     | `BROWX_BLOCKED_ORIGINS`      | add origins, never remove                                                                                      |
 | `disableWebSecurity` | `BROWX_DISABLE_WEB_SECURITY` | turn it off, never on                                                                                          |
 | `plugins`            | `BROWX_PLUGINS`              | name a subset, never add                                                                                       |
+
+`toolList` is not in this table. It chooses what `tools/list` reports, and it widens and
+narrows nothing. The default `all` lists every tool, including the ones whose capability is
+off. `enabled` (or `BROWX_TOOL_LIST=enabled`) leaves those out. A call by name to a tool left
+out gets the same gate refusal, and the capabilities are read once at start, so the listing
+does not change while the server runs. `set_config` can change `toolList` in either direction,
+and a restart applies it.
 
 `set_config` refuses a loosening patch (`capabilities-not-widenable` or
 `policy-not-loosenable`, naming the keys), and at every start the saved layers are
@@ -886,10 +898,12 @@ The `confirmRequired` set lists actions that block on `await_human` before
 executing, regardless of capability:
 
 ```
-BROWX_CONFIRM_REQUIRED=navigate_off_allowlist,file_download,file_upload,byob_action
+BROWX_CONFIRM_REQUIRED=navigate_off_allowlist,byob_action
 ```
 
-Default: `navigate_off_allowlist,byob_action` (when an allowlist is set).
+That is the default. `navigate_off_allowlist` acts only when an allowlist is set, and
+`byob_action` only in an attached session. `file_download` and `file_upload` are accepted
+and reserved: no tool consults them yet.
 
 ### Origin allow/blocklist
 
@@ -923,16 +937,18 @@ confirmation hook point.
 ## What ships under this model
 
 1. `src/util/capabilities.ts`: parser + capability set + gating predicate.
-2. Each MCP tool wrapped in a capability check; disabled tools return a clear error.
+2. Each MCP tool wrapped in a capability check; disabled tools return a clear error, and
+   stay in `tools/list` unless `toolList` is `enabled`.
 3. `src/policy/origin.ts`: allowlist/blocklist matcher with wildcard support; counts
    off-allowlist egress for `ActionResult.network.egressOffAllowlist`.
 4. `src/policy/confirm.ts`: confirmation-hook policy; named actions route through
    `await_human` before dispatch.
 5. Server startup log lists the active capabilities + allowlist + confirm-required set,
    so the operator sees the posture.
-6. `browxai doctor` reports the active capabilities and flags `eval` and `byob-attach`
-   when they are on. It warns when `BROWX_ATTACH_CDP` is set without `byob-attach`,
-   and says when no allowlist is set.
+6. `browxai doctor` prints one line per area. Its capabilities row lists the active set and
+   flags `eval` and `byob-attach` when they are on. It warns when `BROWX_ATTACH_CDP` is set
+   without `byob-attach`, says when no allowlist is set and shows the `toolList` setting.
+   `browxai doctor --verbose` prints every row.
 
 ## Out of scope
 

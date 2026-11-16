@@ -40,6 +40,7 @@ So for any deployment where you did not write every plugin yourself, or where an
 
 - Run in an ephemeral container or VM. [`deploy/Dockerfile`](https://github.com/kalebteccom/browxai/blob/main/deploy/Dockerfile) is a working starting point: Playwright's base image, a non-root user, `--ignore-scripts`, and a workspace volume.
 - Run as a non-root user. The reference Dockerfile already does.
+- Set `BROWX_HEADLESS=1`. A container has no display and browxai launches headed unless told otherwise. The reference Dockerfile sets it.
 - Give the container no route to your local network. A plugin or a page that reaches your internal services is the lateral-movement case, and network policy is where you stop it.
 - Mount `$BROWX_WORKSPACE` as a volume so profiles, screenshots, downloads and diagnostics live outside the writable layer and can be inspected or discarded independently.
 - Treat an authenticated profile inside the container as a live credential. It is one.
