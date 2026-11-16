@@ -80,7 +80,8 @@
     "audit:prod": "pnpm audit --prod --audit-level=high",
     "sbom": "cdxgen -t pnpm -o sbom.cdx.json --no-recurse .",
     "depcheck": "depcheck",
-    "check:examples": "node scripts/check-examples.mjs"
+    "check:examples": "node scripts/check-examples.mjs",
+    "check:playwright-pin": "node scripts/check-playwright-pin.mjs"
   },
   "pnpm": {
     "overrides": {
