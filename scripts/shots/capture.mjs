@@ -95,7 +95,7 @@ async function capture(browser, pg, vp, scheme) {
     if (!response || response.status() !== 200) {
       throw new Error(`${pg.path} answered ${response ? response.status() : "nothing"}`);
     }
-    await page.evaluate(() => document.fonts.ready);
+    await page.evaluate(() => document.fonts.ready.then(() => true));
     await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
     const first = await page.evaluate(measure);
     await warm(page, Math.min(first.docH, MAX_HEIGHT), vp.height);
