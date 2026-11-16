@@ -45,15 +45,14 @@ async function makeElectronAdapter(opts: SessionOptions): Promise<BrowserSession
   // about the operator's own machine and their own data; it stays the operator's
   // to make, and the message says how.
   throw new Error(
-    "electron-launch-not-supported: the electron engine is ATTACH-ONLY — browxai does not " +
+    "electron-launch-not-supported: the electron engine only attaches. browxai does not " +
       "launch desktop applications. Start the app yourself with a loopback debugging port " +
       "(e.g. `/Applications/Slack.app/Contents/MacOS/Slack --remote-debugging-port=9333`), " +
-      "then point browxai at it with BROWX_ATTACH_CDP=http://127.0.0.1:9333 and grant the " +
-      "`byob-attach` capability. Note that the port is UNAUTHENTICATED for the app's whole " +
-      "lifetime and the app holds a logged-in session: see " +
+      "then point browxai at it with BROWX_ATTACH_CDP=http://127.0.0.1:9333 and enable the " +
+      "`byob-attach` capability. The port has no authentication while the app runs, and the app " +
+      "holds a logged-in session, so read " +
       docsUrl.threatModelCapabilities +
-      " before you do " +
-      "this to an app that matters.",
+      " before you do this to an app that matters.",
   );
 }
 

@@ -143,10 +143,10 @@ async function formatScreenshotResult(
       content.unshift({
         type: "text",
         text:
-          `WARNING: screenshot may reveal registered secret values — ` +
-          `the page's text content contains: ${probe.names.map((n) => `<${n}>`).join(", ")}. ` +
-          `Pixel-level redaction (region-blur) is not yet implemented; prefer ` +
-          `snapshot() / find() for verified-clean evidence of these fields.`,
+          `Warning: this screenshot may reveal registered secret values. ` +
+          `The page's text content contains: ${probe.names.map((n) => `<${n}>`).join(", ")}. ` +
+          `Pixel-level redaction (region-blur) is not implemented yet. Use ` +
+          `snapshot() or find() for evidence of these fields instead.`,
       });
     }
   }

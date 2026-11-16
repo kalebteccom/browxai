@@ -99,7 +99,7 @@ export const RETIRED_CAPABILITIES: Readonly<Record<string, string>> = {
   unstable:
     "the tools it gated (gestures, route mocking, compound act-and-observe " +
     "tools, visual regions, profile snapshot/restore) were promoted into the " +
-    "default stable surface — it no longer gates anything; drop it from " +
+    "default stable surface, so it no longer gates anything. Drop it from " +
     "BROWX_CAPABILITIES",
 };
 
@@ -404,8 +404,8 @@ export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): Capab
     } else if (Object.prototype.hasOwnProperty.call(RETIRED_CAPABILITIES, c)) {
       // Retired, not unknown — tolerate it so an old config never crashes.
       warnings.push(
-        `BROWX_CAPABILITIES: "${c}" is a retired capability — ${RETIRED_CAPABILITIES[c]}. ` +
-          `It is ignored (no effect); the rest of your config is honoured.`,
+        `BROWX_CAPABILITIES: "${c}" is a retired capability: ${RETIRED_CAPABILITIES[c]}. ` +
+          `It is ignored and the rest of your config still applies.`,
       );
     } else {
       unknown.push(c);

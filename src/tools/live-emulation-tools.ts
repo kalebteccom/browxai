@@ -246,7 +246,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
         const grantedAll = [...e.deviceEmulation.permissions.values()].flat();
         if (![...grantedHere, ...grantedAll].includes("geolocation")) {
           warnings.push(
-            'set_geolocation: pages need the `geolocation` permission for navigator.geolocation to deliver this — call grant_permissions({ permissions: ["geolocation"] }) for the relevant origin.',
+            'set_geolocation: pages need the `geolocation` permission for navigator.geolocation to deliver this. Call grant_permissions({ permissions: ["geolocation"] }) for the relevant origin.',
           );
         }
         return emulationResult(e, { geolocation: coords }, { warnings });
@@ -390,8 +390,8 @@ export function registerLiveEmulationTools(host: ToolHost): void {
           const hadOrigin = origin !== undefined;
           await clearPermissions(requirePage(e.session).context(), e.deviceEmulation, origin);
           const note = hadOrigin
-            ? "Per-origin permission revocation isn't supported by Playwright; cleared ALL grants for the session context."
-            : "Cleared ALL permission grants for the session context.";
+            ? "Per-origin permission revocation isn't supported by Playwright; cleared all grants for the session context."
+            : "Cleared all permission grants for the session context.";
           return emulationResult(e, { permissions: [], origin: origin ?? null }, { note });
         }
         const refused = askHumanGrantGate(

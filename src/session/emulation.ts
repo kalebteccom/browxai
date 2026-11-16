@@ -226,6 +226,6 @@ export async function clearPermissions(
  *  Tools surface this string in their result `warnings` whenever an emulation
  *  override is applied to an attached session. */
 export const BYOB_EMULATION_WARNING =
-  "BYOB caveat: this emulation override is applied via CDP to an attached " +
-  "(not-owned) Chrome and will PERSIST on that browser after browxai " +
-  "detaches. The human's Chrome must navigate / restart to fully clear it.";
+  "BYOB caveat: this emulation override is applied through CDP to an attached " +
+  "Chrome that browxai does not own. It stays on that browser after browxai " +
+  "detaches, until the person using it navigates or restarts it.";

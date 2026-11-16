@@ -35,7 +35,7 @@ export function refuseAttachWithoutCapability(
   throw new ByobAttachRefused(
     `capability-required: session "${session}": mode "attached" on engine "${engine}" joins a ` +
       "browser browxai does not own, with the user's real profile, so it needs the `byob-attach` " +
-      "capability, which is OFF by default. Add it to BROWX_CAPABILITIES and keep the defaults in " +
+      "capability, which is off by default. Add it to BROWX_CAPABILITIES and keep the defaults in " +
       `the list (${capabilitiesAssignment("byob-attach")}), then restart the ` +
       "server. A saved config or set_config cannot add it. See " +
       docsUrl.threatModelConfiguring +

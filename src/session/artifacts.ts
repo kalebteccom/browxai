@@ -75,14 +75,14 @@ export class ArtifactsRegistry {
   pathFor(name: string): string {
     assertSafeName("artifact name", name);
     if (name.startsWith(".")) {
-      throw new Error(`artifact name "${name}" invalid — names cannot start with '.'`);
+      throw new Error(`artifact name "${name}" is invalid: names cannot start with '.'`);
     }
     const target = join(this.storageDir, name);
     const resolved = resolve(target);
     const root = resolve(this.storageDir);
     if (resolved !== root && !resolved.startsWith(root + sep)) {
       throw new Error(
-        `artifact name "${name}" resolved outside its session storage dir — refusing.`,
+        `artifact name "${name}" resolves outside the session artifact directory, so it was refused. Use a plain file name.`,
       );
     }
     return resolved;
@@ -116,7 +116,7 @@ export class ArtifactsRegistry {
     const dest = this.pathFor(name);
     if (!existsSync(dest)) {
       throw new Error(
-        `artifact_get: no artifact "${name}" in this session — call artifact_save({ name, content }) first.`,
+        `artifact_get: no artifact "${name}" in this session. Call artifact_save({ name, content }) first.`,
       );
     }
     const buf = readFileSync(dest);

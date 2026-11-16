@@ -197,7 +197,7 @@ export function registerExtensionsTools(
           version: installed.version,
           path: installed.path,
         },
-        note: "browser context rebuilt — refs / console / network / ws buffers reset; on-disk profile state preserved",
+        note: "browser context rebuilt: refs, console, network and ws buffers were reset, and the on-disk profile state is preserved",
       });
     },
   );
@@ -274,7 +274,7 @@ export function registerExtensionsTools(
         reloaded: after
           ? { id: after.id, name: after.name, version: after.version, path: after.path }
           : null,
-        note: "browser context rebuilt — content scripts re-injected; refs / buffers reset",
+        note: "browser context rebuilt: content scripts were re-injected, and refs and buffers were reset",
       });
     },
   );
@@ -331,7 +331,7 @@ export function registerExtensionsTools(
           return extensionErrorEnvelope(
             "extensions_trigger",
             new Error(
-              `extensions_trigger: keyboard command "${command}" — Chromium does not expose extension keyboard-command dispatch via CDP / Playwright. ` +
+              `extensions_trigger: keyboard command "${command}" is not supported, because Chromium does not expose extension keyboard-command dispatch through CDP or Playwright. ` +
                 `Workaround: invoke the extension's underlying behaviour via its content-script API or open its popup (call extensions_trigger without \`command\`).`,
             ),
           );
@@ -341,9 +341,9 @@ export function registerExtensionsTools(
             "extensions_trigger",
             new Error(
               `extensions_trigger: cannot find the id Chrome assigned to extension "${id}". ` +
-                `browxai's id is a hash of the unpacked path, so it can differ from Chrome's own id (Chrome derives that from the manifest \`key\` when present). ` +
-                `Chrome ids detected: ${JSON.stringify(runtimeIds)}; extensions loaded: ${e.extensions.loaded.length}. ` +
-                `Navigate the page directly to the extension's popup URL once you know Chrome's id.`,
+                `browxai's id is a hash of the unpacked path, so it can differ from Chrome's own id. ` +
+                `Chrome ids seen: ${runtimeIds.join(", ") || "none"}. ` +
+                `Navigate the page to the extension's popup URL once you know Chrome's id.`,
             ),
           );
         }
@@ -413,7 +413,7 @@ export function registerExtensionsTools(
           version: removed.version,
           path: removed.path,
         },
-        note: "browser context rebuilt without this extension — refs / buffers reset",
+        note: "browser context rebuilt without this extension: refs and buffers were reset",
       });
     },
   );

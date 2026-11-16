@@ -118,7 +118,7 @@ describe("electron's shipped declaration", () => {
     const refusal = assertEngineRefuses("navigate", "electron");
     expect(refusal).not.toBeNull();
     expect(refusal!.error).toContain("electron");
-    expect(refusal!.hint).toMatch(/INSIDE the application's own renderer process/);
+    expect(refusal!.hint).toMatch(/inside the app's own renderer process/);
   });
 
   it("keeps the rest of the navigation family, which operates inside the app", () => {

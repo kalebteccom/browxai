@@ -180,8 +180,8 @@ export function registerStorageIdbTools(
               const parsed: unknown = JSON.parse(value);
               if (parsed !== null && typeof parsed === "object") {
                 warnings.push(
-                  "idb_put: `value` arrived as a JSON-encoded STRING (e.g. `'{\"k\":1}'`). " +
-                    "browxai stored it verbatim as a string — IDB now holds a string, not the parsed object. " +
+                  "idb_put: `value` arrived as a JSON-encoded string (e.g. `'{\"k\":1}'`). " +
+                    "browxai stored it verbatim as a string, so IDB now holds a string and not the parsed object. " +
                     "Most MCP clients pass structured args directly; if yours double-encodes complex values, " +
                     "JSON.parse them client-side before calling idb_put. Use idb_get to confirm what was written.",
                 );

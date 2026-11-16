@@ -150,7 +150,7 @@ export async function cachesPut(
   if (!args.response) throw new Error(`${tool}: \`response\` is required`);
   if (args.response.body !== undefined && args.response.contentBase64 !== undefined) {
     throw new Error(
-      `${tool}: pass exactly one of \`response.body\` (string) or \`response.contentBase64\` — not both`,
+      `${tool}: pass exactly one of \`response.body\` (string) or \`response.contentBase64\`, not both`,
     );
   }
   cacheOriginGuard(page, tool);

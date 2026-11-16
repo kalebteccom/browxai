@@ -51,7 +51,7 @@ class NoneProvider implements CredentialProvider {
     return Promise.resolve({
       ok: false,
       provider: "none",
-      error: "credentials provider is `none` — no vault backend is configured",
+      error: "credentials provider is `none`, so no vault backend is configured",
       hint: "set BROWX_CREDENTIALS_PROVIDER to one of: oathtool, 1password, bitwarden, lastpass",
     });
   }
@@ -59,7 +59,7 @@ class NoneProvider implements CredentialProvider {
     return Promise.resolve({
       ok: false,
       provider: "none",
-      error: "credentials provider is `none` — no vault backend is configured",
+      error: "credentials provider is `none`, so no vault backend is configured",
       hint: "set BROWX_CREDENTIALS_PROVIDER to one of: oathtool, 1password, bitwarden, lastpass",
     });
   }
@@ -454,7 +454,7 @@ export function resolveCredentialsProvider(
     if (!raw) return "oathtool";
     if (ALL_PROVIDERS.includes(raw as ProviderName)) return raw as ProviderName;
     warnings.push(
-      `BROWX_CREDENTIALS_PROVIDER: unknown provider "${raw}" — falling back to "oathtool". ` +
+      `BROWX_CREDENTIALS_PROVIDER: unknown provider "${raw}", so browxai is using "oathtool". ` +
         `Valid: ${ALL_PROVIDERS.join(", ")}.`,
     );
     return "oathtool";

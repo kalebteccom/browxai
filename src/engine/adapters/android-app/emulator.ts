@@ -118,7 +118,7 @@ export class AndroidEmulatorAdapter {
       throw new NativeDeviceError(
         "native-avd-not-found",
         `no AVD named "${avd}". Defined AVDs: ${known.length ? known.join(", ") : "(none)"}. ` +
-          "Create one in Android Studio's Device Manager — browxai never creates an AVD, because " +
+          "Create one in Android Studio's Device Manager. browxai never creates an AVD, because " +
           "the system image, device profile and disk allocation are the operator's choice.",
       );
     }
@@ -151,7 +151,7 @@ export class AndroidEmulatorAdapter {
       `"${avd}" did not finish booting within ${BOOT_TIMEOUT_MS / 1000}s. Check the emulator ` +
         "window or run `emulator -avd " +
         avd +
-        "` by hand to see what it reports — a missing KVM/HAXM accelerator is the usual cause.",
+        "` by hand to see what it reports. A missing KVM or HAXM accelerator is the usual cause.",
     );
   }
 
@@ -173,7 +173,7 @@ export class AndroidEmulatorAdapter {
       throw new NativeDeviceError(
         "native-shutdown-refused",
         `"${serial}" is not an emulator. browxai shuts down emulators it can identify by serial ` +
-          "and never powers off a physical device — disconnect it, or stop it from the device " +
+          "and never powers off a physical device. Disconnect it, or stop it from the device " +
           "itself.",
       );
     }
@@ -206,8 +206,8 @@ const defaultRunEmulator = async (args: readonly string[]): Promise<string> => {
   }
   throw new NativeDeviceError(
     "emulator-missing",
-    "the Android `emulator` binary was not found. It ships with the SDK but is NOT on PATH by " +
-      "default — add `$ANDROID_HOME/emulator` to PATH, or set ANDROID_HOME.",
+    "the Android `emulator` binary was not found. It ships with the SDK but is not on PATH by " +
+      "default. Add `$ANDROID_HOME/emulator` to PATH, or set ANDROID_HOME.",
   );
 };
 

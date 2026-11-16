@@ -68,7 +68,7 @@ export class SafariRemoteAutomationDisabledError extends Error {
 export class SafariSessionBusyError extends Error {
   constructor() {
     super(
-      "safari-session-busy: safaridriver hosts ONE session at a time and a Safari session is " +
+      "safari-session-busy: safaridriver hosts one session at a time and a Safari session is " +
         "already open. Close it before opening another.",
     );
     this.name = "SafariSessionBusyError";
@@ -159,10 +159,10 @@ export class SafaridriverHybridAdapter {
   attach(): Promise<never> {
     return Promise.reject(
       new Error(
-        "safari-attach-not-supported: real Safari automation is non-BYOB by construction — " +
-          "safaridriver hard-isolates each session into a clean ephemeral automation window (no " +
-          "cookies/localStorage/Keychain/history from the real profile), and the webinspectord XPC " +
-          "surface that would allow attach is closed to third parties. Use a managed session.",
+        "safari-attach-not-supported: browxai cannot attach to a running Safari. " +
+          "safaridriver runs each session in a clean automation window with none of your real " +
+          "profile's cookies, storage, Keychain or history, and Apple does not let third parties " +
+          "attach to a running Safari. Use a managed session.",
       ),
     );
   }

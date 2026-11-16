@@ -118,7 +118,7 @@ export function resolveDiagnosticsPath(
   if (resolved !== diagRoot && !resolved.startsWith(diagRoot + pathSep)) {
     throw new Error(
       `diagnostics: sessionId "${sessionId}" must not escape the diagnostics ` +
-        `subdir — got resolved path "${resolved}"`,
+        `subdirectory (it resolved to "${resolved}")`,
     );
   }
   return resolved;

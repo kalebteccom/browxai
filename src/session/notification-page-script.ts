@@ -76,7 +76,7 @@ export const NOTIFICATION_PAGE_SCRIPT = `(() => {
       // Still record the attempt before throwing.
       try { check(payload); } catch (_) {}
       throw notAllowed(syncDecision === "raise"
-        ? "notification raised — set notificationPolicy"
+        ? "notification raised: set notificationPolicy"
         : "Notification denied by browxai notificationPolicy");
     }
 

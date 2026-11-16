@@ -52,7 +52,7 @@ export interface DialogRecord {
 /** Hint emitted on `ActionResult.failure.hint` when `raise` mode fired.
  *  Stable, agent-facing string — referenced in docs/tool-reference.md. */
 export const UNHANDLED_DIALOG_HINT =
-  "unhandled dialog — set dialogPolicy (open_session/set_dialog_policy) to " +
+  "unhandled dialog: set dialogPolicy (open_session/set_dialog_policy) to " +
   '"accept", "dismiss", or "accept-prompt-with:<text>" before driving ' +
   "an action that may trigger one. The dialog was dismissed server-side so " +
   "the page is not deadlocked, but its app effect is the cancel branch.";
@@ -121,7 +121,7 @@ export function parseDialogPolicyArg(v: string | DialogPolicy | undefined): Dial
     return { mode: "accept-prompt-with", text };
   }
   throw new Error(
-    `dialogPolicy: invalid value "${v}" — expected "accept" | "dismiss" | "raise" | "accept-prompt-with:<text>"`,
+    `dialogPolicy: invalid value "${v}". Use "accept", "dismiss", "raise" or "accept-prompt-with:<text>".`,
   );
 }
 

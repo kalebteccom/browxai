@@ -155,7 +155,7 @@ export function snapshotProfile(
   const dest = snapshotDir(workspaceRoot, snapshot);
   if (!existsSync(src)) {
     throw new Error(
-      `profile_snapshot: no profile directory at "${src}" — open a persistent session with this profile first`,
+      `profile_snapshot: no profile directory for profile "${profile ?? "default"}". Open a persistent session with this profile first.`,
     );
   }
   // Replace, never merge: a leftover file would not be covered by intent.
@@ -180,7 +180,7 @@ export function restoreProfile(
   const dest = profileDir(workspaceRoot, profile, defaultProfileDir);
   if (!existsSync(src)) {
     throw new Error(
-      `profile_restore: no snapshot "${snapshot}" — take one with profile_snapshot first`,
+      `profile_restore: no snapshot "${snapshot}". Take one with profile_snapshot first.`,
     );
   }
   const digest = verifySnapshot(workspaceRoot, snapshot, src);

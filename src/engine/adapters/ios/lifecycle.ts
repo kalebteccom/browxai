@@ -65,7 +65,7 @@ export class IosLifecycle implements NativeLifecycle {
       "ios-app",
       "app_reset",
       `iOS has no per-app data clear. The only primitive is \`xcrun simctl erase\`, which wipes ` +
-        `EVERY app on the device, not just "${appId}". Reinstalling the .app bundle, or erasing ` +
+        `every app on the device, including "${appId}". Reinstalling the .app bundle, or erasing ` +
         "the simulator yourself between runs, is the honest way to start from a known state.",
     );
   }

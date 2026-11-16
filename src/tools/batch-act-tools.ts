@@ -112,7 +112,7 @@ export function registerBatchActTools(
         const t = asTarget(args, "act_and_sample", e.refs);
         if ("coords" in t) {
           return batchJsonError(
-            "act_and_sample: sample target can't be coords — use ref/selector/named or omit for the window",
+            "act_and_sample: the sample target can't be coords. Use ref, selector or named, or omit it to sample the window.",
           );
         }
         sampleTarget = t;

@@ -273,7 +273,7 @@ async function askHuman(
     };
   }
   const ticket = ctx.bridge.newTicket();
-  log.info(`${prompt} — ${ctx.bridge.answerHint(`__browx.confirm(true, "${ticket}")`)}`);
+  log.info(`${prompt} → ${ctx.bridge.answerHint(`__browx.confirm(true, "${ticket}")`)}`);
   try {
     const sig = await ctx.bridge.awaitSignal("respond", 5 * 60_000, ticket, operator);
     const value =
