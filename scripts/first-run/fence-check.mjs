@@ -1,3 +1,4 @@
+/* global document -- these run inside page.evaluate, in the browser. */
 // Prove each fenced Chrome binary reaches loopback and nothing else, before browxai starts any browser.
 // Usage: node fence-check.mjs <browsers-dir> <work-dir> <project-dir>
 // Each binary is launched the way browxai launches it: through playwright-core's chromium.launch({ executablePath }), taken from
