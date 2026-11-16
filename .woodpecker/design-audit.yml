@@ -47,7 +47,10 @@ steps:
       - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium
       - "bash scripts/design-audit/fence.sh .audit > .audit/wrapper.path"
       - 'node scripts/design-audit/fence-test.mjs .audit/tools/puppeteer "$(cat .audit/wrapper.path)" .audit/themes'
-  # (4), (5) part 2 and (6) Serve website/dist on 127.0.0.1:4321, run impeccable at 320, 390 and 1440 and hallmark --render on /, /404.html, one guide, troubleshooting, tool-reference and threat-model, light and dark (light only when the fence test could not emulate dark), print the findings block.
+  # (4), (5) part 2 and (6) Serve website/dist on 127.0.0.1:4321. The page list is read from the built site at run time (dist/sitemap-0.xml plus /404.html, scripts/design-audit/list-pages.mjs), so a new docs page is audited without an edit here.
+  # impeccable runs on EVERY page at 320, 390 and 1440, light and dark (light only when the fence test could not emulate dark). hallmark --render stays on the fixed set (/, /404.html, configuration, troubleshooting, tool-reference, threat-model, light and dark) because its runs are the slow ones.
+  # Findings print grouped by page, at most 25 per tool with the total count, inside a 24 KB block.
+  # Time: the earlier run (6 pages, 36 impeccable runs, 12 hallmark runs, the element dump) took about 7 minutes. Worst case, hallmark cost nothing and the 36 impeccable runs took all of it (about 12 s each). 29 pages x 3 widths x 2 themes is 174 impeccable runs, so the loop takes at most about 35 minutes. That fits, so all three widths stay on every page and the step budget stays at 3000 s (50 minutes). run-audit.sh starts no new page after 2400 s (AUDIT_SOFT_SECS), lists the pages left and fails the run, so the findings block still prints.
   - <<: *step
     name: audit
     depends_on: [fence-test]

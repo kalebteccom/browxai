@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Serve the built docs site on 127.0.0.1 and run impeccable (320, 390, 1440) and hallmark sloplint --render on the key pages.
+# Serve the built docs site on 127.0.0.1. impeccable (320, 390, 1440) runs on every page of the built site, light and dark; hallmark sloplint --render
+# stays on the fixed set (FIXED_PAGES), because its runs are the slow ones. The page list comes from list-pages.mjs (dist sitemap, plus /404.html) at run time.
 # Usage: run-audit.sh <audit-dir>   (from the repo root; needs website/dist, <audit-dir>/tools from fetch-tools.sh,
 #        <audit-dir>/bin/chrome-fenced and <audit-dir>/themes from the fence step)
 # Chrome only ever starts through the fenced wrapper. The tools run in a minimal environment: no CI variable (impeccable adds --no-sandbox when it is set), throwaway HOME, telemetry off.
@@ -18,8 +19,12 @@ HM="$AUDIT/tools/hallmark/sloplint.mjs"
 PPT="$AUDIT/tools/puppeteer"
 OUT="$AUDIT/out"
 HOME_DIR="$AUDIT/home"
-PAGES="/ /404.html /guides/configuration/ /guides/troubleshooting/ /reference/tool-reference/ /security/threat-model/"
+# The fixed set: hallmark, the element dump and the log's first lines use these. They are audited first.
+FIXED_PAGES="/ /404.html /guides/configuration/ /guides/troubleshooting/ /reference/tool-reference/ /security/threat-model/"
 WIDTHS="320x700 390x844 1440x900"
+# Soft deadline for the page loop, below GATE_STEP_BUDGET_SECS (3000 in design-audit.yml). Past it no new page starts, the pages left are listed
+# in out/skipped.txt, and the run still prints its findings block (a step killed by the budget prints nothing).
+SOFT_SECS="${AUDIT_SOFT_SECS:-2400}"
 
 for f in "$WRAP" "$IMP" "$HM" "$AUDIT/themes"; do
   [ -e "$f" ] || { echo "run-audit: missing $f" >&2; exit 2; }
@@ -29,11 +34,16 @@ THEMES="$(awk '{print $1}' "$AUDIT/themes")"
 rm -rf "$OUT" "$HOME_DIR" "$AUDIT/cwd"
 mkdir -p "$OUT" "$HOME_DIR" "$AUDIT/cwd" "$AUDIT/empty"
 
-for p in $PAGES; do
-  f="$DIST$p"
-  case "$p" in */) f="${f}index.html" ;; esac
-  [ -f "$f" ] || { echo "run-audit: $p has no file in website/dist ($f)" >&2; exit 2; }
+ALL_PAGES="$(node "$HERE/list-pages.mjs" "$DIST")" || { echo "run-audit: could not list the pages of website/dist" >&2; exit 2; }
+for p in $FIXED_PAGES; do
+  case " $(echo $ALL_PAGES) " in *" $p "*) ;; *) echo "run-audit: fixed page $p is not in the built site" >&2; exit 2 ;; esac
 done
+# Fixed pages first, then the rest in sitemap order.
+PAGES="$FIXED_PAGES"
+for p in $ALL_PAGES; do
+  case " $FIXED_PAGES " in *" $p "*) ;; *) PAGES="$PAGES $p" ;; esac
+done
+echo "run-audit: $(echo $PAGES | wc -w) pages ($(echo $FIXED_PAGES | wc -w) fixed), $(echo $THEMES | wc -w) themes, impeccable at $(echo $WIDTHS | wc -w) widths on every page"
 
 node "$HERE/serve.mjs" "$DIST" "$PORT" > "$AUDIT/server.log" 2>&1 &
 SERVER=$!
@@ -52,9 +62,19 @@ tool_env() {
 }
 mkdir -p "$AUDIT/tmp"
 
-for theme in $THEMES; do
-  for page in $PAGES; do
-    s="$(slug "$page")"
+START_TS="$(date +%s)"
+: > "$OUT/skipped.txt"
+: > "$OUT/pages.txt"
+for page in $PAGES; do
+  s="$(slug "$page")"
+  case " $FIXED_PAGES " in *" $page "*) fixed=1 ;; *) fixed=0 ;; esac
+  echo "$s $page $fixed" >> "$OUT/pages.txt"
+  if [ "$fixed" -eq 0 ] && [ $(($(date +%s) - START_TS)) -ge "$SOFT_SECS" ]; then
+    echo "$page" >> "$OUT/skipped.txt"
+    echo "skipped $page (soft deadline of $SOFT_SECS s passed)"
+    continue
+  fi
+  for theme in $THEMES; do
     for size in $WIDTHS; do
       w="${size%x*}"
       base="$OUT/imp-$theme-$w-$s"
@@ -64,6 +84,7 @@ for theme in $THEMES; do
         --viewport "$size" "$BASE$page" > "$base.json" 2> "$base.err"
       echo $? > "$base.rc"
     done
+    [ "$fixed" -eq 1 ] || continue
     base="$OUT/hm-$theme-$s"
     echo "hallmark $theme $page"
     mkdir -p "$AUDIT/cwd/$theme-$s"
@@ -77,9 +98,9 @@ for theme in $THEMES; do
 done
 
 # Element dump: which elements sit behind rule 58 and line-length. Light theme, 1440 only; loopback fence unchanged.
-# Each page runs on its own: a failure prints its stderr and the run goes on. element-dump.mjs has its own 100 s deadline.
+# Fixed pages only (they are the ones with a hallmark result). Each page runs on its own: a failure prints its stderr and the run goes on. element-dump.mjs has its own 100 s deadline.
 echo "== audit: element dump start =="
-for page in $PAGES; do
+for page in $FIXED_PAGES; do
   s="$(slug "$page")"
   tool_env CHROME_PATH="$WRAP" EXTRA_CHROME_FLAGS="$(flags light)" \
     node "$HERE/element-dump.mjs" "$PPT" "$WRAP" "$BASE$page" "$OUT/hm-light-$s.json" "$OUT/imp-light-1440-$s.json" \
