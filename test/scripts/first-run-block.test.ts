@@ -47,7 +47,9 @@ describe("first-run block helpers", () => {
   it("clips to one ASCII line and writes the doctor glyphs as words", () => {
     expect(block.clip("✓ browser\n  ready")).toBe("OK browser ready");
     expect(block.clip("x".repeat(300), 20)).toHaveLength(20);
-    expect(block.clip("café")).toBe("caf?");
+    // Written as escapes: the check must not depend on how the source file is normalised.
+    expect(block.clip("a\u00e9b\u2603c")).toBe("a?b?c");
+    expect(block.clip("cafe\u0301")).toBe("cafe?");
   });
 
   it("keeps the first lines of an output and says how many it cut", () => {
