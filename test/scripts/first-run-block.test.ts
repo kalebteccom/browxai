@@ -50,6 +50,9 @@ describe("first-run block helpers", () => {
     // Written as escapes: the check must not depend on how the source file is normalised.
     expect(block.clip("a\u00e9b\u2603c")).toBe("a?b?c");
     expect(block.clip("cafe\u0301")).toBe("cafe?");
+    // Whitespace of every kind is one space, and invisible characters are dropped.
+    expect(block.clip("a\tb\r\nc\u00a0d")).toBe("a b c d");
+    expect(block.clip("\u26a0\ufe0f x\u200by")).toBe("WARN xy");
   });
 
   it("keeps the first lines of an output and says how many it cut", () => {

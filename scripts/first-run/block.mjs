@@ -13,8 +13,12 @@ export const MAX_LINE = 130;
 
 // Glyphs doctor and init print, shown as plain words so the log stays ASCII.
 const GLYPHS = { "✓": "OK", "✗": "NO", "⚠": "WARN", "−": "-" };
+// Whitespace (newline, tab, no-break space) becomes one space before the non-ASCII sweep, else a newline would print as "?".
+// Zero-width characters and variation selectors carry no text and are dropped.
 export const ascii = (s) =>
   String(s ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/[\u200b-\u200f\u2060\ufe00-\ufe0f\ufeff]/g, "")
     .replace(/[✓✗⚠−]/g, (g) => GLYPHS[g])
     .replace(/[^\x20-\x7e]/g, "?");
 
