@@ -104,14 +104,9 @@ export class SecretRegistry {
       // capability is off by default; once registered, the egress-masking
       // layer is engaged for the lifetime of the session.
       log.warn(
-        "secrets capability is ENABLED — a sensitive value was registered. " +
-          "All egress sinks (ActionResult.network, network_read, network_body, " +
-          "ws_read, console_read, snapshot, find) now strip occurrences of the " +
-          "registered value and substitute `<NAME>` aliases. `fill`/`press` " +
-          "materialise `<NAME>` to the real value at dispatch time. The " +
-          "`screenshot` tool is a partial sink — see " +
+        "a secret was registered: its value is now masked in tool output, but screenshots are not masked (see " +
           docsUrl.toolReferenceSecrets +
-          ".",
+          "). Remove secrets from BROWX_CAPABILITIES to turn it off.",
       );
       this.warnedOnce = true;
     }
