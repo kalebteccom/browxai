@@ -1,4 +1,3 @@
-import { docsUrl } from "./docs-links.js";
 // Capability toggles —  security model. See `docs/threat-model.md` for the
 // full design. The gist:
 //
@@ -279,7 +278,7 @@ export interface CapabilityWarningContext {
  *  the runtime context (provider name / retention window). */
 export interface CapabilityWarning {
   capability: Capability;
-  /** The loud one-time warning text. A function for the two warnings that
+  /** The one-time warning text. A function for the two warnings that
    *  interpolate runtime values; a string for the rest. server.ts passes the text to `log.warn`, which adds the
    *  `browxai:` prefix. */
   message: string | ((ctx: CapabilityWarningContext) => string);
@@ -289,9 +288,9 @@ export interface CapabilityWarning {
  * The off-by-default-capability startup warning table (the data behind the
  * formerly ~95 lines of per-capability `if (caps.enabled.has(...)) log.warn(...)`
  * blocks in server.ts). server.ts iterates this in order, emitting one loud
- * `log.warn(message)` per ENABLED capability — preserving the
- * exact text, the exact set of capabilities that warn, the exact emission order,
- * and the one-time-per-startup semantics. Keeping the data here (next to the
+ * `log.warn(message)` per ENABLED capability, once per startup, in table order.
+ * Each message is one or two short sentences: what the capability lets an agent
+ * do, and how to turn it off. Keeping the data here (next to the
  * `Capability` vocabulary) leaves server.ts pure composition/wiring.
  *
  * NOTE — ordering is load-bearing: the rows appear in the same sequence the
@@ -304,123 +303,87 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
   {
     capability: "eval",
     message:
-      "eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.",
+      "eval is on: eval_js and poll_eval run any script in the page. Remove eval from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "byob-attach",
     message:
-      'byob-attach capability is ENABLED — `open_session({mode:"attached"})`, a server started with `BROWX_ATTACH_CDP`, and the attach-only `android` and `electron` engines can now connect to a browser or app you already run. That browser is NOT-OWNED and holds your real profile: every cookie, password and authed tab is in scope of any page the agent visits, and managed-profile isolation does not apply. browxai detaches on shutdown and never closes the browser or resets its storage. Each attach also logs its own warning naming the target. Same posture class as `eval` / `network-body` / `secrets` — see ' +
-      docsUrl.threatModelCapabilities +
-      ".",
+      "byob-attach is on: the agent can attach to a browser or app you already run, with your real cookies and logins. Remove byob-attach from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "network-body",
     message:
-      "network-body capability is ENABLED — `network_body` returns full response bodies, which can carry PII / auth tokens. Off by default for a reason.",
+      "network-body is on: network_body returns full response bodies, which can hold tokens and personal data. Remove network-body from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "secrets",
     message:
-      "secrets capability is ENABLED — `register_secret` accepts sensitive values; once a secret is registered the egress masking layer engages on every sink (ActionResult.network, network_read, network_body, ws_read, console_read, snapshot, find). `screenshot` is a partial sink — see " +
-      docsUrl.toolReferenceSecrets +
-      ".",
+      "secrets is on: register_secret keeps values out of tool output and types the real value into the page, but screenshots are not masked. Remove secrets from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "credentials",
     message: (ctx) =>
-      `credentials capability is ENABLED — \`get_totp\` / \`get_credential\` will shell out to the configured "${ctx.credentialsProvider}" backend per call. NEVER bundled, NEVER auto-installed — the operator supplies the CLI / seeds out-of-band. \`get_credential\` ADDITIONALLY requires the \`secrets\` capability so the looked-up password is auto-registered into the per-session secrets registry under \`<PASSWORD_<account>>\` and masked across every egress sink (without \`secrets\`, the lookup refuses rather than leak cleartext). Same posture class as \`eval\` / \`network-body\` / \`secrets\`. See ${docsUrl.toolReferenceCredentials}.`,
+      `credentials is on: get_totp and get_credential run the "${ctx.credentialsProvider}" password manager CLI. Remove credentials from BROWX_CAPABILITIES to turn it off.`,
   },
   {
     capability: "extensions",
     message:
-      "extensions capability is ENABLED — `extensions_install` loads unpacked Chromium extensions into managed (headed, persistent) sessions. Loaded extensions can READ every page the session visits and make ARBITRARY network requests; treat the extension code itself as in-scope trust. Headed + persistent only — incognito / attached sessions refuse. install/reload/uninstall REBUILD the underlying browser context, invalidating refs + console/network buffers (profile state on disk survives). Same posture class as `eval` / `network-body` / `secrets` — see " +
-      docsUrl.threatModelCapabilities +
-      ".",
+      "extensions is on: extensions_install loads Chromium extensions that can read every page in the session. Remove extensions from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "stealth",
     message:
-      "stealth capability is ENABLED — every session's context loads init-script patches that override `navigator.webdriver` / `navigator.plugins` / `navigator.languages` / `window.chrome` to defeat the common Playwright fingerprint surface. CIRCUMVENTING AUTOMATION DETECTION MAY VIOLATE A SITE'S TERMS OF SERVICE; the operator carries the legal exposure. browxai does NOT bundle a full anti-fingerprinting library — only the four well-known patches above. Same posture class as `eval` / `network-body` / `secrets` / `extensions` — see " +
-      docsUrl.threatModelCapabilities +
-      ".",
+      "stealth is on: sessions hide signs of automation from pages, which some sites forbid in their terms. Remove stealth from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "device-emulation",
     message:
-      "device-emulation capability is ENABLED — `emulate_bluetooth` / `emulate_usb` / `emulate_hid` install init-script wrappers around `navigator.bluetooth.requestDevice` / `navigator.usb.requestDevice` / `navigator.hid.requestDevice` so the page resolves with synthetic device objects the agent staged. THE PAGE WILL BELIEVE IT HAS ACCESS TO PHYSICAL DEVICES THAT DON'T EXIST. v1 covers the picker-clear path only — GATT service emulation (Bluetooth), USB transfer endpoints, and HID input/output reports are stubs (resolve with empty/zero-byte results). Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` / `captcha` — see " +
-      docsUrl.threatModelCapabilities +
-      ".",
+      "device-emulation is on: emulate_bluetooth, emulate_usb and emulate_hid make pages see devices that do not exist. Remove device-emulation from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "canvas",
     message:
-      "canvas capability is ENABLED — `canvas_capture` reads framebuffer / 2D ImageData pixel bytes off `<canvas>` elements (subject to the platform's canvas-taint rules for cross-origin sources); `gesture_chain` dispatches multi-step pointer programs (custom paint strokes, lasso paths); `canvas_world_to_screen` / `canvas_screen_to_world` probe common app-side globals heuristically (Figma / Tldraw / Excalidraw shapes) when no explicit transform is supplied — confirm on a known landmark before relying on the result. `canvas_query` dispatches to canvas-app adapter plugins; the inner plugin tool's capability is enforced via the plugin call-graph gate. browxai is BYO-vision — `canvas_capture` is the pixel source, not a vision call; composition with the host agent's own multimodal vision is the loop. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `device-emulation` / `diagnostics` — see " +
-      docsUrl.threatModelCapabilities +
-      ".",
+      "canvas is on: canvas_capture reads canvas pixels and gesture_chain sends scripted pointer input. Remove canvas from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "replay",
     message:
-      "replay capability is ENABLED — `start_recording({replay})` writes a `.browx` session-replay artifact that carries the DOM stream, network + WS metadata (bodies at the re-executable tier), console output and action calls. Registered secrets are masked at capture time before anything reaches disk, but the artifact still carries real page content and is as sensitive as the session it recorded. Store under $BROWX_WORKSPACE and treat every archive as production data. Same posture class as `network-body` / `secrets` / `diagnostics`.",
+      "replay is on: start_recording({replay}) writes a .browx file with page DOM, network and console, as sensitive as the session. Remove replay from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "native-device",
     message:
-      'native-device capability is ENABLED — it gates the two native ENGINES, `ios-app` (an iOS Simulator over `simctl` plus an operator-run WebDriverAgent) and `android-app` (an Android emulator over adb). They broaden posture more than any browser capability does: both INSTALL AND LAUNCH APPLICATIONS, drive an OS-LEVEL INPUT PIPELINE that every app on the device receives, boot and shut down simulators and emulators, and read the device\'s screen and its installed-app list. `open_session({browserType:"ios-app"})` and `open_session({browserType:"android-app"})` both refuse with `capability-required` without it, so the gate sits at session creation and no native tool can be reached around it. On a simulator or an emulator that reach ends at a sandbox; the SAME code path against a physical device reaches the operator\'s phone, and real devices are out of scope by policy, not by mechanism. Registered secrets do NOT materialise on either native engine (a `<NAME>` alias is typed literally), so a secret never reaches `adb shell input text` — the leak sink RFC 0008 §6 names. Recordings still carry real app content: a native screenshot photographs the screen, and the iOS keyboard draws a character-preview bubble above the pressed key that a recording catches even for a password field. Xcode with its Simulator runtimes, and the Android SDK, are OPERATOR-SUPPLIED — never bundled, never auto-installed, mirroring the credentials-provider posture. Same posture class as `replay` / `network-body` / `secrets`. See ' +
-      docsUrl.threatModelCapabilities +
-      ".",
+      "native-device is on: ios-app and android-app sessions can install apps, launch them and send OS-level input. Remove native-device from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "self-approval",
     message:
-      "self-approval capability is ENABLED — `approve_actions` lets the agent pre-approve the confirm hooks (`byob_action`, `navigate_off_allowlist`, …) that exist to stop the agent's own actions until a human says yes. Every grant and every consume is logged. Enable it only for unattended runs where you accept that the agent answers its own confirmations; prefer removing a single hook from BROWX_CONFIRM_REQUIRED when that is what you mean. See " +
-      docsUrl.threatModelCapabilities +
-      ".",
+      "self-approval is on: approve_actions lets the agent approve the confirmation prompts that hold its own actions. Remove self-approval from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "human-gate-override",
     message:
-      "human-gate-override capability is ENABLED — `set_permission_policy`, `set_fs_picker_policy` and `set_notification_policy` may move a session's policy away from `ask-human`, and `grant_permissions` may natively grant permissions held on it. Those policies exist to hold the page's permission requests, file-picker calls and notifications until a human answers; with this capability the agent can switch the policy to `allow` and (for pickers, with `fs_picker_respond`) answer the prompt itself. Enable it only for unattended runs where you accept that the agent decides these requests; prefer opening the session with the policy you mean (`allow` / `deny`) when that is what you want. Without it the setters still accept every change that leaves `ask-human` in place. See " +
-      docsUrl.threatModelCapabilities +
-      ".",
+      "human-gate-override is on: the agent can set permission, file-picker and notification policies to allow without asking you. Remove human-gate-override from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "operator-channel",
     message:
-      "operator-channel capability is ENABLED — when BROWX_OPERATOR_SOCKET and BROWX_OPERATOR_TOKEN are both set, every confirm-hook request, permission and notification `ask-human` prompt and `await_human` is sent to the Unix socket the host daemon listens on, and the ONLY accepted answer is the daemon's (approve, deny, done, abort) on that authenticated connection. DevTools answers are ignored while it is on, a prompt with no daemon answer is denied at its timeout, and the file-picker `ask-human` prompt is refused outright because it needs files an approve or deny cannot carry. The daemon can also grant a confirm scope for one session or the whole workspace (never wider), up to 24 hours. The socket path and the token are read once from the environment and removed from it; they never appear in a log line, an error or a tool result. Enable it only when the daemon behind the socket is the operator. See " +
-      docsUrl.threatModelCapabilities +
-      ".",
+      "operator-channel is on: when the operator socket is set, human prompts go to the host daemon and only its answers count. Remove operator-channel from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "live-view",
     message:
-      "live-view capability is ENABLED — the host daemon on the operator-channel socket can start a screencast of a session's browser (JPEG, up to 5 fps and 1280 px wide, stepping down to 1 fps and 640 px when it falls behind), and the frames go to that socket and nowhere else: not to a tool result, a log, an artifact, a report, a HAR or a recording. The agent can neither start nor read it, and the daemon starts and stops it per session. SECRET MASKING DOES NOT COVER PIXELS: a registered secret typed into a visible field, a password the page renders, and anything else on screen reaches the daemon (and so the operator's phone and the relay path behind it) exactly as drawn. It needs `operator-channel`; without it the server refuses to start. Enable it only when the daemon behind the socket is the operator and the path from it to the operator's screen is one you trust. See " +
-      docsUrl.threatModelCapabilities +
-      ".",
+      "live-view is on: the host daemon can stream the browser screen to the operator, and secret masking does not cover pixels. Remove live-view from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "captcha",
     message:
-      "captcha capability is ENABLED — `solve_captcha` will delegate challenges to the provider configured via BROWX_CAPTCHA_PROVIDER + BROWX_CAPTCHA_API_KEY. SOLVING CAPTCHAS MAY VIOLATE THE TARGET SITE'S TERMS OF SERVICE and (depending on jurisdiction) computer-misuse / unauthorised-access law; the operator carries the legal exposure. browxai does NOT bundle a solver and does NOT auto-purchase credits — the operator chooses a provider, funds the account, configures the server. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` — see " +
-      docsUrl.threatModelCapabilities +
-      ".",
+      "captcha is on: solve_captcha sends challenges to the third-party service in BROWX_CAPTCHA_PROVIDER, which some sites forbid. Remove captcha from BROWX_CAPABILITIES to turn it off.",
   },
   {
     capability: "diagnostics",
     message: (ctx) =>
-      "diagnostics capability is ENABLED — every MCP tool call is " +
-      `recorded as a JSONL line under $BROWX_WORKSPACE/diagnostics/<sessionId>/<ISO>.jsonl ` +
-      `(retention: ${ctx.diagnosticsRetentionDays} days; configure via BROWX_DIAGNOSTICS_RETENTION_DAYS). ` +
-      "Args are structurally redacted (large/sensitive payload fields → sha256 + byteLength); " +
-      "the recorder runs DOWNSTREAM of the URL sanitiser + secrets-masking egress " +
-      "chokepoint, so registered secret values never reach the store raw. The agent " +
-      "self-feedback tool `diagnostics_note` ALSO requires this capability; read-side " +
-      "queries (`diagnostics_search`, `diagnostics_report`) ride the `read` capability " +
-      "so a report can be pulled even when no further notes are being filed. Same posture " +
-      "class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` / `captcha` / " +
-      "`device-emulation`. See " +
-      docsUrl.threatModelCapabilities +
-      ".",
+      `diagnostics is on: tool calls are logged under $BROWX_WORKSPACE/diagnostics for ${ctx.diagnosticsRetentionDays} days, with sensitive arguments hashed. Remove diagnostics from BROWX_CAPABILITIES to turn it off.`,
   },
 ];
 
