@@ -10,41 +10,41 @@ browxai is an MCP server that lets an AI agent drive a web page or a native app 
 
 Ranked by value over cost, then by fit with the capability-gated posture. Size is S (days), M (a few weeks) or L (a month or more, or needs hardware we do not have in CI).
 
-| #   | Item                                          | Size |
-| --- | --------------------------------------------- | ---- |
-| 1   | List only the tools whose capability is on    | S    |
-| 2   | A lean `core` tool profile, then lazy loading | M    |
-| 3   | A shell route: `browxai call`                 | M    |
-| 4   | Measured numbers and a checked first run      | S    |
-| 5   | Dated evidence for every engine               | M    |
-| 6   | `ios-app` against a real WebDriverAgent       | L    |
-| 7   | A reference deployment for containers and CI  | M    |
-| 8   | Replay player panels (RFC 0007, phase 4)      | M    |
-| 9   | Plugin ecosystem growth                       | M    |
-| 10  | An optional natural-language action layer     | L    |
+| #   | Item                                         | Size |
+| --- | -------------------------------------------- | ---- |
+| 1   | List only the tools whose capability is on   | S    |
+| 2   | A lean core tool profile, then lazy loading  | M    |
+| 3   | A shell route for agents with shell access   | M    |
+| 4   | Measured numbers and a checked first run     | S    |
+| 5   | Dated evidence for every engine              | M    |
+| 6   | `ios-app` against a real WebDriverAgent      | L    |
+| 7   | A reference deployment for containers and CI | M    |
+| 8   | Replay player panels (RFC 0007, phase 4)     | M    |
+| 9   | Plugin ecosystem growth                      | M    |
+| 10  | An optional natural-language action layer    | L    |
 
-### 1. List only the tools whose capability is on (S)
+### 1. List only the tools whose capability is on (S, in progress)
 
-- **What.** `tools/list` leaves out a tool when its capability is off. A call to a hidden tool still reaches the gate and returns the refusal that names the capability to grant.
+- **What.** `tools/list` leaves out a tool when its capability is off. A call to a hidden tool still reaches the gate and returns the refusal that names the capability to grant. It ships opt-in first, behind a config key and an environment variable that pick the listing mode, with the default staying "all". Flipping the default is a later, separate decision, made once the numbers from item 4 are in.
 - **Why.** Today every core tool is registered with the MCP SDK whatever the capability set. Nothing disables a tool or filters the listing, and the refusal `tool "x" is disabled` only happens at call time. The listing is 269,340 characters (about 67,000 tokens) for 209 tools. A count of the registrations puts roughly 150 of the 209 in the four default capabilities or in session control, so a default user pays for about 55 tools they cannot call. Expect a cut of 25 to 30 percent. The first PR measures the exact figure. Plugin tools are already left out when their capability is off.
-- **Risk.** Low. The capability set is fixed at server start, so the listing does not change mid-session and no list-changed notice is needed. A client that pinned a tool name sees it vanish until the capability is granted, so the refusal text and the troubleshooting page must still explain it. This changes what default users see in `tools/list`, so it ships as a minor with a CHANGELOG note.
-- **Done.** With the default capabilities `tools/list` holds no `eval_js`, and with `eval` granted it holds it. A test pins the default listing size. The refusal for a hidden tool called by name is unchanged.
-- **First PR.** A listing filter that reads each tool's declared capability, plus the two tests above and a CHANGELOG line. The existing `tools/list` trimming transport or the host registration seam is the place to decide where it lives.
+- **Risk.** Low. The capability set is fixed at server start, so the listing does not change mid-session and no list-changed notice is needed. A client that pinned a tool name sees it vanish until the capability is granted, so the refusal text and the troubleshooting page must still explain it. Opt-in first means no default user sees a change. Flipping the default later changes what they see in `tools/list`, so that step ships as a minor with a CHANGELOG note.
+- **Done.** With the opt-in mode on and the default capabilities, `tools/list` holds no `eval_js`, and with `eval` granted it holds it. With the mode off the listing is unchanged. A test pins the filtered listing size. The refusal for a hidden tool called by name is unchanged.
+- **First PR.** A listing filter that reads each tool's declared capability, behind the opt-in setting, plus the tests above and a CHANGELOG line. The existing `tools/list` trimming transport or the host registration seam is the place to decide where it lives.
 
-### 2. A lean `core` tool profile, then lazy loading (M)
+### 2. A lean core tool profile, then lazy loading (M)
 
-- **What.** A config key and `BROWX_TOOL_PROFILE` with two values, `full` (today) and `core`. `core` lists about 25 to 35 tools: session control, `navigate`, `snapshot`, `find`, the basic actions, `wait_for`, `screenshot`, `console_read`, `network_read`, the `verify_*` family and `batch`. A profile can add named groups, for example `core,+storage`. Lazy loading, where the server announces more tools on demand, comes after, and only for clients that honour list-changed notices.
+- **What.** A config key and an environment variable to pick the tool profile, with two values, full (today) and core. The core profile lists about 25 to 35 tools: session control, `navigate`, `snapshot`, `find`, the basic actions, `wait_for`, `screenshot`, `console_read`, `network_read`, the `verify_*` family and `batch`. A profile could add named groups, such as storage. Lazy loading, where the server announces more tools on demand, comes after, and only for clients that honour list-changed notices.
 - **Why.** Item 1 trims the listing by a quarter. The rest is the number of tools. Agents that only need to open a page and click should not carry the schemas for HAR, heap snapshots and canvas gestures. The 0.15.0 trim already took 18 percent out of the descriptions, so the remaining lever is fewer tools.
-- **Risk.** Medium. A new config key is an additive change to the stable surface. Which tools are core is a product call. Default stays `full` until measurements show `core` loses nothing, and flipping the default is a later, announced change. A profile only narrows the listing, so it never grants a capability.
-- **Done.** `core` lists under 50,000 characters (about 12,000 tokens, a target to confirm). A fitness test fails if the core listing grows past its budget. The tool reference documents the profile and its groups. The capability-testbed drives every core tool.
-- **First PR.** The core set as a frozen constant, the config key and env var wired to the listing filter from item 1, the budget test, and docs. Default stays `full`, so nothing changes for anyone who does not opt in.
+- **Risk.** Medium. The new config key is an additive change to the stable surface. Which tools are core is a product call. The default stays full until measurements show core loses nothing, and flipping the default is a later, announced change. A profile only narrows the listing, so it never grants a capability.
+- **Done.** The core profile lists under 50,000 characters (about 12,000 tokens, a target to confirm). A fitness test fails if the core listing grows past its budget. The tool reference documents the profile and its groups. The capability-testbed drives every core tool.
+- **First PR.** The core set as a frozen constant, the config key and environment variable wired to the listing filter from item 1, the budget test, and docs. The default stays full, so nothing changes for anyone who does not opt in.
 
-### 3. A shell route: `browxai call` (M)
+### 3. A shell route for agents with shell access (M)
 
-- **What.** `browxai tools` prints the tool names and one-line descriptions. `browxai call <tool> '<json>'` runs one tool against a server started with `browxai serve --socket` and prints the result. A skill file teaches the loop, so an agent with shell access pays for a short skill and no tool schemas.
+- **What.** Two new subcommands: one prints the tool names with one-line descriptions, the other runs one tool by name with JSON arguments against a server started with `browxai serve --socket` and prints the result. A skill file teaches the loop, so an agent with shell access pays for a short skill and no tool schemas.
 - **Why.** An agent with a shell can call a command line, and a short skill file takes less context than 209 schemas. The pieces exist: the socket server, the typed SDK `callTool` surface, and the `driving-browxai` skill under `harness/`. Item 2 shrinks the MCP route and this item adds a second one.
 - **Risk.** Medium. Each command is a new process, so session state has to live in the `serve --socket` daemon. The socket is owner-only (`0600`) and the route goes through the same handlers, so the gates, origin rules and secret masking apply unchanged. No new network listener.
-- **Done.** A documented page, a skill that uses it, and a keystone test that opens a session, snapshots and clicks through `browxai call`, plus one that shows a gated tool refusing.
+- **Done.** A documented page, a skill that uses it, and a keystone test that opens a session, snapshots and clicks through the new subcommand, plus one that shows a gated tool refusing.
 - **First PR.** An RFC with the command shape, the output format and how a session id travels between calls. No code until it is accepted.
 
 ### 4. Measured numbers and a checked first run (S)
@@ -53,7 +53,7 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Why.** The README says "token-efficient" and the repo holds no comparison, only the 0.15.0 listing figures. The testbed report shows 196 of 196 tools passing, which is a coverage number and says nothing about cost. Install friction is the other open question: a global install, a client entry and, for attach, a capability edit and a restart (the 0.14.0 upgrade notes).
 - **Risk.** Low. A number may look worse than the README wording, and the wording changes if it does. No claim of being faster or cheaper than another tool goes in, because there is no like-for-like method.
 - **Done.** The page, the script, a test that fails when a figure grows past its budget, and a README line that links to it.
-- **First PR.** The script, with output for the default and `full` listings. Profiles join once item 2 lands.
+- **First PR.** The script, with output for the default and full listings. Profiles join once item 2 lands.
 
 ### 5. Dated evidence for every engine (M)
 
@@ -126,7 +126,7 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 Build these three first, in this order. Items 1 and 2 cut the tool-list cost and item 4 measures it.
 
 - **Item 1, list only the tools whose capability is on.** Smallest change with a visible effect for every default user.
-- **Item 2, a lean `core` tool profile.** The larger cut, opt-in until the numbers say otherwise.
+- **Item 2, a lean core tool profile.** The larger cut, opt-in until the numbers say otherwise.
 - **Item 4, measured numbers and a checked first run.** Gives items 1 and 2 a number and backs the README with something a reader can rerun.
 
 Item 3, the shell route, starts as an RFC in the same cycle so its design is settled before any code.
