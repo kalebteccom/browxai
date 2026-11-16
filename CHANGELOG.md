@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Fixed
+
+- **A headed launch on a machine with no display now names `BROWX_HEADLESS=1`.** The Playwright text said to set `headless: true` or run `xvfb-run`, neither of which a browxai user can do. The text is kept and a line is added: "a headed browser needs a display, so set BROWX_HEADLESS=1 to launch headless." It applies to `open_session` and to the first call that opens a session on its own, on the Chromium, Firefox and WebKit engines. Nothing is added when the launch is already headless.
+
 ## [0.17.1] - 2026-11-16
 
 **Upgrading from 0.17.0.** A fresh install of 0.17.0 resolves `playwright-core` to the newest 1.x (1.65.1), while the getting-started page names the 1.64.1 browser build. On a machine without Google Chrome, `npx playwright-core@1.64.1 install chromium` then downloads a build the installed package cannot launch (`Executable doesn't exist at .../chromium_headless_shell-1255/...`). 0.17.1 pins the exact version the docs name. If you are on 0.17.0, run `npx playwright-core@1.65.1 install chromium` or upgrade to 0.17.1.

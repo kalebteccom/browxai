@@ -25,7 +25,7 @@
 import type { BrowserContextOptions, LaunchOptions } from "playwright-core";
 import { resolveBrowserType } from "../select.js";
 import { capabilitiesFor } from "../capabilities.js";
-import { withInstallHint } from "../../util/missing-browser-hint.js";
+import { withInstallHint, withNoDisplayHint } from "../../util/missing-browser-hint.js";
 import type { EngineCapabilities, EngineKind, EngineLaunchHandles } from "../types.js";
 
 /** Persistent (managed) launch spec — the subset the managed factory passes to
@@ -86,7 +86,7 @@ export class PlaywrightFirefoxAdapter {
     const context = await browserType
       .launchPersistentContext(spec.profileDir, options)
       .catch((err: unknown) => {
-        throw this.hint(err);
+        throw withNoDisplayHint(this.hint(err), options?.headless);
       });
     const page = context.pages()[0] ?? (await context.newPage());
     return { context, page };
@@ -98,7 +98,7 @@ export class PlaywrightFirefoxAdapter {
     const browser = await browserType
       .launch(this.withChannel(spec.launchOptions))
       .catch((err: unknown) => {
-        throw this.hint(err);
+        throw withNoDisplayHint(this.hint(err), spec.launchOptions.headless);
       });
     const context = await browser.newContext(spec.contextOptions);
     const page = await context.newPage();

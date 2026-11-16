@@ -21,6 +21,7 @@ import type {
 } from "playwright-core";
 import { resolveBrowserType } from "../select.js";
 import { capabilitiesFor } from "../capabilities.js";
+import { withNoDisplayHint } from "../../util/missing-browser-hint.js";
 import type { EngineCapabilities, EngineKind } from "../types.js";
 
 /** Chromium always mints an eager CDP session, so its launch handles carry a
@@ -63,7 +64,11 @@ export class PlaywrightChromiumAdapter {
    *  `newCDPSession`. Mirrors openManagedSession's pre-seam body verbatim. */
   async launchPersistent(spec: PersistentLaunchSpec): Promise<ChromiumLaunchHandles> {
     const browserType = resolveBrowserType(this.engine);
-    const context = await browserType.launchPersistentContext(spec.profileDir, spec.options);
+    const context = await browserType
+      .launchPersistentContext(spec.profileDir, spec.options)
+      .catch((err: unknown) => {
+        throw withNoDisplayHint(err, spec.options?.headless);
+      });
     const page = context.pages()[0] ?? (await context.newPage());
     const cdp = await context.newCDPSession(page);
     return { context, page, cdp };
@@ -73,7 +78,9 @@ export class PlaywrightChromiumAdapter {
    *  `newCDPSession`. Mirrors openIncognitoSession's pre-seam body verbatim. */
   async launchEphemeral(spec: EphemeralLaunchSpec): Promise<ChromiumLaunchHandles> {
     const browserType = resolveBrowserType(this.engine);
-    const browser = await browserType.launch(spec.launchOptions);
+    const browser = await browserType.launch(spec.launchOptions).catch((err: unknown) => {
+      throw withNoDisplayHint(err, spec.launchOptions.headless);
+    });
     const context = await browser.newContext(spec.contextOptions);
     const page = await context.newPage();
     const cdp = await context.newCDPSession(page);
