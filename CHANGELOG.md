@@ -8,6 +8,21 @@ surface" covers.
 
 ## Unreleased
 
+### Changed
+
+- **`browxai --help` fits 80 columns and lists every flag.** It now shows `doctor --verbose`, each `init` flag and `serve --engine`, spells out MCP and BYOB where they first appear, and says "animation frames" in place of rAF. The `chrome`, `init` and `serve` usage lines are wrapped the same way. `browxai plugin help` lost its em dash and its long line.
+- **`browxai init` marks the snapshot check with a tick and a cross.** `✓ first snapshot in N ms` replaces `ok: first snapshot in N ms`, and a failure starts with `✗` in place of `error:`. The exit codes are unchanged. The existing-`.mcp.json` line now says the file was left alone and to merge the snippet by hand.
+- **The refusal for a disabled tool names the capability to add.** The hint reads `BROWX_CAPABILITIES=read,navigation,action,human,eval` for `eval_js`, where it used to print a `<capability>` placeholder. The `shortcut` clipboard note and the refusal for an app tool on a non-native session also give the exact `BROWX_CAPABILITIES=` line and say to restart the server.
+- **The `--insecure` and `disableWebSecurity` warnings spell out the same-origin policy.** They no longer use the bare acronym or the warning sign, and the server warning says to unset `BROWX_DISABLE_WEB_SECURITY` to turn it off.
+- **Doctor rows and the fatal start line read as sentences.** The unset `BROWX_ATTACH_CDP` row no longer mentions a `--cdp` flag that does not exist, the empty-allowlist hint says what it means, and the engine rows lost their em dashes. A start that fails prints the reason in the message: `browxai could not start: <reason>. Run \`browxai doctor\` ...`.
+
+### Fixed
+
+- **`browxai doctor` prints the electron endpoint without userinfo, query or fragment.** The `electron` row printed `BROWX_ATTACH_CDP` as written, so a token in the URL reached the terminal. The `cdp-attach` row already stripped it.
+- **`browxai serve` exits 2 with usage on an argument it does not take.** `--sockt`, `--socket=PATH` and stray words were ignored. The Windows pipe example in its usage also printed doubled backslashes.
+- **`browxai init --test-attrs` with no value exits 2 with usage.** It used to carry on and sniff the attributes.
+- **`browxai chrome start` sends the "already running" refusal to stderr.** It no longer names the requested port as if it were the running one.
+
 ## [0.16.0] - 2026-10-29
 
 ### Changed

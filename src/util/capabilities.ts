@@ -77,7 +77,7 @@ export const DEFAULT_CAPABILITIES: readonly Capability[] = [
  *  replaces the default set, so a list that opts in to one more capability has
  *  to repeat the defaults. */
 export function capabilitiesWith(extra: string): string {
-  return [...DEFAULT_CAPABILITIES, extra].join(",");
+  return [...new Set([...DEFAULT_CAPABILITIES, ...extra.split(",")])].join(",");
 }
 
 /** The `BROWX_CAPABILITIES=...` assignment text for the defaults plus `extra`. */

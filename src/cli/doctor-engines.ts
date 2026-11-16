@@ -30,6 +30,7 @@ import {
   extractWsUrl,
 } from "../engine/index.js";
 import { docsUrl } from "../util/docs-links.js";
+import { sanitizeUrl, sanitizeUrlsInText } from "../util/url-sanitizer.js";
 
 // The installed Google Chrome, the browser a chromium session launches by
 // default. Informational: a missing Chrome is only a fault when the bundled
@@ -101,7 +102,7 @@ export async function firefoxCheck(): Promise<Check> {
       name: "firefox",
       ok: true,
       info: true,
-      detail: 'not installed (opt-in second engine — browserType:"firefox")',
+      detail: 'not installed (opt-in second engine, browserType:"firefox")',
       enable: `\`${playwrightInstallCommand("firefox")}\``,
     };
   } catch (e) {
@@ -131,7 +132,7 @@ export async function webkitCheck(): Promise<Check> {
       name: "webkit",
       ok: true,
       info: true,
-      detail: 'not installed (opt-in third engine — browserType:"webkit")',
+      detail: 'not installed (opt-in third engine, browserType:"webkit")',
       enable: `\`${playwrightInstallCommand("webkit")}\``,
     };
   } catch (e) {
@@ -164,7 +165,7 @@ export async function androidCheck(): Promise<Check> {
       name,
       ok: true,
       info: true,
-      detail: `${msg} (opt-in BYOB lane — browserType:"android")`,
+      detail: `${msg} (opt-in BYOB lane, browserType:"android")`,
       enable: "connect an Android phone over USB, turn on USB debugging, open Chrome",
     };
   }
@@ -181,7 +182,7 @@ export async function androidCheck(): Promise<Check> {
       name,
       ok: true,
       info: true,
-      detail: `device ${serial} ready, Chrome reachable (${browser}) — browserType:"android" attach-ready`,
+      detail: `device ${serial} ready, Chrome reachable (${browser}), so browserType:"android" is attach-ready`,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message.split(".")[0] : String(e);
@@ -220,7 +221,7 @@ export function safariCheck(assertAvailable: () => void = assertSafariAvailable)
       name: "safari",
       ok: true,
       info: true,
-      detail: `${msg} (opt-in engine — browserType:"safari")`,
+      detail: `${msg} (opt-in engine, browserType:"safari")`,
       enable,
     };
   }
@@ -251,10 +252,12 @@ export async function electronCheck(): Promise<Check> {
       name,
       ok: true,
       info: true,
-      detail: 'BROWX_ATTACH_CDP not set (opt-in attach-only lane — browserType:"electron")',
+      detail: 'BROWX_ATTACH_CDP not set (opt-in attach-only lane, browserType:"electron")',
       enable,
     };
   }
+  // The endpoint is printed without userinfo, query or fragment, as the cdp-attach row does.
+  const shown = sanitizeUrl(endpoint);
   try {
     const body = (await defaultFetcher(new URL("/json/version", endpoint).toString())) as {
       Browser?: string;
@@ -267,22 +270,22 @@ export async function electronCheck(): Promise<Check> {
         name,
         ok: true,
         info: true,
-        detail: `${endpoint} answers, and it is NOT an Electron app (${body.Browser ?? "unknown"}) — the attach lane will open a chromium session`,
+        detail: `${shown} answers, but it is not an Electron app (${body.Browser ?? "unknown"}). The attach lane will open a chromium session`,
       };
     }
     return {
       name,
       ok: true,
       info: true,
-      detail: `${endpoint} is an Electron ${electron[1]} app (${body.Browser ?? "unknown"}) — attach-ready as engine "electron"; \`navigate\` will refuse on it`,
+      detail: `${shown} is an Electron ${electron[1]} app (${body.Browser ?? "unknown"}). It is attach-ready as engine "electron", and \`navigate\` will refuse on it`,
     };
   } catch (e) {
-    const msg = e instanceof Error ? e.message.split(".")[0] : String(e);
+    const msg = sanitizeUrlsInText(e instanceof Error ? e.message.split(".")[0]! : String(e));
     return {
       name,
       ok: true,
       info: true,
-      detail: `BROWX_ATTACH_CDP=${endpoint} not reachable: ${msg}`,
+      detail: `BROWX_ATTACH_CDP=${shown} not reachable: ${msg}`,
       enable,
     };
   }

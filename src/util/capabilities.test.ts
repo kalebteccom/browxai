@@ -122,6 +122,11 @@ describe("capabilitiesWith / capabilitiesAssignment", () => {
     expect(capabilitiesWith("byob-attach")).toBe("read,navigation,action,human,byob-attach");
   });
 
+  it("does not repeat a capability the defaults already hold", () => {
+    expect(capabilitiesWith("human")).toBe("read,navigation,action,human");
+    expect(capabilitiesWith("read,eval")).toBe("read,navigation,action,human,eval");
+  });
+
   it("renders the BROWX_CAPABILITIES assignment", () => {
     expect(capabilitiesAssignment("byob-attach")).toBe(
       "BROWX_CAPABILITIES=read,navigation,action,human,byob-attach",

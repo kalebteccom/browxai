@@ -95,7 +95,12 @@ export async function runChrome(args: string[]): Promise<number> {
 
 function chromeUsage(): number {
   process.stderr.write(
-    "usage: browxai chrome <start [--port N] [--profile NAME] [--force] [--insecure] [--disable-background-throttling] | login [--url URL] [--profile NAME] [--force] | stop | status>\n",
+    "usage: browxai chrome <start|login|stop|status> [flags]\n" +
+      "  start   [--port N] [--profile NAME] [--force] [--insecure]\n" +
+      "          [--disable-background-throttling]\n" +
+      "  login   [--url URL] [--profile NAME] [--force]\n" +
+      "  stop\n" +
+      "  status\n",
   );
   return 2;
 }
@@ -145,8 +150,8 @@ function startChrome(opts: string[]): Promise<number> {
   if (existsSync(pidFile)) {
     const oldPid = readFileSync(pidFile, "utf8").trim();
     if (oldPid && isProcessAlive(Number(oldPid))) {
-      process.stdout.write(
-        `a previous browxai chrome is already running (pid ${oldPid}, port ${port}). Use \`browxai chrome stop\` first.\n`,
+      process.stderr.write(
+        `a browxai Chrome is already running (pid ${oldPid}). Run \`browxai chrome stop\` first, or \`browxai chrome status\` to check it.\n`,
       );
       return Promise.resolve(1);
     }
@@ -159,12 +164,12 @@ function startChrome(opts: string[]): Promise<number> {
   const args = buildStartArgs({ port, profileDir, insecure, noBackgroundThrottling });
   if (insecure) {
     process.stdout.write(
-      "⚠  --insecure: launching Chrome with --disable-web-security. SOP is OFF for the whole browser session. Use only against test/dev targets.\n",
+      "warning: --insecure launches Chrome with --disable-web-security, which turns off the same-origin policy for the whole browser session. Use it only against test or dev sites.\n",
     );
   }
   if (noBackgroundThrottling) {
     process.stdout.write(
-      "background-tab throttling disabled: timers, rAF and renderer priority keep running when a tab is backgrounded. Leave it off if you need to REPRODUCE background-throttling bugs.\n",
+      "background-tab throttling disabled: timers, animation frames and renderer priority keep running when a tab is in the background. Leave the flag off if you need to reproduce a bug that only shows up with throttling.\n",
     );
   }
   const child = spawn(chromePath, args, { detached: true, stdio: "ignore" });

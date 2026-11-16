@@ -114,7 +114,7 @@ the lock pin for every plugin declared in `plugins.json`:
 ```sh
 browxai plugin sync
 # browxai plugin: syncing 4 declared plugin(s)
-# browxai plugin: sync done. Server restart required — …
+# browxai plugin: sync done. Server restart required: …
 ```
 
 Use it when the install dir has drifted (a wiped `node_modules/`, a

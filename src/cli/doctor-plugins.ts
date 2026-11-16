@@ -132,7 +132,7 @@ export function pluginChecks(opts: PluginChecksOptions): Check[] {
     } else if (r.kind === "invalid-manifest") {
       note(decl.name, {
         detail: `${decl.name} invalid manifest: ${r.error}`,
-        fix: "fix the plugin's package.json#browxai field — see " + docsUrl.pluginAuthoring,
+        fix: "fix the plugin's package.json#browxai field, see " + docsUrl.pluginAuthoring,
       });
     } else {
       resolved.set(decl.name, r.manifest);
@@ -161,7 +161,7 @@ export function pluginChecks(opts: PluginChecksOptions): Check[] {
     if (prior) {
       note(name, {
         detail: `${name} namespace "${ns}" already claimed by ${prior}`,
-        fix: "rename one — namespaces are globally unique across the loaded set",
+        fix: "rename one. Namespaces are globally unique across the loaded set",
       });
       healthy.delete(name);
     } else {
@@ -212,7 +212,7 @@ export function pluginChecks(opts: PluginChecksOptions): Check[] {
       cycleChecks.push({
         name: CHECK_NAME,
         ok: false,
-        detail: `dependency cycle: ${cycle.join(" → ")} → ${cycle[0]} — server start ABORTS on cycles (no plugin loads)`,
+        detail: `dependency cycle: ${cycle.join(" → ")} → ${cycle[0]}; server start ABORTS on cycles (no plugin loads)`,
         fix: "remove one direction of the cycle from the offending plugin manifest(s)",
       });
       for (const member of cycle) {
@@ -244,7 +244,7 @@ export function pluginChecks(opts: PluginChecksOptions): Check[] {
     lockChecks.push({
       name: CHECK_NAME,
       ok: false,
-      detail: `plugins-lock.json missing (${fromFile.length} plugin(s) declared — no reproducibility pin)`,
+      detail: `plugins-lock.json missing (${fromFile.length} plugin(s) declared, and nothing pins their contents)`,
       fix: "run `browxai plugin sync` to regenerate the lock",
     });
   }
@@ -262,7 +262,7 @@ export function pluginChecks(opts: PluginChecksOptions): Check[] {
       }
       if (entry.contentSha256 !== sha256OfPackage(pkgRoot)) {
         note(decl.name, {
-          detail: `${decl.name} contentSha256 MISMATCH vs plugins-lock.json — installed contents are NOT what was pinned`,
+          detail: `${decl.name} contentSha256 MISMATCH vs plugins-lock.json. The installed contents are not what was pinned`,
           fix: "do not trust the install until audited; after verifying the package contents, re-pin with `browxai plugin sync`",
         });
         continue;
@@ -290,7 +290,7 @@ export function pluginChecks(opts: PluginChecksOptions): Check[] {
         name: CHECK_NAME,
         ok: true,
         info: true,
-        detail: `${decl.name} declared but disabled (enabled: false) — skipped at server start`,
+        detail: `${decl.name} declared but disabled (enabled: false), so it is skipped at server start`,
       });
       continue;
     }

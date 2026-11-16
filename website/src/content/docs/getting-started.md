@@ -76,7 +76,7 @@ alone, or `--no-write` to print everything and write nothing. An older
 (not plain JSON, or one that already has a browxai entry) is left as it is. A read
 or write error on a config makes init exit with code 1, after it tried every client. At the end it opens a
 headless private session on a blank page, takes a snapshot and closes it, then
-prints `ok: first snapshot in N ms`. If that fails, init says what to fix and
+prints `✓ first snapshot in N ms`. If that fails, init says what to fix and
 exits with code 1. Add `--no-smoke` to skip that check.
 
 To do it by hand instead, add browxai to your client's MCP server config. In
