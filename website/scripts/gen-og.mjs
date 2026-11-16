@@ -37,12 +37,11 @@ const svg = `
     <path d="M31 64L34.4 39.4L67.8 27.2L55.6 60.6Z" stroke="none"/>
   </g>
 
-  <text x="90" y="170" ${font} font-weight="700" font-size="28" fill="${accent}">Open source MCP server</text>
-
   <path d="${wordmarkRest}" fill="${text}"/>
   <path d="${wordmarkX}" fill="${accent}"/>
 
-  <text x="90" y="372" ${font} font-weight="400" font-size="40" fill="${body}">A browser, built for agents.</text>
+  <text x="90" y="372" ${font} font-weight="400" font-size="40" fill="${body}">An MCP server that lets an AI agent drive a web page</text>
+  <text x="90" y="426" ${font} font-weight="400" font-size="40" fill="${body}">or a native app with the same tools.</text>
 
   <text x="90" y="560" ${font} font-size="26" fill="${muted}">browxai.com</text>
   <text x="1110" y="560" text-anchor="end" ${font} font-size="26" fill="${muted}">MIT licensed</text>

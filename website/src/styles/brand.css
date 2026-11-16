@@ -45,10 +45,8 @@ dd,
 figcaption,
 blockquote,
 .browx-lede,
-.browx-about,
 .browx-card-text,
 .browx-404-msg,
-.browx-install-note,
 .browx-section-sub,
 .browx-posture-note {
   text-wrap: pretty;
@@ -195,7 +193,7 @@ main:has(.browx-404) {
 .browx-sidebar-llms:focus-visible,
 .browx-credit a:focus-visible,
 .browx-facts a:focus-visible,
-.browx-install-note a:focus-visible,
+.browx-hero-link:focus-visible,
 .browx-card a:focus-visible {
   outline: 2px solid var(--sl-color-text-accent);
   outline-offset: 3px;
@@ -248,12 +246,5 @@ main:has(.browx-404) {
   line-height: 1.6;
   max-width: 42ch;
   color: var(--sl-color-gray-2);
-  margin: var(--space-5) 0 var(--space-4);
-}
-.browx-about {
-  font-size: 0.97rem;
-  line-height: 1.65;
-  max-width: 52ch;
-  color: var(--sl-color-gray-3);
-  margin: 0 0 var(--space-7);
+  margin: var(--space-5) 0 0;
 }

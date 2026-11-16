@@ -183,6 +183,10 @@ site-search button[data-open-modal] {
   font-size: 0.78rem;
   color: var(--sl-color-text-accent);
 }
+/* The first step label sits at the top of the strip, which has its own margin. */
+.browx-shots > .browx-shot-step:first-child {
+  margin-top: 0;
+}
 .browx-shot {
   margin: 0 auto;
   max-width: 1100px;

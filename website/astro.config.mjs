@@ -39,7 +39,7 @@ export default defineConfig({
     starlight({
       title: "browxai",
       description:
-        "The same tools for a web page and a native app. MCP-native, model-agnostic control across Chromium, Firefox, WebKit, real Safari and Chrome on an Android device, plus gated native-app engines on an Android emulator and the iOS Simulator, a desktop Electron app attached over CDP, the OS clipboard, password managers and a workspace directory.",
+        "browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools.",
       // Fail the build on broken internal links or heading anchors, so dead
       // links can never ship. This is the build-time "error boundary" for a
       // static docs site.
@@ -65,7 +65,8 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "browxai: the same tools for a web page and a native app",
+            content:
+              "browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools.",
           },
         },
         { tag: "meta", attrs: { property: "og:site_name", content: "browxai" } },
@@ -74,7 +75,8 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image:alt",
-            content: "browxai: the same tools for a web page and a native app",
+            content:
+              "browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools.",
           },
         },
         { tag: "meta", attrs: { name: "twitter:card", content: "summary_large_image" } },
@@ -98,7 +100,7 @@ export default defineConfig({
             "@type": "SoftwareApplication",
             name: "browxai",
             description:
-              "MCP-native, model-agnostic control server across eight engines in three families, over CDP, WebDriver BiDi, safaridriver, UiAutomator and XCUITest, with off-by-default access to native apps on an Android emulator and the iOS Simulator, a running desktop Electron app, the OS clipboard, password managers, and a workspace directory.",
+              "browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools.",
             softwareVersion: version,
             applicationCategory: "DeveloperApplication",
             operatingSystem: "Node.js (>=22)",
