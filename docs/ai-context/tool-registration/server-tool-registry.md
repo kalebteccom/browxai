@@ -42,6 +42,10 @@ A handler that returns a partial or non-conforming shape is an LSP violation tha
 
 A tool may require several capabilities. Composition is multiplicative: miss any one of them and the tool is denied. The gate composition lives in `register()`, and handlers don't get to inline their own capability checks beyond calling the shared gate.
 
+## What `tools/list` reports
+
+With `toolList: "all"` (the default) every registered tool is listed. With `"enabled"`, `src/util/tool-list.ts` decides per tool name using the capability declared at `register()` (the same `isToolEnabled` the call-time gate uses) and, for a plugin tool, the capability the plugin declared. The filter runs in `src/transport/listing-trim.ts` on the `tools/list` response. Do not use the SDK's `RegisteredTool.disable()` for this: it also makes a call by name fail with a bare "disabled" error, and the capability refusal with its hint is what an agent needs. A tool with a new gating helper needs no change here as long as it declares its capability through `register()`.
+
 ## Plugin-contributed tools
 
 Plugins register tools through `api.registerTool(...)` against the plugin runtime (see [`../plugin-runtime/lifecycle-and-namespacing.md`](../plugin-runtime/lifecycle-and-namespacing.md)). Same ActionResult shape, same capability gates, same keystone coverage, all namespaced under the plugin's declared namespace.

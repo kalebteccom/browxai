@@ -1,4 +1,5 @@
-// Stdio transport that slims the `tools/list` payload on the wire.
+// Stdio transport that slims the `tools/list` payload on the wire, and, when the
+// `toolList` config key is `enabled`, drops the tools the server cannot run.
 //
 // The SDK's `McpServer` stamps every listed tool with
 // `inputSchema.$schema = "http://json-schema.org/draft-07/schema#"` and
@@ -8,6 +9,11 @@
 // This transport drops them from `tools/list` responses and changes nothing else.
 // It wraps another transport and trims only the response to a `tools/list` request
 // it saw arrive, matched by request id; every other message passes through as is.
+//
+// An optional `isListed` predicate filters the listing by tool name. It runs here,
+// on the wire, because the SDK's own `disable()` also makes a call by name fail
+// with a bare "disabled" error. Filtering the listing leaves the call path alone,
+// so a tool that is not listed still returns its capability refusal and hint.
 //
 // A schema keeps its `$schema` when it uses a keyword whose meaning differs
 // between draft-07 and 2020-12 (`definitions`, `$ref`, tuple `items`,
@@ -32,6 +38,15 @@ function isDialectSensitive(node: unknown): boolean {
   if (DIALECT_SENSITIVE_KEYS.some((k) => k in obj)) return true;
   if (Array.isArray(obj.items)) return true;
   return Object.values(obj).some(isDialectSensitive);
+}
+
+/** Decides whether a tool name appears in the listing. */
+export type ToolListFilter = (name: string) => boolean;
+
+function toolName(tool: unknown): string | undefined {
+  if (tool === null || typeof tool !== "object") return undefined;
+  const name = (tool as { name?: unknown }).name;
+  return typeof name === "string" ? name : undefined;
 }
 
 function trimTool(tool: unknown): unknown {
@@ -60,12 +75,22 @@ function trimTool(tool: unknown): unknown {
   return out;
 }
 
-/** Returns `message` with the redundant per-tool keys removed when it is a `tools/list` result. */
-export function trimToolListing(message: JSONRPCMessage): JSONRPCMessage {
+/** Returns `message` with the redundant per-tool keys removed when it is a `tools/list` result,
+ *  and with the tools `isListed` rejects left out. An entry with no readable name is kept. */
+export function trimToolListing(
+  message: JSONRPCMessage,
+  isListed?: ToolListFilter,
+): JSONRPCMessage {
   if (!("result" in message)) return message;
   const result = message.result as { tools?: unknown } | undefined | null;
   if (result === undefined || result === null || !Array.isArray(result.tools)) return message;
-  return { ...message, result: { ...result, tools: result.tools.map(trimTool) } };
+  const tools = isListed
+    ? result.tools.filter((tool) => {
+        const name = toolName(tool);
+        return name === undefined || isListed(name);
+      })
+    : result.tools;
+  return { ...message, result: { ...result, tools: tools.map(trimTool) } };
 }
 
 /** Wraps a transport and trims the response to each incoming `tools/list` request. */
@@ -77,7 +102,10 @@ export class ListingTrimTransport implements Transport {
   public onmessage?: Transport["onmessage"];
   public setProtocolVersion?: (version: string) => void;
 
-  constructor(private readonly _inner: Transport) {
+  constructor(
+    private readonly _inner: Transport,
+    private readonly _isListed?: ToolListFilter,
+  ) {
     _inner.onmessage = (message, extra) => {
       if ("method" in message && message.method === "tools/list" && "id" in message) {
         this._listingIds.add(message.id);
@@ -106,13 +134,14 @@ export class ListingTrimTransport implements Transport {
 
   public send(message: JSONRPCMessage, options?: TransportSendOptions): Promise<void> {
     if ("id" in message && message.id !== undefined && this._listingIds.delete(message.id)) {
-      return this._inner.send(trimToolListing(message), options);
+      return this._inner.send(trimToolListing(message, this._isListed), options);
     }
     return this._inner.send(message, options);
   }
 }
 
-/** The stdio transport `createServer().start()` connects, with the listing trim on. */
-export function createListingTrimStdioTransport(): Transport {
-  return new ListingTrimTransport(new StdioServerTransport());
+/** The stdio transport `createServer().start()` connects, with the listing trim on.
+ *  `isListed` filters the listing by tool name; omit it to list every tool. */
+export function createListingTrimStdioTransport(isListed?: ToolListFilter): Transport {
+  return new ListingTrimTransport(new StdioServerTransport(), isListed);
 }

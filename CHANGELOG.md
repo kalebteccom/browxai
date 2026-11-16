@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **`toolList` config key (`BROWX_TOOL_LIST`) to list only the tools the server can run.** `tools/list` still returns every tool by default (`all`), including the ones whose capability is off. Set `toolList` to `enabled` and the listing leaves out each tool whose capability is not in the server's active set, using the same capability the call-time gate reads, plugin tools included. A tool that is left out still returns the same refusal with its hint when called by name. Capabilities are read once at start, so the listing does not change while the server runs and no `tools/list_changed` notification is sent. `get_config` reports the live value and flags a saved one that differs until a restart. An unknown value stops the server at start, and `browxai doctor` shows the setting.
+
 ### Changed
 
 - **One description of browxai everywhere.** The README, the `package.json` description, browxai.com and its social card now say the same sentence: browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools. The landing page lost its kicker, second button, install note and loop diagram, and the "Token-efficient" claim became "Compact snapshots".

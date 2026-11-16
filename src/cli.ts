@@ -69,6 +69,10 @@ const USAGE = `Usage: browxai [subcommand]
   --version, -v                 print the browxai version
   --help, -h, help              print this usage text (also works after a subcommand)
 
+  BROWX_TOOL_LIST=enabled       make tools/list report only the tools this server's
+                                capabilities allow (default: all, which lists every
+                                tool; a disabled tool refuses with a hint either way).
+
 All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/).
 `;
 

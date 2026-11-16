@@ -142,6 +142,32 @@ describe("trimToolListing", () => {
   });
 });
 
+describe("trimToolListing with a filter", () => {
+  const tools = [
+    { name: "click", inputSchema: { type: "object" } },
+    { name: "eval_js", inputSchema: { type: "object" } },
+    "odd",
+  ];
+
+  it("leaves out the tools the filter rejects and keeps entries with no name", () => {
+    const out = trimToolListing(listing(tools), (name) => name !== "eval_js");
+    expect(toolsOf(out).map((t) => (typeof t === "string" ? t : t.name))).toEqual(["click", "odd"]);
+  });
+
+  it("lists every tool when no filter is given", () => {
+    expect(toolsOf(trimToolListing(listing(tools)))).toHaveLength(3);
+  });
+
+  it("filters through the transport on the response to a tools/list request", async () => {
+    const inner = new FakeTransport();
+    const transport = new ListingTrimTransport(inner, (name) => name === "click");
+    transport.onmessage = () => undefined;
+    inner.onmessage?.(listRequest(2));
+    await transport.send(listing(tools, 2));
+    expect(toolsOf(inner.sent[0]!.message).map((t) => t.name)).toEqual(["click"]);
+  });
+});
+
 describe("ListingTrimTransport", () => {
   it("trims the response to a tools/list request and forwards send options", async () => {
     const { inner, transport, received } = wrapped();

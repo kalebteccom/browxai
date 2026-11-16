@@ -2,6 +2,7 @@
 // page/* and helper/*. stdout is the MCP channel — all logging goes via util/logging.ts.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { type EngineKind } from "./engine/index.js";
 import { engineIsAttachOnly } from "./engine/registry.js";
 import { type SessionMode } from "./session/registry.js";
@@ -73,7 +74,8 @@ import { SESSION_ARG, TIMEOUT_ARG, ACTION_OPTS, REF_OR_SELECTOR } from "./tools/
 // pure composition/wiring; `buildHost` threads them onto the shared ToolHost.
 import { describeTarget, asTarget } from "./tools/target-resolve.js";
 import { docsUrl } from "./util/docs-links.js";
-import { createListingTrimStdioTransport } from "./transport/listing-trim.js";
+import { createListingTrimStdioTransport, ListingTrimTransport } from "./transport/listing-trim.js";
+import { createToolListing } from "./util/tool-list.js";
 
 export const NAME = "browxai";
 // Derived from package.json — see src/util/version.ts. Never hand-bump.
@@ -99,8 +101,14 @@ export interface StartOptions {
 export { SESSION_ARG, TIMEOUT_ARG, ACTION_OPTS, REF_OR_SELECTOR };
 
 export async function createServer(opts: StartOptions = {}): Promise<{
-  start: () => Promise<void>;
+  /** Connects the server. Without an argument it serves stdio; a caller that
+   *  drives the server over another transport (an in-memory pair in a test)
+   *  passes one, and it gets the same `tools/list` handling. */
+  start: (transport?: Transport) => Promise<void>;
   shutdown: () => Promise<void>;
+  /** Whether `tools/list` reports this tool under the `toolList` setting. Every
+   *  tool is listed unless `toolList` is `enabled` and its capability is off. */
+  isToolListed: (tool: string) => boolean;
   /** Programmatic in-process driving seam: the registered MCP tool handlers,
    *  keyed by tool name, each returning the same `{ content: [...] }` shape an
    *  MCP call would. Used by the headless-CI keystone (and any embedder that
@@ -126,10 +134,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const resolvedConfig = configStore.resolve();
   const cfgEnv = resolvedToEnv(resolvedConfig);
   const config = resolveConfig(cfgEnv);
+  // Which tools `tools/list` reports. Read once, like capabilities.
+  const toolListMode = resolvedConfig.toolList ?? "all";
   // approvals are session-independent policy state — server-level.
   const approvals = new ApprovalStore();
   //  policy: capabilities, confirm-required hooks, origin allow/blocklist.
   const caps = resolveCapabilities(cfgEnv);
+  const listing = createToolListing(toolListMode, caps);
   // The daemon's answer channel. Reads and removes its two environment
   // variables, and throws on a socket the daemon did not make safely.
   const operator = openOperatorChannel(caps);
@@ -142,6 +153,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     origins: describePolicy(originPolicy),
   });
   for (const w of caps.warnings) log.warn(w);
+  if (toolListMode === "enabled")
+    log.info(
+      "toolList is enabled: tools/list omits tools whose capability is off. Calling one by name still returns its refusal and hint.",
+    );
   if (configStore.readonly)
     log.info(
       "BROWX_CONFIG_READONLY is set; set_config, reset_config and approve_actions are not registered",
@@ -337,19 +352,27 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     server,
     noteMetrics: host.noteMetrics,
     noteDiagnostics: host.noteDiagnostics,
+    notePluginTool: listing.notePluginTool,
   });
 
+  // Only `enabled` filters the listing; `all` passes no filter, so the default
+  // listing is the unfiltered one.
+  const listFilter = listing.mode === "enabled" ? listing.isListed : undefined;
+
   return {
-    start: async () => {
-      const transport = createListingTrimStdioTransport();
+    start: async (inner?: Transport) => {
+      const transport = inner
+        ? new ListingTrimTransport(inner, listFilter)
+        : createListingTrimStdioTransport(listFilter);
       await server.connect(transport);
-      log.info("MCP server up on stdio");
+      log.info(inner ? "MCP server up" : "MCP server up on stdio");
     },
     shutdown: async () => {
       await registry.closeAll();
       operator?.close();
       await server.close().catch(() => undefined);
     },
+    isToolListed: listing.isListed,
     handlers: toolHandlers,
   };
 }

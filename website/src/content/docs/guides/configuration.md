@@ -49,6 +49,7 @@ persisted layers for that session only.
 | `disableWebSecurity`                | Turn off the same-origin policy and CORS for managed and incognito sessions. Dangerous; off by default.                                                               |
 | `hideOverlaySelectors`              | CSS selectors for chrome or overlay elements to neutralize non-destructively on every navigation.                                                                     |
 | `plugins`                           | Plugin names to load. A saved list is a subset of `BROWX_PLUGINS`, and a change applies on the next server start.                                                     |
+| `toolList`                          | Which tools `tools/list` reports: `all` (default) or `enabled`, which leaves out tools whose capability is off. Read once at server start.                            |
 | `unstable`                          | A free-form namespace for experimental knobs. Not stable across versions.                                                                                             |
 
 ### A few keys worth understanding
@@ -84,6 +85,13 @@ Each key opens to the details that the table leaves out.
 </details>
 
 <details>
+<summary><code>toolList</code></summary>
+
+**`toolList`** is `all` by default: `tools/list` reports every tool, including the ones whose capability is off, and a call to one of those returns a refusal that says how to enable it. Set it to `enabled` and the listing only has the tools this server can run, which makes the listing smaller for the model. A tool that is left out still returns the same refusal and hint when called by name. Plugin tools follow the capability their plugin declared. Capabilities are read once at server start, so the listing does not change while the server runs, and `toolList` is read once at start too: a saved change applies after a restart, and `get_config` shows the pending difference. The environment form is `BROWX_TOOL_LIST`.
+
+</details>
+
+<details>
 <summary><code>hideOverlaySelectors</code></summary>
 
 **`hideOverlaySelectors`** injects a CSS-only init script that applies `pointer-events: none; display: none` to matches on every navigation. It is non-destructive (no node removal, so assertions still see the DOM) and uses no agent JavaScript. Prefer it over hand-rolled per-session removal.
@@ -113,6 +121,7 @@ not config.
 - `BROWX_HIDE_OVERLAY_SELECTORS`, unset. Comma-separated CSS selectors for the `hideOverlaySelectors` key.
 - `BROWX_DISABLE_WEB_SECURITY`, unset. `1` or `true` launches managed and incognito sessions with the same-origin policy and CORS off. The only way to turn it on.
 - `BROWX_PLUGINS`, unset. Plugin names a saved `plugins` config list may name. `plugins.json`, written by `browxai plugin install`, is unaffected.
+- `BROWX_TOOL_LIST`, default `all`. `enabled` makes `tools/list` report only the tools whose capability is on. A call by name to an unlisted tool still returns the capability refusal and hint.
 - `BROWX_CONFIG_READONLY`, unset. `1` or `true` leaves out the write tools and refuses config writes.
 - `BROWX_CREDENTIAL_ORIGINS`, unset. Origins each `get_credential` account may be typed into, as `acct=https://app.example.com|https://sso.example.com,other=host`. `get_credential` refuses an account that is not listed, before the vault is asked. An entry that does not parse is ignored with a startup warning. Read at start.
 

@@ -24,6 +24,9 @@ export interface PluginRuntimeDeps {
   server: McpServer;
   noteMetrics: (toolName: string, args: unknown, res: ToolResponse, startedAt: number) => void;
   noteDiagnostics: (toolName: string, args: unknown, res: ToolResponse, startedAt: number) => void;
+  /** Told the capability each plugin tool declared, so the `toolList: "enabled"`
+   *  listing can leave out the plugin tools the server cannot run. */
+  notePluginTool?: (toolName: string, capability: Capability | undefined) => void;
 }
 
 /** The capability each plugin-info MCP tool gates under (both `read` — they are
@@ -84,7 +87,7 @@ export async function wirePluginRuntime(
   // registry is only read when `secrets` is on.
   const liveRegistries = () =>
     caps.enabled.has("secrets") ? activeSecretRegistries(true, host.registry.list()) : [];
-  const { server, noteMetrics, noteDiagnostics } = deps;
+  const { server, noteMetrics, noteDiagnostics, notePluginTool } = deps;
 
   let pluginRecords: ReadonlyArray<PluginRecord> = [];
 
@@ -153,6 +156,7 @@ export async function wirePluginRuntime(
     } else {
       pluginToolCapability.set(name, undefined);
     }
+    notePluginTool?.(name, pluginToolCapability.get(name));
     pluginToolOwner.set(name, ownerPlugin);
     pluginToolDef.set(name, {
       description: def.description,
