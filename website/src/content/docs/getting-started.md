@@ -18,27 +18,6 @@ npm install -g browxai
 browxai doctor
 ```
 
-`browxai doctor` checks the environment and prints one line per area, with a tick
-or a cross and the next step under anything that fails. `browxai doctor --verbose`
-prints every check. On a machine with no Google Chrome it fails until you add a browser:
-install Chrome, or fetch the bundled Chromium (about 150 MB).
-
-```bash
-npx playwright-core@1.64.1 install chromium
-```
-
-A bare Linux image also lacks the system libraries Chromium needs. Add
-`--with-deps` to that command to install them (it needs root).
-
-Firefox and WebKit sessions use their own Playwright builds
-(`npx playwright-core@1.64.1 install firefox webkit`).
-
-A global install puts the `browxai` binary on your `PATH`, so an MCP client can
-launch it by name (`command: "browxai"`). The binary is the MCP server on the
-stdio transport. Run by hand in a terminal it just waits for a client, so use
-`browxai doctor` to check the machine instead: it reports the Node version, the
-browser, the workspace and your configuration.
-
 On Linux and macOS, `npm install -g` can fail with `EACCES` when npm's global
 prefix sits in a root-owned directory. Don't reach for `sudo`. Either skip the
 global install and use `npx -y browxai` as the client's command ([how to wire it into a
@@ -50,12 +29,33 @@ npm config set prefix ~/.npm-global
 
 Then add `~/.npm-global/bin` to your `PATH` and run the install again.
 
-browxai launches the Google Chrome already installed on the machine, on one
-default profile per workspace (`<workspace>/profile`), so logins carry over
-between sessions. It looks for Google Chrome at its default install path on each
-OS, so a distro Chromium package is not picked up. When there is no Chrome it
-falls back to Playwright's bundled Chromium. `browxai doctor` fails only when
-neither browser is present.
+`browxai doctor` checks the environment and prints one line per area, with a tick
+or a cross and the next step under anything that fails. It exits 0 when nothing
+failed. `browxai doctor --verbose` prints every check.
+
+On a machine with no Google Chrome, doctor fails until you add a browser: install
+Chrome, or fetch the bundled Chromium (about 150 MB).
+
+```bash
+npx playwright-core@1.64.1 install chromium
+```
+
+A bare Linux image also lacks the system libraries Chromium needs. Add
+`--with-deps` to that command to install them (it needs root).
+
+Firefox and WebKit sessions use their own Playwright builds
+(`npx playwright-core@1.64.1 install firefox webkit`).
+
+browxai looks for Google Chrome at its default install path on each OS, so a
+distro Chromium package is not picked up. With no Chrome it falls back to the
+bundled Chromium, and `browxai doctor` fails only when neither browser is
+present.
+
+A global install puts the `browxai` binary on your `PATH`, so an MCP client can
+launch it by name (`command: "browxai"`). The binary is the MCP server on the
+stdio transport. Run by hand in a terminal it just waits for a client, so use
+`browxai doctor` to check the machine instead: it reports the Node version, the
+browser, the workspace and your configuration.
 
 ## Wire it into an MCP client
 
@@ -65,19 +65,30 @@ The quickest way is one command, run in your project:
 browxai init .
 ```
 
-It writes a `.mcp.json` in that directory, finds the MCP clients on your machine
-(Claude Code, Cursor, Codex and Claude Desktop) and prints the exact command or
-snippet for each one. It also adds browxai to the user-level config of each of
-Cursor, Codex and Claude Desktop it finds, for example `~/.cursor/mcp.json`. It
-prints the change first. A file that exists is merged, and the old copy is kept
-as `<config>.browxai-bak`. Pass `--no-write-user-config` to leave those files
-alone, or `--no-write` to print everything and write nothing. An older
-`--write-user-config` still works and does nothing extra. A file init will not edit
-(not plain JSON, or one that already has a browxai entry) is left as it is. A read
-or write error on a config makes init exit with code 1, after it tried every client. At the end it opens a
-headless private session on a blank page, takes a snapshot and closes it, then
-prints `✓ first snapshot in N ms`. If that fails, init says what to fix and
-exits with code 1. Add `--no-smoke` to skip that check.
+It creates a `.browxai/` folder and a `.mcp.json` in that directory. The
+`.mcp.json` has a `browxai` entry and a `browxai-attached` entry for attaching to
+your own Chrome. Both set `BROWX_WORKSPACE` to the `.browxai/` folder, so the
+project keeps its own profile and config. An existing `.mcp.json` is left alone,
+and init prints the entries to merge by hand. Claude Code reads `.mcp.json` from
+the directory you start it in.
+
+Init then finds the MCP clients on your machine (Claude Code, Cursor, Codex and
+Claude Desktop) and prints the exact command or snippet for each one. It also adds
+browxai to the user-level config of each of Cursor, Codex and Claude Desktop it
+finds, for example `~/.cursor/mcp.json`. It prints the change first. A file that
+exists is merged, and the old copy is kept as `<config>.browxai-bak`. Pass
+`--no-write-user-config` to leave those files alone, or `--no-write` to print
+everything and write nothing. An older `--write-user-config` still works and does
+nothing extra.
+
+A file init will not edit (not plain JSON, or one that already has a browxai
+entry) is left as it is. A read or write error on a config makes init exit with
+code 1, after it tried every client.
+
+Last, init opens a headless private session on a blank page, takes a snapshot and
+closes it, then prints `✓ first snapshot in N ms`. If that fails, init says what
+to fix and exits with code 1. Add `--no-smoke` to skip that check. `--no-write`
+skips it too.
 
 To do it by hand instead, add browxai to your client's MCP server config. In
 Claude Code, one command does it:
@@ -138,7 +149,7 @@ For the three JSON clients, the entry is `"browxai": { "command": "browxai" }`
 under that key, as in the Cursor example.
 
 By default the server launches a **managed** Chrome on the workspace's default
-profile, headed, with the default capability set (`read`, `navigation`,
+profile (`<workspace>/profile`, so logins carry over between sessions), headed, with the default capability set (`read`, `navigation`,
 `action`, `human`). That is the installed Google Chrome, or the bundled
 Chromium with a logged warning when Chrome is absent. Every capability outside
 that set is opt-in.
@@ -147,21 +158,23 @@ A headed browser needs a display. On a machine without one, such as a Linux
 server or a container, the first session fails to open until you set
 `BROWX_HEADLESS=1` in the server's environment. In a JSON config that is an
 `env` entry next to `command`: `"env": { "BROWX_HEADLESS": "1" }`. With
-Claude Code, add `--env BROWX_HEADLESS=1` to `claude mcp add`.
+Claude Code, run `claude mcp add --env BROWX_HEADLESS=1 browxai -- browxai`.
 
 ### Common environment variables
 
 | Variable             | Purpose                                                                                                                                                                                     |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BROWX_WORKSPACE`    | Where all transient state lives (default `~/.browxai/`). Never `cwd`.                                                                                                                       |
+| `BROWX_WORKSPACE`    | Where all transient state lives (default `~/.browxai/`, or `<dir>/.browxai` for an entry `browxai init` wrote). Never `cwd`.                                                                |
 | `BROWX_HEADLESS`     | `1` or `true` launches headless.                                                                                                                                                            |
 | `BROWX_CAPABILITIES` | The full comma-separated capability set. It replaces the default, so keep `read,navigation,action,human` and add `eval`, `network-body`, `clipboard`, or `file-io` to opt into gated tools. |
 | `BROWX_ENGINE`       | Default engine, `chromium` unless set. Also `--engine <kind>`. The values are in the [FAQ](/reference/faq/).                                                                                |
 | `BROWX_ATTACH_CDP`   | Loopback CDP endpoint to attach to an existing Chrome (BYOB). Needs `byob-attach` in `BROWX_CAPABILITIES` too: `read,navigation,action,human,byob-attach`.                                  |
 
-See the [tool reference](/reference/tool-reference/) for the full configuration
-surface, and note that **capabilities are resolved once at server start**:
-changing them means restarting the server.
+See [CLI and configuration](/reference/tool-reference/cli-and-configuration/) in
+the tool reference for every key and variable.
+
+Capabilities are resolved once at server start, so changing them means restarting
+the server.
 
 ## A first flow
 
@@ -177,8 +190,8 @@ flaky or transient UI use `wait_for`, `sample`, and `act_and_sample`.
 
 Try it with a prompt such as "open https://example.com, snapshot it and tell me
 what the page says". The agent calls `navigate` and `snapshot`. The paragraph text
-comes back on its row, and the heading and link come back as refs it can `click`. A Chrome window opens on a machine
-with a display. Headless runs show no window.
+comes back on its row, and the heading and link come back as refs it can `click`.
+A Chrome window opens on a machine with a display. Headless runs show no window.
 
 ## When something does not work
 
@@ -186,7 +199,7 @@ Run `browxai doctor`. For an error string, see [Troubleshooting](/guides/trouble
 
 ## Where to go next
 
-- **[Tool reference](/reference/tool-reference/)** is every tool, its inputs and outputs, example calls, the configuration and session model, and the stability policy.
+- **[Tool reference](/reference/tool-reference/)** lists every tool by section, with inputs, outputs and example calls, and holds the stability policy. The configuration and the session model have their own sections.
 - **[Agent guidance](https://github.com/kalebteccom/browxai/blob/main/docs/agent-guidance.md)** is the reach-for-this-not-that map: the footguns agents hit and the curated tool that avoids each one.
 - **[Configuration](/guides/configuration/)** and **[Recipes](/guides/recipes/)** cover config layers and copy-adaptable flows.
 - **[Security and threat model](/security/threat-model/)** is the capability model, what browxai defends against, and what it explicitly does not.

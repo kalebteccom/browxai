@@ -174,7 +174,10 @@ Both are launch-time, so an attached session ignores them. Pass
 Beyond isolation, each session carries policies for browser events that would
 otherwise deadlock a headless context or silently change app state: dialogs
 (`alert` / `confirm` / `prompt`), permissions (camera, geolocation, and more),
-the `Notification` constructor, and File System Access pickers. Each defaults
-to a `raise` posture, meaning the event is handled so the page does not hang,
-and the next result reports it. The
-[tool reference](/reference/tool-reference/) documents every policy mode.
+the `Notification` constructor, and File System Access pickers.
+
+Dialogs, permissions and pickers default to a `raise` posture. The event is
+handled so the page does not hang, and the next result reports it as a failure.
+Notifications default to `allow`, and each one is still listed on the result.
+The [Sessions](/reference/tool-reference/sessions/) section of the tool reference
+documents every policy mode.
