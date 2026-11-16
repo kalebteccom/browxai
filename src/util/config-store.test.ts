@@ -102,6 +102,28 @@ describe("ConfigStore precedence", () => {
   });
 });
 
+describe("toolList", () => {
+  it("defaults to all and the env layer sets it, ignoring case and spacing", () => {
+    expect(new ConfigStore(dir, {}).resolve().toolList).toBe("all");
+    expect(envLayer({ BROWX_TOOL_LIST: " Enabled " })).toEqual({ toolList: "enabled" });
+    expect(envLayer({ BROWX_TOOL_LIST: "" })).toEqual({});
+    expect(new ConfigStore(dir, { BROWX_TOOL_LIST: "enabled" }).resolve().toolList).toBe("enabled");
+  });
+
+  it("stops on an unknown env value and names the valid ones", () => {
+    expect(() => envLayer({ BROWX_TOOL_LIST: "some" })).toThrow(
+      /BROWX_TOOL_LIST: unknown value "some"\. Valid: all, enabled/,
+    );
+  });
+
+  it("a saved layer overrides the env, and a bad saved value is a malformed file", () => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { toolList: "all" } }));
+    expect(new ConfigStore(dir, { BROWX_TOOL_LIST: "enabled" }).resolve().toolList).toBe("all");
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { toolList: "none" } }));
+    expect(() => new ConfigStore(dir, {})).toThrow(/user\.toolList/);
+  });
+});
+
 describe("envLayer", () => {
   it("parses comma lists and the boolean headless flag", () => {
     expect(

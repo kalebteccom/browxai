@@ -165,12 +165,14 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
           { capabilities: { tools: {} } },
         );
         mcp.setRequestHandler(ListToolsRequestSchema, () => ({
-          tools: Object.keys(browxai.handlers).map((name) => ({
-            name,
-            description: `browxai/${name}`,
-            // Open schema — NOT `{}` (which strips args). The handler validates.
-            inputSchema: { type: "object" as const, additionalProperties: true },
-          })),
+          tools: Object.keys(browxai.handlers)
+            .filter((name) => browxai.isToolListed(name))
+            .map((name) => ({
+              name,
+              description: `browxai/${name}`,
+              // Open schema — NOT `{}` (which strips args). The handler validates.
+              inputSchema: { type: "object" as const, additionalProperties: true },
+            })),
         }));
         mcp.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
           const handler = browxai.handlers[request.params.name];

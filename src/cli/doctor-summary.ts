@@ -13,7 +13,7 @@ const AREAS: ReadonlyArray<readonly [label: string, rows: readonly string[]]> = 
   ["browser", ["chrome", "chromium"]],
   ["capabilities", ["capabilities", "byob-attach"]],
   ["attach", ["cdp-attach"]],
-  ["settings", ["test-attrs", "confirm-hooks", "origins"]],
+  ["settings", ["test-attrs", "confirm-hooks", "origins", "tool-list"]],
   ["plugins", ["plugins"]],
   ["engine", ["engine", "firefox", "webkit", "android", "safari", "electron"]],
 ];

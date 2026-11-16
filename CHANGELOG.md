@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **`toolList` config key (`BROWX_TOOL_LIST`) to list only the tools the server can run.** `tools/list` still returns every tool by default (`all`), including the ones whose capability is off. Set `toolList` to `enabled` and the listing leaves out each tool whose capability is not in the server's active set, using the same capability the call-time gate reads, plugin tools included. A tool that is left out still returns the same refusal with its hint when called by name. Capabilities are read once at start, so the listing does not change while the server runs and no `tools/list_changed` notification is sent. `toolList` is not a policy key, so `set_config` can change it in either direction and a saved value overrides the env. `get_config` reports the live value and flags a saved one that differs until a restart. An unknown value stops the server at start, and `browxai doctor` shows the setting as the server resolves it, saved config included.
+
 ### Changed
 
 - **`browxai --help` fits 80 columns and lists every flag.** It now shows `doctor --verbose`, each `init` flag and `serve --engine`, spells out MCP and BYOB where they first appear, and says "animation frames" in place of rAF. The `chrome`, `init` and `serve` usage lines are wrapped the same way. `browxai plugin help` lost its em dash and its long line.

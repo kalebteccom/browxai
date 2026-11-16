@@ -15,6 +15,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "./logging.js";
 import { invariant } from "./invariant.js";
+import { isToolListMode, parseToolList, TOOL_LIST_MODES, type ToolListMode } from "./tool-list.js";
 import {
   clampPolicy,
   policyAdjustments,
@@ -69,6 +70,10 @@ export interface ResolvedConfig {
    *  START — `set_config` persists, but takes effect on next restart
    *  (mirrors `capabilities`). Empty array = "no plugins declared". */
   plugins: string[];
+  /** Which tools `tools/list` reports: `all` (default) or `enabled`, which leaves
+   *  out the tools whose capability is off. A tool that is left out still refuses
+   *  with its hint when called by name. Read once at server start. */
+  toolList?: ToolListMode;
   /** Experimental / feature-flag knobs. Not stable; shallow-merged across layers. */
   unstable: Record<string, unknown>;
 }
@@ -90,6 +95,7 @@ export const BUILTIN_DEFAULTS: ResolvedConfig = {
   headless: false,
   hideOverlaySelectors: [],
   plugins: [],
+  toolList: "all",
   unstable: {},
 };
 
@@ -134,6 +140,8 @@ export function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   if (dws === "1" || dws === "true") layer.disableWebSecurity = true;
   const pl = list(env.BROWX_PLUGINS?.trim());
   if (pl) layer.plugins = pl;
+  const tl = parseToolList(env.BROWX_TOOL_LIST);
+  if (tl) layer.toolList = tl;
   return layer;
 }
 
@@ -169,6 +177,9 @@ function parsePersisted(raw: unknown): PersistedFile {
       if (v !== undefined && (!Array.isArray(v) || v.some((x) => typeof x !== "string")))
         throw new Error(`"${scope}.${k}" is not a list of strings`);
     }
+    const toolList = (layer as Record<string, unknown>).toolList;
+    if (toolList !== undefined && !isToolListMode(toolList))
+      throw new Error(`"${scope}.toolList" is not one of ${TOOL_LIST_MODES.join(", ")}`);
     out[scope] = layer;
   }
   return out;
@@ -247,6 +258,7 @@ export class ConfigStore {
       defaultViewport: layer.defaultViewport ?? acc.defaultViewport,
       hideOverlaySelectors: layer.hideOverlaySelectors ?? acc.hideOverlaySelectors,
       plugins: layer.plugins ?? acc.plugins,
+      toolList: layer.toolList ?? acc.toolList,
       unstable: layer.unstable ? { ...acc.unstable, ...layer.unstable } : acc.unstable,
     };
   }
