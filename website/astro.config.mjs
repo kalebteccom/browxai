@@ -205,6 +205,7 @@ export default defineConfig({
               ],
             },
             { label: "FAQ", slug: "reference/faq" },
+            { label: "Roadmap", slug: "reference/roadmap" },
           ],
         },
         {

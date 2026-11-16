@@ -24,6 +24,7 @@ const PUBLISHED_DOCS = [
   "plugin-governance.md",
   "plugins-first-party.md",
   "plugins.md",
+  "roadmap.md",
   "security-best-practices-for-adopters.md",
   "threat-model.md",
   "tool-reference.md",
