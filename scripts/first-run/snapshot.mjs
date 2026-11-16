@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { emit, estTokens, layout, secs } from "./block.mjs";
 import { DONE_TEXT, EMAIL, PAGE_TITLE, startFixture } from "./fixture.mjs";
 import { startMcp } from "./mcp-client.mjs";
-import { cleanEnv, run } from "./proc.mjs";
+import { cleanEnv, runAsync } from "./proc.mjs";
 import { recorder } from "./recorder.mjs";
 
 const { FR_ROOT: ROOT, FR_WORK: WORK, FR_OUT: OUT } = process.env;
@@ -125,19 +125,23 @@ try {
   // The README quickstart: createBrowxai(), navigate, extract, close, from the installed package.
   const sdkFile = join(proj, "sdk-quickstart.mjs");
   copyFileSync(join(ROOT, "scripts/first-run/sdk-quickstart.mjs"), sdkFile);
-  const sdk = run("node", [sdkFile, fixture.url], {
+  // Asynchronous on purpose: the fixture page is served by this process, so a blocking spawn would leave the child's navigate
+  // waiting for a response this process cannot send until its timeout killed it.
+  const sdk = await runAsync("node", [sdkFile, fixture.url], {
     cwd: proj,
     env: { ...env, BROWX_HEADLESS: "1", BROWX_WORKSPACE: join(WORK, "ws-sdk") },
     timeoutMs: 180_000,
   });
-  const line = /^FR_SDK (.*)$/m.exec(sdk.output)?.[1];
+  const line = /^FR_SDK (.*)$/m.exec(sdk.stdout)?.[1];
   const res = line ? JSON.parse(line) : undefined;
   if (!res) {
     rec.line(
       `SDK quickstart (createBrowxai, navigate, extract) | exit ${sdk.code} | ${secs(sdk.ms)}`,
-      sdk.output,
+      `${first(sdk.stdout, 300)} stderr tail: ${sdk.stderr.slice(-600)}`.trim(),
     );
-    rec.diff(`the README SDK quickstart printed no result (exit ${sdk.code})`);
+    rec.diff(
+      `the README SDK quickstart printed no result (exit ${sdk.code}, signal ${sdk.signal ?? "none"}${sdk.timedOut ? ", timed out" : ""}): ${first(sdk.stderr.slice(-600), 600)}`,
+    );
   } else {
     rec.line(
       `SDK quickstart | ${res.ok ? "ok" : "FAILED"} | create ${res.createMs} ms, navigate ${res.navigateMs} ms (${res.navigateChars} chars), extract ${res.extractMs} ms (${res.extractChars} chars)`,

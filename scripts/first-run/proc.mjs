@@ -1,6 +1,6 @@
 // Run one command, time it, keep its merged output. Every command goes through `exec "$@" 2>&1` so stdout and stderr
 // stay in the order the program wrote them, and no argument is ever parsed by a shell.
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 /**
  * run(command, args, { cwd, env, timeoutMs, input })
@@ -25,6 +25,51 @@ export function run(command, args = [], opts = {}) {
     timedOut: res.error?.code === "ETIMEDOUT",
     signal: res.signal ?? null,
   };
+}
+
+/**
+ * runAsync(command, args, { cwd, env, timeoutMs })
+ * -> { code, ms, stdout, stderr, timedOut, signal }   (code is -1 when the process was killed or could not start)
+ * run() blocks this process's event loop until the child exits. A child that needs a server hosted in THIS process (the
+ * loopback fixture page) would wait for a response nobody can send, so it hangs until the timeout kills it. Use runAsync for those.
+ */
+export function runAsync(command, args = [], opts = {}) {
+  const started = Date.now();
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: opts.cwd,
+      env: opts.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let startError = "";
+    const cap = (text, chunk) => (text + chunk).slice(-1024 * 1024);
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (d) => (stdout = cap(stdout, d)));
+    child.stderr.on("data", (d) => (stderr = cap(stderr, d)));
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, opts.timeoutMs ?? 300_000);
+    child.on("error", (e) => {
+      startError = e.message;
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      resolve({
+        command: [command, ...args].join(" "),
+        code: code ?? -1,
+        ms: Date.now() - started,
+        stdout,
+        stderr: startError && !stderr ? startError : stderr,
+        timedOut,
+        signal: signal ?? null,
+      });
+    });
+  });
 }
 
 /** The environment every browxai command runs in: nothing from the pipeline except PATH, a throwaway HOME, telemetry off.
