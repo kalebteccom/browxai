@@ -167,8 +167,10 @@ site-search button[data-open-modal] {
 /* Shot.astro renders a <picture> per theme and width. Show the one that matches
    html[data-theme] (dark when unset) and the viewport: the 1280 capture above
    52rem, the 390 capture at or below it. The captures are burned for display at
-   1100 px and 350 px, so the frame caps at those widths to keep captions
-   readable. */
+   1100 px and 344 px, so the frame caps at those widths to keep captions
+   readable. The narrow capture is 390 px wide. Lighthouse wants a file of at
+   least 1.125 times the displayed width at a pixel ratio of 1.75, and 390 / 1.125
+   is 346 px, so the narrow frame stays under that. */
 .browx-shots {
   max-width: 1140px;
   margin-inline: auto;
@@ -219,7 +221,7 @@ site-search button[data-open-modal] {
 }
 @media (max-width: 52rem) {
   .browx-shot {
-    max-width: 350px;
+    max-width: 344px;
   }
   :root:not([data-theme="light"]) .browx-shot .bs[data-t="dark"][data-w="narrow"],
   :root[data-theme="light"] .browx-shot .bs[data-t="light"][data-w="narrow"] {
@@ -229,6 +231,6 @@ site-search button[data-open-modal] {
     display: inline;
   }
   .browx-shot-step {
-    max-width: 350px;
+    max-width: 344px;
   }
 }
