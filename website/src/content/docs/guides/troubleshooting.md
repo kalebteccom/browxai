@@ -4,7 +4,8 @@ description: The error strings browxai prints, what each one means, and the fix.
 ---
 
 Start with `browxai doctor`. It checks Node, the browser, the workspace and your
-configuration, and prints a fix next to anything that fails.
+configuration, and prints the next step under anything that fails.
+`browxai doctor --verbose` prints every row.
 
 ## A session will not open
 
@@ -34,6 +35,9 @@ BROWX_CAPABILITIES=read,navigation,action,human,eval
 The server reads capabilities once, at start. `set_config` cannot turn one on.
 If it stays off after a restart, run `reset_config` to clear a saved list that
 leaves it out. More in [Configuring](/security/threat-model/#configuring).
+
+If the tool is missing from the tool list altogether, the `toolList` key is
+`enabled`, which hides tools whose capability is off. The same fix applies.
 
 ## `capability-required`
 
