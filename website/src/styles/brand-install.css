@@ -162,7 +162,7 @@
   text-decoration-thickness: 2px;
 }
 
-/* License, Node, engines and MCP clients, under the hero. */
+/* License, Node and MCP clients, under the hero. */
 .browx-facts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
