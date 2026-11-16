@@ -1,6 +1,6 @@
 # browxai roadmap
 
-> What we plan to build next, in order, and what we do not plan to build. Written against v0.16.0 on 2026-11-16. It is a plan, and an item can move or drop when evidence changes. Dates are not promised.
+> What we plan to build next, in order, and what we do not plan to build. Written against v0.17.1 on 2026-11-16. It is a plan, and an item can move or drop when evidence changes. Dates are not promised.
 
 ## What browxai is for
 
@@ -16,25 +16,35 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 | 2   | A lean core tool profile, then lazy loading  | M    |
 | 3   | A shell route for agents with shell access   | M    |
 | 4   | Measured numbers and a checked first run     | S    |
-| 5   | Dated evidence for every engine              | M    |
-| 6   | `ios-app` against a real WebDriverAgent      | L    |
-| 7   | A reference deployment for containers and CI | M    |
-| 8   | Replay player panels (RFC 0007, phase 4)     | M    |
-| 9   | Plugin ecosystem growth                      | M    |
-| 10  | An optional natural-language action layer    | L    |
+| 5   | SDK calls that return the tool result        | S/M  |
+| 6   | Dated evidence for every engine              | M    |
+| 7   | `ios-app` against a real WebDriverAgent      | L    |
+| 8   | A reference deployment for containers and CI | M    |
+| 9   | Replay player panels (RFC 0007, phase 4)     | M    |
+| 10  | Plugin ecosystem growth                      | M    |
+| 11  | An optional natural-language action layer    | L    |
 
-### 1. List only the tools whose capability is on (S, in progress)
+### 1. List only the tools whose capability is on (S, opt-in shipped in 0.17.0)
 
-- **What.** `tools/list` leaves out a tool when its capability is off. A call to a hidden tool still reaches the gate and returns the refusal that names the capability to grant. It ships opt-in first, behind a config key and an environment variable that pick the listing mode, with the default staying "all". Flipping the default is a later, separate decision, made once the numbers from item 4 are in.
-- **Why.** Today every core tool is registered with the MCP SDK whatever the capability set. Nothing disables a tool or filters the listing, and the refusal `tool "x" is disabled` only happens at call time. The listing is 269,340 characters (about 67,000 tokens) for 209 tools. A count of the registrations puts roughly 150 of the 209 in the four default capabilities or in session control, so a default user pays for about 55 tools they cannot call. Expect a cut of 25 to 30 percent. The first PR measures the exact figure. Plugin tools are already left out when their capability is off.
-- **Risk.** Low. The capability set is fixed at server start, so the listing does not change mid-session and no list-changed notice is needed. A client that pinned a tool name sees it vanish until the capability is granted, so the refusal text and the troubleshooting page must still explain it. Opt-in first means no default user sees a change. Flipping the default later changes what they see in `tools/list`, so that step ships as a minor with a CHANGELOG note.
-- **Done.** With the opt-in mode on and the default capabilities, `tools/list` holds no `eval_js`, and with `eval` granted it holds it. With the mode off the listing is unchanged. A test pins the filtered listing size. The refusal for a hidden tool called by name is unchanged.
-- **First PR.** A listing filter that reads each tool's declared capability, behind the opt-in setting, plus the tests above and a CHANGELOG line. The existing `tools/list` trimming transport or the host registration seam is the place to decide where it lives.
+- **What.** `toolList` (`BROWX_TOOL_LIST`) shipped in 0.17.0. Set to `enabled`, `tools/list` leaves out a tool when its capability is off. A call to a hidden tool still reaches the gate and returns the refusal that names the capability to grant. The default stays `all`. Flipping the default is a separate decision.
+- **Measured.** Published browxai@0.17.1, `tools/list` over stdio on a Linux CI box, from the manual workflow `.woodpecker/first-run.yml`. Tokens are characters divided by 4, an estimate.
+
+| Capabilities        | `toolList` | Tools | Characters | Tokens (est.) |
+| ------------------- | ---------- | ----- | ---------- | ------------- |
+| default four        | unset      | 209   | 270,977    | about 67,700  |
+| default four        | `enabled`  | 163   | 204,761    | about 51,200  |
+| 21 of 23 documented | either     | 209   | 270,977    | about 67,700  |
+
+- **Why.** `enabled` lists 46 fewer tools and 24 percent fewer characters for a default user. The earlier estimate was 25 to 30 percent, so the figure is now measured. With 21 of the 23 documented capabilities on, both modes list all 209 tools. The other two capabilities need a daemon socket, which the run did not have.
+- **Risk.** Low. The capability set is fixed at server start, so the listing does not change mid-session and no list-changed notice is needed. A client that pinned a tool name sees it vanish until the capability is granted, so the refusal text and the troubleshooting page must still explain it. Flipping the default changes what every default user sees in `tools/list`, so that step ships as a minor with a CHANGELOG note.
+- **Done.** The opt-in shipped with a test of the filtered listing and an unchanged refusal for a hidden tool called by name. Open: the default flip.
+- **Next.** The owner decides whether to flip the default, now that the number is in. The gain is the 24 percent above.
 
 ### 2. A lean core tool profile, then lazy loading (M)
 
 - **What.** A config key and an environment variable to pick the tool profile, with two values, full (today) and core. The core profile lists about 25 to 35 tools: session control, `navigate`, `snapshot`, `find`, the basic actions, `wait_for`, `screenshot`, `console_read`, `network_read`, the `verify_*` family and `batch`. A profile could add named groups, such as storage. Lazy loading, where the server announces more tools on demand, comes after, and only for clients that honour list-changed notices.
-- **Why.** Item 1 trims the listing by a quarter. The rest is the number of tools. Agents that only need to open a page and click should not carry the schemas for HAR, heap snapshots and canvas gestures. The 0.15.0 trim already took 18 percent out of the descriptions, so the remaining lever is fewer tools.
+- **Why.** Item 1 trims the listing by 24 percent, measured. What remains is 163 tools and 204,761 characters, so a core profile under 50,000 characters is a further cut of about 76 percent. Agents that only need to open a page and click should not carry the schemas for HAR, heap snapshots and canvas gestures. The 0.15.0 trim already took 18 percent out of the descriptions, and in the 209-tool listing the input schemas (149,630 characters) are larger than the descriptions (109,909). The largest single tools are `open_session` (12,221 characters), `click` (4,008), `emulate_usb` (3,052), `asset_export` (3,050), `emulate_bluetooth` (3,025) and `scroll` (2,989). That figure for `open_session` matches the one RFC 0010 derived (about 12,200).
+- **Still an estimate.** RFC 0010 puts its candidate core set at about 45,000 characters (45,400, from source text and one scale factor). Nothing has measured it. The next measurement is the size of exactly those tools in a real `tools/list` result, which the first-run script can print from the listing it already fetches. After that, the listing the profile itself produces, pinned in the budget test below.
 - **Risk.** Medium. The new config key is an additive change to the stable surface. Which tools are core is a product call. The default stays full until measurements show core loses nothing, and flipping the default is a later, announced change. A profile only narrows the listing, so it never grants a capability.
 - **Done.** The core profile lists under 50,000 characters (about 12,000 tokens, a target to confirm). A fitness test fails if the core listing grows past its budget. The tool reference documents the profile and its groups. The capability-testbed drives every core tool.
 - **First PR.** The core set as a frozen constant, the config key and environment variable wired to the listing filter from item 1, the budget test, and docs. The default stays full, so nothing changes for anyone who does not opt in.
@@ -47,15 +57,27 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Done.** A documented page, a skill that uses it, and a keystone test that opens a session, snapshots and clicks through the new subcommand, plus one that shows a gated tool refusing.
 - **First PR.** An RFC with the command shape, the output format and how a session id travels between calls. No code until it is accepted.
 
-### 4. Measured numbers and a checked first run (S)
+### 4. Measured numbers and a checked first run (S, done)
 
-- **What.** One docs page with three figures that anyone can reproduce: `tools/list` size per profile, snapshot size on three fixed fixture pages, and the time from `npm install -g browxai` to the first snapshot on a clean container. A script prints them.
-- **Why.** The README says "token-efficient" and the repo holds no comparison, only the 0.15.0 listing figures. The testbed report shows 196 of 196 tools passing, which is a coverage number and says nothing about cost. Install friction is the other open question: a global install, a client entry and, for attach, a capability edit and a restart (the 0.14.0 upgrade notes).
-- **Risk.** Low. A number may look worse than the README wording, and the wording changes if it does. No claim of being faster or cheaper than another tool goes in, because there is no like-for-like method.
-- **Done.** The page, the script, a test that fails when a figure grows past its budget, and a README line that links to it.
-- **First PR.** The script, with output for the default and full listings. Profiles join once item 2 lands.
+- **What.** A manual workflow, `.woodpecker/first-run.yml`, installs the published package into an empty directory, follows the getting-started page, takes a first snapshot over MCP stdio and measures `tools/list`. Run against browxai@0.17.1 on a Linux CI box.
+- **Measured.**
+  - `tools/list`: the table under item 1. The 209-tool listing splits into descriptions 109,909 characters and input schemas 149,630.
+  - Clean install: `npm install browxai` took about 6 seconds, 110 packages and 61.5 MB in `node_modules`.
+  - Browser fallback download: about 313 MB, about 680 MB on disk.
+  - First snapshot: about 1.2 seconds from a cold start through MCP stdio, about 0.5 seconds for the first snapshot `init` takes.
+- **Why.** The README says "token-efficient" and now the repo holds a figure for the listing cost, with the command that produced it. Anyone can rerun the workflow.
+- **Risk.** Low. Tokens are characters divided by 4, an estimate, and times are from one box. No claim of being faster or cheaper than another tool goes in, because there is no like-for-like method.
+- **Left out.** Snapshot size on three fixed fixture pages, a test that fails when a figure grows past a budget, and a README line that links to the figures. Item 2 adds the budget test for the core listing.
 
-### 5. Dated evidence for every engine (M)
+### 5. SDK calls that return the tool result (S/M)
+
+- **What.** `browxai.extract()` in the SDK returns `{ content, data }`, where `data` is the tool's own result `{ ok, data, ... }`. A script destructures and then reads `result.data.data.title`. Add a typed return that unwraps the tool result, so the script reads `result.data.title` and a failure is `{ ok: false, failure }` at the top level. The README example already has to explain the extra layer in a comment.
+- **Why.** It is the first thing a script author writes, and the doubled `data` reads like a mistake. The RFC checks which other SDK methods share the shape.
+- **Risk.** Medium. The return shape of an SDK method is part of the stable surface, so changing it in place breaks scripts that read `result.data.data`. It needs an opt-in (a client option) or a new method name, and either one is a minor with a CHANGELOG note. The owner decides which.
+- **Done.** The typed return, the README example without the explaining comment, an SDK test for the success and the `{ ok: false }` paths, and a tool-reference note on the old shape.
+- **First PR.** A short RFC with the two options and one worked `extract` example. No code until the owner picks.
+
+### 6. Dated evidence for every engine (M)
 
 - **What.** A table in the tool reference with, for each of the eight engines, what ran, on which version, on what date, and how to rerun it. Then close the cheapest gaps: an Android emulator run of the `android` engine and a macOS run of `safari`.
 - **Why.** The cross-engine suite runs on Chromium, Firefox and WebKit. The `android` and `safari` engines are exercised by hand, and the Electron evidence is one app on one machine.
@@ -63,7 +85,7 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Done.** Every engine row has a date within the last release and a command. Claims in the README match the table.
 - **First PR.** The table, filled from the latest testbed report, with blanks marked "not run".
 
-### 6. `ios-app` against a real WebDriverAgent (L)
+### 7. `ios-app` against a real WebDriverAgent (L)
 
 - **What.** Run the `ios-app` keystone against a real WebDriverAgent on a booted iOS Simulator and record the result.
 - **Why.** The `simctl` half runs against real simulators. The WebDriverAgent transport has only met a stand-in HTTP server, so the README calls it unproven. A Linux box cannot close this.
@@ -72,7 +94,7 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Done.** The keystone passes on a real WebDriverAgent with the Xcode and runtime versions recorded, and the README says so. Until then the wording stays "unproven".
 - **First PR.** A runbook for the manual run: install steps, the exact command, what to attach to the release notes. Docs only.
 
-### 7. A reference deployment for containers and CI (M)
+### 8. A reference deployment for containers and CI (M)
 
 - **What.** Docs and a tested example, before any service: the `deploy/Dockerfile`, a compose file that runs `browxai serve --socket` with a mounted workspace, a CI recipe, and the live-view and operator-channel setup for a human who needs to watch or take over.
 - **Why.** `deploy/Dockerfile` exists and the security best-practices page covers running in a container. Nothing yet says what one `serve --socket` server can share (one Chromium), how to run it in CI, or how a person watches and takes over. Anyone who wants many parallel browsers needs those answers before a service would help.
@@ -80,7 +102,7 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Done.** The page, the compose file, and an image build plus a headless snapshot smoke test that runs on each release.
 - **First PR.** The docs page only, from what the Dockerfile and the `serve` docs already say.
 
-### 8. Replay player panels (M)
+### 9. Replay player panels (M)
 
 - **What.** RFC 0007 phase 4: a documented plugin API for player panels, and one example panel. Phase 5, re-running a session to check determinism, stays out.
 - **Why.** Phases 1 to 3 shipped in v0.10.1: the `.browx` archive, the offline HTML player, secret masking at capture. Phase 4 is what lets a team add its own view without forking the player.
@@ -88,7 +110,7 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Done.** A schema, an example panel, a test that loads it in the player, and a docs section.
 - **First PR.** The panel manifest schema and its docs, with no player change.
 
-### 9. Plugin ecosystem growth (M)
+### 10. Plugin ecosystem growth (M)
 
 - **What.** Make the first outside plugin easy to write and easy to trust: a scaffold command for an adopter's own repo, a listing in the plugins overview, and a worked example that goes from `register(api)` to a published package.
 - **Why.** Four first-party plugins ship (`example`, `figma`, `tldraw`, `excalidraw`) and the runtime has trust tiers and a lockfile. No community plugin is listed.
@@ -96,7 +118,7 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Done.** One plugin from outside this repo installs through `browxai plugin install`, passes `doctor`, and appears in the index with its trust tier.
 - **First PR.** A "write your first plugin in ten minutes" section in the authoring guide, checked by following it on a clean machine.
 
-### 10. An optional natural-language action layer (L)
+### 11. An optional natural-language action layer (L)
 
 - **What.** A tool such as `act({ goal })` that takes a sentence and runs a short loop of `find` and actions. It would be off by default, behind its own capability, and need a model the operator configures.
 - **Why.** Other tools in this space accept a task as a sentence, and browxai expects the caller's agent to loop. Today no tool calls a model: `extract` is deterministic (its `llm-assisted` mode is retired) and `find` ranks by evidence.
@@ -106,7 +128,7 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 
 ## Not planned
 
-- **A hosted service, proxies or fingerprint rotation.** browxai is a local server. Item 7 documents how to run it yourself. `stealth` stays a gated posture tweak, and the supported route past a bot challenge is a person signing in with `browxai chrome login`.
+- **A hosted service, proxies or fingerprint rotation.** browxai is a local server. Item 8 documents how to run it yourself. `stealth` stays a gated posture tweak, and the supported route past a bot challenge is a person signing in with `browxai chrome login`.
 - **Real-device iOS or Android app lanes, and native desktop automation** (Cocoa, Win32, GTK). Devices need code signing and hardware, and a native desktop app has no CDP endpoint. Electron is in scope because it is Chromium.
 - **A bundled vision or OCR model.** Canvas work stays pixels, gestures and adapter plugins. Understanding the pixels is the host agent's job.
 - **SDKs in other languages.** MCP already serves any client for tools. We revisit when someone needs scripts in another language and asks.
@@ -123,11 +145,11 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 
 ## Next release
 
-Build these three first, in this order. Items 1 and 2 cut the tool-list cost and item 4 measures it.
+Item 4 is done and item 1 shipped its opt-in in 0.17.0. What is left, in this order:
 
-- **Item 1, list only the tools whose capability is on.** Smallest change with a visible effect for every default user.
-- **Item 2, a lean core tool profile.** The larger cut, opt-in until the numbers say otherwise.
-- **Item 4, measured numbers and a checked first run.** Gives items 1 and 2 a number and backs the README with something a reader can rerun.
+- **Item 1, the default flip.** An owner decision, with the 24 percent figure now measured.
+- **Item 2, a lean core tool profile.** The larger cut, opt-in until the numbers say otherwise. It starts by measuring the RFC 0010 candidate set in a real listing.
+- **Item 5, SDK calls that return the tool result.** An RFC for the opt-in or new-method choice.
 
 Item 3, the shell route, starts as an RFC in the same cycle so its design is settled before any code.
 
