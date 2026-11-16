@@ -3,9 +3,9 @@ title: Getting started
 description: Install browxai, wire it into an MCP client, and run a first agent flow against a real page.
 ---
 
-browxai is an [MCP](https://modelcontextprotocol.io/) server that gives an AI
-agent a curated browser-control surface. It runs over stdio and is driven by
-any MCP client.
+browxai is an [MCP](https://modelcontextprotocol.io/) server that lets an AI
+agent drive a web page or a native app with the same tools. It runs over stdio
+and is driven by any MCP client.
 
 ## Install
 

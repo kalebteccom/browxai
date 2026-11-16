@@ -4,12 +4,12 @@
 
 <h1 align="center">browxai</h1>
 
-<p align="center"><strong>The same tools for a web page and a native app.</strong><br/>
+<p align="center"><strong>browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools.</strong><br/>
 <a href="https://browxai.com">browxai.com</a> · <a href="brand/">brand kit</a></p>
 
-**Give your AI agent a real browser it can navigate, read and act on, over the Model Context Protocol or a typed TypeScript SDK. On your machine, or on an Android phone plugged into it. The same `find` and `click` drive a native app on an Android emulator or the iOS Simulator, and the UI of a desktop Electron app you already have open. The engines past a managed browser, and a short reach onto your host machine, are off until you switch them on.**
+Point any MCP client (Claude Code, Codex, Pi, …) or a typed TypeScript script at it. `snapshot`, `find`, `click` and `fill` work the same on a web page in Chromium, Firefox, WebKit, Safari or Chrome on an Android phone, on an app in an Android emulator or the iOS Simulator, and on a desktop Electron app you already have open.
 
-browxai is a control server designed for agents. A browser is what it drives most. Point any MCP client (Claude Code, Codex, Pi, …) or a single TypeScript script at it, and your agent gets a compact, safe set of tools (navigate, find, click, fill, read, screenshot) that return small, structured results. It works with any model, and it keeps the dangerous powers off until you turn them on.
+A browser is what browxai drives most. Its tools return small, structured results. Only `read`, `navigation`, `action` and `human` are on by default, and every other capability is off until you turn it on.
 
 Eight engines sit behind that one tool surface, in three families. The families have different amounts of evidence behind them, and each paragraph below says how much.
 
@@ -53,7 +53,7 @@ That is the whole of the host reach: three capabilities and adb. browxai has no 
 
 - **Model-agnostic.** It works with any MCP client (Claude, Codex, …), so no part of it ties you to one model.
 - **Engine-agnostic.** The same tools drive Chromium / Firefox / WebKit / Android Chrome / Safari / a desktop Electron app, each over the protocol that fits it (CDP, WebDriver BiDi, safaridriver), and the two native-app engines over UiAutomator and XCUITest. Pick with `--engine` / `BROWX_ENGINE`; the default is Chromium. Coverage is uneven and the gaps are named: navigation, actions, snapshot/find, screenshots and storage work across the browsers, while the CDP-deep family (tracing, heap, coverage, network interception) is Chromium-only and refuses elsewhere with an explicit `engine:` reason. A native session refuses more, starting with `eval_js` and the whole network family.
-- **Token-efficient.** `snapshot()` returns a compact accessibility tree with stable element refs. Results are scoped, paginated, and budgeted.
+- **Compact snapshots.** `snapshot()` returns a compact accessibility tree with stable element refs. Results are scoped, paginated, and budgeted.
 - **Safe by default.** Capability-gated tools, an origin allow/blocklist, confirmation hooks, and a hard per-call deadline. The dangerous surface (arbitrary JS, full response bodies, OS clipboard, password-manager lookups, workspace file IO, attaching to your real Chrome) is off until you opt in.
 - **Reaches past the browser, on your say-so.** The OS clipboard, your password manager, a workspace directory, a USB-attached phone, a native app on an emulator and a running Electron app are all in scope, each behind a capability that starts off.
 - **Owns the full session lifecycle.** Managed profiles, BYOB attach, and sessions that can be authenticated, headed, or headless.

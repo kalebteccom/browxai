@@ -15,6 +15,7 @@ surface" covers.
 - **The refusal for a disabled tool names the capability to add.** The hint reads `BROWX_CAPABILITIES=read,navigation,action,human,eval` for `eval_js`, where it used to print a `<capability>` placeholder. The `shortcut` clipboard note and the refusal for an app tool on a non-native session also give the exact `BROWX_CAPABILITIES=` line and say to restart the server.
 - **The `--insecure` and `disableWebSecurity` warnings spell out the same-origin policy.** They no longer use the bare acronym or the warning sign, and the server warning says to unset `BROWX_DISABLE_WEB_SECURITY` to turn it off.
 - **Doctor rows and the fatal start line read as sentences.** The unset `BROWX_ATTACH_CDP` row no longer mentions a `--cdp` flag that does not exist, the empty-allowlist hint says what it means, and the engine rows lost their em dashes. A start that fails prints the reason in the message: `browxai could not start: <reason>. Run \`browxai doctor\` ...`.
+- **One description of browxai everywhere.** The README, the `package.json` description, browxai.com and its social card now say the same sentence: browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools. The landing page lost its kicker, second button, install note and loop diagram, and the "Token-efficient" claim became "Compact snapshots".
 
 ### Fixed
 

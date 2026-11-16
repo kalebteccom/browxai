@@ -10,7 +10,7 @@ from that.
 
 ## At a glance
 
-An agent gets a compact, readable view of the page and a short list of tools to find, click, fill and read it. browxai drives eight engines in three families: five browsers (Chromium, Firefox, WebKit, real Safari and real Chrome on an Android phone), two native-app engines on an Android emulator and the iOS Simulator, and a desktop Electron app. By default it launches the installed Google Chrome on one default profile per workspace. Every capability past the default four (read, navigation, action and human) starts off until you switch it on. It works with any MCP client over stdio, and ships a typed TypeScript SDK.
+An agent gets a compact, readable view of the page and tools to find, click, fill and read it. browxai drives eight engines in three families: five browsers (Chromium, Firefox, WebKit, real Safari and real Chrome on an Android phone), two native-app engines on an Android emulator and the iOS Simulator, and a desktop Electron app. By default it launches the installed Google Chrome on one default profile per workspace. Every capability past the default four (read, navigation, action and human) starts off until you switch it on. It works with any MCP client over stdio, and ships a typed TypeScript SDK.
 
 ## Built for an agent
 
