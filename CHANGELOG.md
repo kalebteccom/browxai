@@ -8,6 +8,13 @@ surface" covers.
 
 ## Unreleased
 
+### Changed
+
+- **The anti-wedge timeout, the wedged-session hint and the failure hints are short and plain.** The timeout error is four sentences where it was a paragraph with capitals and em dashes: retry once, discard the session with `close_session` then `open_session` if it keeps timing out, and raise `timeoutMs` only for one slow call. The `failure.hint` texts and the internal-check (invariant) error lost an internal rule number and the capitals. They still start with `anti-wedge timeout` and `invariant violated`, and `failure.source` is unchanged.
+- **One phrase for an engine that cannot run a tool.** The refusal for a missing engine capability reads `tool "x" is not supported on the "e" engine: it has no "<capability>" sub-interface`, matching the other engine refusals. It said `cannot run on` before. The Electron `navigate` refusal is about half as long.
+- **Several refusals say what to do next and drop paths and raw JSON.** `profile_snapshot` and `auth_load` name the profile or the tool to call and no longer print a path on disk. `extensions_trigger` lists the Chrome ids as plain text. The `get_config` restart notes, the `cookies_set`, `idb_put` and `artifact_*` errors, the `fs_picker_respond` and `*Policy` mode errors and the attached-session warnings use plain words, with no em dashes, capitals or the term "not-owned".
+- **The attach banners on stderr for an external Chrome, Chrome on Android and an Electron app are plain sentences.** They keep the same warnings about the real profile, the unauthenticated debugging port and the refused `navigate` on Electron.
+
 ## [0.17.2] - 2026-11-16
 
 ### Fixed

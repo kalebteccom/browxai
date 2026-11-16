@@ -94,15 +94,12 @@ async function ensureViewport(cdp: CDPSession): Promise<void> {
 
 const ANDROID_ATTACH_WARNING = [
   "================================================================",
-  "  browxai is attaching to your REAL Chrome-on-Android over adb + CDP.",
-  "  This is the full-fidelity BYOB lane: the device's",
-  "  Chrome is treated as NOT-OWNED — on shutdown browxai detaches and",
-  "  removes the adb forward, but never closes the browser or resets its",
-  "  storage. The phone holds your real profile: every cookie, password,",
-  "  and authed tab is in scope of any page the agent visits.",
-  "  Managed mode (the default) avoids all of the above. See " +
-    docsUrl.threatModelCapabilities +
-    ".",
+  "  browxai is attaching to your real Chrome on Android over adb and CDP.",
+  "  browxai does not own that Chrome. On shutdown it detaches and removes",
+  "  the adb forward, but never closes the browser or resets its storage.",
+  "  The phone holds your real profile, so every cookie, password and",
+  "  signed-in tab is reachable from any page the agent visits.",
+  "  Managed mode (the default) avoids all of this. See " + docsUrl.threatModelCapabilities + ".",
   "================================================================",
 ].join("\n");
 
@@ -149,7 +146,9 @@ export function finalizeAttachedSession(
     close: async () => {
       if (closed) return;
       closed = true;
-      log.info("session.byob: detaching (browser stays open — not-owned)");
+      log.info(
+        "session.byob: detaching, and the browser stays open because browxai does not own it",
+      );
       await cdp.detach().catch(() => undefined);
       await releaseTarget(attachLeases, sessionId, target.page);
       await release();

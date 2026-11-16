@@ -86,6 +86,6 @@ describe("IosLifecycle — the app_* family on ios-app", () => {
     expect(err).toBeInstanceOf(NativeUnsupportedError);
     expect((err as NativeUnsupportedError).verb).toBe("app_reset");
     expect((err as Error).message).toContain("simctl erase");
-    expect((err as Error).message).toContain("EVERY app");
+    expect((err as Error).message).toContain("every app");
   });
 });

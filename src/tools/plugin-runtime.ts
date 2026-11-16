@@ -54,10 +54,10 @@ export function warnNonFirstPartyPlugins(loaded: ReadonlyArray<PluginRecord>): v
     return `  - ${p.manifest.name}@${p.manifest.version} [${p.manifest.trust}] capabilities: ${caps}`;
   });
   log.warn(
-    `${outside.length} non-first-party plugin(s) loaded IN-PROCESS with full Node access:\n` +
+    `${outside.length} non-first-party plugin(s) loaded in-process with full Node access:\n` +
       `${lines.join("\n")}\n` +
-      "browxai does not sandbox plugins and gates every trust tier identically — a declared " +
-      "capability list is disclosure, not enforcement. Audit with `plugins_list`. See " +
+      "browxai does not sandbox plugins and gates every trust tier the same way, so a declared " +
+      "capability list is disclosure only. Audit with `plugins_list`. See " +
       docsUrl.pluginGovernance +
       ".",
   );
@@ -267,7 +267,7 @@ export async function wirePluginRuntime(
     });
     for (const p of pluginRecords) {
       if (p.status !== "loaded") {
-        log.warn(`plugin runtime: ${p.manifest.name} status=${p.status} — ${p.statusReason ?? ""}`);
+        log.warn(`plugin runtime: ${p.manifest.name} status=${p.status}: ${p.statusReason ?? ""}`);
       }
     }
     warnNonFirstPartyPlugins(loaded);
@@ -275,7 +275,7 @@ export async function wirePluginRuntime(
     // Cycle errors and only cycle errors abort startup loudly. All other
     // failures get downgraded inside startPluginRuntime to a per-plugin
     // load-error record.
-    log.error(`plugin runtime: fatal — ${e instanceof Error ? e.message : String(e)}`);
+    log.error(`plugin runtime: fatal: ${e instanceof Error ? e.message : String(e)}`);
     throw e;
   }
 

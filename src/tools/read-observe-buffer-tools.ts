@@ -129,7 +129,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
               text: JSON.stringify(
                 {
                   error:
-                    "sample: coords targets unsupported — use a ref/selector/named element, or omit target for the window",
+                    "sample: coords targets are not supported. Use a ref, selector or named element, or omit target to sample the window.",
                 },
                 null,
                 2,
@@ -403,7 +403,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       // framework (@click / synthetic-event) handlers — a recurring false
       // "feature broken" negative. Point at the real `click` tool.
       const clickWarn = /\.click\s*\(\s*\)/.test(expr)
-        ? "eval_js `.click()` does not fire framework click handlers (Vue/React/custom-element) — no app handler runs. If you're testing a click, use the `click` tool instead; this is a known false-negative source."
+        ? "eval_js `.click()` does not fire framework click handlers (Vue, React, custom elements), so no app handler runs. To test a click, use the `click` tool instead. eval_js gives a false negative here."
         : undefined;
       const warn =
         td.warning && clickWarn ? `${td.warning} ${clickWarn}` : (td.warning ?? clickWarn);

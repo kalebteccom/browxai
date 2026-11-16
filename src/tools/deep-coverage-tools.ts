@@ -50,7 +50,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
         };
         if (r.restarted) {
           body.warning =
-            "A prior coverage_start was still active — it has been cleanly stopped (results discarded) and a fresh tracker started.";
+            "A prior coverage_start was still active. It was stopped and its results were discarded, and a fresh tracker started.";
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
         return {
@@ -94,7 +94,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
           const body = {
             ok: true,
             notRunning: true,
-            hint: "No coverage was active for this session — coverage_stop is idempotent; call coverage_start first.",
+            hint: "No coverage was running on this session, so there was nothing to stop. Call coverage_start first to collect some.",
           };
           const tokensEstimate = estimateTokens(JSON.stringify(body));
           return {

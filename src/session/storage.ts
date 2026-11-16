@@ -211,8 +211,8 @@ export async function cookiesSet(
   if (typeof args.value !== "string") throw new Error("cookies_set: `value` (string) is required");
   if (!args.url && !(args.domain && args.path)) {
     throw new Error(
-      "cookies_set: pass either `url` (recommended) OR both `domain` and `path` — " +
-        "Playwright's addCookies requires one of those two forms",
+      "cookies_set: pass either `url` (recommended) or both `domain` and `path`. " +
+        "Playwright's addCookies needs one of those two forms.",
     );
   }
   await context.addCookies([args]);
@@ -408,7 +408,7 @@ export function authLoad(workspaceRoot: string, name: string): StorageStateBlob 
   const path = authStatePath(workspaceRoot, name);
   if (!existsSync(path)) {
     throw new Error(
-      `auth_load: no named state "${name}" — call auth_save({ name }) first (looked for ${path})`,
+      `auth_load: no named state "${name}". Call auth_save({ name }) first, or auth_list to see what exists.`,
     );
   }
   const raw = readFileSync(path, "utf8");

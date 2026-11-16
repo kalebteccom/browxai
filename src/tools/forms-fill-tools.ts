@@ -72,14 +72,14 @@ export function registerFormsFillTools(
       throw new Error(`fill_form: ${label} requires one of \`ref\` / \`selector\` / \`named\``);
     if (provided > 1)
       throw new Error(
-        `fill_form: ${label} — pass exactly one of \`ref\` / \`selector\` / \`named\``,
+        `fill_form: ${label}: pass exactly one of \`ref\` / \`selector\` / \`named\``,
       );
     if (raw.ref) return { ref: raw.ref };
     if (raw.named) {
       const resolved = refs.refByNameLookup(raw.named);
       if (!resolved)
         throw new Error(
-          `fill_form: ${label} — name "${raw.named}" not bound. Call name_ref({name, ref}) first.`,
+          `fill_form: ${label}: name "${raw.named}" not bound. Call name_ref({name, ref}) first.`,
         );
       return { ref: resolved };
     }

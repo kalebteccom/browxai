@@ -103,7 +103,7 @@ export interface FsPickerRecord {
 /** Hint emitted on `ActionResult.failure.hint` when `raise` mode fired.
  *  Stable, agent-facing string — referenced in docs/tool-reference.md. */
 export const UNHANDLED_FS_PICKER_HINT =
-  "unhandled File System Access picker — set fsPickerPolicy (open_session/set_fs_picker_policy) " +
+  "unhandled File System Access picker: set fsPickerPolicy (open_session/set_fs_picker_policy) " +
   'to "allow", "deny", or "ask-human" before driving an action that may trigger one. ' +
   "The picker was rejected page-side (NotAllowedError) so the page is not deadlocked, but " +
   "the app effect is the user-dismissed branch. In `allow` mode, supply the file(s) with " +
@@ -202,7 +202,7 @@ export class FsPickerPolicyState {
 function normalise(p: FsPickerPolicy): FsPickerPolicy {
   if (!isFsPickerMode(p.mode)) {
     throw new Error(
-      `fsPickerPolicy: invalid mode "${String(p.mode)}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+      `fsPickerPolicy: invalid mode "${String(p.mode)}". Use "allow", "deny", "raise" or "ask-human".`,
     );
   }
   if (p.perAPI) {
@@ -210,13 +210,13 @@ function normalise(p: FsPickerPolicy): FsPickerPolicy {
     for (const [name, mode] of Object.entries(p.perAPI)) {
       if (!SUPPORTED_FS_PICKER_APIS.includes(name as FsPickerApi)) {
         throw new Error(
-          `fsPickerPolicy.perAPI: unknown API "${name}" — supported: ${SUPPORTED_FS_PICKER_APIS.join(", ")}`,
+          `fsPickerPolicy.perAPI: unknown API "${name}". Supported: ${SUPPORTED_FS_PICKER_APIS.join(", ")}.`,
         );
       }
       if (mode === undefined) continue;
       if (!isFsPickerMode(mode)) {
         throw new Error(
-          `fsPickerPolicy.perAPI["${name}"]: invalid mode "${String(mode)}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+          `fsPickerPolicy.perAPI["${name}"]: invalid mode "${String(mode)}". Use "allow", "deny", "raise" or "ask-human".`,
         );
       }
       cleaned[name as FsPickerApi] = mode;
@@ -237,7 +237,7 @@ export function parseFsPickerPolicyArg(v: string | FsPickerPolicy | undefined): 
   if (typeof v === "object") return normalise(v);
   if (isFsPickerMode(v)) return { mode: v };
   throw new Error(
-    `fsPickerPolicy: invalid value "${v}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+    `fsPickerPolicy: invalid value "${v}". Use "allow", "deny", "raise" or "ask-human".`,
   );
 }
 
@@ -248,7 +248,7 @@ export function resolveWorkspaceFsPath(workspaceRoot: string, path: string): str
   const resolved = resolve(workspaceRoot, path);
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
     throw new Error(
-      "fs_picker_respond: `path` must resolve inside $BROWX_WORKSPACE — stage the file there, or use `contents` (base64)",
+      "fs_picker_respond: `path` must resolve inside $BROWX_WORKSPACE. Stage the file there, or use `contents` (base64).",
     );
   }
   // The page writes through a save-picker handle to this path.

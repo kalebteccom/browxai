@@ -17,15 +17,10 @@ export class DeadlineError extends Error {
   ) {
     super(
       `anti-wedge timeout: "${label}" did not complete within ${ms}ms. ` +
-        `This is a RECOVERABLE signal, not a fatal error — the tool returned ` +
-        `instead of stalling. Decide which case applies: (a) a transient ` +
-        `hiccup — retry the call ONCE; (b) repeated timeouts on this session ` +
-        `(snapshot / navigate / screenshot all timing out) — the session is ` +
-        `WEDGED: discard it with \`close_session\`, then \`open_session\` a ` +
-        `fresh one; retrying or re-navigating in place will NOT recover it; ` +
-        `(c) one genuinely slow call — raise \`timeoutMs\` for THAT call only. ` +
-        `Raising \`timeoutMs\` never fixes a wedged session, and values near ` +
-        `the 1h ceiling are essentially always a mistake.`,
+        `Retry the call once. If snapshot, navigate or screenshot keep timing out on ` +
+        `this session, it is wedged: call \`close_session\`, then \`open_session\` for a ` +
+        `fresh one. Raise \`timeoutMs\` only for a single call you know is slow. ` +
+        `A larger value does not recover a wedged session.`,
     );
     this.name = "DeadlineError";
   }
@@ -48,7 +43,7 @@ export function clampTimeout(
     return {
       ms: MAX_ACTION_TIMEOUT_MS,
       warning:
-        `timeoutMs=${raw} exceeds the 1h hard ceiling — clamped to ${MAX_ACTION_TIMEOUT_MS}ms. ` +
+        `timeoutMs=${raw} exceeds the 1h hard ceiling, so it was clamped to ${MAX_ACTION_TIMEOUT_MS}ms. ` +
         `A multi-minute action timeout is essentially always a mistake (a real ` +
         `op completes in well under 5s; longer means a no-op/wedge).`,
     };

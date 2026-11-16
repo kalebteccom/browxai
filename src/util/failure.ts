@@ -38,24 +38,24 @@ export function classifyFailure(message: string): FailureClass {
     let hint: string;
     if (isInvariant) {
       hint =
-        "browxai-internal invariant violated (L8) — browxai reached a state one of its own modules guarantees cannot happen and refused with a structured error instead of returning a wrong answer. NOT an application crash and NOT a usage error: this indicates a bug in browxai. The session is usually unaffected — retry once; if it recurs, capture the message and file it as a browxai defect.";
+        "browxai hit an internal check that failed and returned an error instead of a wrong answer. This is a bug in browxai, so do not file an app-crash defect. The session is usually fine. Retry once, and if it recurs, report the message as a browxai defect.";
     } else if (isDeadline) {
       hint =
-        "anti-wedge deadline fired — browxai returned instead of stalling on a wedged page op. NOT an application crash; do not file an app-crash defect. Retry the call ONCE; if timeouts keep recurring on this session it is wedged — discard it (`close_session`) and `open_session` a fresh one. A bigger `timeoutMs` will not recover a wedged session.";
+        "anti-wedge deadline fired: browxai returned instead of waiting on a stuck page operation. This is not an application crash, so do not file an app-crash defect. Retry the call once. If timeouts keep recurring on this session it is wedged: call `close_session`, then `open_session` for a fresh one. A larger `timeoutMs` does not recover a wedged session.";
     } else {
       hint =
-        "browxai-side context teardown/detach (session closed by another agent, or an incognito context discarded) — NOT an application crash. Re-open the session and retry; do not file an app-crash defect.";
+        "The browser context was closed or detached on the browxai side (another agent closed the session, or an incognito context was discarded). This is not an application crash, so do not file an app-crash defect. Open the session again and retry.";
     }
     return { source: "browxai", hint };
   }
   if (APP_PATTERNS.test(m)) {
     return {
       source: "app",
-      hint: "application-origin failure (navigation/renderer). This one is a real app signal — safe to investigate as a defect.",
+      hint: "Application-side failure (navigation or renderer). This is a real app signal, so it is safe to investigate as a defect.",
     };
   }
   return {
     source: "unknown",
-    hint: "origin indeterminate — confirm the session is still open (list_sessions) before treating this as an app defect.",
+    hint: "Origin unclear. Confirm the session is still open with `list_sessions` before treating this as an app defect.",
   };
 }

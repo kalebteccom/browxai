@@ -100,10 +100,10 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
           ? { network: net.summary }
           : {
               networkUnavailable:
-                `the "${e.session.engine}" engine declares no "network" sub-interface — it ` +
-                "cannot observe protocol-level traffic, so this report carries no network " +
-                "summary. Absence of the field means the check was not performed; it does " +
-                "NOT mean no requests were made.",
+                `the "${e.session.engine}" engine declares no "network" sub-interface, so it ` +
+                "cannot observe protocol-level traffic and this report carries no network " +
+                "summary. A missing field means the check was not performed. It does " +
+                "not mean no requests were made.",
             }),
         regions: e.regions.list().map((r) => r.name),
         liveSessions: registry.list().map((s) => ({ id: s.id, mode: s.mode })),
@@ -375,10 +375,10 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
           ok: false,
           tool: "export_playwright_script",
           error:
-            "no active recording — call `start_recording({flowName})` first, " +
-            "drive the flow with the usual action tools (navigate/click/fill/..." +
-            "), then call this. The recording is NOT ended by export — `end_recording` " +
-            "still emits the YAML flow-file separately.",
+            "no active recording. Call `start_recording({flowName})` first, " +
+            "drive the flow with the usual action tools (navigate, click, fill and so on), " +
+            "then call this. Exporting does not end the recording: `end_recording` " +
+            "still emits the YAML flow file separately.",
           failure: { source: "browxai", hint: "start_recording before exporting" },
         });
       }

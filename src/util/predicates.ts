@@ -206,7 +206,7 @@ function evalNot(p: CompositePredicate, data: unknown): PredicateResult {
     return {
       ok: false,
       kind: "not",
-      expected: "not(child) — child should NOT hold but did",
+      expected: "not(child): the child predicate must not hold",
       actual: "child predicate held",
     };
   }

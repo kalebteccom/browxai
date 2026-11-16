@@ -147,7 +147,7 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
   if (caps.enabled.has("stealth")) {
     await applyStealth(ctx).catch((err) => {
       log.warn(
-        `stealth: failed to apply init script — ${err instanceof Error ? err.message : String(err)}`,
+        `stealth: failed to apply init script: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
   }

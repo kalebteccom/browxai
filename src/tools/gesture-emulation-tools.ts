@@ -87,7 +87,7 @@ export function registerGestureEmulationTools(
         const body: Record<string, unknown> = { ok: true, applied: state, reset };
         if (e.mode === "attached") {
           body.warning =
-            "BYOB / attached Chrome: this network override stays in effect on the attached browser even after browxai detaches — reset it (call again with empty args) or close the page when you're done.";
+            "BYOB / attached Chrome: this network override stays in effect on the attached browser after browxai detaches. Reset it (call again with empty args) or close the page when you're done.";
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
         return {
@@ -142,7 +142,7 @@ export function registerGestureEmulationTools(
         const body: Record<string, unknown> = { ok: true, applied: state, reset };
         if (e.mode === "attached") {
           body.warning =
-            "BYOB / attached Chrome: this CPU throttle stays in effect on the attached browser even after browxai detaches — reset it (call again with no args / throttleRate:1) or close the page when you're done.";
+            "BYOB / attached Chrome: this CPU throttle stays in effect on the attached browser after browxai detaches. Reset it (call again with no args or throttleRate:1) or close the page when you're done.";
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
         return {

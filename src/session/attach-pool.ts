@@ -77,9 +77,9 @@ export function attachTargetCreationUnavailable(
     `attach-target-creation-unavailable: every target on "${endpoint}" is already leased and the ` +
       "attached application cannot create another. Its renderer targets are owned by the " +
       "application's own window management, so the CDP `Target.createTarget` call answers \"Not " +
-      'supported" (this is normal for Electron apps — VS Code, Slack, Discord — not a fault). ' +
+      'supported" (this is normal for Electron apps such as VS Code, Slack and Discord). ' +
       `Live leases: ${live}. Either close a browxai session to free one of those targets, or open ` +
-      "another window IN THE APP (its own New Window command) and retry — browxai claims " +
+      "another window in the app (its own New Window command) and retry. browxai claims " +
       "pre-existing targets and will pick it up.",
   );
 }
@@ -227,7 +227,7 @@ export function acquireTarget(
     const reclaimed = leases.reclaimExpired(spec.endpoint);
     if (reclaimed.length > 0) {
       log.warn(
-        `attach pool: reclaimed ${reclaimed.length} idle lease(s) on ${spec.endpoint} — ` +
+        `attach pool: reclaimed ${reclaimed.length} idle lease(s) on ${spec.endpoint}: ` +
           reclaimed.map((l) => `${l.sessionId}→${l.targetId}`).join(", "),
       );
     }

@@ -186,7 +186,7 @@ export async function attachFsPickerPolicy(
               // doesn't see an error mid-flight.
               if (op === "write") {
                 log.warn(
-                  "session.fs-picker: write to a read-only virtual handle dropped — open-picker responses don't carry a writable destination; use showSaveFilePicker for writes",
+                  "session.fs-picker: write to a read-only virtual handle dropped. Open-picker responses carry no writable destination, so use showSaveFilePicker for writes.",
                 );
               }
               if (op === "close" || op === "abort") target.closed = true;

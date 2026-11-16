@@ -228,16 +228,12 @@ export const ANDROID_APP_CAPABILITIES: EngineCapabilities = {
 const ELECTRON_REFUSED_TOOLS: ReadonlyMap<string, string> = new Map([
   [
     "navigate",
-    "Loading a URL into an attached Electron renderer runs that page INSIDE the " +
-      "application's own renderer process, which on many Electron apps is privileged " +
-      "(a preload script exposes IPC to the main process, and the app document is " +
-      "often a file-class origin). browxai will not put arbitrary web content there. " +
-      "It also replaces the application's document: every scrap of in-memory state — " +
-      "open editors, unsaved buffers, the app's store — is gone, and whether the app " +
-      "re-bootstraps at all is per-app (VS Code recovered via go_back when measured; " +
-      "an app that gets its state over IPC once at startup will not). Drive the app " +
-      "through its own UI instead: click / press / fill on the elements `snapshot` " +
-      "and `find` return. `go_back` / `go_forward` stay on the app's OWN document and are allowed. " +
+    "Loading a URL into an attached Electron app would run that page inside the " +
+      "app's own renderer process, which is privileged on many Electron apps (a preload " +
+      "script exposes IPC to the main process). It would also replace the app's " +
+      "document and lose all in-memory state, such as open editors and unsaved buffers. " +
+      "Drive the app through its own UI: click, press and fill on the elements `snapshot` " +
+      "and `find` return. `go_back` and `go_forward` stay on the app's own document and are allowed. " +
       "To fetch a URL, open a separate chromium session " +
       '(`open_session({ engine: "chromium" })`).',
   ],

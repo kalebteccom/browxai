@@ -133,7 +133,7 @@ const TOOL_REASON: Readonly<Record<string, string>> = {
   network_emulate:
     "Link-condition throttling is spec'd over WebDriver BiDi " +
     "(`emulation.setNetworkConditions`) but not yet implemented in this Playwright build " +
-    "— refuse-pending. Route-level `delayMs` approximations still work cross-engine.",
+    "(refuse-pending). Route-level `delayMs` approximations still work cross-engine.",
   set_user_agent:
     "Playwright has no live user-agent setter off Chromium (the current path uses " +
     "CDP `Network.setUserAgentOverride`). Bake the UA at session creation instead: " +
@@ -195,10 +195,10 @@ export function assertEngineSubInterface(
   // documented as "the ONE reader".
   if (!engineDeclaration(engine)) return null;
   return {
-    error: `tool "${tool}" cannot run on the "${engine}" engine: no "${sub}" sub-interface`,
+    error: `tool "${tool}" is not supported on the "${engine}" engine: it has no "${sub}" sub-interface`,
     hint:
       `The "${engine}" engine declares no "${sub}" sub-interface, so this tool has nothing to ` +
-      `run against and the check was NOT performed. This is a refusal, not a result — it says ` +
+      `run against and the check did not run. This is a refusal, so it says ` +
       `nothing about whether the condition you asked about holds. Re-run on an engine that ` +
       `declares "${sub}" (chromium, the default), or check the per-engine capability matrix in ` +
       `${docsUrl.engineAdapters}.`,

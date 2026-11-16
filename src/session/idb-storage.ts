@@ -84,7 +84,7 @@ export async function idbListStores(
     `  var req = ${IDB_API}.open(${JSON.stringify(args.dbName)}); ` +
     `  req.onsuccess = function () { resolve(req.result); }; ` +
     `  req.onerror = function () { reject(req.error); }; ` +
-    `  req.onblocked = function () { reject(new Error("idb_list_stores: open blocked — close other connections to \\"" + ${JSON.stringify(args.dbName)} + "\\" first")); }; ` +
+    `  req.onblocked = function () { reject(new Error("idb_list_stores: open blocked, close other connections to \\"" + ${JSON.stringify(args.dbName)} + "\\" first")); }; ` +
     `}); ` +
     `var names = Array.prototype.slice.call(db.objectStoreNames); ` +
     `var version = db.version; ` +
@@ -139,7 +139,7 @@ export async function idbGet(
     `if (value === undefined) return { found: false, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, key: key, origin: location.origin }; ` +
     `var jsonable; ` +
     `try { jsonable = JSON.parse(JSON.stringify(value)); } catch (e) { ` +
-    `  throw new Error("${tool}: value at (\\"" + ${JSON.stringify(args.dbName)} + "\\", \\"" + ${JSON.stringify(args.storeName)} + "\\") is not JSON-serialisable (" + (e && e.message || e) + ") — agentic browser surface returns JSON over MCP; the platform value is preserved IN the IDB store but cannot be returned over this transport"); ` +
+    `  throw new Error("${tool}: value at (\\"" + ${JSON.stringify(args.dbName)} + "\\", \\"" + ${JSON.stringify(args.storeName)} + "\\") is not JSON-serialisable (" + (e && e.message || e) + "). The value is still in the IndexedDB store, but it cannot be returned over MCP."); ` +
     `} ` +
     `return { found: true, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, key: key, value: jsonable, origin: location.origin }; })()`;
   return await page.evaluate<IdbGetResult>(expr);
@@ -173,7 +173,7 @@ export async function idbPut(
     `}); ` +
     `if (!db.objectStoreNames.contains(${JSON.stringify(args.storeName)})) { ` +
     `  db.close(); ` +
-    `  throw new Error("${tool}: object store \\"" + ${JSON.stringify(args.storeName)} + "\\" does not exist in db \\"" + ${JSON.stringify(args.dbName)} + "\\" — store creation requires an upgrade transaction; create the store from app code first"); ` +
+    `  throw new Error("${tool}: object store \\"" + ${JSON.stringify(args.storeName)} + "\\" does not exist in db \\"" + ${JSON.stringify(args.dbName)} + "\\". browxai cannot create a store (that needs an upgrade transaction), so create it from app code first. Call idb_list_stores to see which stores exist."); ` +
     `} ` +
     `var tx = db.transaction(${JSON.stringify(args.storeName)}, "readwrite"); ` +
     `var store = tx.objectStore(${JSON.stringify(args.storeName)}); ` +

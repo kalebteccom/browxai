@@ -251,7 +251,7 @@ function protectedHit(
 export function assertWriteStaysInside(workspaceRoot: string, abs: string, tool: string): void {
   if (!staysInsideRealRoot(workspaceRoot, abs))
     throw new Error(
-      `${tool}: refusing to write "${abs}" — it resolves through a link to a path outside ` +
+      `${tool}: refusing to write "${abs}": it resolves through a link to a path outside ` +
         "$BROWX_WORKSPACE. Pick a path that stays inside the workspace.",
     );
 }
@@ -268,7 +268,7 @@ export function assertWritableWorkspacePath(
   const hit = protectedHit(workspaceRoot, abs, PROTECTED_DIRS, env);
   if (hit)
     throw new Error(
-      `${tool}: refusing to write "${abs}" — it is ${hit}, which only the operator changes. ` +
+      `${tool}: refusing to write "${abs}": it is ${hit}, which only the operator changes. ` +
         "Pick another workspace path.",
     );
 }
@@ -287,13 +287,13 @@ export function assertReadableWorkspacePath(
 ): void {
   if (!staysInsideRealRoot(workspaceRoot, abs))
     throw new Error(
-      `${tool}: refusing to read "${abs}" — it resolves through a link to a path outside ` +
+      `${tool}: refusing to read "${abs}": it resolves through a link to a path outside ` +
         "$BROWX_WORKSPACE. Copy the file into the workspace instead.",
     );
   const hit = protectedHit(workspaceRoot, abs, READ_PROTECTED_DIRS, env);
   if (hit)
     throw new Error(
-      `${tool}: refusing to read "${abs}" — it is ${hit}, which tools do not read. ` +
+      `${tool}: refusing to read "${abs}": it is ${hit}, which tools do not read. ` +
         "Pick another workspace path.",
     );
 }
