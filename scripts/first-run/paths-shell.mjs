@@ -146,7 +146,7 @@ export async function shellPart({ rec, env, proj, WORK, fixture, facts, hasShell
 
     // The other exit codes.
     const missing = await call("click", { session: SESSION, selector: "#nope", timeoutMs: 1500 });
-    const refused = await call("eval_js", { session: SESSION, expression: "1 + 1" });
+    const refused = await call("eval_js", { session: SESSION, expr: "1 + 1" });
     const noSocket = await sh(["call", "list_sessions"]);
     const noTool = await sh(["call"]);
     rec.line(

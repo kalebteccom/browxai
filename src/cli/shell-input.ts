@@ -2,7 +2,7 @@
 // a file) into a JSON object. Error messages never carry the text itself: the
 // arguments can hold a token or a password, and a message would print it.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import type { Parsed } from "./shell-args.js";
 
 /** The most argument bytes read from standard input or a file. The daemon refuses a
@@ -21,11 +21,17 @@ export interface InputSources {
   readonly readFile: (path: string) => string;
 }
 
-/** Read a file as text, refusing one over {@link MAX_ARGS_BYTES}. */
+/** Read a file as text. The size is checked before anything is read, and only a regular
+ *  file is read, so a device, a pipe or a huge file never gets loaded. Throws for
+ *  anything else, a file over {@link MAX_ARGS_BYTES} included. */
 export function readArgsFile(path: string): string {
-  const text = readFileSync(path, "utf8");
-  if (Buffer.byteLength(text, "utf8") > MAX_ARGS_BYTES) throw new Error("too large");
-  return text;
+  const info = statSync(path);
+  if (!info.isFile()) throw new Error("not a regular file");
+  if (info.size > MAX_ARGS_BYTES) throw new Error("too large");
+  const bytes = readFileSync(path);
+  // The file can grow between the check and the read.
+  if (bytes.length > MAX_ARGS_BYTES) throw new Error("too large");
+  return bytes.toString("utf8");
 }
 
 /** Read standard input as text, stopping with an error past {@link MAX_ARGS_BYTES}. */
@@ -106,7 +112,7 @@ export async function resolveArgs(
     const from = argsText === "-" ? "standard input" : `the file ${argsFile ?? ""}`;
     return {
       ok: false,
-      message: `could not read the arguments from ${from} (missing, unreadable, or over 16 MiB)`,
+      message: `could not read the arguments from ${from} (missing, unreadable, not a regular file, or over 16 MiB)`,
     };
   }
   return parseArgsObject(text);

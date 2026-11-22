@@ -5,16 +5,15 @@
 // `--force` is given, and a new file is created owner-only because a screenshot can
 // show anything the page shows.
 
-import { existsSync, lstatSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-/** True when something is at the path, a dangling symlink included. */
-function occupied(path: string): boolean {
+/** What is at the path, a dangling symlink included, or undefined when nothing is. */
+function entryAt(path: string): ReturnType<typeof lstatSync> | undefined {
   try {
-    lstatSync(path);
-    return true;
+    return lstatSync(path);
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -24,17 +23,27 @@ export function checkOutPath(path: string, force: boolean): string | undefined {
   if (!existsSync(dirname(resolve(path)))) {
     return `the directory for --out ${path} does not exist`;
   }
-  if (!force && occupied(path)) {
+  const entry = entryAt(path);
+  if (entry?.isDirectory()) return `${path} is a directory`;
+  if (!force && entry !== undefined) {
     return `${path} already exists. Pass --force to overwrite it, or name another file.`;
   }
   return undefined;
 }
 
 /** Write base64 image data to the path. Returns a problem, or undefined on success.
- *  Without `force` the write fails if the file appeared since {@link checkOutPath}. */
+ *  With `force` an existing entry is removed first: a symlink is unlinked, so the write
+ *  never follows it, and the new file is created with mode 0600 whatever the old one
+ *  had. A directory is never removed. Without `force` the write fails if the file
+ *  appeared since {@link checkOutPath}. */
 export function writeImage(path: string, base64: string, force: boolean): string | undefined {
   try {
-    writeFileSync(path, Buffer.from(base64, "base64"), { flag: force ? "w" : "wx", mode: 0o600 });
+    if (force) {
+      const entry = entryAt(path);
+      if (entry?.isDirectory()) return `${path} is a directory`;
+      if (entry !== undefined) unlinkSync(path);
+    }
+    writeFileSync(path, Buffer.from(base64, "base64"), { flag: "wx", mode: 0o600 });
     return undefined;
   } catch (err) {
     const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;

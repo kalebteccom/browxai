@@ -10,6 +10,11 @@ export const SOCKET_ENV = "BROWX_SOCKET";
 export const SESSION_ENV = "BROWX_SESSION";
 /** The default cap on the printed result, in characters. */
 export const DEFAULT_MAX_CHARS = 40_000;
+/** How long `browxai call` waits for the daemon to answer by default, in milliseconds. */
+export const DEFAULT_TIMEOUT_MS = 120_000;
+/** The longest wait: the largest delay a Node timer accepts, about 24.8 days. `--timeout 0`
+ *  asks for it, and a larger value is cut to it. */
+export const MAX_TIMEOUT_MS = 2_147_483_647;
 
 /** A tool name: letters, digits, `_`, `-` and `.` (a plugin tool is `namespace.tool`). */
 const TOOL_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
@@ -77,12 +82,14 @@ export interface CallArgs {
   readonly session: string | undefined;
   /** 0 means no cap. */
   readonly maxChars: number;
+  /** How long to wait for the daemon's answer, in milliseconds. */
+  readonly timeoutMs: number;
   readonly out: string | undefined;
   readonly force: boolean;
 }
 
 const CALL_FLAGS: FlagSpec = {
-  values: ["--socket", "--session", "--args-file", "--max-chars", "--out"],
+  values: ["--socket", "--session", "--args-file", "--max-chars", "--timeout", "--out"],
   bools: ["--force"],
 };
 
@@ -92,6 +99,15 @@ function parseMaxChars(raw: string | undefined): Parsed<number> {
     return { ok: false, message: "--max-chars takes a whole number of characters (0 for no cap)" };
   }
   return { ok: true, value: Number(raw) };
+}
+
+function parseTimeout(raw: string | undefined): Parsed<number> {
+  if (raw === undefined) return { ok: true, value: DEFAULT_TIMEOUT_MS };
+  if (!/^\d+$/.test(raw)) {
+    return { ok: false, message: "--timeout takes whole milliseconds (0 for the longest wait)" };
+  }
+  const ms = Number(raw);
+  return { ok: true, value: ms === 0 ? MAX_TIMEOUT_MS : Math.min(ms, MAX_TIMEOUT_MS) };
 }
 
 /** Parse the arguments after `call`. `env` supplies the socket and session fallbacks. */
@@ -116,6 +132,8 @@ export function parseCallArgs(
   }
   const maxChars = parseMaxChars(values.get("--max-chars"));
   if (!maxChars.ok) return maxChars;
+  const timeoutMs = parseTimeout(values.get("--timeout"));
+  if (!timeoutMs.ok) return timeoutMs;
   if (bools.has("--force") && !values.has("--out")) {
     return { ok: false, message: "--force only applies with --out" };
   }
@@ -128,6 +146,7 @@ export function parseCallArgs(
       socket: clean(values.get("--socket")) ?? clean(env[SOCKET_ENV]),
       session: clean(values.get("--session")) ?? clean(env[SESSION_ENV]),
       maxChars: maxChars.value,
+      timeoutMs: timeoutMs.value,
       out: values.get("--out"),
       force: bools.has("--force"),
     },

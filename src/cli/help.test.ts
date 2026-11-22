@@ -102,7 +102,15 @@ describe("subcommand usage registry", () => {
     expect(usageFor("serve")).toContain("--socket");
     expect(usageFor("init")).toContain("--no-write-user-config");
     for (const flag of ["--socket", "--json"]) expect(usageFor("tools"), flag).toContain(flag);
-    for (const flag of ["--args-file", "--socket", "--session", "--max-chars", "--out", "--force"])
+    for (const flag of [
+      "--args-file",
+      "--socket",
+      "--session",
+      "--max-chars",
+      "--timeout",
+      "--out",
+      "--force",
+    ])
       expect(usageFor("call"), flag).toContain(flag);
   });
 

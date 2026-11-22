@@ -146,6 +146,7 @@ gates and refusals apply.
 - Anything on the command line shows up in process listings. Pass a token or a
   password on standard input (`browxai call register_secret -`) or with
   `--args-file`, and type a `<NAME>` placeholder into `fill`, never the value.
+- A call waits 120 seconds for the daemon. For a slower tool pass `--timeout MS`.
 - `browxai call screenshot '{}' --out shot.png` writes the first image to a
   file. A result over 40,000 characters is cut and marked `truncated`: narrow
   the call (`scope`, `maxNodes`) before you raise `--max-chars`.

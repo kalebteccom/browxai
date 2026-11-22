@@ -16,6 +16,7 @@ import { processIo, type ShellIo } from "./shell-io.js";
 import { resolveArgs } from "./shell-input.js";
 import { checkOutPath, writeImage } from "./shell-out.js";
 import {
+  type Built,
   buildDocument,
   type ContentItem,
   errorResult,
@@ -40,9 +41,13 @@ export const CALL_USAGE =
   "                 set BROWX_SESSION. A session in the arguments wins.\n" +
   "  --max-chars N  cut the printed result to N characters (default 40000,\n" +
   '                 0 for no cap). The document then has "truncated" set.\n' +
-  "  --out FILE     write the first image of the result to FILE, owner-only.\n" +
-  "                 An existing file is left alone unless --force is given.\n" +
-  "  --force        overwrite the --out file\n" +
+  "  --timeout MS   wait this long for the daemon's answer (default 120000,\n" +
+  "                 0 for the longest wait). A tool that waits longer, such as\n" +
+  "                 await_human, needs a larger value. On a timeout: exit 3.\n" +
+  "  --out FILE     write the first image of a successful result to FILE,\n" +
+  "                 owner-only. An existing file is left alone unless --force\n" +
+  "                 is given. A write that fails after the tool ran: exit 1.\n" +
+  "  --force        replace the --out file (a symlink there is unlinked first)\n" +
   "\n" +
   "  Anything on the command line shows up in process listings and in shell\n" +
   "  history. Pass a token or a password on standard input or in --args-file,\n" +
@@ -50,18 +55,15 @@ export const CALL_USAGE =
   "\n" +
   "  Output: isError, then data (the parsed result) or text, images (type and\n" +
   "  byte length, never pixels) and truncated when the result was cut.\n" +
-  "  Exit codes: 0 ok, 1 the tool failed, 2 usage, 3 daemon unreachable,\n" +
-  "  4 refused by a capability gate.\n" +
+  "  Exit codes: 0 ok, 1 the tool failed, 2 usage, 3 daemon unreachable or\n" +
+  "  silent, 4 refused by a capability gate.\n" +
   "\n" +
   "  Example:\n" +
   '    browxai call navigate \'{"url":"https://example.com"}\' --socket /tmp/b.sock\n';
 
-/** How long one call may run before the client gives up: the longest timer Node
- *  accepts. A tool has its own deadline, so the client never gives up first. */
-const CALL_TIMEOUT_MS = 2_147_483_647;
-
 /** The error codes for a dropped connection and a timeout, which are no answer from the daemon. */
-const NO_ANSWER: readonly number[] = [ErrorCode.ConnectionClosed, ErrorCode.RequestTimeout];
+const TIMED_OUT: number = ErrorCode.RequestTimeout;
+const NO_ANSWER: readonly number[] = [ErrorCode.ConnectionClosed, TIMED_OUT];
 
 /** A protocol error the daemon sent as the answer to a call, as an error result. A
  *  dropped connection or a timeout is not an answer, so it stays an error. */
@@ -74,9 +76,10 @@ async function callOnce(
   client: Client,
   tool: string,
   args: Record<string, unknown>,
+  timeoutMs: number,
 ): Promise<ToolResult> {
   const res = await client.callTool({ name: tool, arguments: args }, undefined, {
-    timeout: CALL_TIMEOUT_MS,
+    timeout: timeoutMs,
   });
   const content = (res.content as ContentItem[] | undefined) ?? [];
   return { isError: res.isError === true, content };
@@ -112,13 +115,16 @@ export async function runCall(rest: string[], io: ShellIo = processIo()): Promis
   }
   let result: ToolResult;
   try {
-    result = await callOnce(client, opts.tool, body);
+    result = await callOnce(client, opts.tool, body, opts.timeoutMs);
   } catch (err) {
     const answered = answeredWithError(err);
     if (answered === undefined) {
+      const timedOut = err instanceof McpError && err.code === TIMED_OUT;
       const why = err instanceof Error ? err.message : String(err);
       await io.stderr(
-        `browxai call: the connection to the daemon failed during the call (${why}). The tool may have run.\n`,
+        timedOut
+          ? `browxai call: the daemon did not answer within ${opts.timeoutMs} ms. The tool may still be running. Raise --timeout for a tool that waits.\n`
+          : `browxai call: the connection to the daemon failed during the call (${why}). The tool may have run.\n`,
       );
       return EXIT.unreachable;
     }
@@ -128,21 +134,35 @@ export async function runCall(rest: string[], io: ShellIo = processIo()): Promis
   }
 
   const built = buildDocument(result, opts.maxChars);
-  let exitCode: ExitCode = built.exitCode;
-  if (opts.out !== undefined) {
-    if (built.firstImage === undefined) {
-      await io.stderr("browxai call: the result has no image, so nothing was written to --out\n");
-    } else {
-      const problem = writeImage(opts.out, built.firstImage.data, opts.force);
-      if (problem === undefined) {
-        const first = built.doc.images[0];
-        if (first !== undefined) first.path = resolve(opts.out);
-      } else {
-        await io.stderr(`browxai call: ${problem}\n`);
-        exitCode = EXIT.usage;
-      }
-    }
-  }
+  const exitCode = await writeOut(io, opts, built, built.exitCode);
   await io.stdout(`${JSON.stringify(built.doc)}\n`);
+  return exitCode;
+}
+
+/** `--out`: write the first image, but only for a result that succeeded. Returns the exit
+ *  code. A write that fails after the tool ran exits 1: code 2 means refused before the
+ *  tool ran, and the tool did run. */
+async function writeOut(
+  io: ShellIo,
+  opts: { readonly out?: string; readonly force: boolean },
+  built: Built,
+  exitCode: ExitCode,
+): Promise<ExitCode> {
+  if (opts.out === undefined) return exitCode;
+  if (exitCode !== EXIT.ok) {
+    await io.stderr("browxai call: the call did not succeed, so nothing was written to --out\n");
+    return exitCode;
+  }
+  if (built.firstImage === undefined) {
+    await io.stderr("browxai call: the result has no image, so nothing was written to --out\n");
+    return exitCode;
+  }
+  const problem = writeImage(opts.out, built.firstImage.data, opts.force);
+  if (problem !== undefined) {
+    await io.stderr(`browxai call: the tool ran, but ${problem}\n`);
+    return EXIT.toolError;
+  }
+  const first = built.doc.images[0];
+  if (first !== undefined) first.path = resolve(opts.out);
   return exitCode;
 }

@@ -11,14 +11,31 @@
 // Skipped on Windows: the daemon test relies on POSIX socket file semantics.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { createServer as createNetServer, type Server as NetServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createClientServer, type ClientHandlers } from "../../src/cli/serve-client.js";
+import { listenPrivate } from "../../src/cli/serve-socket.js";
 import { startServeForTests } from "../../src/cli/serve.js";
 import { runCall } from "../../src/cli/shell-call.js";
 import type { ShellIo } from "../../src/cli/shell-io.js";
 import { runTools } from "../../src/cli/shell-tools.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../../src/server.js";
+import { buildHost, type HostDeps } from "../../src/tools/host-build.js";
+import type { ToolResponse } from "../../src/tools/host.js";
+import { SocketTransport } from "../../src/transport/socket-transport.js";
+import { SecretRegistry } from "../../src/util/secrets.js";
 import { connectSocketClient } from "../../src/sdk/transport-socket.js";
 
 const skipIfWindows = process.platform === "win32" ? describe.skip : describe;
@@ -226,16 +243,22 @@ skipIfWindows("browxai call: usage and unreachable daemons", () => {
 });
 
 skipIfWindows("a gated tool refuses through the shell route exactly as over MCP", () => {
-  /** What the daemon's own handler map returns for a tool: the MCP result's first text item. */
-  async function inProcessRefusal(tool: string, args: Record<string, unknown>) {
+  /** What an MCP client gets from the server the stdio bin runs: the registered tools behind
+   *  the MCP server's own schema check and the masked wire handlers, reached over an
+   *  in-memory pair where stdio would be. This is a different code path from the daemon's
+   *  socket handlers, so it is a real second leg for the comparison. */
+  async function overStdioServer(tool: string, args: Record<string, unknown>) {
     const server = await createServer({});
+    const [clientEnd, serverEnd] = InMemoryTransport.createLinkedPair();
+    await server.start(serverEnd);
+    const client = new Client({ name: "shell-route-test", version: "0" });
+    await client.connect(clientEnd);
     try {
-      const handler = server.handlers[tool];
-      if (!handler) throw new Error(`no handler for ${tool}`);
-      const res = await handler(args);
-      const first = res.content[0];
-      return JSON.parse(first?.type === "text" ? first.text : "null") as Record<string, unknown>;
+      const res = await client.callTool({ name: tool, arguments: args });
+      const items = res.content as Array<{ type: string; text?: string }>;
+      return JSON.parse(items[0]?.text ?? "null") as Record<string, unknown>;
     } finally {
+      await client.close();
       await server.shutdown();
     }
   }
@@ -252,16 +275,16 @@ skipIfWindows("a gated tool refuses through the shell route exactly as over MCP"
     }
   }
 
-  it("refuses eval_js with exit 4 and the same envelope over MCP and in process", async () => {
-    const viaRoute = await call(["eval_js", '{"expression":"1+1"}', ...viaSocket()]);
+  it("refuses eval_js with exit 4 and the same envelope over the socket and over the stdio server", async () => {
+    const viaRoute = await call(["eval_js", '{"expr":"1+1"}', ...viaSocket()]);
     expect(viaRoute.code).toBe(4);
     expect(viaRoute.doc?.isError).toBe(false);
     expect(viaRoute.doc?.data?.ok).toBe(false);
     expect(viaRoute.doc?.data?.requiredCapability).toBe("eval");
     expect(String(viaRoute.doc?.data?.hint)).toContain("BROWX_CAPABILITIES");
 
-    expect(viaRoute.doc?.data).toEqual(await overMcpSocket("eval_js", { expression: "1+1" }));
-    expect(viaRoute.doc?.data).toEqual(await inProcessRefusal("eval_js", { expression: "1+1" }));
+    expect(viaRoute.doc?.data).toEqual(await overMcpSocket("eval_js", { expr: "1+1" }));
+    expect(viaRoute.doc?.data).toEqual(await overStdioServer("eval_js", { expr: "1+1" }));
   });
 
   it("refuses register_secret from standard input with exit 4, and the secret goes nowhere", async () => {
@@ -275,7 +298,7 @@ skipIfWindows("a gated tool refuses through the shell route exactly as over MCP"
   });
 
   it("does not run a gated tool dispatched inside batch, and matches the MCP answer", async () => {
-    const args = { calls: [{ tool: "eval_js", args: { expression: "1+1" } }] };
+    const args = { calls: [{ tool: "eval_js", args: { expr: "1+1" } }] };
     const viaRoute = await call(["batch", JSON.stringify(args), ...viaSocket()]);
     const report = viaRoute.doc?.data as {
       completed: number;
@@ -286,6 +309,7 @@ skipIfWindows("a gated tool refuses through the shell route exactly as over MCP"
     expect(report.results[0]?.ok).toBe(false);
     expect(report.results[0]?.result).toBeUndefined();
     expect(viaRoute.doc?.data).toEqual(await overMcpSocket("batch", args));
+    expect(viaRoute.doc?.data).toEqual(await overStdioServer("batch", args));
   });
 });
 
@@ -321,4 +345,128 @@ skipIfWindows("browxai tools against a serve --socket daemon", () => {
         .find((l) => l.startsWith("snapshot ")),
     ).toMatch(/^snapshot\s+read\s+\S/);
   });
+});
+
+// A daemon built from the real client-connection code (`createClientServer`, the same
+// function `browxai serve` uses) over a stub host: one registered secret, and tools
+// that throw, never answer, or answer with an image. These are the cases a real daemon
+// cannot produce without a browser.
+skipIfWindows("browxai call against a daemon with throwing, silent and image tools", () => {
+  const PIXELS = Buffer.from("not really a png");
+  const B64 = PIXELS.toString("base64");
+  let stubPath: string;
+  let netServer: NetServer;
+  const sockets = new Set<Socket>();
+
+  beforeAll(async () => {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "PASSWORD", value: "hunter2" });
+    const toolHandlers: Record<string, (args: unknown) => Promise<ToolResponse>> = {};
+    const wireHandlers: Record<string, (args: unknown) => Promise<ToolResponse>> = {};
+    const host = buildHost({
+      server: { registerTool: () => undefined },
+      toolHandlers,
+      wireHandlers,
+      registry: { list: () => [{ secrets }], peek: () => undefined },
+      config: { testAttributes: [] },
+      caps: { enabled: new Set(["read", "secrets"]) },
+      diagnostics: { enabled: false },
+      pluginRecords: () => [],
+    } as unknown as HostDeps);
+    const image = (ok: boolean): ToolResponse => ({
+      content: [
+        { type: "image", data: B64, mimeType: "image/png" },
+        { type: "text", text: JSON.stringify({ ok }) },
+      ],
+    });
+    host.register("probe_throws", { description: "Throws." }, () =>
+      Promise.reject(new Error("login failed for hunter2")),
+    );
+    host.register(
+      "probe_slow",
+      { description: "Never answers." },
+      () => new Promise<ToolResponse>(() => undefined),
+    );
+    host.register("probe_image", { description: "An image." }, () => Promise.resolve(image(true)));
+    host.register("probe_image_fails", { description: "An image, and a failure." }, () =>
+      Promise.resolve(image(false)),
+    );
+    const handlers: ClientHandlers = {
+      handlers: toolHandlers,
+      wireHandlers,
+      isToolListed: () => true,
+      registrations: host.registrations,
+    };
+    stubPath = join(workspace, "stub.sock");
+    netServer = createNetServer((socket) => {
+      sockets.add(socket);
+      socket.on("close", () => sockets.delete(socket));
+      void createClientServer(handlers).connect(new SocketTransport(socket));
+    });
+    await listenPrivate(netServer, stubPath);
+  });
+
+  afterAll(async () => {
+    for (const s of sockets) s.destroy();
+    await new Promise<void>((resolve) => netServer?.close(() => resolve()));
+  });
+
+  const viaStub = (...args: string[]) => ["--socket", stubPath, ...args];
+
+  it("masks a registered secret in a thrown error's message, and prints it nowhere", async () => {
+    const { code, doc, raw, err } = await call(["probe_throws", ...viaStub()]);
+    expect(code).toBe(1);
+    expect(doc?.isError).toBe(true);
+    expect(doc?.text).toBe("login failed for <PASSWORD>");
+    expect(raw).not.toContain("hunter2");
+    expect(err).not.toContain("hunter2");
+  });
+
+  it("exits 3 with a clear line when the daemon does not answer within --timeout", async () => {
+    const started = Date.now();
+    const { code, raw, err } = await call(["probe_slow", ...viaStub("--timeout", "300")]);
+    expect(code).toBe(3);
+    expect(raw).toBe("");
+    expect(err).toContain("did not answer within 300 ms");
+    expect(err).toContain("--timeout");
+    expect(Date.now() - started).toBeLessThan(10_000);
+  });
+
+  it("writes the image of a successful call, owner-only, and records its path", async () => {
+    const out = join(workspace, "stub-shot.png");
+    const { code, doc, err } = await call(["probe_image", ...viaStub("--out", out)]);
+    expect(code).toBe(0);
+    expect(err).toBe("");
+    expect(readFileSync(out).equals(PIXELS)).toBe(true);
+    expect(doc?.images).toEqual([{ mimeType: "image/png", bytes: PIXELS.length, path: out }]);
+  });
+
+  it("writes nothing for a call that failed, and keeps the tool's exit code", async () => {
+    const out = join(workspace, "failed-shot.png");
+    const { code, doc, err } = await call(["probe_image_fails", ...viaStub("--out", out)]);
+    expect(code).toBe(1);
+    expect(existsSync(out)).toBe(false);
+    expect(err).toContain("did not succeed");
+    expect(doc?.images[0]?.path).toBeUndefined();
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "exits 1 when the image cannot be written after the tool ran",
+    async () => {
+      const dir = join(workspace, "read-only");
+      mkdirSync(dir);
+      chmodSync(dir, 0o500);
+      try {
+        const out = join(dir, "shot.png");
+        const { code, doc, err } = await call(["probe_image", ...viaStub("--out", out)]);
+        expect(code).toBe(1);
+        expect(err).toContain("the tool ran, but could not write");
+        // The result is still printed.
+        expect(doc?.images).toHaveLength(1);
+        expect(doc?.images[0]?.path).toBeUndefined();
+      } finally {
+        chmodSync(dir, 0o700);
+      }
+    },
+  );
 });

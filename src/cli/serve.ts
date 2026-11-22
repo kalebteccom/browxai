@@ -14,18 +14,12 @@
 // server, identical to stdio.
 
 import { createServer as createNetServer, type Server } from "node:net";
-import { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  type CallToolResult,
-} from "@modelcontextprotocol/sdk/types.js";
-import { createServer, NAME, VERSION } from "../server.js";
+import { createServer } from "../server.js";
 import { resolveEngineSelection, UnknownEngineError, type EngineKind } from "../engine/index.js";
 import { SocketTransport } from "../transport/socket-transport.js";
 import { log } from "../util/logging.js";
 import { isHeadlessEnv } from "../util/config-store.js";
-import { listedTool } from "./serve-listing.js";
+import { createClientServer } from "./serve-client.js";
 import {
   SocketPathError,
   isPipePath,
@@ -142,48 +136,13 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
     browserType: opts.browserType,
   });
 
-  // Each attached client connection gets its OWN low-level MCP Server that
-  // routes JSON-RPC straight to the SHARED `browxai.handlers` map (session-state
-  // isolation is the SessionRegistry's job, already true). We deliberately do
-  // NOT use the high-level `McpServer.registerTool` with per-tool schemas: that
-  // path validates/strips arguments against the declared schema, and an empty
-  // schema dropped every argument (the `navigate`-hangs-forever bug). The
-  // low-level CallTool handler forwards raw arguments, exactly like the
-  // in-process transport.
+  // Each attached client connection gets its own MCP server over the shared handlers.
   const liveConnections = new Set<{ close: () => Promise<void> }>();
 
   const netServer: Server = createNetServer((socket) => {
     void (async () => {
       try {
-        // Route JSON-RPC straight to the in-process handler map with the RAW
-        // arguments. The previous `McpServer.registerTool(name, { inputSchema:
-        // {} }, …)` path validated each call against an EMPTY object schema,
-        // which silently STRIPPED every argument — so e.g. `navigate` reached
-        // its handler with no `url` and hung the whole call (load wait that
-        // never resolves). The per-tool handler does its own validation, so the
-        // socket layer must pass args through untouched, exactly like the
-        // in-process transport (`src/sdk/transport-in-process.ts`).
-        const mcp = new McpServer(
-          { name: NAME, version: VERSION },
-          { capabilities: { tools: {} } },
-        );
-        // One-line descriptions and the capability of each tool, so `browxai tools`
-        // can print them. The input schema stays open (see `listedTool`).
-        mcp.setRequestHandler(ListToolsRequestSchema, () => ({
-          tools: Object.keys(browxai.handlers)
-            .filter((name) => browxai.isToolListed(name))
-            .map((name) => listedTool(name, browxai.registrations.get(name))),
-        }));
-        mcp.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
-          const handler = browxai.handlers[request.params.name];
-          if (!handler) {
-            return {
-              isError: true,
-              content: [{ type: "text", text: `browxai: unknown tool "${request.params.name}"` }],
-            };
-          }
-          return await handler(request.params.arguments ?? {});
-        });
+        const mcp = createClientServer(browxai);
         const transport = new SocketTransport(socket);
         await mcp.connect(transport);
         const conn = {

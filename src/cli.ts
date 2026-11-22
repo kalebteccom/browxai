@@ -76,10 +76,10 @@ Usage: browxai [subcommand]
                                 JSON document. Exit 0 ok, 1 the tool failed,
                                 2 usage, 3 no daemon, 4 refused by a gate.
                                 --args-file <f>, --session <id>, --out <f>,
-                                --force, --max-chars <n>. \`-\` reads the
-                                arguments from standard input. Keep secrets
-                                out of the command line: it shows up in process
-                                listings.
+                                --force, --max-chars <n>, --timeout <ms>.
+                                \`-\` reads the arguments from standard input.
+                                Keep secrets out of the command line: it shows
+                                up in process listings.
   browxai plugin <sub>          install, remove, list, info, upgrade or sync
                                 plugins. Everything stays in the workspace.
                                 \`browxai plugin help\` lists them.

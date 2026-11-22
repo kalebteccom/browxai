@@ -71,7 +71,8 @@ session one at a time, because simultaneous calls on one session are untested.
 ## Arguments, and keeping secrets off the command line
 
 The arguments are one JSON object. Give it inline, on standard input with a
-single `-`, or in a file with `--args-file`. No arguments means `{}`.
+single `-`, or in a file with `--args-file`. No arguments means `{}`. Input from standard input or a file is capped at 16 MiB,
+and a file is checked for size before it is read.
 
 ```bash
 echo '{"session":"work","selector":"#email","value":"ada@example.com"}' | browxai call fill -
@@ -89,7 +90,9 @@ line and column when the parser gives one, and never prints the text.
 ## The output
 
 Standard output holds one JSON document and nothing else. Messages for a person
-go to standard error.
+go to standard error. If the reader of standard output closes early, as
+`| head -c1` does, the command exits with the code it computed and prints no
+error.
 
 ```text
 {"isError":false,"data":{"ok":true,...},"images":[]}
@@ -117,18 +120,29 @@ browxai call screenshot '{"session":"work"}' --out /tmp/work-shot.png
 ```
 
 That write is the command's own, in a path you named, so it needs no `file-io`
-capability on the daemon. An existing file is left alone unless you add
-`--force`, and the check runs before the tool does.
+capability on the daemon. The image is written only when the call succeeded. An
+existing file is left alone unless you add `--force`, and that check runs before
+the tool does. With `--force` the old entry is unlinked first, so a symlink is
+replaced and never followed, and the new file is owner-only. A write that fails
+after the tool ran exits 1.
+
+## Waiting
+
+A command waits 120 seconds for the daemon's answer. Pass `--timeout MS` to
+change that, and `--timeout 0` for the longest wait, about 24.8 days. A tool that
+waits longer than two minutes, `await_human` for one, needs a larger value. When
+the daemon does not answer in time the command prints a line on standard error
+and exits 3. The tool may still be running.
 
 ## Exit codes
 
-| Code | Meaning                                                                                                                        |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------ |
-| 0    | The tool ran and the result is not an error. A truncated result is still 0.                                                    |
-| 1    | The tool answered with an error result, or `data.ok` is false: an element not found, a timeout, an unknown tool name.          |
-| 2    | Usage: a missing tool name, an unknown flag, arguments that are not a JSON object, an unreadable file, a refused `--out` path. |
-| 3    | The daemon could not be reached: no socket path, no file at the path, connection refused, the handshake failed, or it dropped. |
-| 4    | A capability gate refused the call. `data.requiredCapability` and `data.hint` name the `BROWX_CAPABILITIES` line to add.       |
+| Code | Meaning                                                                                                                                                                                        |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | The tool ran and the result is not an error. A truncated result is still 0.                                                                                                                    |
+| 1    | The tool answered with an error result, or `data.ok` is false: an element not found, a timeout, an unknown tool name. Also a `--out` image that could not be written after the tool ran.       |
+| 2    | Usage, refused before the tool ran: a missing tool name, an unknown flag, arguments that are not a JSON object, an unreadable file, an `--out` path that exists or has no directory.           |
+| 3    | The daemon could not be reached, or stopped answering: no socket path, no file at the path, connection refused, the handshake failed, the connection dropped, or no answer within `--timeout`. |
+| 4    | A capability gate refused the call. `data.requiredCapability` and `data.hint` name the `BROWX_CAPABILITIES` line to add.                                                                       |
 
 Code 4 is separate from 1 because an agent should react differently. A missing
 element gets a new `find`. A refusal needs the operator to change a setting and

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -130,6 +130,23 @@ describe("reading files and standard input", () => {
     const path = join(dir, "big.json");
     writeFileSync(path, "x".repeat(MAX_ARGS_BYTES + 1));
     expect(() => readArgsFile(path)).toThrow("too large");
+  });
+
+  it("refuses a directory and a file over the limit by size, without reading it", () => {
+    expect(() => readArgsFile(dir)).toThrow("not a regular file");
+    const sub = join(dir, "sub");
+    mkdirSync(sub);
+    expect(() => readArgsFile(sub)).toThrow("not a regular file");
+    // A sparse file reports its size without holding the bytes: the size check has to
+    // fire from the stat, because reading it would build a 16 MiB string.
+    const sparse = join(dir, "sparse.json");
+    writeFileSync(sparse, "");
+    truncateSync(sparse, MAX_ARGS_BYTES + 1);
+    expect(() => readArgsFile(sparse)).toThrow("too large");
+    const exact = join(dir, "exact.json");
+    writeFileSync(exact, "");
+    truncateSync(exact, MAX_ARGS_BYTES);
+    expect(readArgsFile(exact)).toHaveLength(MAX_ARGS_BYTES);
   });
 
   it("collects standard input across chunks", async () => {

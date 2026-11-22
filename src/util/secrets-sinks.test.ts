@@ -11,6 +11,8 @@ import { NetworkBuffer, NetworkTap, WsBuffer, fetchResponseBody } from "../page/
 import { verifyPredicate } from "../page/verify.js";
 import { maskToolResponse } from "../tools/host-egress-mask.js";
 import { cacheEntryForCaps } from "../tools/storage-caches-tools.js";
+import { buildHost, type HostDeps } from "../tools/host-build.js";
+import type { ToolResponse } from "../tools/host.js";
 
 // Minimal CDP stub: records `on` handlers by event name and lets the test
 // fire them. `send` resolves (Network.enable is idempotent).
@@ -690,5 +692,44 @@ describe("literal-protection: <SECRET_NAME> as plain text", () => {
     // and the agent passing `<PASSWORD>` still resolves to the stored value
     const m = r.materialize("<PASSWORD>", "u");
     expect(m.value).toBe("<PWD>");
+  });
+});
+
+describe("sink: a thrown error through the socket daemon's handler map", () => {
+  type Handler = (args: unknown) => Promise<ToolResponse>;
+  /** A host with one registered secret and a tool that throws a message carrying it. */
+  function throwingHost() {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "PASSWORD", value: "hunter2" });
+    const toolHandlers: Record<string, Handler> = {};
+    const wireHandlers: Record<string, Handler> = {};
+    const host = buildHost({
+      server: { registerTool: () => undefined },
+      toolHandlers,
+      wireHandlers,
+      registry: { list: () => [{ secrets }], peek: () => undefined },
+      config: { testAttributes: [] },
+      caps: { enabled: new Set(["read", "secrets"]) },
+      diagnostics: { enabled: false },
+      pluginRecords: () => [],
+    } as unknown as HostDeps);
+    host.register("probe_throws", { description: "throws" }, () =>
+      Promise.reject(new Error("could not log in with hunter2")),
+    );
+    return { toolHandlers, wireHandlers };
+  }
+
+  it("comes back as a masked error result from wireHandlers", async () => {
+    const { wireHandlers } = throwingHost();
+    const res = (await wireHandlers.probe_throws!({})) as ToolResponse & { isError?: boolean };
+    expect(res.isError).toBe(true);
+    const text = (res.content[0] as { text: string }).text;
+    expect(text).not.toContain("hunter2");
+    expect(text).toBe("could not log in with <PASSWORD>");
+  });
+
+  it("still throws from toolHandlers, which batch catches for itself", async () => {
+    const { toolHandlers } = throwingHost();
+    await expect(toolHandlers.probe_throws!({})).rejects.toThrow("hunter2");
   });
 });

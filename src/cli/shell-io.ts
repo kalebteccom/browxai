@@ -14,11 +14,32 @@ export interface ShellIo {
   readonly input: InputSources;
 }
 
-/** Resolve once the stream has taken the text. The bin exits right after the handler
- *  returns, so a pipe that has not drained would lose the end of a long result. */
-const writeAll = (stream: NodeJS.WriteStream, text: string): Promise<void> =>
+/** The streams that already have a quiet error listener. */
+const quieted = new WeakSet<object>();
+
+/** Swallow errors on an output stream. A reader that exits early (`| head -c1`) closes the
+ *  pipe, and the next write fails with EPIPE. Without a listener Node raises that as an
+ *  uncaught exception and prints a stack trace. The command has computed its exit code by
+ *  then, so it carries on and exits with that code. */
+export function quietStream(stream: NodeJS.WritableStream): void {
+  if (quieted.has(stream)) return;
+  quieted.add(stream);
+  stream.on("error", () => undefined);
+}
+
+/** Resolve once the stream has taken the text, or has failed to (a closed pipe). The bin
+ *  exits right after the handler returns, so a pipe that has not drained would lose the
+ *  end of a long result. */
+export const writeAll = (stream: NodeJS.WritableStream, text: string): Promise<void> =>
   new Promise<void>((resolve) => {
-    stream.write(text, () => resolve());
+    quietStream(stream);
+    const done = (): void => {
+      stream.removeListener("error", done);
+      resolve();
+    };
+    // A failed write reaches the callback, and the error event can come first.
+    stream.once("error", done);
+    stream.write(text, done);
   });
 
 /** The real process: its environment, streams and files. */

@@ -17,6 +17,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { startServeForTests } from "../../src/cli/serve.js";
 import { runCall } from "../../src/cli/shell-call.js";
 import type { ShellIo } from "../../src/cli/shell-io.js";
@@ -80,6 +82,8 @@ async function call(tool: string, args: Record<string, unknown>, ...flags: strin
 }
 
 const SESSION = "shell-ks";
+/** The built bin. This lane runs after `pnpm build`, so it is normally there. */
+const DIST_CLI = join(__dirname, "..", "..", "dist", "cli.js");
 
 skipIfWindows("browxai call drives a real browser through serve --socket", () => {
   it(
@@ -184,7 +188,7 @@ skipIfWindows("browxai call drives a real browser through serve --socket", () =>
     async () => {
       const refused = await call("eval_js", {
         session: SESSION,
-        expression: "document.title = 'changed by eval'",
+        expr: "document.title = 'changed by eval'",
       });
       expect(refused.code).toBe(4);
       expect(refused.doc.data?.ok).toBe(false);
@@ -199,6 +203,37 @@ skipIfWindows("browxai call drives a real browser through serve --socket", () =>
       });
       expect(title.code).toBe(0);
       expect(JSON.stringify(title.doc.data)).not.toContain("changed by eval");
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it.skipIf(!existsSync(DIST_CLI))(
+    "refuses eval_js with the same envelope the stdio bin returns to an MCP client",
+    async () => {
+      const refused = await call("eval_js", { session: SESSION, expr: "1 + 1" });
+      expect(refused.code).toBe(4);
+
+      // The real bin over stdio, the server an MCP client such as Claude Code starts.
+      const transport = new StdioClientTransport({
+        command: process.execPath,
+        args: [DIST_CLI],
+        env: { BROWX_WORKSPACE: workspace, BROWX_HEADLESS: "1" },
+        stderr: "ignore",
+      });
+      const client = new Client({ name: "shell-route-keystone", version: "0" });
+      try {
+        await client.connect(transport);
+        const res = await client.callTool({
+          name: "eval_js",
+          arguments: { session: SESSION, expr: "1 + 1" },
+        });
+        const items = res.content as Array<{ type: string; text?: string }>;
+        const viaStdio = JSON.parse(items[0]?.text ?? "null") as Record<string, unknown>;
+        expect(viaStdio.requiredCapability).toBe("eval");
+        expect(refused.doc.data).toEqual(viaStdio);
+      } finally {
+        await client.close().catch(() => undefined);
+      }
     },
     KEYSTONE_TIMEOUT,
   );

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MAX_CHARS,
+  DEFAULT_TIMEOUT_MS,
+  MAX_TIMEOUT_MS,
   parseCallArgs,
   parseToolsArgs,
   SESSION_ENV,
@@ -27,6 +29,8 @@ describe("parseCallArgs", () => {
       "work",
       "--max-chars",
       "500",
+      "--timeout",
+      "2500",
       "--out",
       "shot.png",
       "--force",
@@ -38,6 +42,7 @@ describe("parseCallArgs", () => {
       socket: "/tmp/b.sock",
       session: "work",
       maxChars: 500,
+      timeoutMs: 2500,
       out: "shot.png",
       force: true,
     });
@@ -58,6 +63,15 @@ describe("parseCallArgs", () => {
     expect(DEFAULT_MAX_CHARS).toBe(40_000);
     expect(okCall(["snapshot"]).maxChars).toBe(40_000);
     expect(okCall(["snapshot", "--max-chars", "0"]).maxChars).toBe(0);
+  });
+
+  it("waits 120 seconds by default, takes --timeout in milliseconds, and 0 means the longest wait", () => {
+    expect(DEFAULT_TIMEOUT_MS).toBe(120_000);
+    expect(okCall(["snapshot"]).timeoutMs).toBe(120_000);
+    expect(okCall(["snapshot", "--timeout", "900"]).timeoutMs).toBe(900);
+    expect(okCall(["snapshot", "--timeout", "0"]).timeoutMs).toBe(MAX_TIMEOUT_MS);
+    expect(MAX_TIMEOUT_MS).toBe(2 ** 31 - 1);
+    expect(okCall(["snapshot", "--timeout", "99999999999999"]).timeoutMs).toBe(MAX_TIMEOUT_MS);
   });
 
   it("reads the socket and the session from the environment, and the flag wins", () => {
@@ -93,6 +107,9 @@ describe("parseCallArgs", () => {
     [["snapshot", "{}", "--args-file", "a.json"], "inline, on standard input, or in --args-file"],
     [["snapshot", "--max-chars", "ten"], "--max-chars takes a whole number"],
     [["snapshot", "--max-chars", "-5"], "--max-chars takes a whole number"],
+    [["snapshot", "--timeout", "soon"], "--timeout takes whole milliseconds"],
+    [["snapshot", "--timeout", "-1"], "--timeout takes whole milliseconds"],
+    [["snapshot", "--timeout", "1.5"], "--timeout takes whole milliseconds"],
     [["snapshot", "--force"], "--force only applies with --out"],
   ])("refuses %j with a message naming the problem", (args, message) => {
     const parsed = call(args);

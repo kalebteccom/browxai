@@ -65,6 +65,11 @@ export interface HostDeps {
   server: McpServer;
   /** The in-process handler side-table `register` populates and `batch` dispatches. */
   toolHandlers: Record<string, (args: unknown) => Promise<ToolResponse>>;
+  /** The masked on-the-wire form of each core tool's handler, filled by `register`
+   *  next to `toolHandlers`. A thrown error becomes a masked error result there, as it
+   *  does over stdio, so a transport that serves handlers itself (the socket daemon)
+   *  calls these. Optional: a host built only to read metadata needs none. */
+  wireHandlers?: Record<string, (args: unknown) => Promise<ToolResponse>>;
   /** The per-session registry — entry lookup + peek for wedge/metrics/diagnostics. */
   registry: SessionRegistry;
   /** Resolved server config (test attributes, timeouts, …). */
@@ -121,6 +126,7 @@ export function buildHost(deps: HostDeps): ToolHost {
   const {
     server,
     toolHandlers,
+    wireHandlers,
     registry,
     config,
     configStore,
@@ -514,7 +520,9 @@ export function buildHost(deps: HostDeps): ToolHost {
     // `toolHandlers` keeps the throwing form: composing tools (`batch`,
     // `act_and_*`) catch an inner tool's error themselves. Over MCP, a throw
     // would become SDK-built error text with no masking, so the callback the
-    // server holds builds that same error result here and masks it.
+    // server holds builds that same error result here and masks it. The same
+    // callback is kept in `wireHandlers` for transports that serve handlers
+    // themselves.
     const onWire = async (rawArgs: unknown): Promise<ToolResponse> => {
       try {
         return await wrapped(rawArgs);
@@ -522,6 +530,7 @@ export function buildHost(deps: HostDeps): ToolHost {
         return maskedToolError(err, liveRegistries());
       }
     };
+    if (wireHandlers) wireHandlers[name] = onWire;
     // The SDK's `registerTool` generic cannot relate its conditional-typed
     // callback to a still-generic `S`; widening the config's schema to a concrete
     // `ZodRawShape` lets that conditional resolve, so `wrapped` (whose args are
