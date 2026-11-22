@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -147,6 +148,23 @@ describe("reading files and standard input", () => {
     writeFileSync(exact, "");
     truncateSync(exact, MAX_ARGS_BYTES);
     expect(readArgsFile(exact)).toHaveLength(MAX_ARGS_BYTES);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "refuses a FIFO at once, without waiting for a writer",
+    () => {
+      const fifo = join(dir, "args.fifo");
+      execFileSync("mkfifo", [fifo]);
+      expect(() => readArgsFile(fifo)).toThrow("not a regular file");
+    },
+  );
+
+  it("reads a file that is a symlink to a regular file", () => {
+    const target = join(dir, "real.json");
+    writeFileSync(target, '{"a":1}');
+    const link = join(dir, "link.json");
+    symlinkSync(target, link);
+    expect(readArgsFile(link)).toBe('{"a":1}');
   });
 
   it("collects standard input across chunks", async () => {

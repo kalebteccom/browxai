@@ -12,7 +12,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { parseCallArgs } from "./shell-args.js";
 import { connectDaemon, DaemonUnreachableError } from "./shell-connect.js";
-import { processIo, type ShellIo } from "./shell-io.js";
+import { processIo, settle, type ShellIo } from "./shell-io.js";
 import { resolveArgs } from "./shell-input.js";
 import { checkOutPath, writeImage } from "./shell-out.js";
 import {
@@ -87,6 +87,10 @@ async function callOnce(
 
 /** The handler for `browxai call`. Returns the exit code. */
 export async function runCall(rest: string[], io: ShellIo = processIo()): Promise<number> {
+  return settle(io, await runCallCommand(rest, io));
+}
+
+async function runCallCommand(rest: string[], io: ShellIo): Promise<number> {
   // Exit 2. A command line that does not parse gets the usage text with the message. A
   // problem with the arguments or the --out path gets the message alone.
   const refuse = async (message: string, withUsage = false): Promise<ExitCode> => {

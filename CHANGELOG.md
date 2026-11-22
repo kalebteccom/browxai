@@ -19,6 +19,8 @@ surface" covers.
 
 ### Fixed
 
+- **`browxai call` and `browxai tools` exit 1 when the result cannot be written.** A write to standard output that failed for any reason except a closed pipe (a full disk, an I/O error) was ignored and the command exited 0. It now prints a line on standard error and exits 1. A reader that closes the pipe early, as `| head -c1` does, still ends quietly with the code the command computed. `--args-file` is read through one open file descriptor and a path that is a FIFO or a directory is refused at once, and `--out` refuses a path whose parent is a file before the tool runs.
+- **The `serve --socket` daemon treats `constructor`, `valueOf` and the other names every object has as unknown tools.** A call by one of those names looked up a function on the handler map's prototype and tried to run it. It now answers `unknown tool` like any other missing name.
 - **The `serve --socket` daemon masks a thrown error's message for registered secrets.** A tool handler that threw reached a socket client as an error whose message skipped the secret mask that the stdio server applies, so a registered secret in that message could reach the client in the clear. The daemon now serves the same masked handlers as stdio, and a thrown error comes back as a masked error result.
 
 ## [0.18.0] - 2026-11-22
