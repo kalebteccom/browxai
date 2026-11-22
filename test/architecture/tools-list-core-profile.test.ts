@@ -230,12 +230,104 @@ describe("tool_catalog", () => {
     expect(body.requiredCapability).toBeUndefined();
   });
 
-  it("keeps its own schema tiny", async () => {
+  it("keeps its own schema tiny: one optional string with a one-line description", async () => {
     const { client } = await connect({ toolProfile: "core", capabilities: DEFAULTS });
     const tool = (await client.listTools()).tools.find((t) => t.name === TOOL_CATALOG_TOOL);
     expect(tool).toBeDefined();
-    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual([]);
+    const properties = (tool?.inputSchema.properties ?? {}) as Record<
+      string,
+      { type?: string; description?: string }
+    >;
+    expect(Object.keys(properties)).toEqual(["capability"]);
+    expect(properties.capability?.type).toBe("string");
+    expect(properties.capability?.description?.length).toBeLessThan(100);
+    expect(tool?.inputSchema.required ?? []).toEqual([]);
+    expect(JSON.stringify(properties).length).toBeLessThan(250);
     expect(JSON.stringify(tool).length).toBeLessThan(900);
+  });
+});
+
+describe("tool_catalog capability argument", () => {
+  const callCatalog = (client: Client, args: Record<string, unknown>) =>
+    client.callTool({ name: TOOL_CATALOG_TOOL, arguments: args });
+
+  /** The text of the first content item of a tool result. */
+  const textOf = (res: unknown): string => {
+    const first = (res as { content?: Array<{ type: string; text?: string }> }).content?.[0];
+    return first?.type === "text" ? (first.text ?? "") : "";
+  };
+
+  it("with no argument keeps the full reply: same four keys, every group, no capability key", async () => {
+    const { client } = await connect({ toolProfile: "core", capabilities: DEFAULTS });
+    const first = await callCatalog(client, {});
+    const second = await callCatalog(client, { capability: undefined });
+    expect(first.isError).not.toBe(true);
+    expect(textOf(second)).toBe(textOf(first));
+    const body = bodyOf(first) as unknown as CatalogBody;
+    expect(Object.keys(body)).toEqual(["profile", "omitted", "note", "groups"]);
+    expect(body.groups.length).toBeGreaterThan(1);
+  });
+
+  it("returns only the named group, with the fields the full reply gives that group", async () => {
+    const { client } = await connect({ toolProfile: "core", capabilities: DEFAULTS });
+    const full = bodyOf(await callCatalog(client, {})) as unknown as CatalogBody;
+    expect(full.groups.map((g) => g.capability)).toContain("eval");
+    for (const group of full.groups) {
+      const res = await callCatalog(client, { capability: group.capability });
+      expect(res.isError, group.capability).not.toBe(true);
+      const body = bodyOf(res) as unknown as CatalogBody & { capability: string };
+      expect(body.profile).toBe("core");
+      expect(body.capability).toBe(group.capability);
+      expect(body.omitted).toBe(group.tools.length);
+      expect(body.note).toBe(full.note);
+      expect(body.groups).toEqual([group]);
+    }
+  });
+
+  it("answers an unknown value with an error that lists every valid group and its count", async () => {
+    const { client } = await connect({ toolProfile: "core", capabilities: DEFAULTS });
+    const full = bodyOf(await callCatalog(client, {})) as unknown as CatalogBody;
+    // "constructor" and "toString" are names every object has, and must not pass as groups.
+    for (const value of ["no-such-group", "Eval", "", "constructor", "toString"]) {
+      const res = await callCatalog(client, { capability: value });
+      expect(res.isError, JSON.stringify(value)).toBe(true);
+      const text = textOf(res);
+      expect(text).toContain(`"${value}" is not a group`);
+      for (const group of full.groups) {
+        expect(text, group.capability).toContain(`${group.capability} (${group.tools.length})`);
+      }
+    }
+  });
+
+  it("splits the omitted set with no gap and no overlap: group counts add up to the full reply", async () => {
+    const { client, server } = await connect({ toolProfile: "core", capabilities: DEFAULTS });
+    const listed = new Set(namesOf((await client.listTools()).tools));
+    const omitted = Object.keys(server.handlers)
+      .filter((name) => !listed.has(name))
+      .sort();
+    const full = bodyOf(await callCatalog(client, {})) as unknown as CatalogBody;
+    let total = 0;
+    const seen: string[] = [];
+    for (const group of full.groups) {
+      const slice = bodyOf(
+        await callCatalog(client, { capability: group.capability }),
+      ) as unknown as CatalogBody;
+      total += slice.omitted;
+      seen.push(...slice.groups.flatMap((g) => g.tools.map((t) => t.name)));
+    }
+    expect(total).toBe(full.omitted);
+    expect(total).toBe(omitted.length);
+    expect(seen.sort()).toEqual(omitted);
+  });
+
+  it("filters the same way when a capability is off, and still marks the group disabled", async () => {
+    const { client } = await connect({ toolProfile: "core", capabilities: "read" });
+    const res = await callCatalog(client, { capability: "eval" });
+    expect(res.isError).not.toBe(true);
+    const body = bodyOf(res) as unknown as CatalogBody;
+    expect(body.groups).toHaveLength(1);
+    expect(body.groups[0]?.enabled).toBe(false);
+    expect(body.groups[0]?.tools.map((t) => t.name)).toContain("eval_js");
   });
 });
 
