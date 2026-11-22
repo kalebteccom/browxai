@@ -4,8 +4,8 @@
 //
 //   export interface MyPluginSchema {
 //     readonly figma: {
-//       moveNode(args: { nodeId: string; dx: number; dy: number }): Promise<BrowxaiResult>;
-//       resizeNode(args: { nodeId: string; width: number; height: number }): Promise<BrowxaiResult>;
+//       moveNode(args: { nodeId: string; dx: number; dy: number }): Promise<MoveResult>;
+//       resizeNode(args: { nodeId: string; width: number; height: number }): Promise<ResizeResult>;
 //     };
 //   }
 //
@@ -15,12 +15,16 @@
 // while the underlying runtime still rides the same `callTool`
 // dispatch path the in-process / socket / stdio-child transports use.
 //
+// A plugin tool resolves to the tool's own result, like every other SDK call
+// (a parsed JSON object or array, or a string), so the schema types it as that
+// result and not as a `{ content, data }` envelope.
+//
 // The typing surface is purely additive — passing zero schemas leaves
 // the plugin caller as the permissive
-// `Record<string, Record<string, (args?) => Promise<BrowxaiResult>>>`
+// `Record<string, Record<string, (args?) => Promise<unknown>>>`
 // from {@link BrowxaiClient.plugins}.
 
-import type { BrowxaiClient, BrowxaiResult } from "./types.js";
+import type { BrowxaiClient } from "./types.js";
 
 /**
  * The lattice plugin authors implement. Each top-level key is a
@@ -29,10 +33,7 @@ import type { BrowxaiClient, BrowxaiResult } from "./types.js";
  * plugin schemas are typed precisely while composed types
  * (intersections of multiple plugin schemas) stay assignable.
  */
-export type PluginSchema = Record<
-  string,
-  Record<string, (...args: never[]) => Promise<BrowxaiResult>>
->;
+export type PluginSchema = Record<string, Record<string, (...args: never[]) => Promise<unknown>>>;
 
 /**
  * A {@link BrowxaiClient} typed against a composition of one or more

@@ -2,7 +2,7 @@
 // without a browser by only calling tools that do not require a live page:
 // `list_sessions` is a pure registry-read. This proves the in-process
 // transport reaches the same `handlers` map the keystone uses and that the
-// SDK envelope (raw content + parsed-JSON convenience) is well-formed.
+// SDK result is the tool's own result, unwrapped.
 //
 // A real-browser keystone covers the full navigate → find → click → extract
 // → screenshot roundtrip (see test/keystone/sdk.keystone.test.ts).
@@ -40,21 +40,32 @@ afterAll(async () => {
 });
 
 describe("in-process SDK transport — drives the real MCP handler registry", () => {
-  it("list_sessions roundtrips through dispatch → handlers → SDK envelope", async () => {
+  it("list_sessions resolves to the tool's own result, with no envelope around it", async () => {
     const r = await client.list_sessions();
-    // The MCP handler returns a JSON object on content[0].text — the SDK
-    // envelope's `data` field surfaces it so we don't re-parse here.
-    expect(r.content.length).toBeGreaterThan(0);
-    expect(r.data).toBeDefined();
-    // No sessions opened yet, but the handler emits a structured object.
-    expect(typeof r.data).toBe("object");
+    // The MCP handler returns one JSON text item. The SDK parses it, so the
+    // result IS the tool's object: no `content`, no `data` wrapper.
+    expect(r).toEqual({ sessions: [] });
+    expect(r).not.toHaveProperty("content");
+    expect(r).not.toHaveProperty("data");
+  });
+
+  it("close_session resolves to its own { ok, session, wasOpen } object", async () => {
+    // `close_session` echoes the id for a session that was never opened, and
+    // needs no browser.
+    const r = await client.close_session({ session: "in-proc-probe" });
+    expect(r).toEqual({ ok: true, session: "in-proc-probe", wasOpen: false });
+  });
+
+  it("callTool resolves the same way and takes the result type as an argument", async () => {
+    const r = await client.callTool<{ sessions: unknown[] }>("list_sessions");
+    expect(r.sessions).toEqual([]);
   });
 
   it("close() ends the embedded server cleanly", async () => {
     const tmp = await createBrowxai();
     // Hits the same handler map, prove dispatch works …
     const r = await tmp.list_sessions();
-    expect(r.data).toBeDefined();
+    expect(r.sessions).toBeDefined();
     // … then close + assert idempotency.
     await tmp.close();
     await tmp.close();

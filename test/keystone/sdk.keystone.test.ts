@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBrowxai } from "../../src/sdk/index.js";
 import { startFixture, type Fixture } from "./fixture.js";
-import type { BrowxaiClient } from "../../src/sdk/types.js";
+import type { BrowxaiClient, BrowxaiResult } from "../../src/sdk/types.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
 
@@ -58,21 +58,20 @@ describe("SDK keystone — typed surface drives real Chromium end-to-end", () =>
     async () => {
       const session = "sdk-ks";
       const opened = await client.open_session({ session, mode: "incognito" });
-      expect(opened.data?.ok).toBe(true);
+      expect(opened.ok).toBe(true);
 
       const nav = await client.navigate({ session, url: `${fixture.url}/` });
-      expect(nav.data?.ok).toBe(true);
+      expect(nav.ok).toBe(true);
 
-      // snapshot returns plain text (not JSON), so SDK envelope's `data` is undefined here.
-      const snapRes = await client.snapshot({ session });
-      const snap = (snapRes.content[0] as { text: string }).text;
-      expect(snap).toContain('[data-testid="save-btn"]');
+      // snapshot resolves to the tree as a plain string.
+      const snap = await client.snapshot({ session });
+      expect(typeof snap).toBe("string");
+      expect(snap as string).toContain('[data-testid="save-btn"]');
 
-      const findRes = await client.find({ session, query: "the Save button", visibleOnly: true });
-      const found = findRes.data as {
-        candidates: Array<{ selectorHint: string; stability: string; actionable: unknown }>;
-      };
-      const saveCand = found.candidates.find((c) => c.selectorHint.includes("save-btn"));
+      // find resolves to the tool's own result: no { content, data } around it.
+      const found = await client.find({ session, query: "the Save button", visibleOnly: true });
+      expect(found).not.toHaveProperty("content");
+      const saveCand = found.candidates.find((c) => c.selectorHint?.includes("save-btn"));
       expect(saveCand?.stability).toBe("high");
       expect(saveCand?.actionable).toBe(true);
 
@@ -81,11 +80,24 @@ describe("SDK keystone — typed surface drives real Chromium end-to-end", () =>
         selector: '[data-testid="task-input"]',
         value: "sdk-keystone-roundtrip",
       });
-      expect((filled.data as { ok: boolean }).ok).toBe(true);
+      expect(filled.ok).toBe(true);
 
-      // screenshot returns an image content item, not JSON.
+      // extract resolves to { ok, data, evidence }, so the title is at result.data.
+      const extracted = await client.extract({
+        session,
+        schema: {
+          type: "object",
+          properties: { title: { type: "string", "x-browx-source": { selector: "h1" } } },
+        },
+      });
+      expect(extracted.ok).toBe(true);
+      expect(extracted).not.toHaveProperty("content");
+      expect((extracted as { data: { title?: string } }).data.title).toBe("Keystone Fixture");
+
+      // screenshot keeps the envelope: the image is an MCP content item.
       const shot = await client.screenshot({ session });
-      const imgItem = shot.content.find((c) => c.type === "image");
+      expect(shot).toHaveProperty("content");
+      const imgItem = (shot as BrowxaiResult).content.find((c) => c.type === "image");
       expect(imgItem).toBeDefined();
 
       await client.close_session({ session });
@@ -103,15 +115,14 @@ describe("SDK keystone — typed surface drives real Chromium end-to-end", () =>
       // navigation succeeds; what we're asserting is that the captured network
       // slice that the SDK returns has the URL sanitised (token stripped to `?…`).
       const url = `${fixture.url}/?token=verysecrettoken123abc&u=42`;
-      const navRes = await client.navigate({ session, url });
-      const nav = navRes.data as { ok: boolean; network?: Array<{ url: string }> };
+      const nav = await client.navigate({ session, url });
       expect(nav.ok).toBe(true);
 
       // Read the network slice and look for the navigated URL — the recorded
       // host+path must be present, but the query string must be `?…`, not the
       // literal token.
       const netRes = await client.network_read({ session });
-      const netText = (netRes.content[0] as { text: string }).text;
+      const netText = JSON.stringify(netRes);
       // The sanitiser collapses query strings to `?…` (see src/util/url-sanitizer.ts).
       expect(netText).toContain("?…");
       expect(netText).not.toContain("verysecrettoken123abc");

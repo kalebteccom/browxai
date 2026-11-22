@@ -1,11 +1,7 @@
 // Typed SDK overlay for `@browxai/plugin-excalidraw` consumers.
 
-interface ExcalidrawBrowxaiResult {
-  readonly content: ReadonlyArray<
-    { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
-  >;
-  readonly data?: Record<string, unknown>;
-}
+/** What an excalidraw tool resolves to: the tool's own result, a parsed JSON object. */
+type ExcalidrawToolResult = Record<string, unknown>;
 
 export interface ExcalidrawElement {
   readonly id: string;
@@ -25,9 +21,9 @@ export interface ExcalidrawAppState {
 export interface ExcalidrawPluginSchema {
   readonly excalidraw: {
     /** Read scene elements + app state — `{ok, elements:[...], appState:{...}}`. */
-    get_scene_state(args?: Record<string, never>): Promise<ExcalidrawBrowxaiResult>;
+    get_scene_state(args?: Record<string, never>): Promise<ExcalidrawToolResult>;
     /** Derive viewport from `appState.scrollX/Y/zoom` — `{ok, scrollX, scrollY, zoom}`. */
-    get_viewport(args?: Record<string, never>): Promise<ExcalidrawBrowxaiResult>;
+    get_viewport(args?: Record<string, never>): Promise<ExcalidrawToolResult>;
     /** Append an element via `excalidrawAPI.updateScene({elements:[...existing, new]})`. */
     add_element(args: {
       type: string;
@@ -36,10 +32,10 @@ export interface ExcalidrawPluginSchema {
       width: number;
       height: number;
       [key: string]: unknown;
-    }): Promise<ExcalidrawBrowxaiResult>;
+    }): Promise<ExcalidrawToolResult>;
     /** Remove an element by id via `excalidrawAPI.updateScene`. */
-    delete_element(args: { elementId: string }): Promise<ExcalidrawBrowxaiResult>;
+    delete_element(args: { elementId: string }): Promise<ExcalidrawToolResult>;
     /** Set `appState.scrollX/Y` via `excalidrawAPI.updateScene`. */
-    set_scroll(args: { scrollX: number; scrollY: number }): Promise<ExcalidrawBrowxaiResult>;
+    set_scroll(args: { scrollX: number; scrollY: number }): Promise<ExcalidrawToolResult>;
   };
 }

@@ -69,13 +69,13 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Risk.** Low. Tokens are characters divided by 4, an estimate, and times are from one box. No claim of being faster or cheaper than another tool goes in, because there is no like-for-like method.
 - **Left out.** Snapshot size on three fixed fixture pages, a test that fails when a figure grows past a budget, and a README line that links to the figures. Item 2 adds the budget test for the core listing.
 
-### 5. SDK calls that return the tool result (S/M)
+### 5. SDK calls that return the tool result (S/M, decided, ships in 0.18.0)
 
-- **What.** `browxai.extract()` in the SDK returns `{ content, data }`, where `data` is the tool's own result `{ ok, data, ... }`. A script destructures and then reads `result.data.data.title`. Add a typed return that unwraps the tool result, so the script reads `result.data.title` and a failure is `{ ok: false, failure }` at the top level. The README example already has to explain the extra layer in a comment.
-- **Why.** It is the first thing a script author writes, and the doubled `data` reads like a mistake. The RFC checks which other SDK methods share the shape.
-- **Risk.** Medium. The return shape of an SDK method is part of the stable surface, so changing it in place breaks scripts that read `result.data.data`. It needs an opt-in (a client option) or a new method name, and either one is a minor with a CHANGELOG note. The owner decides which.
-- **Done.** The typed return, the README example without the explaining comment, an SDK test for the success and the `{ ok: false }` paths, and a tool-reference note on the old shape.
-- **First PR.** A short RFC with the two options and one worked `extract` example. No code until the owner picks.
+- **What.** `browxai.extract()` in the SDK returned `{ content, data }`, where `data` is the tool's own result `{ ok, data, ... }`, so a script read `result.data.data.title`. The owner decided to change every tool-calling method, in place, to resolve to the tool's own result. A script reads `result.data.title`, and a failure is `{ ok: false, failure }` at the top level. There is no client option and no second method name, so the old shape is gone and cannot be switched back on.
+- **The rule.** One text item resolves to its JSON parsed (an object or an array), or to the string when it is not JSON. A result with an image or several content items (an inline `screenshot`) keeps `{ content, data? }`, so the raw MCP content stays reachable. Errors are unchanged.
+- **Why.** It is the first thing a script author writes, and the doubled `data` read like a mistake.
+- **Risk.** Medium. The return shape of an SDK method is part of the stable surface, so this breaks scripts that read `result.data.data` or `result.content[0].text`. It ships in 0.18.0 as a documented behavior change, with a before and after snippet and an upgrade line in the changelog.
+- **Status.** Decided. The change, the README example, the SDK tests and the tool-reference section ("SDK return values") land with 0.18.0. It follows a patch release that is cut first.
 
 ### 6. Dated evidence for every engine (M)
 

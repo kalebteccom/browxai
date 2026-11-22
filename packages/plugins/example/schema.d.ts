@@ -11,24 +11,18 @@
 //   const client = (await createBrowxai({...})) as BrowxaiClientWithPlugins<ExamplePluginSchema>;
 //   await client.plugins.example.echo({msg: "hello"});
 
-// We declare the relevant subset of the BrowxaiResult envelope here
-// rather than importing it — keeps the schema declaration free of
-// runtime deps. Adopters who want the structured payload can also
-// import the host's `BrowxaiResult` type and substitute it.
-interface ExampleBrowxaiResult {
-  readonly content: ReadonlyArray<
-    { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
-  >;
-  readonly data?: Record<string, unknown>;
-}
+// The result type is declared here, not imported, to keep the schema
+// declaration free of runtime deps.
+/** What an example tool resolves to: the tool's own result, a parsed JSON object. */
+type ExampleToolResult = Record<string, unknown>;
 
 export interface ExamplePluginSchema {
   readonly example: {
     /** Round-trip primitive — returns `{ok:true, result:msg}`. */
-    echo(args: { msg: string }): Promise<ExampleBrowxaiResult>;
+    echo(args: { msg: string }): Promise<ExampleToolResult>;
     /** Sums two numeric args — returns `{ok:true, sum: a+b}`. */
-    add(args: { a: number; b: number }): Promise<ExampleBrowxaiResult>;
+    add(args: { a: number; b: number }): Promise<ExampleToolResult>;
     /** Argless tool — returns `{ok:true, iso, epochMs}`. */
-    now(args?: Record<string, never>): Promise<ExampleBrowxaiResult>;
+    now(args?: Record<string, never>): Promise<ExampleToolResult>;
   };
 }

@@ -6,7 +6,6 @@
 // import is the `tool-types.js` barrel that re-exports this file — a back-import
 // there would be a cycle. See `tool-types.ts` for the authoritative header.
 
-import type { BrowxaiResult } from "./types.js";
 import type {
   ActionOpts,
   Coords,
@@ -48,7 +47,7 @@ export interface ActionResultData {
   error?: string | null;
   tokensEstimate?: number;
 }
-export type ActionResult = BrowxaiResult<ActionResultData>;
+export type ActionResult = ActionResultData;
 
 // --- navigation -----------------------------------------------------------
 

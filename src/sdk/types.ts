@@ -1,8 +1,8 @@
 // Public type surface for `browxai` SDK consumers. Argument /
-// result shapes are deliberately structural (`Record<string, unknown>` /
-// `BrowxaiResult`) so the SDK does not have to re-mirror every Zod schema
-// the MCP server already owns — the source of truth for input shape is the
-// `inputSchema` of each registered MCP tool, and the source of truth for
+// result shapes are deliberately structural (`Record<string, unknown>`) so
+// the SDK does not have to re-mirror every Zod schema the MCP server already
+// owns: the source of truth for input shape is the `inputSchema` of each
+// registered MCP tool, and the source of truth for
 // output shape is the documented per-tool reference (see
 // `docs/tool-reference.md`). The SDK's job is to (a) give the stable tools a
 // typed signature and gate every call on the active capability set, and (b)
@@ -90,15 +90,15 @@ export type BrowxaiContentItem =
   { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 
 /**
- * Standard SDK result envelope. Mirrors the MCP `{ content: [...] }` shape
- * 1:1 so adopters who already think in MCP terms keep their mental model.
- * `data` is a convenience: when the first text item is parseable JSON, it is
- * surfaced here so callers do not have to JSON.parse content[0].text by hand.
+ * The `{ content, data }` envelope. Almost every SDK method resolves to the
+ * tool's own result and never returns this. A result that one value cannot hold
+ * comes back as an envelope: an image item (`screenshot`, `screenshot_marks`,
+ * `screenshot_region`), more than one content item, or no items.
  */
 export interface BrowxaiResult<T = Record<string, unknown>> {
-  /** Raw MCP content items — preserves images, multi-item results, etc. */
+  /** Raw MCP content items, including the image items. */
   readonly content: ReadonlyArray<BrowxaiContentItem>;
-  /** Parsed JSON object from the first text item, when applicable. */
+  /** The first text item parsed as a JSON object, when it is one. */
   readonly data?: T;
 }
 
@@ -189,8 +189,12 @@ export interface BrowxaiSdkOptions {
 
 /**
  * The driver returned by {@link createBrowxai}. Every method is a typed
- * 1:1 wrapper over the matching MCP tool — args are forwarded, results are
- * the SDK envelope (raw content + parsed-JSON convenience field).
+ * 1:1 wrapper over the matching MCP tool: args are forwarded, and the method
+ * resolves to the tool's own result. A result that is one JSON text item comes
+ * back parsed (an object or an array), a single plain-text result as a string,
+ * and a result with an image or several items as a {@link BrowxaiResult}
+ * envelope. Errors are unchanged: the SDK boundary throws, and a tool failure
+ * on the server comes back as its message (a string) or as `{ ok: false, ... }`.
  */
 export interface BrowxaiClient {
   // --- read ---
@@ -222,7 +226,7 @@ export interface BrowxaiClient {
   click(args: ClickArgs): Promise<ClickResult>;
   fill(args: FillArgs): Promise<FillResult>;
   press(args: PressArgs): Promise<PressResult>;
-  shortcut(args: BrowxaiArgs): Promise<BrowxaiResult>;
+  shortcut(args: BrowxaiArgs): Promise<Record<string, unknown>>;
   hover(args: HoverArgs): Promise<HoverResult>;
   select(args: SelectArgs): Promise<SelectResult>;
   choose_option(args: ChooseOptionArgs): Promise<ChooseOptionResult>;
@@ -251,8 +255,12 @@ export interface BrowxaiClient {
    * This is also the layer that closes the `(client as any).eval_js(...)`
    * escape hole: every typed method routes through `callTool`, so unrestricted
    * runtime indexing still lands on the gate.
+   *
+   * Resolves to the tool's result by the same rule as the typed methods. The
+   * type argument states the shape you expect; nothing checks it, and the
+   * default is `unknown`.
    */
-  callTool(name: string, args?: BrowxaiArgs): Promise<BrowxaiResult>;
+  callTool<T = unknown>(name: string, args?: BrowxaiArgs): Promise<T>;
 
   /**
    * namespaced caller for plugin-registered tools. Indexed
@@ -266,7 +274,7 @@ export interface BrowxaiClient {
    * autocomplete. Cast through `BrowxaiClientWithPlugins<Schema>`
    * (see docs/plugin-authoring.md) to enable the typed path.
    */
-  readonly plugins: Record<string, Record<string, (args?: BrowxaiArgs) => Promise<BrowxaiResult>>>;
+  readonly plugins: Record<string, Record<string, (args?: BrowxaiArgs) => Promise<unknown>>>;
 
   /** Every tool `callTool` will admit, snapshotted at construction: the
    *  registered surface filtered by the active capability set. Plugin tools

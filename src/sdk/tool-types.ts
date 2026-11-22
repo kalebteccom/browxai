@@ -1,13 +1,14 @@
 // Per-tool typed argument and result-data shapes for the SDK surface.
 //
-// Stage A shipped every BrowxaiClient method as
-// `(args: BrowxaiArgs) => Promise<BrowxaiResult>` — opaque, generic. Stage A.5
-// specialises each method against the curated SDK surface from
-// `registry.ts` so the emitted `.d.ts` is the canonical reference for
-// LLM-authoring consumers.
+// Each BrowxaiClient method is specialised against the curated SDK surface
+// from `registry.ts` so the emitted `.d.ts` is the canonical reference for
+// LLM-authoring consumers. A `*Result` alias here is the value the method
+// resolves to: the tool's own result, as parsed by `unwrapResult`
+// (`envelope.ts`). Only `ScreenshotResult` includes the `{ content, data }`
+// envelope, because an inline screenshot is an image content item.
 //
-// **Pure type-layer addition.** The runtime path
-// (`buildClient`/`callTool`/transports/capability gates) is unchanged. The
+// The runtime path (`buildClient`/`callTool`/transports/capability gates) is
+// described by these types and does not depend on them. The
 // argument shapes mirror the zod `inputSchema` of each registered MCP tool in
 // `src/server.ts`; the result-data shapes mirror the documented per-tool
 // payload in `docs/tool-reference.md`. The server's zod schemas remain the
@@ -86,8 +87,10 @@ export type {
   PlanVerb,
   PlanVerbArgs,
   ScreenshotArgs,
+  ScreenshotFileResult,
   ScreenshotResult,
   SnapshotArgs,
+  SnapshotFail,
   SnapshotResult,
   Stability,
   TextSearchArgs,
