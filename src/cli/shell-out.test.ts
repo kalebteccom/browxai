@@ -29,6 +29,21 @@ describe("--out", () => {
     expect(checkOutPath(join(dir, "shot.png"), false)).toBeUndefined();
   });
 
+  it("refuses a parent that is a file, with or without force", () => {
+    writeFileSync(join(dir, "notes.txt"), "keep me");
+    const path = join(dir, "notes.txt", "shot.png");
+    expect(checkOutPath(path, false)).toContain("is not a directory");
+    expect(checkOutPath(path, true)).toContain("is not a directory");
+    expect(readFileSync(join(dir, "notes.txt"), "utf8")).toBe("keep me");
+  });
+
+  it("tells a caller to pass --force only when it has not", () => {
+    const path = join(dir, "shot.png");
+    writeFileSync(path, "x");
+    expect(checkOutPath(path, false)).toContain("--force");
+    expect(checkOutPath(path, true)).toBeUndefined();
+  });
+
   it("refuses a directory that does not exist", () => {
     expect(checkOutPath(join(dir, "no-such", "shot.png"), false)).toContain("does not exist");
     expect(checkOutPath(join(dir, "no-such", "shot.png"), true)).toContain("does not exist");

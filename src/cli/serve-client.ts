@@ -37,12 +37,18 @@ export function createClientServer(browxai: ClientHandlers): McpServer {
     // The wire form masks a thrown error's message for registered secrets, as the stdio
     // server does. `handlers` throws, so an error message would skip the mask. A plugin
     // tool has no wire entry and catches its own errors.
-    const handler =
-      browxai.wireHandlers[request.params.name] ?? browxai.handlers[request.params.name];
+    // Own properties only: the maps are plain objects, so a bare lookup of `constructor`
+    // or `valueOf` would find a function on the prototype and run it as a tool.
+    const name = request.params.name;
+    const handler = Object.hasOwn(browxai.wireHandlers, name)
+      ? browxai.wireHandlers[name]
+      : Object.hasOwn(browxai.handlers, name)
+        ? browxai.handlers[name]
+        : undefined;
     if (!handler) {
       return {
         isError: true,
-        content: [{ type: "text", text: `browxai: unknown tool "${request.params.name}"` }],
+        content: [{ type: "text", text: `browxai: unknown tool "${name}"` }],
       };
     }
     return await handler(request.params.arguments ?? {});

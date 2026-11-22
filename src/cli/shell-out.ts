@@ -5,7 +5,7 @@
 // `--force` is given, and a new file is created owner-only because a screenshot can
 // show anything the page shows.
 
-import { existsSync, lstatSync, unlinkSync, writeFileSync } from "node:fs";
+import { lstatSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 /** What is at the path, a dangling symlink included, or undefined when nothing is. */
@@ -20,9 +20,16 @@ function entryAt(path: string): ReturnType<typeof lstatSync> | undefined {
 /** A problem with the `--out` path that can be found before the tool runs, or
  *  undefined. Checking first means a refused path costs no browser action. */
 export function checkOutPath(path: string, force: boolean): string | undefined {
-  if (!existsSync(dirname(resolve(path)))) {
-    return `the directory for --out ${path} does not exist`;
-  }
+  const parent = dirname(resolve(path));
+  const parentEntry = (() => {
+    try {
+      return statSync(parent);
+    } catch {
+      return undefined;
+    }
+  })();
+  if (parentEntry === undefined) return `the directory for --out ${path} does not exist`;
+  if (!parentEntry.isDirectory()) return `the parent of --out ${path} is not a directory`;
   const entry = entryAt(path);
   if (entry?.isDirectory()) return `${path} is a directory`;
   if (!force && entry !== undefined) {
@@ -47,8 +54,11 @@ export function writeImage(path: string, base64: string, force: boolean): string
     return undefined;
   } catch (err) {
     const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;
-    return code === "EEXIST"
-      ? `${path} already exists. Pass --force to overwrite it, or name another file.`
-      : `could not write ${path}${code === undefined ? "" : ` (${code})`}`;
+    if (code === "EEXIST") {
+      return force
+        ? `${path} appeared while it was being replaced. Run the command again.`
+        : `${path} already exists. Pass --force to overwrite it, or name another file.`;
+    }
+    return `could not write ${path}${code === undefined ? "" : ` (${code})`}`;
   }
 }

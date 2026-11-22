@@ -156,6 +156,31 @@ skipIfWindows("browxai call against a serve --socket daemon", () => {
     expect(doc?.text).toContain('unknown tool "no_such_tool"');
   });
 
+  it.each(["constructor", "valueOf", "toString", "hasOwnProperty", "isPrototypeOf"])(
+    "treats %s as an unknown tool, though every object has it",
+    async (name) => {
+      const { code, doc } = await call([name, ...viaSocket()]);
+      expect(code).toBe(1);
+      expect(doc?.isError).toBe(true);
+      expect(doc?.text).toBe(`browxai: unknown tool "${name}"`);
+    },
+  );
+
+  it("refuses an --out path whose parent is a file, with exit 2 before anything runs", async () => {
+    const notes = join(workspace, "notes.txt");
+    writeFileSync(notes, "keep me");
+    const { code, raw, err } = await call([
+      "list_sessions",
+      "--out",
+      join(notes, "shot.png"),
+      ...viaSocket(),
+    ]);
+    expect(code).toBe(2);
+    expect(raw).toBe("");
+    expect(err).toContain("is not a directory");
+    expect(readFileSync(notes, "utf8")).toBe("keep me");
+  });
+
   it("cuts a long result at --max-chars, sets truncated, and keeps the exit code", async () => {
     const cut = await call(["get_config", "--max-chars", "40", ...viaSocket()]);
     expect(cut.code).toBe(0);

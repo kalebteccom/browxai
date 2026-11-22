@@ -2,12 +2,15 @@
 // a file) into a JSON object. Error messages never carry the text itself: the
 // arguments can hold a token or a password, and a message would print it.
 
-import { readFileSync, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import type { Parsed } from "./shell-args.js";
 
 /** The most argument bytes read from standard input or a file. The daemon refuses a
  *  message line past 32 MiB, so a larger input could never be sent. */
 export const MAX_ARGS_BYTES = 16 * 1024 * 1024;
+
+/** The bytes asked of the file per read. */
+const READ_CHUNK_BYTES = 1024 * 1024;
 
 /** The tool whose arguments carry a raw secret. It takes them from standard input
  *  or a file only, because a command line shows up in process listings and shell
@@ -21,17 +24,32 @@ export interface InputSources {
   readonly readFile: (path: string) => string;
 }
 
-/** Read a file as text. The size is checked before anything is read, and only a regular
- *  file is read, so a device, a pipe or a huge file never gets loaded. Throws for
- *  anything else, a file over {@link MAX_ARGS_BYTES} included. */
+/** Read a file as text through one open descriptor: the type and size checks and the read
+ *  all address the file that was opened, so a swap of the path between them changes nothing.
+ *  Only a regular file is read, and no more than {@link MAX_ARGS_BYTES} bytes of it, however
+ *  large it says it is or grows. The open is non-blocking, so a FIFO with no writer fails the
+ *  type check at once instead of waiting. Throws for anything else. */
 export function readArgsFile(path: string): string {
-  const info = statSync(path);
-  if (!info.isFile()) throw new Error("not a regular file");
-  if (info.size > MAX_ARGS_BYTES) throw new Error("too large");
-  const bytes = readFileSync(path);
-  // The file can grow between the check and the read.
-  if (bytes.length > MAX_ARGS_BYTES) throw new Error("too large");
-  return bytes.toString("utf8");
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile()) throw new Error("not a regular file");
+    if (info.size > MAX_ARGS_BYTES) throw new Error("too large");
+    const chunks: Buffer[] = [];
+    let total = 0;
+    // cap: stops at MAX_ARGS_BYTES, or at the end of the file.
+    for (;;) {
+      const chunk = Buffer.allocUnsafe(Math.min(READ_CHUNK_BYTES, MAX_ARGS_BYTES + 1 - total));
+      const n = readSync(fd, chunk, 0, chunk.length, null);
+      if (n === 0) break;
+      total += n;
+      if (total > MAX_ARGS_BYTES) throw new Error("too large");
+      chunks.push(chunk.subarray(0, n));
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Read standard input as text, stopping with an error past {@link MAX_ARGS_BYTES}. */

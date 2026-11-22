@@ -13,7 +13,7 @@ import { collectToolMetadata } from "../tools/tool-metadata.js";
 import type { ToolRegistration } from "../tools/host.js";
 import { parseToolsArgs } from "./shell-args.js";
 import { connectDaemon, DaemonUnreachableError } from "./shell-connect.js";
-import { processIo, type ShellIo } from "./shell-io.js";
+import { processIo, settle, type ShellIo } from "./shell-io.js";
 import { CAPABILITY_META_KEY, toolRow, type ToolRow } from "./serve-listing.js";
 import { EXIT, type ExitCode } from "./shell-result.js";
 
@@ -131,6 +131,10 @@ async function describeTool(name: string, json: boolean, io: ShellIo): Promise<E
 
 /** The handler for `browxai tools`. Returns the exit code. */
 export async function runTools(rest: string[], io: ShellIo = processIo()): Promise<number> {
+  return settle(io, await runToolsCommand(rest, io));
+}
+
+async function runToolsCommand(rest: string[], io: ShellIo): Promise<number> {
   const parsed = parseToolsArgs(rest, io.env);
   if (!parsed.ok) {
     await io.stderr(`browxai tools: ${parsed.message}\n${TOOLS_USAGE}`);
