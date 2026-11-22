@@ -46,15 +46,47 @@ export interface SocketTransportOptions {
   readonly endpoint: string;
 }
 
-export async function openSocketTransport(opts: SocketTransportOptions): Promise<SdkTransport> {
-  const path = resolveEndpointPath(opts.endpoint);
+export interface ConnectOptions {
+  /** The MCP client name sent in the handshake. Defaults to `browxai-sdk`. */
+  readonly clientName?: string;
+  /** Give up on the handshake after this many milliseconds. Defaults to the MCP
+   *  SDK's own limit. */
+  readonly handshakeTimeoutMs?: number;
+}
+
+/**
+ * Connect to a running daemon at a socket path (or a Windows pipe name) and finish
+ * the MCP handshake. The SDK transport below and `browxai call` / `browxai tools`
+ * both open their connection here, so there is one client. The caller owns the
+ * returned client and closes it.
+ */
+export async function connectSocketClient(
+  path: string,
+  opts: ConnectOptions = {},
+): Promise<Client> {
   const socket: Socket = await new Promise((resolve, reject) => {
     const s = createConnection({ path }, () => resolve(s));
     s.once("error", (err) => reject(err));
   });
   const transport = new SocketTransport(socket);
-  const client = new Client({ name: `${NAME}-sdk`, version: VERSION }, { capabilities: {} });
-  await client.connect(transport);
+  const client = new Client(
+    { name: opts.clientName ?? `${NAME}-sdk`, version: VERSION },
+    { capabilities: {} },
+  );
+  try {
+    await client.connect(
+      transport,
+      opts.handshakeTimeoutMs === undefined ? undefined : { timeout: opts.handshakeTimeoutMs },
+    );
+  } catch (err) {
+    socket.destroy();
+    throw err;
+  }
+  return client;
+}
+
+export async function openSocketTransport(opts: SocketTransportOptions): Promise<SdkTransport> {
+  const client = await connectSocketClient(resolveEndpointPath(opts.endpoint));
   let closed = false;
 
   const dispatch = async (toolName: string, args: Record<string, unknown>): Promise<unknown> => {

@@ -28,7 +28,7 @@ export function run(command, args = [], opts = {}) {
 }
 
 /**
- * runAsync(command, args, { cwd, env, timeoutMs })
+ * runAsync(command, args, { cwd, env, timeoutMs, input })
  * -> { code, ms, stdout, stderr, timedOut, signal }   (code is -1 when the process was killed or could not start)
  * run() blocks this process's event loop until the child exits. A child that needs a server hosted in THIS process (the
  * loopback fixture page) would wait for a response nobody can send, so it hangs until the timeout kills it. Use runAsync for those.
@@ -39,8 +39,10 @@ export function runAsync(command, args = [], opts = {}) {
     const child = spawn(command, args, {
       cwd: opts.cwd,
       env: opts.env,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [opts.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
+    // Text for the child's standard input, when the command reads it (`browxai call TOOL -`).
+    if (opts.input !== undefined) child.stdin.end(opts.input);
     let stdout = "";
     let stderr = "";
     let timedOut = false;

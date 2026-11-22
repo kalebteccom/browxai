@@ -13,9 +13,12 @@ import { runDoctor, DOCTOR_USAGE } from "./doctor.js";
 import { runChrome, CHROME_USAGE } from "./chrome.js";
 import { runInit, INIT_USAGE } from "./init.js";
 import { runServe, SERVE_USAGE } from "./serve.js";
+import { runCall, CALL_USAGE } from "./shell-call.js";
+import { runTools, TOOLS_USAGE } from "./shell-tools.js";
 import { runPlugin } from "../plugin/cli.js";
 
-// Each handler consumes `rest` (`runDoctor` reads `--verbose`).
+// Each handler consumes `rest` (`runDoctor` reads `--verbose`). `tools` and `call` are the
+// shell route: clients of a `serve --socket` daemon, with no listener of their own.
 // `runPlugin` accepts a `ReadonlyArray<string>`, which `string[]` satisfies.
 // The third argument is the text `browxai <name> --help` prints. `plugin` has
 // none: it prints its own help when `cli.ts` hands it the `help` verb.
@@ -23,4 +26,6 @@ registerCommand("doctor", (rest) => runDoctor(rest), DOCTOR_USAGE);
 registerCommand("chrome", (rest) => runChrome(rest), CHROME_USAGE);
 registerCommand("init", (rest) => runInit(rest), INIT_USAGE);
 registerCommand("serve", (rest) => runServe(rest), SERVE_USAGE);
+registerCommand("tools", (rest) => runTools(rest), TOOLS_USAGE);
+registerCommand("call", (rest) => runCall(rest), CALL_USAGE);
 registerCommand("plugin", (rest) => runPlugin(rest, process.cwd()));

@@ -25,6 +25,7 @@ import { resolveEngineSelection, UnknownEngineError, type EngineKind } from "../
 import { SocketTransport } from "../transport/socket-transport.js";
 import { log } from "../util/logging.js";
 import { isHeadlessEnv } from "../util/config-store.js";
+import { listedTool } from "./serve-listing.js";
 import {
   SocketPathError,
   isPipePath,
@@ -166,15 +167,12 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
           { name: NAME, version: VERSION },
           { capabilities: { tools: {} } },
         );
+        // One-line descriptions and the capability of each tool, so `browxai tools`
+        // can print them. The input schema stays open (see `listedTool`).
         mcp.setRequestHandler(ListToolsRequestSchema, () => ({
           tools: Object.keys(browxai.handlers)
             .filter((name) => browxai.isToolListed(name))
-            .map((name) => ({
-              name,
-              description: `browxai/${name}`,
-              // Open schema — NOT `{}` (which strips args). The handler validates.
-              inputSchema: { type: "object" as const, additionalProperties: true },
-            })),
+            .map((name) => listedTool(name, browxai.registrations.get(name))),
         }));
         mcp.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
           const handler = browxai.handlers[request.params.name];

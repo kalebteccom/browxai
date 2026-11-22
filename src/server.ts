@@ -28,7 +28,7 @@ import { ApprovalStore } from "./policy/confirm.js";
 import { openOperatorChannel } from "./helper/operator-channel.js";
 import { log } from "./util/logging.js";
 import { PACKAGE_VERSION } from "./util/version.js";
-import type { ToolResponse } from "./tools/host.js";
+import type { ToolRegistration, ToolResponse } from "./tools/host.js";
 import { buildHost } from "./tools/host-build.js";
 import { registerActionTools } from "./tools/action-tools.js";
 import { registerReadObserveDomTools } from "./tools/read-observe-dom-tools.js";
@@ -112,6 +112,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
    *  capability is off, or when `toolProfile` is `core` and the tool is outside the
    *  core set. */
   isToolListed: (tool: string) => boolean;
+  /** The description, capability and input schema each core tool registered
+   *  with. Plugin tools are not in it. */
+  registrations: ReadonlyMap<string, ToolRegistration>;
   /** Programmatic in-process driving seam: the registered MCP tool handlers,
    *  keyed by tool name, each returning the same `{ content: [...] }` shape an
    *  MCP call would. Used by the headless-CI keystone (and any embedder that
@@ -386,6 +389,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await server.close().catch(() => undefined);
     },
     isToolListed: listing.isListed,
+    registrations: host.registrations,
     handlers: toolHandlers,
   };
 }
