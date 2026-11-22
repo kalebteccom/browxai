@@ -1,6 +1,6 @@
 {
   "name": "browxai",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools.",
   "author": "Kalebtec <security@kalebtec.com>",
   "license": "MIT",

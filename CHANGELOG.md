@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+## [0.19.0] - 2026-11-22
+
+**Upgrading from 0.18.0.** Two things to know. Playwright moved from 1.64.1 to 1.65.1, so if you use the Chromium fallback you already downloaded, run `npx playwright-core@1.65.1 install chromium` once (machines that use Google Chrome need nothing). And `tools/list` from a `browxai serve --socket` daemon now carries a real one-line description for each tool and the tool's capability in `_meta`, where it carried a placeholder description before. A client that read the old placeholder text should read the new text.
+
 ### Added
 
 - **A shell route: `browxai tools` and `browxai call`.** An agent with a shell tool and no MCP client can run one tool per command against a daemon started with `browxai serve --socket PATH`. `browxai call TOOL '{"ref":"e7"}'` runs the tool and prints one JSON document on standard output: `isError`, `data` (the parsed result) or `text`, `images` (type and byte length, never pixels) and `truncated`. The exit code tells a shell what happened: 0 ok, 1 the tool failed or `data.ok` is false, 2 usage, 3 the daemon could not be reached, 4 refused by a capability gate. `browxai tools` prints one line per tool (name, capability, description), and `browxai tools NAME` prints a tool's full description and input schema. Arguments come inline, from standard input with `-`, or from `--args-file`, so a secret never has to be on the command line, and `register_secret` refuses inline arguments. The socket path comes from `--socket` or `BROWX_SOCKET`, with no default and no search. The session id comes from `--session` or `BROWX_SESSION`. `--max-chars` caps the printed result (default 40,000 characters, 0 for no cap), `--timeout MS` sets how long a call waits for the daemon (default 120,000, exit 3 when it does not answer), and `--out FILE` writes the first image of a successful result to a file, owner-only, without overwriting unless `--force` is given (`--force` unlinks the old entry first, so a symlink is replaced and never followed). The commands are clients of the daemon: they add no capability and no listener, every call goes through the daemon's own handler, and a gated tool refuses the same way it does over MCP. They keep no state, so sessions and refs live in the daemon. See RFC 0011, the tool reference and the "Drive browxai from a shell" guide, and the `driving-browxai` skill has a section for agents with shell access.
@@ -17,11 +21,13 @@ surface" covers.
 
 - **Playwright updated to 1.65.1.** The browser to download for a Chromium fallback is the 1.65.1 build (the getting-started page names the new version). The reference `deploy/Dockerfile` base image moves to `playwright:v1.65.1-noble` to match. Upgrading: a Playwright update changes the browser build, so if you already downloaded the 1.64 browser, run `npx playwright-core@1.65.1 install chromium` after upgrading. Machines that use Google Chrome need nothing.
 
+- **The docs cover the shell route and Playwright 1.65.1.** A new "Drive browxai from a shell" guide, a tool reference section for `browxai tools` and `browxai call`, a section in the `driving-browxai` skill for agents with shell access, a README bullet, the roadmap, and RFC 0011 (accepted, built). Every `playwright-core` pin in the README, the getting-started and troubleshooting pages, the remotxai integration page and the harness adapter READMEs reads 1.65.1.
+
 ### Fixed
 
 - **`browxai call` and `browxai tools` exit 1 when the result cannot be written.** A write to standard output that failed for any reason except a closed pipe (a full disk, an I/O error) was ignored and the command exited 0. It now prints a line on standard error and exits 1. A reader that closes the pipe early, as `| head -c1` does, still ends quietly with the code the command computed. `--args-file` is read through one open file descriptor and a path that is a FIFO or a directory is refused at once, and `--out` refuses a path whose parent is a file before the tool runs.
 - **The `serve --socket` daemon treats `constructor`, `valueOf` and the other names every object has as unknown tools.** A call by one of those names looked up a function on the handler map's prototype and tried to run it. It now answers `unknown tool` like any other missing name.
-- **The `serve --socket` daemon masks a thrown error's message for registered secrets.** A tool handler that threw reached a socket client as an error whose message skipped the secret mask that the stdio server applies, so a registered secret in that message could reach the client in the clear. The daemon now serves the same masked handlers as stdio, and a thrown error comes back as a masked error result.
+- **Tool errors raised on the `serve --socket` daemon now have registered secrets masked, the same as over stdio.** A tool handler that threw reached a socket client as an error whose message skipped the secret mask the stdio server applies. The daemon now serves the same masked handlers as stdio, and a thrown error comes back as a masked error result.
 
 ## [0.18.0] - 2026-11-22
 
