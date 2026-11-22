@@ -6,9 +6,8 @@
 // handler — gate + sanitiser inclusive (see register() in src/server.ts).
 
 import { createServer, type StartOptions } from "../server.js";
-import { parseEnvelope, type SdkTransport } from "./transport.js";
+import { unwrapResult, type SdkTransport } from "./transport.js";
 import { registerTransport } from "./transport-registry.js";
-import type { BrowxaiResult } from "./types.js";
 import { docsUrl } from "../util/docs-links.js";
 
 /**
@@ -22,10 +21,7 @@ export async function openInProcessTransport(opts: StartOptions = {}): Promise<S
   const handlers = server.handlers;
   let closed = false;
 
-  const dispatch = async (
-    toolName: string,
-    args: Record<string, unknown>,
-  ): Promise<BrowxaiResult> => {
+  const dispatch = async (toolName: string, args: Record<string, unknown>): Promise<unknown> => {
     if (closed)
       throw new Error(
         `browxai-sdk: cannot call ${toolName}, the transport is closed. Create a new client.`,
@@ -38,7 +34,7 @@ export async function openInProcessTransport(opts: StartOptions = {}): Promise<S
       );
     }
     const result = await fn(args);
-    return parseEnvelope(result.content);
+    return unwrapResult(result.content);
   };
 
   const close = async (): Promise<void> => {

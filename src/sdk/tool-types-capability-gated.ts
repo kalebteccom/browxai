@@ -8,7 +8,6 @@
 // registry seam; these are the *types only*. See `tool-types.ts` for the
 // authoritative header.
 
-import type { BrowxaiResult } from "./types.js";
 import type { SessionArg, TimeoutArg } from "./tool-types-shared.js";
 
 // =============================================================================
@@ -36,7 +35,7 @@ export interface EvalJsFail {
   warning?: string;
 }
 export type EvalJsResultData = EvalJsOk | EvalJsFail;
-export type EvalJsResult = BrowxaiResult<EvalJsResultData>;
+export type EvalJsResult = EvalJsResultData;
 
 /** `network_body` needs the `network-body` capability (off by default). The body is
  *  capped at 256 KB. */
@@ -51,7 +50,7 @@ export interface NetworkBodyResultData {
   truncated?: boolean;
   error?: string;
 }
-export type NetworkBodyResult = BrowxaiResult<NetworkBodyResultData>;
+export type NetworkBodyResult = NetworkBodyResultData;
 
 /** `upload_file` needs the `file-io` capability (off by default). Pass exactly one
  *  of `content` and `path`. */
@@ -77,7 +76,7 @@ export interface UploadFileResultData {
   fileCount?: number;
   error?: string;
 }
-export type UploadFileResult = BrowxaiResult<UploadFileResultData>;
+export type UploadFileResult = UploadFileResultData;
 
 /** `register_secret` needs the `secrets` capability (off by default). */
 export interface RegisterSecretArgs extends SessionArg {
@@ -98,4 +97,4 @@ export interface RegisterSecretResultData {
   error?: string;
   tokensEstimate?: number;
 }
-export type RegisterSecretResult = BrowxaiResult<RegisterSecretResultData>;
+export type RegisterSecretResult = RegisterSecretResultData;

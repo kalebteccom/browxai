@@ -340,12 +340,14 @@ into their SDK client type:
 // In the plugin's `schema.d.ts`:
 export interface ExamplePluginSchema {
   readonly example: {
-    echo(args: { msg: string }): Promise<BrowxaiResult>;
-    add(args: { a: number; b: number }): Promise<BrowxaiResult>;
-    now(args?: Record<string, never>): Promise<BrowxaiResult>;
+    echo(args: { msg: string }): Promise<Record<string, unknown>>;
+    add(args: { a: number; b: number }): Promise<Record<string, unknown>>;
+    now(args?: Record<string, never>): Promise<Record<string, unknown>>;
   };
 }
 ```
+
+A plugin tool resolves to the tool's own result, the same as every other SDK call: the handler's one JSON text item, parsed. Type it as that object, not as a `{ content, data }` envelope.
 
 ```ts
 // In the consumer's code:

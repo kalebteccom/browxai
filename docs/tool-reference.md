@@ -13,6 +13,20 @@ The public surface is versioned with semver.
 - **Stable surface** = the tool _names_ + documented input/output shapes in this file, the `eN` ref scheme, the `ActionResult` shape, the default capability set (`read,navigation,action,human`), and the documented `BROWX_*` / config keys. The stable surface does **not** change in a `patch` release; an additive change is a `minor`; a breaking change requires a `minor` bump **plus** a changelog entry **and** a deprecation note. No silent breaks.
 - **Explicitly NOT covered by the stability guarantee** (may change, appear, or vanish in any release): anything behind an **off-by-default capability** (`eval`, `network-body`, `clipboard`, `byob-attach`, `file-io`) and the `unstable.*` config namespace. New experimental surface lands behind an off-by-default capability; promotion into the stable surface is a deliberate, versioned act.
 
+## SDK return values
+
+The typed SDK (`createBrowxai`) wraps the tools above. Every call resolves to the tool's own result, by one rule:
+
+- **One JSON text item** (nearly every tool): the parsed object or array. `extract` resolves to `{ ok, data, evidence, warnings? }`, so a script reads `result.data.title`. `console_read` resolves to an array. A failure such as `{ ok: false, failure }` is at the top level.
+- **One plain-text item**: the string. `snapshot` resolves to the serialised tree, and a tool that failed on the server resolves to its message. Text that parses to a bare number, boolean or `null` stays a string.
+- **An image item, several items, or none**: `{ content, data? }`, where `content` is the raw MCP array and `data` is the first text item when it is a JSON object. An inline `screenshot` (and `screenshot_marks`, `screenshot_region`) resolves this way. `screenshot` with `path` set resolves to its JSON result.
+
+Errors are unchanged. The SDK throws for a gated tool (`BROWXAI_SDK_NOT_EXPOSED`), an unknown tool (`BROWXAI_SDK_UNKNOWN_TOOL`) and a closed client. A tool failure on the server is returned as the result, and `isError` is not surfaced.
+
+`callTool<T>(name, args)` resolves the same way, and `T` states the shape you expect (default `unknown`). Plugin tools (`client.plugins.<namespace>.<tool>`) follow the same rule.
+
+**Changed in 0.18.0.** Before, every method resolved to `{ content, data }` with `data` the parsed tool result, so a script read `result.data.data.title`. There is no option to get the old shape back. To upgrade, drop one `.data` where you read a tool result, replace `result.content[0].text` with the result itself (a string for plain text, an object for JSON), and keep `content` only for images. See the [changelog](../CHANGELOG.md).
+
 ## Sub-commands (CLI)
 
 The `browxai` bin dispatches sub-commands; with no args it starts the MCP server (default).
@@ -3367,7 +3381,7 @@ const png = await client.callTool("canvas_capture", { format: "png" });
 // 2. Hand it to your multimodal vision call. (Pseudocode — adopter wires
 //    their own model invocation here.)
 const { x, y } = await yourVisionAgent.locate({
-  imageBase64: JSON.parse(png.content[0].text).contentBase64,
+  imageBase64: png.contentBase64, // callTool resolves to the parsed result
   query: "the Delete button on the top toolbar",
 });
 

@@ -115,7 +115,7 @@ import { createBrowxai } from "browxai";
 
 const browxai = await createBrowxai(); // in-process, single-script
 await browxai.navigate({ url: "https://example.com" });
-const { data: result } = await browxai.extract({
+const result = await browxai.extract({
   schema: {
     type: "object",
     properties: {
@@ -123,9 +123,9 @@ const { data: result } = await browxai.extract({
     },
   },
 });
-// `result` is the tool's own result: { ok: true, data: { title: ... }, evidence, ... }.
-// `result.data.title` is "Example Domain". A selector that matches nothing adds a
-// line to `result.warnings`, and a failed extract is { ok: false, failure }.
+console.log(result.data.title); // "Example Domain"
+// A selector that matches nothing adds a line to `result.warnings`, and a failed
+// extract is { ok: false, failure }.
 await browxai.close();
 ```
 
@@ -138,6 +138,8 @@ Three transports:
 The same safety gates apply as on the MCP path. Tools that broaden the security posture (`eval_js`, `network_body`, `register_secret`, `upload_file`, …) are **off by default** and only appear once their capability is named in `createBrowxai({ capabilities })`, and in the server's own capability set (`BROWX_CAPABILITIES`), which gates the same tool independently. Calling a non-exposed tool, even via `client.callTool("eval_js", …)`, fails with a `BROWXAI_SDK_NOT_EXPOSED` error before anything hits the wire; a name no tool registers fails with `BROWXAI_SDK_UNKNOWN_TOOL`.
 
 `client.callTool(name, args)` reaches **every** registered tool whose capability is active, the same surface the MCP server exposes. The typed methods on the client are a curated ergonomic subset for the tools most agent loops use.
+
+Every SDK call resolves to the tool's own result. A result that is one JSON text item comes back parsed (an object, or an array for `console_read`), and a plain-text result such as `snapshot()` comes back as a string. A result with an image or several content items, such as an inline `screenshot()`, comes back as `{ content, data? }` with the raw MCP `content` array. A tool that fails on the server returns its message as a string or as `{ ok: false, ... }`, and a call the SDK refuses itself (a gated or unknown tool, a closed client) throws. `callTool<T>(name, args)` takes the result type you expect as `T`. Before 0.18.0 every call returned `{ content, data }`, see the [changelog](https://github.com/kalebteccom/browxai/blob/main/CHANGELOG.md).
 
 ## Harness setup
 

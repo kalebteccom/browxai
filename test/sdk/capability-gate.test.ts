@@ -22,10 +22,8 @@ function mockTransport(): {
   const transport: SdkTransport = {
     dispatch: async (name, args) => {
       calls.push({ name, args });
-      return {
-        content: [{ type: "text", text: JSON.stringify({ ok: true, name }) }],
-        data: { ok: true, name },
-      };
+      // A transport hands back the tool's own result, already unwrapped.
+      return { ok: true, name };
     },
     close: async () => undefined,
   };
@@ -107,7 +105,7 @@ describe("SDK capability gate — opting in to `eval` exposes eval_js", () => {
     });
     expect(client.exposedTools).toContain("eval_js");
     const r = await client.callTool("eval_js", { code: "1+1" });
-    expect(r.data).toMatchObject({ ok: true, name: "eval_js" });
+    expect(r).toEqual({ ok: true, name: "eval_js" });
     expect(calls).toEqual([{ name: "eval_js", args: { code: "1+1" } }]);
   });
 });
@@ -154,7 +152,7 @@ describe("SDK close() — idempotent", () => {
   it("close() can be called twice without throwing", async () => {
     let closes = 0;
     const transport: SdkTransport = {
-      dispatch: async () => ({ content: [] }),
+      dispatch: async () => ({ ok: true }),
       close: async () => {
         closes++;
       },

@@ -10,7 +10,8 @@ import { chromeMains, inWork, isBrowxaiProcess, label, readTable, waitUntil } fr
 const { FR_URL: url, FR_WORK: work } = process.env;
 const KEEP = /^(PATH|HOME|TMPDIR|NO_UPDATE_NOTIFIER|DO_NOT_TRACK|npm_config_cache|BROWX_.*)$/;
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => KEEP.test(k)));
-const text = (r) => (r?.content ?? []).map((c) => c.text ?? "").join("\n");
+// An SDK call resolves to the tool's own result: a parsed object or array, or the text as a string. snapshot() is a string.
+const text = (r) => (typeof r === "string" ? r : JSON.stringify(r ?? null));
 const out = {};
 let client;
 
@@ -23,7 +24,7 @@ try {
   client = await createBrowxai({ transport: "stdio-child", env });
   out.createMs = Date.now() - t0;
   const nav = await client.navigate({ url });
-  out.navigateOk = nav.data?.ok !== false;
+  out.navigateOk = nav?.ok !== false;
   if (!out.navigateOk) out.navigateError = text(nav).slice(0, 200);
   const snap = await client.snapshot();
   out.snapshotOk = /\[ref=e\d+\]/.test(text(snap)) && text(snap).includes("Subscribe");

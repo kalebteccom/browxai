@@ -10,9 +10,9 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { parseEnvelope, type SdkTransport } from "./transport.js";
+import { unwrapResult, type SdkTransport } from "./transport.js";
 import { registerTransport } from "./transport-registry.js";
-import type { BrowxaiContentItem, BrowxaiResult } from "./types.js";
+import type { BrowxaiContentItem } from "./types.js";
 import { NAME, VERSION } from "../server.js";
 
 export interface StdioChildOptions {
@@ -37,17 +37,14 @@ export async function openStdioChildTransport(opts: StdioChildOptions = {}): Pro
   await client.connect(transport);
   let closed = false;
 
-  const dispatch = async (
-    toolName: string,
-    args: Record<string, unknown>,
-  ): Promise<BrowxaiResult> => {
+  const dispatch = async (toolName: string, args: Record<string, unknown>): Promise<unknown> => {
     if (closed)
       throw new Error(
         `browxai-sdk: cannot call ${toolName}, the transport is closed. Create a new client.`,
       );
     const res = await client.callTool({ name: toolName, arguments: args });
     const content = (res.content as BrowxaiContentItem[]) ?? [];
-    return parseEnvelope(content);
+    return unwrapResult(content);
   };
 
   const close = async (): Promise<void> => {

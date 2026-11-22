@@ -49,9 +49,10 @@ afterAll(async () => {
 skipIfWindows("socket-attached SDK transport — drives browxai serve over Unix socket", () => {
   it("list_sessions roundtrips over the wire", async () => {
     const r = await client.list_sessions();
-    expect(r.content.length).toBeGreaterThan(0);
-    // The MCP wire returns the same JSON envelope as the in-process path.
-    expect(r.data).toBeDefined();
+    // The wire carries the same single JSON text item as the in-process path, so
+    // the result is the same unwrapped object.
+    expect(r).toHaveProperty("sessions");
+    expect(r).not.toHaveProperty("content");
   });
 
   it("forwards tool ARGUMENTS over the wire (regression: must not strip args)", async () => {
@@ -68,6 +69,6 @@ skipIfWindows("socket-attached SDK transport — drives browxai serve over Unix 
     // job installs no Chromium, so nothing here may open a real session. The
     // browser-backed paths are covered by test/keystone/.
     const r = await client.close_session({ session: "sock-arg-probe" });
-    expect((r.data as { session?: string }).session).toBe("sock-arg-probe");
+    expect(r.session).toBe("sock-arg-probe");
   });
 });
