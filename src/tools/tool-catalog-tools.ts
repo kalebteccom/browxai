@@ -8,8 +8,11 @@
 // has no discovery tool.
 //
 // The omitted set is computed from the same predicate `tools/list` uses
-// (`ToolListing.isListed`), at call time, so the two cannot disagree.
+// (`ToolListing.isListed`), at call time, so the two cannot disagree. One optional
+// `capability` argument narrows the reply to a single group of that set. A name that
+// is not a group of the set throws an error that lists the valid groups with counts.
 
+import { z } from "zod";
 import { capabilityMissing, type Capability } from "../util/capabilities.js";
 import { TOOL_CATALOG_TOOL } from "../util/tool-profile.js";
 import type { ConfigHost, RegisterHost, ServerServicesHost } from "./host.js";
@@ -37,10 +40,15 @@ export function registerToolCatalogTool(
     TOOL_CATALOG_TOOL,
     {
       description:
-        "List the tools this server registers but `tools/list` leaves out under the `core` profile, grouped by capability, with a one-line summary each. Every one stays callable by name, through the same capability gate. Takes no arguments. Set `toolProfile` to `full` and restart the server to list the ones the server can run.",
-      inputSchema: {},
+        "List the tools this server registers but `tools/list` leaves out under the `core` profile, grouped by capability, with a one-line summary each. Every one stays callable by name, through the same capability gate. Takes one optional `capability` to list a single group. Set `toolProfile` to `full` and restart the server to list the ones the server can run.",
+      inputSchema: {
+        capability: z
+          .string()
+          .optional()
+          .describe("Group to list: a capability name, `none` or `plugin`. Omit for all groups."),
+      },
     },
-    async () => {
+    async ({ capability: only }) => {
       const groups = new Map<string, Array<{ name: string; summary: string }>>();
       let omitted = 0;
       for (const name of Object.keys(toolHandlers).sort()) {
@@ -56,15 +64,23 @@ export function registerToolCatalogTool(
         const last = (g: string) => (g === NO_CAPABILITY || g === PLUGIN_GROUP ? 1 : 0);
         return last(a) - last(b) || a.localeCompare(b);
       });
+      if (only !== undefined && !groups.has(only)) {
+        const valid = ordered.map((g) => `${g} (${groups.get(g)?.length ?? 0})`).join(", ");
+        throw new Error(
+          `tool_catalog: "${only}" is not a group of omitted tools. Valid groups, with tool counts: ${valid}. Omit capability to list every group.`,
+        );
+      }
+      const shown = only === undefined ? ordered : [only];
       const body = {
         profile: "core",
-        omitted,
+        omitted: only === undefined ? omitted : (groups.get(only)?.length ?? 0),
+        ...(only === undefined ? {} : { capability: only }),
         note:
           "These tools are registered and callable by name, through the same capability gate as every listed tool. " +
           "A group with enabled false needs its capability added to BROWX_CAPABILITIES first. " +
           "To list the tools the server can run, set BROWX_TOOL_PROFILE=full (or toolProfile to full with set_config) and restart the browxai server. " +
           "Tools whose capability is off stay out of the listing until BROWX_TOOL_LIST=all is set too.",
-        groups: ordered.map((capability) => ({
+        groups: shown.map((capability) => ({
           capability,
           enabled:
             capability === NO_CAPABILITY ||

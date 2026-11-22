@@ -837,7 +837,7 @@ capabilities are read once at start, so the listing does not change while the se
 lists 24 core tools, the plugin tools and the `tool_catalog` discovery tool, and leaves the rest
 out of `tools/list`. It grants no capability and removes no tool: a call by name to a tool left
 out runs through the same handler and gets the same gate refusal. `tool_catalog` belongs to no
-capability, reads no page and no session, and only names registered tools with their summaries.
+capability, reads no page and no session, and only names registered tools with their summaries. Its one optional argument, `capability`, narrows the reply to a single group and grants nothing: an unknown value is an error that lists the group names.
 
 `set_config` refuses a loosening patch (`capabilities-not-widenable` or
 `policy-not-loosenable`, naming the keys), and at every start the saved layers are
