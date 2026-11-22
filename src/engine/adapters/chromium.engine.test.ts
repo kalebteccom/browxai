@@ -127,6 +127,23 @@ describe("chromium engine — automation switch", () => {
   });
 });
 
+describe("chromium engine — OS sandbox", () => {
+  // Playwright adds --no-sandbox to every Chromium it launches unless a launch
+  // passes `chromiumSandbox: true`. browxai passes neither that option nor a
+  // sandbox flag, so these launches run with Chromium's OS sandbox off. The
+  // threat model, the README and the containers guide say so. If this test
+  // changes, update those three in the same change.
+  it("sets no chromiumSandbox and no sandbox flag on either launch", async () => {
+    for (const options of [
+      await capturePersistentOptions({ extensionPaths: ["/tmp/ext-a"], disableWebSecurity: true }),
+      await captureEphemeralLaunchOptions({ backgroundThrottling: "disabled" }),
+    ]) {
+      expect(options).not.toHaveProperty("chromiumSandbox");
+      expect(JSON.stringify(options.args ?? [])).not.toMatch(/sandbox/);
+    }
+  });
+});
+
 describe("chromium engine — background-throttling flags", () => {
   it.each([
     {

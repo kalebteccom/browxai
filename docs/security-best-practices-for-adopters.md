@@ -44,6 +44,7 @@ So for any deployment where you did not write every plugin yourself, or where an
 - Give the container no route to your local network. A plugin or a page that reaches your internal services is the lateral-movement case, and network policy is where you stop it.
 - Mount `$BROWX_WORKSPACE` as a volume so profiles, screenshots, downloads and diagnostics live outside the writable layer and can be inspected or discarded independently.
 - Treat an authenticated profile inside the container as a live credential. It is one.
+- Run browxai in a container or VM you are happy to lose. The browsers it launches run without Chromium's OS sandbox (Playwright's default), so do not point it at hostile pages from a machine that holds secrets.
 
 Node's `--permission` model is not a substitute here. It is process-wide, and browxai legitimately needs filesystem access for profiles and downloads plus child-process access to launch a browser, so the permissions that would matter are exactly the ones it must hold. Per-plugin restriction is not achievable while plugins are in-process; that would require out-of-process plugins, which the v1 runtime deliberately does not do.
 
