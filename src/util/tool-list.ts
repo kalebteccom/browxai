@@ -11,6 +11,10 @@
 // `isToolEnabled` for core tools, and the capability a plugin declared for its own
 // tools. Capabilities are read once at server start, so the answer does not change
 // while the server runs and no `tools/list_changed` notification is needed.
+//
+// The `toolProfile` key (src/util/tool-profile.ts) narrows the same listing. A tool
+// is listed when it passes the `toolList` mode first and then the profile, so `core`
+// with `toolList: all` lists the core tools even where their capability is off.
 
 import {
   capabilityMissing,
@@ -18,6 +22,7 @@ import {
   type Capability,
   type CapabilityConfig,
 } from "./capabilities.js";
+import { isCoreTool, TOOL_CATALOG_TOOL, type ToolProfile } from "./tool-profile.js";
 
 export const TOOL_LIST_MODES = ["all", "enabled"] as const;
 export type ToolListMode = (typeof TOOL_LIST_MODES)[number];
@@ -43,24 +48,35 @@ export function parseToolList(
 
 export interface ToolListing {
   readonly mode: ToolListMode;
-  /** Whether `tools/list` should report this tool. Always true in `all` mode. */
+  readonly profile: ToolProfile;
+  /** Whether `tools/list` should report this tool. Always true in `all` mode with
+   *  the `full` profile. */
   isListed: (tool: string) => boolean;
   /** Record the capability a plugin declared for one of its tools. */
   notePluginTool: (tool: string, capability: Capability | undefined) => void;
 }
 
-export function createToolListing(mode: ToolListMode, caps: CapabilityConfig): ToolListing {
+export function createToolListing(
+  mode: ToolListMode,
+  caps: CapabilityConfig,
+  profile: ToolProfile = "full",
+): ToolListing {
   const pluginTools = new Map<string, Capability | undefined>();
+  const passesMode = (tool: string): boolean => {
+    if (mode === "all") return true;
+    if (pluginTools.has(tool)) {
+      const capability = pluginTools.get(tool);
+      return capability === undefined || !capabilityMissing(capability, caps);
+    }
+    return isToolEnabled(tool, caps);
+  };
+  // Plugin tools stay listed under every profile: the operator installed them on purpose.
+  const passesProfile = (tool: string): boolean =>
+    profile === "full" || pluginTools.has(tool) || tool === TOOL_CATALOG_TOOL || isCoreTool(tool);
   return {
     mode,
-    isListed: (tool) => {
-      if (mode === "all") return true;
-      if (pluginTools.has(tool)) {
-        const capability = pluginTools.get(tool);
-        return capability === undefined || !capabilityMissing(capability, caps);
-      }
-      return isToolEnabled(tool, caps);
-    },
+    profile,
+    isListed: (tool) => passesMode(tool) && passesProfile(tool),
     notePluginTool: (tool, capability) => {
       pluginTools.set(tool, capability);
     },
