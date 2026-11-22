@@ -12,6 +12,7 @@ This subtree is the agent-facing companion to the public `docs/` site. It is **n
 - Writing a test → read `testing/qa-patterns.md` and `testing/unit-vs-keystone.md`.
 - Working on capabilities or any posture-broadening surface → read `architecture/capability-posture-map.md` and `secrets-and-egress/network-body-and-secrets.md`.
 - Releasing or changing the surface → read `release-process/semver-clock.md` and `release-process/retired-registry-pattern.md`.
+- Cutting a release → also read `release-process/engine-evidence.md` (refresh the engine evidence dates in the release PR).
 - Authoring or maintaining a plugin → read `plugin-runtime/lifecycle-and-namespacing.md`.
 - Touching recorder / replay / action-trace IR → read `recorder-and-replay/action-trace-contract.md`.
 
