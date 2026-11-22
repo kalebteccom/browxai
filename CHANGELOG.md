@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+## [0.17.3] - 2026-11-22
+
+**Upgrading from 0.17.2.** `browxai help chrome` now prints the `chrome` usage, where it printed the top-level help. Error, refusal and hint text changed wording in this release, so match on error codes, `failure.source` and exit codes, which are unchanged.
+
 ### Fixed
 
 - **`browxai chrome start --help` prints the `chrome` usage.** `--help` and `-h` after a subcommand exited 0 and ran nothing, but printed the text of `browxai --help` for every subcommand. Each of `chrome` (and `chrome start`, `login`, `stop`, `status`), `doctor`, `init` and `serve` now prints its own usage to stdout, `browxai plugin --help` prints the plugin help, and `browxai help chrome` is the same as `browxai chrome --help`. `browxai --help` is unchanged apart from one line. A wrong argument still prints usage to stderr and exits 2.
