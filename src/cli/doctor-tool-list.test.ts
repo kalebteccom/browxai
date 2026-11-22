@@ -15,16 +15,23 @@ afterEach(() => {
 const save = (layers: object) => writeFileSync(join(dir, "config.json"), JSON.stringify(layers));
 
 describe("toolListRow", () => {
-  it("reports all (default) with no env and no saved value", () => {
+  it("reports enabled (default) with no env and no saved value", () => {
     const row = toolListRow({}, dir);
     expect(row.ok).toBe(true);
-    expect(row.detail).toMatch(/^all \(default\)/);
+    expect(row.detail).toMatch(/^enabled \(default\):/);
+    expect(row.detail).toContain("only the tools this server can run");
+    expect(row.detail).toContain("Set toolList to all");
   });
 
-  it("reports enabled from a saved layer with no env", () => {
-    save({ user: { toolList: "enabled" } });
+  it("reports all from a saved layer with no env", () => {
+    save({ user: { toolList: "all" } });
     const row = toolListRow({}, dir);
     expect(row.ok).toBe(true);
+    expect(row.detail).toMatch(/^all:/);
+  });
+
+  it("reports an explicit enabled without the default label", () => {
+    const row = toolListRow({ BROWX_TOOL_LIST: "enabled" }, dir);
     expect(row.detail).toMatch(/^enabled:/);
   });
 

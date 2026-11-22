@@ -81,9 +81,10 @@ Usage: browxai [subcommand]
   --help, -h, help              print this text. After a subcommand, print that
                                 subcommand's usage (\`browxai chrome --help\`).
 
-  BROWX_TOOL_LIST=enabled       make tools/list report only the tools this server's
-                                capabilities allow (default: all, which lists every
-                                tool; a disabled tool refuses with a hint either way).
+  BROWX_TOOL_LIST=all           make tools/list report every tool, including the ones
+                                whose capability is off (default: enabled, which lists
+                                only the tools this server can run; a disabled tool
+                                refuses with a hint either way).
   BROWX_TOOL_PROFILE=core       make tools/list report a short set of ${CORE_TOOLS.length} core tools,
                                 your plugin tools and tool_catalog, which names the
                                 rest (default: full). Every tool stays callable by name.

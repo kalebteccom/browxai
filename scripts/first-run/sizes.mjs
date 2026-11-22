@@ -1,6 +1,6 @@
 // Section 3, TOOL LIST SIZES: start the installed server over stdio, send tools/list, and record the tool count and the JSON
-// length of the result for BROWX_TOOL_LIST unset (all) and enabled, with the default capabilities and with every documented
-// capability. chars = JSON.stringify of the merged `tools/list` result. Tokens are chars / 4 rounded up: an ESTIMATE, not a count.
+// length of the result for BROWX_TOOL_LIST unset (enabled, the default) and all, with the default capabilities and with every
+// documented capability. chars = JSON.stringify of the merged `tools/list` result. Tokens are chars / 4 rounded up: an ESTIMATE, not a count.
 // tools/list starts no browser. Env: FR_ROOT, FR_WORK, FR_OUT. Exit: 0 table printed, 1 a documented setting does not do what
 // the docs say, 2 a tool error (the server does not start).
 import "./crash.mjs";
@@ -130,10 +130,14 @@ headers.push(
 );
 if (!viaNpx.ok) rec.diff("the page's `npx -y browxai` client command did not start the server");
 
-// Rows 1 and 2: default capabilities.
-const allDefault = row("unset (all)", "default 4", bin);
-const enabledDefault = row("enabled", "default 4", await list({ BROWX_TOOL_LIST: "enabled" }));
-if (!enabledDefault) rec.diff("BROWX_TOOL_LIST=enabled: the server did not start");
+// Rows 1 and 2: default capabilities. Unset is the default, `enabled`; `all` is the explicit opt-out.
+const enabledDefault = row("enabled (default)", "default 4", bin);
+const allDefault = row("all", "default 4", await list({ BROWX_TOOL_LIST: "all" }));
+if (!allDefault) rec.diff("BROWX_TOOL_LIST=all: the server did not start");
+if (bin.tools.some((t) => t.name === "eval_js"))
+  rec.diff(
+    "the default listing has eval_js with the default capabilities: the docs say it is left out",
+  );
 
 // Rows 3 and 4: every documented capability. A server that refuses the full set is retried without the two daemon capabilities.
 let wide = DOCUMENTED;
@@ -148,34 +152,31 @@ if (!probe.ok) {
   probe = await list(wideEnv);
 }
 const wideLabel = `${wide.length} of ${DOCUMENTED.length}`;
-const allWide = row("unset (all)", wideLabel, probe);
-const enabledWide = row(
-  "enabled",
-  wideLabel,
-  await list({ ...wideEnv, BROWX_TOOL_LIST: "enabled" }),
-);
+const enabledWide = row("enabled (default)", wideLabel, probe);
+const wideAll = await list({ ...wideEnv, BROWX_TOOL_LIST: "all" });
+const allWide = row("all", wideLabel, wideAll);
 if (!probe.ok) rec.diff("no widened capability set started the server");
 
-// What the docs claim: `enabled` makes the listing smaller; the capability words match the installed package.
+// What the docs claim: the default listing is smaller than `all`; the capability words match the installed package.
 if (allDefault && enabledDefault) {
   const dc = allDefault.chars - enabledDefault.chars;
   if (enabledDefault.count >= allDefault.count || dc <= 0) {
     rec.diff(
-      `BROWX_TOOL_LIST=enabled is not smaller than all (${enabledDefault.count} vs ${allDefault.count} tools): the docs say it is`,
+      `the default listing is not smaller than BROWX_TOOL_LIST=all (${enabledDefault.count} vs ${allDefault.count} tools): the docs say it is`,
     );
   } else {
     rec.note(
-      `enabled vs all, default capabilities: -${allDefault.count - enabledDefault.count} tools, -${n(dc)} chars (-${Math.round((dc / allDefault.chars) * 100)}%)`,
+      `default vs all, default capabilities: -${allDefault.count - enabledDefault.count} tools, -${n(dc)} chars (-${Math.round((dc / allDefault.chars) * 100)}%)`,
     );
   }
 }
-if (allDefault && allWide && allDefault.count !== allWide.count) {
+if (enabledDefault && enabledWide && enabledDefault.count !== enabledWide.count) {
   rec.note(
-    `all-mode lists ${allDefault.count} tools by default and ${allWide.count} with widened capabilities`,
+    `the default listing has ${enabledDefault.count} tools with default capabilities and ${enabledWide.count} with widened capabilities`,
   );
 }
 if (enabledWide && allWide && enabledWide.count > allWide.count)
-  rec.diff("enabled lists more tools than all");
+  rec.diff("the default listing has more tools than all");
 try {
   const mod = await import(
     pathToFileURL(join(proj, "node_modules/browxai/dist/util/capabilities.js")).href
@@ -196,8 +197,8 @@ const rows = [
   ...table.map((head) => ({ head })),
 ];
 for (const [label, r] of [
-  ["default all", bin],
-  [`${wideLabel} all`, probe],
+  ["default listing", bin],
+  [`${wideLabel} all`, wideAll],
 ]) {
   if (!r.ok) continue;
   const s = stats(r.tools);
@@ -205,8 +206,8 @@ for (const [label, r] of [
     head: `split (${label}): descriptions ${n(s.desc)}, inputSchema ${n(s.input)}, outputSchema ${n(s.output)}, annotations ${n(s.notes)}, wire ${n(r.wire)}`,
   });
 }
-if (probe.ok) {
-  const top = probe.tools
+if (wideAll.ok) {
+  const top = wideAll.tools
     .map((t) => [t.name, JSON.stringify(t).length])
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6);

@@ -36,8 +36,11 @@ The server reads capabilities once, at start. `set_config` cannot turn one on.
 If it stays off after a restart, run `reset_config` to clear a saved list that
 leaves it out. More in [Configuring](/security/threat-model/#configuring).
 
-If the tool is missing from the tool list altogether, the `toolList` key is
-`enabled`, which hides tools whose capability is off. The same fix applies.
+If the tool is missing from the tool list altogether, that is the default:
+`tools/list` shows only the tools the server can run, so a tool whose capability
+is off is not listed. The same fix applies, and calling the tool by name still
+returns the refusal above. To list every tool, set `toolList` to `all` (or
+`BROWX_TOOL_LIST=all`) and restart.
 
 ## `capability-required`
 

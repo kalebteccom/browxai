@@ -51,8 +51,10 @@ This page is the working summary.
 ## Capabilities
 
 Tools are grouped into capability categories, resolved once at server start. A
-tool whose capability is disabled returns a structured error when called. It
-still appears in `tools/list`, unless the `toolList` config key is `enabled`.
+tool whose capability is disabled returns a structured error when called. By
+default `tools/list` shows only the tools the server can run, so that tool is
+not listed. Set the `toolList` config key to `all` to list everything. A tool
+called by name still gets the refusal and its hint.
 
 The default set is:
 

@@ -120,8 +120,8 @@ export function registerConfigApprovalTools(host: ToolHost): void {
         const persistedPlugins = [...resolved.plugins].sort();
         // `toolList` is read once at start too: report the live value, and flag
         // a saved one that differs.
-        const liveToolList = host.resolvedConfig.toolList ?? "all";
-        const persistedToolList = resolved.toolList ?? "all";
+        const liveToolList = host.resolvedConfig.toolList ?? "enabled";
+        const persistedToolList = resolved.toolList ?? "enabled";
         // `toolProfile` is read once at start as well, and reported the same way.
         const liveToolProfile = host.resolvedConfig.toolProfile ?? "full";
         const persistedToolProfile = resolved.toolProfile ?? "full";
@@ -180,7 +180,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
       "set_config",
       {
         description:
-          'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. Policy keys can only TIGHTEN against the server environment: `capabilities` must be a subset of the active set (else `error: "capabilities-not-widenable"`); `confirmRequired` add only, `allowedOrigins` narrow only, `blockedOrigins` add only, `disableWebSecurity` off only unless BROWX_DISABLE_WEB_SECURITY=1, `plugins` a subset of BROWX_PLUGINS (else `error: "policy-not-loosenable"`). Saved layers are clamped the same way at every start. `toolList` (`all` or `enabled`) and `toolProfile` (`full` or `core`) set what `tools/list` reports, read once at server start.',
+          'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. Policy keys can only TIGHTEN against the server environment: `capabilities` must be a subset of the active set (else `error: "capabilities-not-widenable"`); `confirmRequired` add only, `allowedOrigins` narrow only, `blockedOrigins` add only, `disableWebSecurity` off only unless BROWX_DISABLE_WEB_SECURITY=1, `plugins` a subset of BROWX_PLUGINS (else `error: "policy-not-loosenable"`). Saved layers are clamped the same way at every start. `toolList` (`enabled`, the default, lists only the tools the server can run; `all` lists every tool) and `toolProfile` (`full` or `core`) set what `tools/list` reports, read once at server start.',
         inputSchema: {
           scope: z.enum(["user", "project"]).describe("Which persistent layer to write."),
           patch: z

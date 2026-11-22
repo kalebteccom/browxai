@@ -106,7 +106,7 @@ export const BUILTIN_DEFAULTS: ResolvedConfig = {
   headless: false,
   hideOverlaySelectors: [],
   plugins: [],
-  toolList: "all",
+  toolList: "enabled",
   toolProfile: "full",
   unstable: {},
 };

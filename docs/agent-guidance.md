@@ -199,12 +199,14 @@ BROWX_CAPABILITIES=read,navigation,action,human,file-io
 ```
 
 A gate-blocked call returns a structured `requiredCapability` error. That's
-the moment to ask for one specific grant, not a reason to start broad. A tool
-in `tools/list` can still be blocked: the listing includes tools whose
-capability is off, unless the operator set `toolList` to `enabled`. A
-tool can also be missing from `tools/list` and still work: under the `core`
-profile (`toolProfile`), call `tool_catalog` to see what the listing leaves
-out. Those tools answer a call by name through the same gate. A
+the moment to ask for one specific grant, not a reason to start broad. By
+default `tools/list` shows only the tools the server can run, so a tool
+whose capability is off is missing from it (the operator can set `toolList`
+to `all` to list everything). A tool called by name still gets the refusal
+and its hint. A tool can also be missing from `tools/list` and still work:
+under the `core` profile (`toolProfile`), call `tool_catalog` to see what
+the listing leaves out. Those tools answer a call by name through the same
+gate. A
 `policy: …` block means a confirm hook held the action, and the flow isn't
 broken. Ask the human to answer it from the DevTools console context the
 prompt names (or on the operator channel, when the operator enabled it), or ask the operator to drop that hook or enable `self-approval` for an

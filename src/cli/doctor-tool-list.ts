@@ -29,17 +29,16 @@ export function toolListRow(env: NodeJS.ProcessEnv = process.env, workspaceRoot?
       fix: `set BROWX_TOOL_LIST or the toolList config key to all or enabled, see ${docsUrl.toolReference}`,
     };
   }
-  if (mode === "enabled") {
+  if (mode === "all") {
     return {
       name: "tool-list",
       ok: true,
-      detail:
-        "enabled: tools/list omits tools whose capability is off. A call by name still returns its refusal and hint.",
+      detail: "all: tools/list reports every tool, including the ones whose capability is off",
     };
   }
   return {
     name: "tool-list",
     ok: true,
-    detail: `all${explicit ? "" : " (default)"}: tools/list reports every tool, including the ones whose capability is off`,
+    detail: `enabled${explicit ? "" : " (default)"}: tools/list shows only the tools this server can run. Set toolList to all to list every tool. A call by name still returns its refusal and hint.`,
   };
 }

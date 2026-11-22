@@ -1,5 +1,5 @@
-// The `toolList` config key: `tools/list` reports every tool by default, and only
-// the tools the server can run when it is `enabled`.
+// The `toolList` config key: `tools/list` reports only the tools the server can run by
+// default (`enabled`), and every registered tool when it is `all`.
 //
 // Each case builds a real server in a hermetic workspace and talks to it over an
 // in-memory MCP transport, so the assertions cover the wire listing and a call by
@@ -53,17 +53,75 @@ afterAll(async () => {
 
 const namesOf = (tools: Array<{ name: string }>) => tools.map((t) => t.name);
 
-describe("toolList: all (the default)", () => {
-  it("lists every registered tool, with or without the key set", async () => {
-    const unset = await connect({ capabilities: DEFAULTS });
-    const explicit = await connect({ toolList: "all", capabilities: DEFAULTS });
-    const { tools } = await unset.client.listTools();
-    const registered = Object.keys(unset.server.handlers);
+/** Tools of the four default capabilities that the default listing must keep. */
+const DEFAULT_CAPABILITY_TOOLS = [
+  "snapshot", // read
+  "find", // read
+  "navigate", // navigation
+  "scroll", // navigation
+  "click", // action
+  "fill", // action
+  "await_human", // human
+];
+
+describe("toolList: all", () => {
+  it("lists every registered tool, whatever the capabilities", async () => {
+    const { client, server } = await connect({ toolList: "all", capabilities: DEFAULTS });
+    const { tools } = await client.listTools();
+    const registered = Object.keys(server.handlers);
     expect(namesOf(tools).sort()).toEqual([...registered].sort());
     expect(namesOf(tools)).toContain("eval_js");
     expect(namesOf(tools)).toContain("network_body");
-    const explicitListing = await explicit.client.listTools();
-    expect(namesOf(explicitListing.tools)).toEqual(namesOf(tools));
+  });
+});
+
+describe("toolList: the default", () => {
+  it("omits eval_js and the other tools whose capability is off", async () => {
+    const { client } = await connect({ capabilities: DEFAULTS });
+    const names = namesOf((await client.listTools()).tools);
+    for (const hidden of ["eval_js", "poll_eval", "network_body", "upload_file"]) {
+      expect(names, hidden).not.toContain(hidden);
+    }
+  });
+
+  it("keeps the tools of the four default capabilities", async () => {
+    const { client } = await connect({ capabilities: DEFAULTS });
+    const names = namesOf((await client.listTools()).tools);
+    for (const kept of DEFAULT_CAPABILITY_TOOLS) expect(names, kept).toContain(kept);
+  });
+
+  it("matches an explicit enabled and lists fewer tools than all", async () => {
+    const unset = await connect({ capabilities: DEFAULTS });
+    const explicit = await connect({ toolList: "enabled", capabilities: DEFAULTS });
+    const all = await connect({ toolList: "all", capabilities: DEFAULTS });
+    const unsetNames = namesOf((await unset.client.listTools()).tools);
+    expect(unsetNames).toEqual(namesOf((await explicit.client.listTools()).tools));
+    expect(unsetNames.length).toBeLessThan(namesOf((await all.client.listTools()).tools).length);
+  });
+
+  it("reports enabled through get_config when the key is not set", async () => {
+    const { server } = await connect({ capabilities: DEFAULTS });
+    const res = await server.handlers.get_config({});
+    const text = res.content[0];
+    const body = JSON.parse(text?.type === "text" ? text.text : "{}") as {
+      config: { toolList: string };
+    };
+    expect(body.config.toolList).toBe("enabled");
+  });
+
+  it("still refuses a hidden tool called by name, with the capability and the hint", async () => {
+    const { client } = await connect({ capabilities: DEFAULTS });
+    expect(namesOf((await client.listTools()).tools)).not.toContain("eval_js");
+    const refusal = await client.callTool({ name: "eval_js", arguments: { expr: "1 + 1" } });
+    const first = refusal.content[0];
+    const body = JSON.parse(first?.type === "text" ? first.text : "{}") as {
+      ok: boolean;
+      requiredCapability: string;
+      hint: string;
+    };
+    expect(body.ok).toBe(false);
+    expect(body.requiredCapability).toBe("eval");
+    expect(body.hint).toContain("BROWX_CAPABILITIES");
   });
 });
 
@@ -90,7 +148,7 @@ describe("toolList: enabled", () => {
 
   it("still refuses an unlisted tool called by name, with the same refusal and hint", async () => {
     const hidden = await connect({ toolList: "enabled", capabilities: DEFAULTS });
-    const shown = await connect({ capabilities: DEFAULTS });
+    const shown = await connect({ toolList: "all", capabilities: DEFAULTS });
     expect(namesOf((await hidden.client.listTools()).tools)).not.toContain("eval_js");
     const call = (c: Client) => c.callTool({ name: "eval_js", arguments: { expr: "1 + 1" } });
     const refusal = await call(hidden.client);
@@ -108,7 +166,7 @@ describe("toolList: enabled", () => {
   });
 
   it("lists fewer tools and fewer characters than all", async () => {
-    const all = await connect({ capabilities: DEFAULTS });
+    const all = await connect({ toolList: "all", capabilities: DEFAULTS });
     const enabled = await connect({ toolList: "enabled", capabilities: DEFAULTS });
     const allTools = (await all.client.listTools()).tools;
     const enabledTools = (await enabled.client.listTools()).tools;

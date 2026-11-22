@@ -647,9 +647,10 @@ Tools group into capabilities, with the default for each one marked. The read-si
 detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 `scroll` / `set_viewport` fall under `navigation`.
 
-A tool whose capability is off still appears in `tools/list`, unless `toolList` is `enabled`
-(see "Configuring"). The listing is a choice and not a policy: a call to the tool gets the gate
-refusal either way.
+By default `tools/list` shows only the tools the server can run, so a tool whose capability is
+off is not listed. Set `toolList` to `all` to list every tool (see "Configuring"). The listing
+changes what a client sees and grants nothing: a call by name to a tool that is not listed gets
+the same gate refusal and hint.
 
 - `read`, default **on**. Tools: `snapshot`, `find`, `text_search`, `inspect`, `screenshot`, `console_read`, `network_read`, `ws_read`, `list_named_refs`, `profile_status`.
 
@@ -825,11 +826,12 @@ default where the environment leaves a key unset):
 | `plugins`            | `BROWX_PLUGINS`              | name a subset, never add                                                                                       |
 
 `toolList` is not in this table. It chooses what `tools/list` reports, and it widens and
-narrows nothing. The default `all` lists every tool, including the ones whose capability is
-off. `enabled` (or `BROWX_TOOL_LIST=enabled`) leaves those out. A call by name to a tool left
-out gets the same gate refusal, and the capabilities are read once at start, so the listing
-does not change while the server runs. `set_config` can change `toolList` in either direction,
-and a restart applies it.
+narrows nothing. The default `enabled` lists only the tools the server can run, so tools whose
+capability is off are left out. `all` (or `BROWX_TOOL_LIST=all`) lists every tool, including
+those. A call by name to a tool left out gets the same gate refusal and hint, and the
+capabilities are read once at start, so the listing does not change while the server runs.
+`set_config` can change `toolList` in either direction, and a restart applies it. Before
+0.18.0 the default was `all`.
 
 `toolProfile` is not in this table either, and it is read once at start the same way. `core`
 lists 24 core tools, the plugin tools and the `tool_catalog` discovery tool, and leaves the rest
@@ -944,7 +946,7 @@ confirmation hook point.
 
 1. `src/util/capabilities.ts`: parser + capability set + gating predicate.
 2. Each MCP tool wrapped in a capability check; disabled tools return a clear error, and
-   stay in `tools/list` unless `toolList` is `enabled`.
+   are left out of `tools/list` by default; `toolList: all` lists them.
 3. `src/policy/origin.ts`: allowlist/blocklist matcher with wildcard support; counts
    off-allowlist egress for `ActionResult.network.egressOffAllowlist`.
 4. `src/policy/confirm.ts`: confirmation-hook policy; named actions route through
