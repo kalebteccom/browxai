@@ -15,6 +15,7 @@ surface" covers.
 ### Changed
 
 - Docs: the README and threat model now say that browsers browxai launches run without Chromium's OS sandbox (Playwright's default).
+- Docs: the tool reference has an "Engine evidence" table with, for each of the eight engines, what ran, where, on which version, on what date and how to rerun it, and `not run` where the repo records no passing run. The README's engine statements now match it: Android has no recorded passing run, `ios-app` has none either, and the Android emulator and Electron runs carry their 0.11.0 date. A row older than the latest release is marked stale in the next release PR.
 - **A guide for containers and CI.** "Run browxai in a container and in CI" covers the reference Docker image, the workspace volume, a shared `serve --socket` server between containers, a CI job in GitHub Actions and plain shell, and which capabilities to leave off. The roadmap marks items 2, 3 and 5 shipped and item 8 built as a guide, and lists what comes next. No change to the npm package.
 
 ## [0.19.0] - 2026-11-22

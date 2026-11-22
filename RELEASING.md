@@ -15,6 +15,8 @@ a version bump.
 
 1. Verify `pnpm typecheck && pnpm test && pnpm test:keystone && pnpm build && pnpm lint && pnpm format:check` all pass.
 2. Promote `## Unreleased` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`.
+   Refresh the engine evidence dates in the same release PR: see
+   [`docs/ai-context/release-process/engine-evidence.md`](docs/ai-context/release-process/engine-evidence.md).
 3. Bump `version` in root `package.json`. That is the only place the host
    version lives — the server's `VERSION` export (MCP handshake, SDK client
    identity) is derived from `package.json` at module load
