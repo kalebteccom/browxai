@@ -8,25 +8,22 @@ surface" covers.
 
 ## Unreleased
 
-**Upgrading from 0.17.3.** `tools/list` now shows only the tools the server can run, so a tool whose capability is off is no longer listed. Nothing becomes callable or uncallable. If a client or a script expects the full list, set `BROWX_TOOL_LIST=all` or `toolList: all`.
+## [0.18.0] - 2026-11-22
 
-### Changed
+**Upgrading from 0.17.3.** Two behavior changes. `tools/list` now shows only the tools the server can run, so a tool whose capability is off is no longer listed. Nothing becomes callable or uncallable. To get the old listing back, set `BROWX_TOOL_LIST=all` or `toolList: all`. And every SDK call resolves to the tool's own result instead of `{ content, data }`. There is no option to get the old shape back, so a script that reads a tool result drops one `.data`:
 
-- **Behavior change: `tools/list` shows only the tools the server can run by default.** The `toolList` config key (and `BROWX_TOOL_LIST`) now defaults to `enabled`. It defaulted to `all` since 0.17.0, where `enabled` was opt-in. A tool whose capability is off, such as `eval_js`, `network_body` or `upload_file` with the default capabilities, is left out of the listing. Calling it by name still returns the same refusal and hint, so no tool becomes callable or uncallable and no capability changes. With the default capabilities the listing goes from 209 tools and 270,977 characters to 163 tools and 204,761 characters, about 24 percent smaller, or about 16,500 fewer tokens as an estimate (characters divided by 4). A client that pinned the name of a tool that is now unlisted will not see it until its capability is granted. To get the old behavior, set `BROWX_TOOL_LIST=all` or `toolList: all` (with `set_config`, then a restart). `get_config` reports `enabled` when nothing is set, `browxai doctor` shows `enabled (default)` on its `tool-list` row, and `browxai --help` names the new default. Upgrading: if a client relies on seeing every tool, set `all`; otherwise nothing to do. See the tool reference and the troubleshooting page.
+```ts
+res.data.data.title; // 0.17.3
+res.data.title; // 0.18.0
+```
 
 ### Added
 
 - **A `core` tool profile for a much smaller `tools/list`.** The new `toolProfile` config key (and `BROWX_TOOL_PROFILE`) takes `full`, the default, or `core`. With `core`, `tools/list` reports 24 tools for the observe, locate, act and verify loop (`navigate`, `go_back`, `snapshot`, `find`, `text_search`, `inspect`, `extract`, `screenshot`, `console_read`, `network_read`, `click`, `fill`, `fill_form`, `select`, `hover`, `press`, `scroll`, `wait_for`, `verify_text`, `verify_visible`, `verify_count`, `close_session`, `list_sessions`, `batch`), every plugin tool, and a new `tool_catalog` tool. `tool_catalog` takes no arguments, belongs to no capability, and returns the tools the listing leaves out, grouped by capability, with a one-line summary each and how to reach them. It exists only under `core`. The profile changes the listing only: a tool it leaves out still answers a call by name through the same capability gate, with the same refusal and hint, and no capability changes. It composes with `toolList`: the capability filter runs first, then the profile. `set_config` can change it, `get_config` reports the live value with a `toolProfilePendingRestart` flag, `browxai doctor` has a `tool-profile` row, and an unknown value stops the server at start. See RFC 0010 and the tool reference.
 
-## [0.17.3] - 2026-11-22
-
-**Upgrading from 0.17.2.** `browxai help chrome` now prints the `chrome` usage, where it printed the top-level help. Error, refusal and hint text changed wording in this release, so match on error codes, `failure.source` and exit codes, which are unchanged.
-
-### Fixed
-
-- **`browxai chrome start --help` prints the `chrome` usage.** `--help` and `-h` after a subcommand exited 0 and ran nothing, but printed the text of `browxai --help` for every subcommand. Each of `chrome` (and `chrome start`, `login`, `stop`, `status`), `doctor`, `init` and `serve` now prints its own usage to stdout, `browxai plugin --help` prints the plugin help, and `browxai help chrome` is the same as `browxai chrome --help`. `browxai --help` is unchanged apart from one line. A wrong argument still prints usage to stderr and exits 2.
-
 ### Changed
+
+- **Behavior change: `tools/list` shows only the tools the server can run by default.** The `toolList` config key (and `BROWX_TOOL_LIST`) now defaults to `enabled`. It defaulted to `all` since 0.17.0, where `enabled` was opt-in. A tool whose capability is off, such as `eval_js`, `network_body` or `upload_file` with the default capabilities, is left out of the listing. Calling it by name still returns the same refusal and hint, so no tool becomes callable or uncallable and no capability changes. With the default capabilities the listing goes from 209 tools and 270,977 characters to 163 tools and 204,761 characters, about 24 percent smaller, or about 16,500 fewer tokens as an estimate (characters divided by 4). A client that pinned the name of a tool that is now unlisted will not see it until its capability is granted. To get the old behavior, set `BROWX_TOOL_LIST=all` or `toolList: all` (with `set_config`, then a restart). `get_config` reports `enabled` when nothing is set, `browxai doctor` shows `enabled (default)` on its `tool-list` row, and `browxai --help` names the new default. Upgrading: if a client relies on seeing every tool, set `all`; otherwise nothing to do. See the tool reference and the troubleshooting page.
 
 - **Behavior change: every SDK call resolves to the tool's own result.** The typed methods, `callTool` and `client.plugins.<namespace>.<tool>` returned `{ content, data }`, where `data` was the parsed tool result. For `extract` that put the title at `result.data.data.title`. They now return the parsed tool result itself, so a script reads `result.data.title`. There is no option to get the old shape back.
 
@@ -43,6 +40,18 @@ surface" covers.
   One rule for every method. A result that is one text item resolves to that text parsed as JSON when it is an object or an array, and to the text string when it is not JSON (a text that parses to a bare number, boolean or `null` stays a string). `snapshot` is a string. `console_read` is an array, which `data` never held before. A result with an image or several content items keeps `{ content, data? }`, with the raw MCP `content` array: an inline `screenshot` (and `screenshot_marks`, `screenshot_region`) comes back this way, and `screenshot` with `path` set returns its JSON. Errors are unchanged. The SDK throws for a gated tool, an unknown tool and a closed client, and a tool failure on the server is still returned as its message (a string) or as `{ ok: false, ... }`. `callTool<T>(name, args)` takes the expected result type as `T`, and the typed `*Result` aliases (`ExtractResult`, `FindResult`, `ActionResult`, and the rest) are now the tool's result type itself. The plugin schemas (`@browxai/plugin-*/schema`) type their tools the same way.
 
   **Upgrade.** Drop one `.data` where you read a tool result: `result.data.data.title` becomes `result.data.title`, and `res.data.ok` becomes `res.ok`. Replace `res.content[0].text` with `res` (a string for `snapshot`, an object for the JSON tools). Keep reading `content` only for an inline screenshot.
+
+- **The docs match the code for the new default, the profile and the SDK return shape.** The tool reference has a new "SDK return values" section and the configuration page, the capabilities page and the troubleshooting page describe `toolList` as `enabled` by default and name `toolProfile`. The README SDK example, the recipes page, the plugin authoring guide and the plugin `schema.d.ts` files read the tool result in its new place. The roadmap marks the default flip, the core profile and the SDK change.
+
+## [0.17.3] - 2026-11-22
+
+**Upgrading from 0.17.2.** `browxai help chrome` now prints the `chrome` usage, where it printed the top-level help. Error, refusal and hint text changed wording in this release, so match on error codes, `failure.source` and exit codes, which are unchanged.
+
+### Fixed
+
+- **`browxai chrome start --help` prints the `chrome` usage.** `--help` and `-h` after a subcommand exited 0 and ran nothing, but printed the text of `browxai --help` for every subcommand. Each of `chrome` (and `chrome start`, `login`, `stop`, `status`), `doctor`, `init` and `serve` now prints its own usage to stdout, `browxai plugin --help` prints the plugin help, and `browxai help chrome` is the same as `browxai chrome --help`. `browxai --help` is unchanged apart from one line. A wrong argument still prints usage to stderr and exits 2.
+
+### Changed
 
 - **The anti-wedge timeout, the wedged-session hint and the failure hints are short and plain.** The timeout error is four sentences where it was a paragraph with capitals and em dashes: retry once, discard the session with `close_session` then `open_session` if it keeps timing out, and raise `timeoutMs` only for one slow call. The `failure.hint` texts and the internal-check (invariant) error lost an internal rule number and the capitals. They still start with `anti-wedge timeout` and `invariant violated`, and `failure.source` is unchanged.
 - **One phrase for an engine that cannot run a tool.** The refusal for a missing engine capability reads `tool "x" is not supported on the "e" engine: it has no "<capability>" sub-interface`, matching the other engine refusals. It said `cannot run on` before. The Electron `navigate` refusal is about half as long.
