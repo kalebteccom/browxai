@@ -15,7 +15,7 @@ const first = (t, n = 200) =>
     .replace(/\s+/g, " ")
     .slice(0, n);
 const yn = (v) => (v ? "yes" : "NO");
-const accepts = (path) =>
+export const accepts = (path) =>
   new Promise((resolve) => {
     const s = connect(path);
     s.once("connect", () => {
@@ -152,7 +152,7 @@ export async function socketPart({ rec, env, proj, WORK, ROOT, fixture, facts })
 }
 
 /** SIGTERM the server, wait, then say what it left behind and kill it. */
-async function stop(server, exitOf, sock, WORK, rec) {
+export async function stop(server, exitOf, sock, WORK, rec) {
   if (exitOf() === null) server.kill("SIGTERM");
   const done = await waitUntil(() => exitOf() !== null, 20_000);
   if (!done.ok) {

@@ -1,7 +1,7 @@
 # RFC 0011: A shell route for agents with shell access
 
 **Date:** 2026-11-16
-**Status:** Proposed, decision pending. Design only, nothing built. Code waits for the maintainer's decision on the questions in "The decision needed".
+**Status:** Accepted, built. The two subcommands, the output document and the exit codes ship as described below. "Settled in the build" lists what the build decided where this text left it open.
 **Trigger:** The roadmap entry for a shell route. Its first step is this RFC: the command shape, the output format and how a session id travels between calls, settled before any code.
 
 ## What this is for
@@ -155,6 +155,23 @@ What the gates bind, stated plainly. They bind what the daemon will do for a cal
 - Should a call with a missing `--session` and no environment variable use the `default` session silently, as MCP does, or warn on standard error? Silent matches MCP.
 - Is exit code 4 worth its own code, or should a refusal exit 1 and carry `requiredCapability` in the output?
 - Does the keystone test run the route against a real daemon in CI? The roadmap asks for one that opens a session, snapshots and clicks, and one that shows a gated tool refusing. Both fit the existing `serve --socket` test setup.
+
+## Settled in the build
+
+- **Names.** `browxai tools` and `browxai call`, as proposed. No existing subcommand used either name.
+- **Real descriptions.** The daemon's `tools/list` now sends the first sentence of each core tool's description and the tool's capability in `_meta` under the key `browxai/capability`, so `browxai tools` needs no local table when a daemon is reachable and the list follows `toolList` and `toolProfile`. A plugin tool is listed with a fixed line and the capability `plugin`, because its own description stays inside the plugin runtime. With no socket, `browxai tools` falls back to the install's registration table and says so on standard error. `browxai tools NAME` always reads that table, so it works with no daemon.
+- **Session default.** A call with no `--session` and no `BROWX_SESSION` uses the `default` session silently, as MCP does.
+- **Exit code 4.** Kept. It is returned when `data.ok` is false and `data` carries a `requiredCapability` field.
+- **Output.** `data` holds a parsed JSON object or array, so `console_read` comes back there. `truncated` is `{ originalChars, maxChars }`. A cut result drops `data` and carries the first characters in `text`. `--max-chars 0` removes the cap, which is the way to read a whole result.
+- **Images.** `--out FILE` writes the first image, owner-only, and refuses to overwrite a file unless `--force` is given. The check runs before the tool does. The write is the command's own and needs no `file-io` capability.
+- **Secrets.** Arguments come inline, from standard input (`-`) or from `--args-file`. `register_secret` refuses inline arguments and exits 2 with the standard input form. A JSON error message names the line and column when the parser gives one, and never the text.
+- **Timeout.** `--timeout MS` sets how long a call waits for the daemon, 120,000 by default and 0 for the longest wait. When the daemon does not answer in time the command exits 3.
+- **`--out`.** The image is written only for a call that succeeded. `--force` unlinks the old entry first, so a symlink is replaced and never followed. A write that fails after the tool ran exits 1, and a path refused before the tool ran exits 2.
+- **Skill.** A section of `harness/driving-browxai/SKILL.md`, about 1,500 characters. There is no separate file.
+- **The client.** `connectSocketClient` in `src/sdk/transport-socket.ts` opens the connection and does the handshake for the SDK and for both commands. There is one client.
+- **Tests.** A hermetic test runs both commands against a daemon on a temporary socket and compares a gated refusal with the one the in-process MCP handler returns. A keystone test opens a session, snapshots, clicks, takes a screenshot with `--out` and shows a gate refusing, all through the command.
+
+Not settled: the cost of one command, the size of typical results against the 40,000 character default, and two commands on one session at once. The published first-run workflow reports the first when the package that ships these commands is installed.
 
 ## References
 

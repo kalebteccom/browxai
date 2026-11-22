@@ -68,6 +68,18 @@ Usage: browxai [subcommand]
                                 (\`createBrowxai({ endpoint: "unix:///..." })\`).
                                 Off by default: you opt in by running it.
                                 --engine <kind> sets the default engine.
+  browxai tools [name]          list the tools a \`serve --socket\` daemon runs
+                                (name, capability, one line), or print one
+                                tool's description and input schema.
+                                --socket <p>, --json
+  browxai call <tool> [json]    run one tool against that daemon and print one
+                                JSON document. Exit 0 ok, 1 the tool failed,
+                                2 usage, 3 no daemon, 4 refused by a gate.
+                                --args-file <f>, --session <id>, --out <f>,
+                                --force, --max-chars <n>, --timeout <ms>.
+                                \`-\` reads the arguments from standard input.
+                                Keep secrets out of the command line: it shows
+                                up in process listings.
   browxai plugin <sub>          install, remove, list, info, upgrade or sync
                                 plugins. Everything stays in the workspace.
                                 \`browxai plugin help\` lists them.

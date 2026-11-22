@@ -72,6 +72,18 @@ const PROBES = {
     stream: "stderr",
     match: /usage: browxai serve/,
   },
+  tools: {
+    args: ["tools", "--bogus"],
+    exit: [2],
+    stream: "stderr",
+    match: /usage: browxai tools/,
+  },
+  call: {
+    args: ["call"],
+    exit: [2],
+    stream: "stderr",
+    match: /usage: browxai call/,
+  },
   plugin: {
     args: ["plugin", "--help"],
     exit: [0],

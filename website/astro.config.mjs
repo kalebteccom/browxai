@@ -188,6 +188,7 @@ export default defineConfig({
           items: [
             { label: "Configuration", slug: "guides/configuration" },
             { label: "Recipes", slug: "guides/recipes" },
+            { label: "Drive browxai from a shell", slug: "guides/shell-route" },
             { label: "Sites behind bot protection", slug: "guides/sites-behind-bot-protection" },
           ],
         },

@@ -18,7 +18,9 @@ The engine seam. `types.ts` declares `EngineKind` (`"chromium" | "firefox" | "we
 
 ### `src/cli/` + `src/cli.ts`
 
-The `browxai` bin. Subcommands: `serve` (socket mode), `install-browser`, and the default stdio MCP server. The bin is `dist/cli.js` after build.
+The `browxai` bin. Subcommands: `serve` (socket mode), `tools` and `call` (the shell route), `doctor`, `chrome`, `init`, `plugin`, and the default stdio MCP server. The bin is `dist/cli.js` after build.
+
+The shell route is a client of a `serve --socket` daemon. It adds no capability and no listener, and it opens its connection through `connectSocketClient` in `src/sdk/transport-socket.ts`, so there is one socket client. The modules are `shell-args.ts` (parsing), `shell-input.ts` (JSON arguments from argv, standard input or a file), `shell-result.ts` (the output document and the exit codes), `shell-connect.ts`, `shell-out.ts` (`--out`), `shell-call.ts` and `shell-tools.ts`. The daemon's `tools/list` entries come from `serve-listing.ts`. A gated tool must refuse through the route exactly as over MCP, and `test/sdk/shell-route.test.ts` holds that check.
 
 ### `src/page/`
 

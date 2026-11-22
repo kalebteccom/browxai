@@ -33,7 +33,7 @@ describe("wantsHelp", () => {
 });
 
 describe("helpTarget", () => {
-  const known = new Set(["doctor", "chrome", "init", "serve", "plugin"]);
+  const known = new Set(["doctor", "chrome", "init", "serve", "tools", "call", "plugin"]);
   const isCommand = (n: string) => known.has(n);
 
   it.each([
@@ -66,10 +66,18 @@ describe("helpTarget", () => {
 
 describe("subcommand usage registry", () => {
   it("registers a usage for every subcommand except plugin, which answers help itself", () => {
-    expect(registeredCommands().sort()).toEqual(["chrome", "doctor", "init", "plugin", "serve"]);
+    expect(registeredCommands().sort()).toEqual([
+      "call",
+      "chrome",
+      "doctor",
+      "init",
+      "plugin",
+      "serve",
+      "tools",
+    ]);
     expect(usageFor("plugin")).toBeUndefined();
     expect(commandFor("plugin")).toBeDefined();
-    for (const name of ["chrome", "doctor", "init", "serve"]) {
+    for (const name of ["chrome", "doctor", "init", "serve", "tools", "call"]) {
       expect(usageFor(name), name).toMatch(new RegExp(`^usage: browxai ${name}\\b`));
     }
   });
@@ -93,5 +101,25 @@ describe("subcommand usage registry", () => {
     expect(usageFor("doctor")).toContain("--verbose");
     expect(usageFor("serve")).toContain("--socket");
     expect(usageFor("init")).toContain("--no-write-user-config");
+    for (const flag of ["--socket", "--json"]) expect(usageFor("tools"), flag).toContain(flag);
+    for (const flag of [
+      "--args-file",
+      "--socket",
+      "--session",
+      "--max-chars",
+      "--timeout",
+      "--out",
+      "--force",
+    ])
+      expect(usageFor("call"), flag).toContain(flag);
+  });
+
+  it("keeps the shell route usage in 80 columns and warns about the command line", () => {
+    for (const name of ["tools", "call"]) {
+      for (const line of usageFor(name)!.split("\n")) {
+        expect(line.length, `${name}: ${line}`).toBeLessThanOrEqual(80);
+      }
+    }
+    expect(usageFor("call")).toMatch(/process listings/);
   });
 });

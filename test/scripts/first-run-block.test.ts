@@ -77,6 +77,18 @@ const pathFacts = (await import(join(REPO, "scripts/first-run/path-facts.mjs")))
     showsInstall: boolean;
     showsLocalInstall?: string;
   };
+  shellFacts: (root: string) => {
+    commands: string[];
+    codes: number[];
+    fields: string[];
+    flags: string[];
+  };
+  withoutShellRoute: <
+    T extends { signatures: Array<{ path: string; flags: string[] }>; flags: string[] },
+  >(
+    cli: T,
+    shell: { flags: string[] },
+  ) => T;
 };
 const row = (pid: number, argv: string[], state = "S"): ProcRow => ({
   pid,
@@ -255,6 +267,41 @@ describe("first-run documented-paths facts", () => {
     expect(c.pluginSubs).toEqual(["install", "remove", "list", "info", "upgrade", "sync"]);
     expect(c.doctorAreas).toContain("attach");
     expect(c.socketMode).toBe("0600");
+  });
+
+  it("reads the shell route's commands, exit codes, output fields and flags from the tool reference", () => {
+    const f = pathFacts.shellFacts(REPO);
+    expect(f.commands.sort()).toEqual(["call", "tools"]);
+    expect(f.codes).toEqual([0, 1, 2, 3, 4]);
+    expect(f.fields).toEqual(["isError", "data", "text", "images", "truncated"]);
+    expect(f.flags).toEqual(
+      expect.arrayContaining([
+        "--args-file",
+        "--force",
+        "--json",
+        "--max-chars",
+        "--out",
+        "--session",
+        "--socket",
+      ]),
+    );
+  });
+
+  it("drops the shell route from the CLI facts, keeping flags another command also takes", () => {
+    const cli = pathFacts.cliFacts(REPO);
+    const shell = pathFacts.shellFacts(REPO);
+    const without = pathFacts.withoutShellRoute(cli, shell);
+    const paths = without.signatures.map((s) => s.path);
+    expect(paths).not.toContain("call");
+    expect(paths).not.toContain("tools");
+    expect(paths).toContain("serve");
+    for (const flag of ["--args-file", "--json", "--max-chars", "--out", "--session"]) {
+      expect(cli.flags, flag).toContain(flag);
+      expect(without.flags, flag).not.toContain(flag);
+    }
+    // `serve` takes --socket and `chrome start` takes --force, so an older build still shows both.
+    expect(without.flags).toContain("--socket");
+    expect(without.flags).toContain("--force");
   });
 
   it("finds the first-party plugin docs/plugins.md installs by name", () => {

@@ -15,9 +15,9 @@ import { TOOL_CATALOG_TOOL } from "../util/tool-profile.js";
 import type { ConfigHost, RegisterHost, ServerServicesHost } from "./host.js";
 
 /** Group label for tools that declare no capability (session lifecycle, `batch`, config). */
-const NO_CAPABILITY = "none";
+export const NO_CAPABILITY = "none";
 /** Group label for a tool with no registration record: a plugin tool. */
-const PLUGIN_GROUP = "plugin";
+export const PLUGIN_GROUP = "plugin";
 
 /** The first sentence of a tool description, cut to `max` characters. */
 export function summaryOf(description: string, max = 140): string {

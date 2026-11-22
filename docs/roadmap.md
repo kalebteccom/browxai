@@ -50,13 +50,14 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Done.** The core profile lists under 50,000 characters (about 12,000 tokens, a target to confirm). A fitness test fails if the core listing grows past its budget. The tool reference documents the profile and its groups. The capability-testbed drives every core tool.
 - **First PR.** The core set as a frozen constant, the config key and environment variable wired to the listing filter from item 1, the budget test, and docs. The default stays full, so nothing changes for anyone who does not opt in.
 
-### 3. A shell route for agents with shell access (M)
+### 3. A shell route for agents with shell access (M, built, unreleased)
 
+- **Status.** Built, as RFC 0011 specifies. `browxai tools` lists the tools a `serve --socket` daemon runs (name, capability, one line), and `browxai call TOOL [ARGS]` runs one tool against it and prints one JSON document (`isError`, `data` or `text`, `images`, `truncated`). Exit codes 0 to 4 tell a shell what happened: 0 ok, 1 the tool failed, 2 usage, 3 daemon unreachable, 4 refused by a capability gate. Arguments come inline, from standard input or from a file, so a secret never has to be in argv. The daemon's `tools/list` now carries real one-line descriptions and each tool's capability. The `driving-browxai` skill has a section for agents with shell access, and the guide is "Drive browxai from a shell".
 - **What.** Two new subcommands: one prints the tool names with one-line descriptions, the other runs one tool by name with JSON arguments against a server started with `browxai serve --socket` and prints the result. A skill file teaches the loop, so an agent with shell access pays for a short skill and no tool schemas.
-- **Why.** An agent with a shell can call a command line, and a short skill file takes less context than 209 schemas. The pieces exist: the socket server, the typed SDK `callTool` surface, and the `driving-browxai` skill under `harness/`. Item 2 shrinks the MCP route and this item adds a second one.
-- **Risk.** Medium. Each command is a new process, so session state has to live in the `serve --socket` daemon. The socket is owner-only (`0600`) and the route goes through the same handlers, so the gates, origin rules and secret masking apply unchanged. No new network listener.
-- **Done.** A documented page, a skill that uses it, and a keystone test that opens a session, snapshots and clicks through the new subcommand, plus one that shows a gated tool refusing.
-- **First PR.** An RFC with the command shape, the output format and how a session id travels between calls. No code until it is accepted.
+- **Why.** An agent with a shell can call a command line, and a short skill file takes less context than 209 schemas. The pieces existed: the socket server, the SDK's socket connection, and the `driving-browxai` skill under `harness/`. Item 2 shrinks the MCP route and this item adds a second one.
+- **Risk.** Medium. Each command is a new process, so session state lives in the `serve --socket` daemon. The socket is owner-only (`0600`) and the route goes through the same handlers, so the gates, origin rules and secret masking apply unchanged. No new network listener, and the commands never start the daemon.
+- **Done.** A documented page, a skill section that uses it, and a keystone test that opens a session, snapshots and clicks through the new subcommand, plus tests that a gated tool refuses through it exactly as it does over MCP.
+- **Not measured yet.** The cost of one command (a Node start and an MCP handshake), the size of a typical `snapshot`, `find` and `network_read` result against the 40,000 character default cap, and two commands on one session at the same moment. The guide says to run calls on one session one at a time until that is tested.
 
 ### 4. Measured numbers and a checked first run (S, done)
 
@@ -152,6 +153,6 @@ Item 4 is done and item 1 shipped its opt-in in 0.17.0. What is left, in this or
 - **Item 2, a lean core tool profile.** The larger cut, opt-in until the numbers say otherwise. It starts by measuring the RFC 0010 candidate set in a real listing.
 - **Item 5, SDK calls that return the tool result.** An RFC for the opt-in or new-method choice.
 
-Item 3, the shell route, starts as an RFC in the same cycle so its design is settled before any code.
+Item 3, the shell route, is built and ships with the next release.
 
 See also the [tool reference](./tool-reference.md), the [threat model](./threat-model.md) and the [plugins overview](./plugins.md). Design records live in [docs/rfcs](../docs/rfcs/README.md).

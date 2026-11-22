@@ -28,7 +28,7 @@ import { ApprovalStore } from "./policy/confirm.js";
 import { openOperatorChannel } from "./helper/operator-channel.js";
 import { log } from "./util/logging.js";
 import { PACKAGE_VERSION } from "./util/version.js";
-import type { ToolResponse } from "./tools/host.js";
+import type { ToolRegistration, ToolResponse } from "./tools/host.js";
 import { buildHost } from "./tools/host-build.js";
 import { registerActionTools } from "./tools/action-tools.js";
 import { registerReadObserveDomTools } from "./tools/read-observe-dom-tools.js";
@@ -112,6 +112,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
    *  capability is off, or when `toolProfile` is `core` and the tool is outside the
    *  core set. */
   isToolListed: (tool: string) => boolean;
+  /** Each core tool's registered description, capability and schema (no plugin tools). */
+  registrations: ReadonlyMap<string, ToolRegistration>;
   /** Programmatic in-process driving seam: the registered MCP tool handlers,
    *  keyed by tool name, each returning the same `{ content: [...] }` shape an
    *  MCP call would. Used by the headless-CI keystone (and any embedder that
@@ -124,6 +126,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       >;
     }>
   >;
+  /** The handlers as served on the wire: a thrown error becomes a masked error result. */
+  wireHandlers: Record<string, (args: unknown) => Promise<ToolResponse>>;
 }> {
   // config flows through the browxai-managed ConfigStore (precedence
   // defaults < env(legacy) < user < project < session). The existing env-driven
@@ -287,6 +291,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // shared seam type (src/tools/host.ts) so extracted tool modules and the
   // composition root agree on the envelope.
   const toolHandlers: Record<string, (args: unknown) => Promise<ToolResponse>> = {};
+  const wireHandlers: Record<string, (args: unknown) => Promise<ToolResponse>> = {};
 
   // populated AFTER every core tool registration when the plugin
   // runtime fires. Declared here so `get_config({scope:"resolved"})` can
@@ -299,6 +304,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const host = buildHost({
     server,
     toolHandlers,
+    wireHandlers,
     registry,
     config,
     configStore,
@@ -386,6 +392,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await server.close().catch(() => undefined);
     },
     isToolListed: listing.isListed,
+    registrations: host.registrations,
     handlers: toolHandlers,
+    wireHandlers,
   };
 }

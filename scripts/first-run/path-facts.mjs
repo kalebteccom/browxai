@@ -87,3 +87,34 @@ export function pluginFacts(root) {
     showsLocalInstall: /browxai plugin install file:\.\/packages\/plugins\/[a-z]+/.exec(page)?.[0],
   };
 }
+
+const SHELL_COMMANDS = ["tools", "call"];
+
+/** The shell route the tool reference documents: the exit-code table and the fields of the output document, from the
+ *  "The shell route" subsection, and every flag its two signatures and that subsection name. */
+export function shellFacts(root) {
+  const cli = section(read(root, "docs/tool-reference.md"), "Sub-commands (CLI)");
+  const sub = cli.slice(Math.max(cli.indexOf("\n### The shell route"), 0));
+  const signatures = cliFacts(root).signatures.filter((s) => SHELL_COMMANDS.includes(s.path));
+  return {
+    commands: signatures.map((s) => s.path),
+    codes: [...sub.matchAll(/^\| (\d) +\|/gm)].map((m) => Number(m[1])),
+    fields: [...sub.matchAll(/^- `(\w+)`:/gm)].map((m) => m[1]),
+    flags: [...new Set([...signatures.flatMap((s) => s.flags), ...flagsIn(sub)])]
+      .filter((f) => !FOREIGN.has(f))
+      .sort(),
+  };
+}
+
+/** The CLI facts without the shell route: for an installed browxai that has not shipped it yet. The two commands and the
+ *  flags only they use leave the comparison; a flag another command also takes (`--socket`, `--force`) stays. */
+export function withoutShellRoute(cli, shell) {
+  const rest = cli.signatures.filter((s) => !SHELL_COMMANDS.includes(s.path));
+  const others = new Set(rest.flatMap((s) => s.flags));
+  const shellOnly = new Set(shell.flags.filter((f) => !others.has(f)));
+  return {
+    ...cli,
+    signatures: rest,
+    flags: cli.flags.filter((f) => !shellOnly.has(f)),
+  };
+}

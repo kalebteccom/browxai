@@ -8,9 +8,18 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **A shell route: `browxai tools` and `browxai call`.** An agent with a shell tool and no MCP client can run one tool per command against a daemon started with `browxai serve --socket PATH`. `browxai call TOOL '{"ref":"e7"}'` runs the tool and prints one JSON document on standard output: `isError`, `data` (the parsed result) or `text`, `images` (type and byte length, never pixels) and `truncated`. The exit code tells a shell what happened: 0 ok, 1 the tool failed or `data.ok` is false, 2 usage, 3 the daemon could not be reached, 4 refused by a capability gate. `browxai tools` prints one line per tool (name, capability, description), and `browxai tools NAME` prints a tool's full description and input schema. Arguments come inline, from standard input with `-`, or from `--args-file`, so a secret never has to be on the command line, and `register_secret` refuses inline arguments. The socket path comes from `--socket` or `BROWX_SOCKET`, with no default and no search. The session id comes from `--session` or `BROWX_SESSION`. `--max-chars` caps the printed result (default 40,000 characters, 0 for no cap), `--timeout MS` sets how long a call waits for the daemon (default 120,000, exit 3 when it does not answer), and `--out FILE` writes the first image of a successful result to a file, owner-only, without overwriting unless `--force` is given (`--force` unlinks the old entry first, so a symlink is replaced and never followed). The commands are clients of the daemon: they add no capability and no listener, every call goes through the daemon's own handler, and a gated tool refuses the same way it does over MCP. They keep no state, so sessions and refs live in the daemon. See RFC 0011, the tool reference and the "Drive browxai from a shell" guide, and the `driving-browxai` skill has a section for agents with shell access.
+- **The `serve --socket` daemon lists real descriptions and capabilities.** Its `tools/list` entries carried a placeholder description (`browxai/<name>`). They now carry the first sentence of the tool's own description, and the tool's capability in `_meta` under `browxai/capability` (`none` for a tool that declares none, `plugin` for a plugin tool). The listing still follows `toolList` and `toolProfile`, and the input schema stays open.
+
 ### Changed
 
 - **Playwright updated to 1.65.1.** The browser to download for a Chromium fallback is the 1.65.1 build (the getting-started page names the new version). The reference `deploy/Dockerfile` base image moves to `playwright:v1.65.1-noble` to match. Upgrading: a Playwright update changes the browser build, so if you already downloaded the 1.64 browser, run `npx playwright-core@1.65.1 install chromium` after upgrading. Machines that use Google Chrome need nothing.
+
+### Fixed
+
+- **The `serve --socket` daemon masks a thrown error's message for registered secrets.** A tool handler that threw reached a socket client as an error whose message skipped the secret mask that the stdio server applies, so a registered secret in that message could reach the client in the clear. The daemon now serves the same masked handlers as stdio, and a thrown error comes back as a masked error result.
 
 ## [0.18.0] - 2026-11-22
 
