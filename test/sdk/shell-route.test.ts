@@ -297,17 +297,18 @@ skipIfWindows("a gated tool refuses through the shell route exactly as over MCP"
     expect(err).not.toContain(value);
   });
 
-  it("does not run a gated tool dispatched inside batch, and matches the MCP answer", async () => {
+  it("reports a gated tool dispatched inside batch as a nested refusal, as MCP does", async () => {
     const args = { calls: [{ tool: "eval_js", args: { expr: "1+1" } }] };
     const viaRoute = await call(["batch", JSON.stringify(args), ...viaSocket()]);
     const report = viaRoute.doc?.data as {
       completed: number;
       failedAt: number | null;
-      results: Array<{ ok: boolean; result?: unknown; error?: string }>;
+      results: Array<{ ok: boolean; result?: { requiredCapability?: string }; error?: string }>;
     };
+    // The step's refusal is the step's `result`, with the gate's own fields.
     expect(report.failedAt).toBe(0);
     expect(report.results[0]?.ok).toBe(false);
-    expect(report.results[0]?.result).toBeUndefined();
+    expect(report.results[0]?.result?.requiredCapability).toBe("eval");
     expect(viaRoute.doc?.data).toEqual(await overMcpSocket("batch", args));
     expect(viaRoute.doc?.data).toEqual(await overStdioServer("batch", args));
   });

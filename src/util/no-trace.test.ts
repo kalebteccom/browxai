@@ -92,10 +92,14 @@ describe("no-trace contract — static source guard", () => {
     // `--no-write` is given. It writes the MCP client's own user-level config (e.g.
     // ~/.cursor/mcp.json) after printing the diff, so the path is the client's own file,
     // not the workspace.
+    // cli/shell-out.ts writes the file `browxai call --out FILE` names: an explicit CLI
+    // argument from the caller's own shell, never under the workspace. The contract is
+    // about the artifacts the server leaves behind, and this is the client's own output.
     const ALLOWED_FILES = new Set([
       "util/workspace.ts",
       "util/config-store.ts",
       "cli/init-user-config.ts",
+      "cli/shell-out.ts",
     ]);
     const files = tsFilesUnder(SRC);
     const offenders: Array<{ file: string; line: string }> = [];
