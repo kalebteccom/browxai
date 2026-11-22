@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Changed
+
+- **Playwright updated to 1.65.1.** The browser to download for a Chromium fallback is the 1.65.1 build (the getting-started page names the new version). The reference `deploy/Dockerfile` base image moves to `playwright:v1.65.1-noble` to match. Upgrading: a Playwright update changes the browser build, so if you already downloaded the 1.64 browser, run `npx playwright-core@1.65.1 install chromium` after upgrading. Machines that use Google Chrome need nothing.
+
 ## [0.18.0] - 2026-11-22
 
 **Upgrading from 0.17.3.** Two behavior changes. `tools/list` now shows only the tools the server can run, so a tool whose capability is off is no longer listed. Nothing becomes callable or uncallable. To get the old listing back, set `BROWX_TOOL_LIST=all` or `toolList: all`. And every SDK call resolves to the tool's own result instead of `{ content, data }`. There is no option to get the old shape back, so a script that reads a tool result drops one `.data`:
