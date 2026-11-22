@@ -1,6 +1,6 @@
 # browxai roadmap
 
-> What we plan to build next, in order, and what we do not plan to build. Written against v0.17.1 on 2026-11-16. It is a plan, and an item can move or drop when evidence changes. Dates are not promised.
+> What we plan to build next, in order, and what we do not plan to build. Written against v0.17.1 on 2026-11-16 and updated for v0.19.0 on 2026-11-22. It is a plan, and an item can move or drop when evidence changes. Dates are not promised.
 
 ## What browxai is for
 
@@ -40,9 +40,9 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Done.** The opt-in shipped with a test of the filtered listing and an unchanged refusal for a hidden tool called by name. The default flipped in 0.18.0, with tests that the default listing leaves out `eval_js`, keeps the tools of the four default capabilities, and still refuses a hidden tool called by name.
 - **Next.** Nothing for this item. Item 2 narrows the same listing further.
 
-### 2. A lean core tool profile, then lazy loading (M, opt-in built, unreleased)
+### 2. A lean core tool profile, then lazy loading (M, opt-in shipped in 0.18.0, lazy loading open)
 
-- **Status.** The core profile is built as an opt-in: `toolProfile` (`BROWX_TOOL_PROFILE`), `full` by default and `core` on request. The core set is the 24 tools of RFC 0010, frozen in `src/util/tool-profile.ts`. Plugin tools stay listed, `open_session` is not in the set, and a `tool_catalog` tool names what the listing leaves out. A tool the profile omits still answers a call by name through the same gate. A test pins the core listing under 40 percent of the full one. Measured on the published 0.19.0 by `.woodpecker/first-run.yml` (tokens are characters divided by 4, an estimate): the core listing has 25 tools, the 24 core tools (46,030 characters) plus `tool_catalog` (407), 46,473 characters in all, about 11,600 tokens. That is 22.7 percent of the default `enabled` listing (163 tools, 204,946 characters) and 17.1 percent of the full list (209 tools, 270,977 characters), with 138 fewer tools than the default. One `tool_catalog` call replies with 35,285 characters (about 8,800 tokens) naming 185 tools, about 76 percent of the core listing, so `tool_catalog` takes an optional `capability` argument that returns one group of the omitted tools. Not measured yet: whether common clients can call a name that is not listed. Lazy loading and the default flip stay open.
+- **Status.** The core profile shipped in 0.18.0 as an opt-in: `toolProfile` (`BROWX_TOOL_PROFILE`), `full` by default and `core` on request. The core set is the 24 tools of RFC 0010, frozen in `src/util/tool-profile.ts`. Plugin tools stay listed, `open_session` is not in the set, and a `tool_catalog` tool names what the listing leaves out. A tool the profile omits still answers a call by name through the same gate. A test pins the core listing under 40 percent of the full one. Measured on the published 0.19.0 by `.woodpecker/first-run.yml` (tokens are characters divided by 4, an estimate): the core listing has 25 tools, the 24 core tools (46,030 characters) plus `tool_catalog` (407), 46,473 characters in all, about 11,600 tokens. That is 22.7 percent of the default `enabled` listing (163 tools, 204,946 characters) and 17.1 percent of the full list (209 tools, 270,977 characters), with 138 fewer tools than the default. One `tool_catalog` call replies with 35,285 characters (about 8,800 tokens) naming 185 tools, about 76 percent of the core listing, so `tool_catalog` takes an optional `capability` argument that returns one group of the omitted tools. Not measured yet: whether common clients can call a name that is not listed. Lazy loading and the default flip stay open.
 - **What.** A config key and an environment variable to pick the tool profile, with two values, full (today) and core. The core profile lists about 25 to 35 tools: session control, `navigate`, `snapshot`, `find`, the basic actions, `wait_for`, `screenshot`, `console_read`, `network_read`, the `verify_*` family and `batch`. A profile could add named groups, such as storage. Lazy loading, where the server announces more tools on demand, comes after, and only for clients that honour list-changed notices.
 - **Why.** Item 1 trims the listing by 24 percent, measured. What remains is 163 tools and 204,946 characters (measured on 0.19.0), and the core profile lists 46,473, a further cut of about 77 percent. Agents that only need to open a page and click should not carry the schemas for HAR, heap snapshots and canvas gestures. The 0.15.0 trim already took 18 percent out of the descriptions, and in the 209-tool listing the input schemas (149,630 characters) are larger than the descriptions (109,909). The largest single tools are `open_session` (12,221 characters), `click` (4,008), `emulate_usb` (3,052), `asset_export` (3,050), `emulate_bluetooth` (3,025) and `scroll` (2,989). That figure for `open_session` matches the one RFC 0010 derived (about 12,200).
 - **Measured.** RFC 0010 estimated about 45,000 characters for the core listing and about 24,000 for one full `tool_catalog` reply. The first-run workflow measured 46,473 (3 percent above the estimate) and 35,285 (47 percent above), both on the published 0.19.0. The listing the profile itself produces is pinned in the budget test below.
@@ -50,9 +50,9 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Done.** The core profile lists under 50,000 characters (measured: 46,473, about 11,600 tokens). A fitness test fails if the core listing grows past its budget. The tool reference documents the profile and its groups. The capability-testbed drives every core tool.
 - **First PR.** The core set as a frozen constant, the config key and environment variable wired to the listing filter from item 1, the budget test, and docs. The default stays full, so nothing changes for anyone who does not opt in.
 
-### 3. A shell route for agents with shell access (M, built, unreleased)
+### 3. A shell route for agents with shell access (M, shipped in 0.19.0)
 
-- **Status.** Built, as RFC 0011 specifies. `browxai tools` lists the tools a `serve --socket` daemon runs (name, capability, one line), and `browxai call TOOL [ARGS]` runs one tool against it and prints one JSON document (`isError`, `data` or `text`, `images`, `truncated`). Exit codes 0 to 4 tell a shell what happened: 0 ok, 1 the tool failed, 2 usage, 3 daemon unreachable, 4 refused by a capability gate. Arguments come inline, from standard input or from a file, so a secret never has to be in argv. The daemon's `tools/list` now carries real one-line descriptions and each tool's capability. The `driving-browxai` skill has a section for agents with shell access, and the guide is "Drive browxai from a shell".
+- **Status.** Shipped in 0.19.0, as RFC 0011 specifies. `browxai tools` lists the tools a `serve --socket` daemon runs (name, capability, one line), and `browxai call TOOL [ARGS]` runs one tool against it and prints one JSON document (`isError`, `data` or `text`, `images`, `truncated`). Exit codes 0 to 4 tell a shell what happened: 0 ok, 1 the tool failed, 2 usage, 3 daemon unreachable, 4 refused by a capability gate. Arguments come inline, from standard input or from a file, so a secret never has to be in argv. The daemon's `tools/list` now carries real one-line descriptions and each tool's capability. The `driving-browxai` skill has a section for agents with shell access, and the guide is "Drive browxai from a shell".
 - **What.** Two new subcommands: one prints the tool names with one-line descriptions, the other runs one tool by name with JSON arguments against a server started with `browxai serve --socket` and prints the result. A skill file teaches the loop, so an agent with shell access pays for a short skill and no tool schemas.
 - **Why.** An agent with a shell can call a command line, and a short skill file takes less context than 209 schemas. The pieces existed: the socket server, the SDK's socket connection, and the `driving-browxai` skill under `harness/`. Item 2 shrinks the MCP route and this item adds a second one.
 - **Risk.** Medium. Each command is a new process, so session state lives in the `serve --socket` daemon. The socket is owner-only (`0600`) and the route goes through the same handlers, so the gates, origin rules and secret masking apply unchanged. No new network listener, and the commands never start the daemon.
@@ -71,13 +71,13 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Risk.** Low. Tokens are characters divided by 4, an estimate, and times are from one box. No claim of being faster or cheaper than another tool goes in, because there is no like-for-like method.
 - **Left out.** Snapshot size on three fixed fixture pages, a test that fails when a figure grows past a budget, and a README line that links to the figures. Item 2 adds the budget test for the core listing.
 
-### 5. SDK calls that return the tool result (S/M, decided, ships in 0.18.0)
+### 5. SDK calls that return the tool result (S/M, shipped in 0.18.0)
 
 - **What.** `browxai.extract()` in the SDK returned `{ content, data }`, where `data` is the tool's own result `{ ok, data, ... }`, so a script read `result.data.data.title`. The owner decided to change every tool-calling method, in place, to resolve to the tool's own result. A script reads `result.data.title`, and a failure is `{ ok: false, failure }` at the top level. There is no client option and no second method name, so the old shape is gone and cannot be switched back on.
 - **The rule.** One text item resolves to its JSON parsed (an object or an array), or to the string when it is not JSON. A result with an image or several content items (an inline `screenshot`) keeps `{ content, data? }`, so the raw MCP content stays reachable. Errors are unchanged.
 - **Why.** It is the first thing a script author writes, and the doubled `data` read like a mistake.
 - **Risk.** Medium. The return shape of an SDK method is part of the stable surface, so this breaks scripts that read `result.data.data` or `result.content[0].text`. It ships in 0.18.0 as a documented behavior change, with a before and after snippet and an upgrade line in the changelog.
-- **Status.** Decided. The change, the README example, the SDK tests and the tool-reference section ("SDK return values") land with 0.18.0. It follows a patch release that is cut first.
+- **Status.** Shipped in 0.18.0. The change, the README example, the SDK tests and the tool-reference section ("SDK return values") landed together, after a patch release that was cut first.
 
 ### 6. Dated evidence for every engine (M)
 
@@ -96,10 +96,11 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 - **Done.** The keystone passes on a real WebDriverAgent with the Xcode and runtime versions recorded, and the README says so. Until then the wording stays "unproven".
 - **First PR.** A runbook for the manual run: install steps, the exact command, what to attach to the release notes. Docs only.
 
-### 8. A reference deployment for containers and CI (M)
+### 8. A reference deployment for containers and CI (M, built as a guide)
 
+- **Status.** The guide is built: "Run browxai in a container and in CI" covers the reference image, why its tag equals the `playwright-core` version, the workspace volume, what browxai does about `--no-sandbox` and shared memory, `serve --socket` shared between containers and what the socket's `0600` mode means for user ids, a CI job in GitHub Actions and plain shell, the per-call deadline, and which capabilities to leave off. Not built: the compose file, an image build with a headless snapshot smoke test on each release, and the live-view and operator-channel setup for a person who needs to watch or take over.
 - **What.** Docs and a tested example, before any service: the `deploy/Dockerfile`, a compose file that runs `browxai serve --socket` with a mounted workspace, a CI recipe, and the live-view and operator-channel setup for a human who needs to watch or take over.
-- **Why.** `deploy/Dockerfile` exists and the security best-practices page covers running in a container. Nothing yet says what one `serve --socket` server can share (one Chromium), how to run it in CI, or how a person watches and takes over. Anyone who wants many parallel browsers needs those answers before a service would help.
+- **Why.** `deploy/Dockerfile` existed and the security best-practices page covers running in a container, but nothing said what one `serve --socket` server can share (one Chromium) or how to run it in CI. The guide now says both. How a person watches and takes over is still undocumented. Anyone who wants many parallel browsers needs those answers before a service would help.
 - **Risk.** Medium. The capability gates are policy and the container is the boundary, and the page has to say so plainly. Nothing here adds a network listener.
 - **Done.** The page, the compose file, and an image build plus a headless snapshot smoke test that runs on each release.
 - **First PR.** The docs page only, from what the Dockerfile and the `serve` docs already say.
@@ -147,12 +148,12 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 
 ## Next release
 
-Item 4 is done and item 1 shipped its opt-in in 0.17.0. What is left, in this order:
+Items 1 to 5 are shipped, and item 8 is built as a guide with the compose file and a release smoke test still open. What comes next, in this order:
 
-- **Item 1, the default flip.** An owner decision, with the 24 percent figure now measured.
-- **Item 2, a lean core tool profile.** The larger cut, opt-in until the numbers say otherwise. It starts by measuring the RFC 0010 candidate set in a real listing.
-- **Item 5, SDK calls that return the tool result.** An RFC for the opt-in or new-method choice.
+- **Item 6, dated evidence for every engine.** The table first, filled from the latest testbed report, with blanks marked "not run".
+- **Item 9, replay player panels.** The panel manifest schema and its docs, with no player change.
+- **Item 10, plugin ecosystem growth.** The "write your first plugin" section in the authoring guide, checked by following it on a clean machine.
 
-Item 3, the shell route, is built and ships with the next release.
+Two items stay parked. Item 11, the natural-language action layer, waits for the owner's yes or no on its RFC. Item 7, the real-device iOS lane, waits for a macOS machine with Xcode and a signed WebDriverAgent build, and for the owner.
 
 See also the [tool reference](./tool-reference.md), the [threat model](./threat-model.md) and the [plugins overview](./plugins.md). Design records live in [docs/rfcs](../docs/rfcs/README.md).
