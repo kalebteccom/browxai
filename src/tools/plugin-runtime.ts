@@ -24,7 +24,7 @@ export interface PluginRuntimeDeps {
   server: McpServer;
   noteMetrics: (toolName: string, args: unknown, res: ToolResponse, startedAt: number) => void;
   noteDiagnostics: (toolName: string, args: unknown, res: ToolResponse, startedAt: number) => void;
-  /** Told the capability each plugin tool declared, so the `toolList: "enabled"`
+  /** Told the capability each plugin tool declared, so the default `toolList: "enabled"`
    *  listing can leave out the plugin tools the server cannot run. */
   notePluginTool?: (toolName: string, capability: Capability | undefined) => void;
 }

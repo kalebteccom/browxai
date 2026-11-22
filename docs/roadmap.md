@@ -24,21 +24,21 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 | 10  | Plugin ecosystem growth                      | M    |
 | 11  | An optional natural-language action layer    | L    |
 
-### 1. List only the tools whose capability is on (S, opt-in shipped in 0.17.0)
+### 1. List only the tools whose capability is on (S, opt-in in 0.17.0, default in 0.18.0)
 
-- **What.** `toolList` (`BROWX_TOOL_LIST`) shipped in 0.17.0. Set to `enabled`, `tools/list` leaves out a tool when its capability is off. A call to a hidden tool still reaches the gate and returns the refusal that names the capability to grant. The default stays `all`. Flipping the default is a separate decision.
+- **What.** `toolList` (`BROWX_TOOL_LIST`) shipped in 0.17.0 as an opt-in. With `enabled`, `tools/list` leaves out a tool when its capability is off. A call to a hidden tool still reaches the gate and returns the refusal that names the capability to grant. The owner decided to flip the default to `enabled`, and 0.18.0 does it as a documented behavior change. `toolList: all` or `BROWX_TOOL_LIST=all` brings back the full listing.
 - **Measured.** Published browxai@0.17.1, `tools/list` over stdio on a Linux CI box, from the manual workflow `.woodpecker/first-run.yml`. Tokens are characters divided by 4, an estimate.
 
 | Capabilities        | `toolList` | Tools | Characters | Tokens (est.) |
 | ------------------- | ---------- | ----- | ---------- | ------------- |
-| default four        | unset      | 209   | 270,977    | about 67,700  |
+| default four        | `all`      | 209   | 270,977    | about 67,700  |
 | default four        | `enabled`  | 163   | 204,761    | about 51,200  |
 | 21 of 23 documented | either     | 209   | 270,977    | about 67,700  |
 
-- **Why.** `enabled` lists 46 fewer tools and 24 percent fewer characters for a default user. The earlier estimate was 25 to 30 percent, so the figure is now measured. With 21 of the 23 documented capabilities on, both modes list all 209 tools. The other two capabilities need a daemon socket, which the run did not have.
-- **Risk.** Low. The capability set is fixed at server start, so the listing does not change mid-session and no list-changed notice is needed. A client that pinned a tool name sees it vanish until the capability is granted, so the refusal text and the troubleshooting page must still explain it. Flipping the default changes what every default user sees in `tools/list`, so that step ships as a minor with a CHANGELOG note.
-- **Done.** The opt-in shipped with a test of the filtered listing and an unchanged refusal for a hidden tool called by name. Open: the default flip.
-- **Next.** The owner decides whether to flip the default, now that the number is in. The gain is the 24 percent above.
+- **Why.** The table was measured on 0.17.1, where unset meant `all`. `enabled` lists 46 fewer tools and 24 percent fewer characters for a default user. The earlier estimate was 25 to 30 percent, so the figure is now measured. With 21 of the 23 documented capabilities on, both modes list all 209 tools. The other two capabilities need a daemon socket, which the run did not have.
+- **Risk.** Low. The capability set is fixed at server start, so the listing does not change mid-session and no list-changed notice is needed. A client that pinned a tool name sees it vanish until the capability is granted, so the refusal text and the troubleshooting page must still explain it. Flipping the default changes what every default user sees in `tools/list`, so that step ships as a minor with a CHANGELOG note that starts with "Behavior change".
+- **Done.** The opt-in shipped with a test of the filtered listing and an unchanged refusal for a hidden tool called by name. The default flipped in 0.18.0, with tests that the default listing leaves out `eval_js`, keeps the tools of the four default capabilities, and still refuses a hidden tool called by name.
+- **Next.** Nothing for this item. Item 2 narrows the same listing further.
 
 ### 2. A lean core tool profile, then lazy loading (M, opt-in built, unreleased)
 

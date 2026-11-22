@@ -108,8 +108,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   start: (transport?: Transport) => Promise<void>;
   shutdown: () => Promise<void>;
   /** Whether `tools/list` reports this tool under the `toolList` and `toolProfile`
-   *  settings. Every tool is listed unless `toolList` is `enabled` and its capability
-   *  is off, or `toolProfile` is `core` and the tool is outside the core set. */
+   *  settings. A tool is left out when `toolList` is `enabled` (the default) and its
+   *  capability is off, or when `toolProfile` is `core` and the tool is outside the
+   *  core set. */
   isToolListed: (tool: string) => boolean;
   /** Programmatic in-process driving seam: the registered MCP tool handlers,
    *  keyed by tool name, each returning the same `{ content: [...] }` shape an
@@ -137,7 +138,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const cfgEnv = resolvedToEnv(resolvedConfig);
   const config = resolveConfig(cfgEnv);
   // Which tools `tools/list` reports. Read once, like capabilities.
-  const toolListMode = resolvedConfig.toolList ?? "all";
+  const toolListMode = resolvedConfig.toolList ?? "enabled";
   const toolProfile = resolvedConfig.toolProfile ?? "full";
   // approvals are session-independent policy state — server-level.
   const approvals = new ApprovalStore();
@@ -158,7 +159,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   for (const w of caps.warnings) log.warn(w);
   if (toolListMode === "enabled")
     log.info(
-      "toolList is enabled: tools/list omits tools whose capability is off. Calling one by name still returns its refusal and hint.",
+      "toolList is enabled (default): tools/list omits tools whose capability is off. Set toolList to all to list them. Calling one by name still returns its refusal and hint.",
     );
   if (toolProfile === "core")
     log.info(

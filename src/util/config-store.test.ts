@@ -103,11 +103,11 @@ describe("ConfigStore precedence", () => {
 });
 
 describe("toolList", () => {
-  it("defaults to all and the env layer sets it, ignoring case and spacing", () => {
-    expect(new ConfigStore(dir, {}).resolve().toolList).toBe("all");
+  it("defaults to enabled and the env layer sets it, ignoring case and spacing", () => {
+    expect(new ConfigStore(dir, {}).resolve().toolList).toBe("enabled");
     expect(envLayer({ BROWX_TOOL_LIST: " Enabled " })).toEqual({ toolList: "enabled" });
     expect(envLayer({ BROWX_TOOL_LIST: "" })).toEqual({});
-    expect(new ConfigStore(dir, { BROWX_TOOL_LIST: "enabled" }).resolve().toolList).toBe("enabled");
+    expect(new ConfigStore(dir, { BROWX_TOOL_LIST: "all" }).resolve().toolList).toBe("all");
   });
 
   it("stops on an unknown env value and names the valid ones", () => {

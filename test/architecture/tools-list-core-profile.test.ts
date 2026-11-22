@@ -1,5 +1,7 @@
-// The `toolProfile` config key: `tools/list` reports every tool by default, and the
-// core set plus plugin tools plus the `tool_catalog` discovery tool when it is `core`.
+// The `toolProfile` config key: `tools/list` has no profile limit by default (`full`),
+// and holds the core set plus plugin tools plus the `tool_catalog` discovery tool when
+// it is `core`. `toolList` decides separately which tools the server can run; the
+// cases that need every registered tool set `toolList: all`.
 //
 // Each case builds a real server in a hermetic workspace and talks to it over an
 // in-memory MCP transport, so the assertions cover the wire listing and a call by
@@ -101,8 +103,12 @@ describe("the core set", () => {
 
 describe("toolProfile: full (the default)", () => {
   it("lists every registered tool, with or without the key set, and has no discovery tool", async () => {
-    const unset = await connect({ capabilities: DEFAULTS });
-    const explicit = await connect({ toolProfile: "full", capabilities: DEFAULTS });
+    const unset = await connect({ toolList: "all", capabilities: DEFAULTS });
+    const explicit = await connect({
+      toolProfile: "full",
+      toolList: "all",
+      capabilities: DEFAULTS,
+    });
     const { tools } = await unset.client.listTools();
     expect(namesOf(tools).sort()).toEqual(Object.keys(unset.server.handlers).sort());
     expect(namesOf(tools)).not.toContain(TOOL_CATALOG_TOOL);
@@ -125,7 +131,7 @@ describe("toolProfile: core", () => {
   });
 
   it("lists far fewer characters than the full profile", async () => {
-    const full = await connect({ capabilities: DEFAULTS });
+    const full = await connect({ toolList: "all", capabilities: DEFAULTS });
     const core = await connect({ toolProfile: "core", capabilities: DEFAULTS });
     const fullChars = JSON.stringify((await full.client.listTools()).tools).length;
     const coreChars = JSON.stringify((await core.client.listTools()).tools).length;
@@ -143,7 +149,7 @@ describe("toolProfile: core", () => {
 
   it("still refuses an omitted, capability-gated tool with the same refusal and hint", async () => {
     const core = await connect({ toolProfile: "core", capabilities: DEFAULTS });
-    const full = await connect({ capabilities: DEFAULTS });
+    const full = await connect({ toolList: "all", capabilities: DEFAULTS });
     expect(namesOf((await core.client.listTools()).tools)).not.toContain("eval_js");
     const call = (c: Client) => c.callTool({ name: "eval_js", arguments: { expr: "1 + 1" } });
     const refusal = await call(core.client);

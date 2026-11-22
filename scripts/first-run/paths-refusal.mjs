@@ -1,8 +1,8 @@
 // Path 4: a capability refusal as the troubleshooting page describes it. Call a gated tool (eval_js) with the default
 // capabilities and compare the refusal text and its hint with what "A tool is disabled" quotes and says to do. Then follow
 // the page's fix: restart with BROWX_CAPABILITIES widened and confirm the tool runs. Also the page's other claims about the
-// same refusal: `set_config` cannot turn the capability on, and with BROWX_TOOL_LIST=enabled the tool is missing from the
-// list yet a call by name returns the same refusal. Only the last step starts a browser.
+// same refusal: `set_config` cannot turn the capability on, the default tool list leaves the tool out, and with
+// BROWX_TOOL_LIST=all the tool is listed and a call by name returns the same refusal. Only the last step starts a browser.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { secs } from "./block.mjs";
@@ -59,9 +59,9 @@ export async function refusalPart({ rec, env, proj, WORK, fixture, facts, browse
   const t0 = Date.now();
   await withServer(ctx, {}, async (c) => {
     const names = await toolNames(c);
-    if (!names.includes(f.tool))
+    if (names.includes(f.tool))
       rec.diff(
-        `with the default tool list ${f.tool} is not listed, the configuration page says every tool is listed`,
+        `with the default tool list ${f.tool} is listed, the configuration page says the default list shows only the tools the server can run`,
       );
     const r = await c.callTool(f.tool, argsFor);
     refusal = r.data;
@@ -104,21 +104,21 @@ export async function refusalPart({ rec, env, proj, WORK, fixture, facts, browse
     `[refusal] ${f.tool}, default capabilities | ${refusal?.ok === false ? "refused" : "NOT refused"} | requiredCapability ${refusal?.requiredCapability}, hint ${String(refusal?.hint ?? "").length} chars, set_config enables it: ${setConfigWorked ? "YES" : "no"} | ${secs(Date.now() - t0)}`,
   );
 
-  // (b) BROWX_TOOL_LIST=enabled: missing from the list, the same refusal by name.
-  await withServer(ctx, { BROWX_TOOL_LIST: "enabled" }, async (c) => {
+  // (b) BROWX_TOOL_LIST=all: listed, and the same refusal by name.
+  await withServer(ctx, { BROWX_TOOL_LIST: "all" }, async (c) => {
     const listed = (await toolNames(c)).includes(f.tool);
     const r = await c.callTool(f.tool, argsFor);
     const same = refusal && r.data?.error === refusal.error && r.data?.hint === refusal.hint;
     rec.line(
-      `[refusal] BROWX_TOOL_LIST=enabled | ${f.tool} listed: ${listed ? "YES" : "no"}, refused by name with the same text and hint: ${same ? "yes" : "NO"}`,
+      `[refusal] BROWX_TOOL_LIST=all | ${f.tool} listed: ${listed ? "yes" : "NO"}, refused by name with the same text and hint: ${same ? "yes" : "NO"}`,
     );
-    if (listed)
+    if (!listed)
       rec.diff(
-        `BROWX_TOOL_LIST=enabled still lists ${f.tool}, the page says a disabled tool is missing from the list`,
+        `BROWX_TOOL_LIST=all does not list ${f.tool}, the page says toolList all lists every tool`,
       );
     if (!same)
       rec.diff(
-        `BROWX_TOOL_LIST=enabled: a call to ${f.tool} by name did not return the same refusal and hint`,
+        `BROWX_TOOL_LIST=all: a call to ${f.tool} by name did not return the same refusal and hint`,
       );
   });
 

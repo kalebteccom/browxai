@@ -42,6 +42,6 @@ export function toolProfileRow(
   return {
     name: "tool-profile",
     ok: true,
-    detail: `full${explicit ? "" : " (default)"}: tools/list reports every tool`,
+    detail: `full${explicit ? "" : " (default)"}: the profile leaves out no tool, toolList decides what is listed`,
   };
 }

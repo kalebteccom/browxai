@@ -270,6 +270,8 @@ export async function startBrowxaiServe(config: DogfoodRunConfig): Promise<Manag
       BROWX_WORKSPACE: config.workspace,
       BROWX_CAPABILITIES: config.browxaiCapabilities.join(","),
       BROWX_HEADLESS: config.headless ? "1" : "0",
+      // The missions name tools across every capability, so the agent gets the full list.
+      BROWX_TOOL_LIST: "all",
     },
   });
   try {

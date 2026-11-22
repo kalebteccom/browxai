@@ -1,11 +1,11 @@
 // The `toolList` config key: which tools `tools/list` reports.
 //
-// `all` (default) lists every registered tool, including the ones whose capability
-// is off. A disabled tool refuses at call time with a hint that says how to enable
-// it, so an agent that sees it listed can learn what to ask the operator for.
-// `enabled` lists only the tools the server can run. A tool that is left out still
-// answers a call by name with the same refusal and hint: this module changes what
-// is listed and nothing about what is callable.
+// `enabled` (default) lists only the tools the server can run. A tool that is left
+// out still answers a call by name with the same refusal and hint: this module
+// changes what is listed and nothing about what is callable.
+// `all` lists every registered tool, including the ones whose capability is off. A
+// disabled tool refuses at call time with a hint that says how to enable it, so an
+// agent that sees it listed can learn what to ask the operator for.
 //
 // The capability behind each tool is the one the call-time gate reads:
 // `isToolEnabled` for core tools, and the capability a plugin declared for its own

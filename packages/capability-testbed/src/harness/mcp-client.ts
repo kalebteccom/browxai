@@ -37,6 +37,8 @@ function cleanChildEnv(opts: CreateMcpClientOptions): Record<string, string> {
   env.BROWX_WORKSPACE = opts.workspace;
   env.BROWX_CAPABILITIES = opts.capabilities.join(",");
   env.BROWX_HEADLESS = opts.headless ? "1" : "0";
+  // The harness covers every tool, so it lists every tool too, whatever the default is.
+  env.BROWX_TOOL_LIST = "all";
   return env;
 }
 

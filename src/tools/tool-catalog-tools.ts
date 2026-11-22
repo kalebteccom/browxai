@@ -4,8 +4,8 @@
 // the server registers and `tools/list` leaves out, grouped by capability, with a
 // one-line summary each, and says how to reach them. The tool belongs to no
 // capability, so the capability gate always lets it run. Under the `full` profile
-// every tool is listed already, so it is not registered and the default listing is
-// unchanged.
+// the profile leaves nothing out, so it is not registered and the default listing
+// has no discovery tool.
 //
 // The omitted set is computed from the same predicate `tools/list` uses
 // (`ToolListing.isListed`), at call time, so the two cannot disagree.
@@ -37,7 +37,7 @@ export function registerToolCatalogTool(
     TOOL_CATALOG_TOOL,
     {
       description:
-        "List the tools this server registers but `tools/list` leaves out under the `core` profile, grouped by capability, with a one-line summary each. Every one stays callable by name, through the same capability gate. Takes no arguments. Set `toolProfile` to `full` and restart the server to list them all.",
+        "List the tools this server registers but `tools/list` leaves out under the `core` profile, grouped by capability, with a one-line summary each. Every one stays callable by name, through the same capability gate. Takes no arguments. Set `toolProfile` to `full` and restart the server to list the ones the server can run.",
       inputSchema: {},
     },
     async () => {
@@ -62,7 +62,8 @@ export function registerToolCatalogTool(
         note:
           "These tools are registered and callable by name, through the same capability gate as every listed tool. " +
           "A group with enabled false needs its capability added to BROWX_CAPABILITIES first. " +
-          "To list every tool, set BROWX_TOOL_PROFILE=full (or toolProfile to full with set_config) and restart the browxai server.",
+          "To list the tools the server can run, set BROWX_TOOL_PROFILE=full (or toolProfile to full with set_config) and restart the browxai server. " +
+          "Tools whose capability is off stay out of the listing until BROWX_TOOL_LIST=all is set too.",
         groups: ordered.map((capability) => ({
           capability,
           enabled:

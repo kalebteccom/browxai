@@ -12,14 +12,14 @@ The profile changes what the server lists. It does not change what the server ca
 
 ## The problem, measured
 
-Figures from the CHANGELOG and the docs, then my own estimates, which are marked as such.
+Figures from the CHANGELOG and the docs, then my own estimates, which are marked as such. This RFC was written when `toolList` defaulted to `all`. 0.18.0 flipped that default to `enabled`, so the "default user" figures below are the `all` listing, and a user who sets nothing now gets the `enabled` listing (163 tools, 204,761 characters). Where the text says "today's behaviour" or "byte for byte what it is today", read it as the 0.17 listing, which `toolList: all` still gives.
 
 - `tools/list` holds 209 tools, 269,340 characters, about 67,000 tokens (CHANGELOG, "`tools/list` is about 18 percent smaller"). That is 0.249 tokens per character, and I use that ratio for every token figure below.
 - Before that trim the listing was 328,777 characters (about 82,000 tokens). The shared `session`, `timeoutMs`, `mode`, `contextRef`, `ref` and `coords` descriptions were already shortened, so the remaining lever is the number of tools.
 - `toolList` set to `enabled` leaves out each tool whose capability is off (tool reference, `toolList` section). Under the four default capabilities that is the default-off tools. No exact figure is published. My count of the registration source puts the default-capability tools at about 76 percent of the measured text (145 of the 188 tools I could read), so I estimate an `enabled` listing at 200,000 to 215,000 characters, or 50,000 to 53,000 tokens. The first implementation PR should replace that with a measured number.
 - One tool is a large share by itself. `open_session` is about 11,640 characters of source, 4.3 percent of the whole listing, because it carries the mode, engine, profile and policy options.
 
-So a default user pays about 67,000 tokens, an `enabled` user about 51,000, and an agent that needs a dozen tools still carries the other hundred and ninety-odd.
+So a user on `toolList: all` pays about 67,000 tokens (the 0.17 default), an `enabled` user about 51,000 (the default since 0.18.0), and an agent that needs a dozen tools still carries the other hundred and ninety-odd.
 
 ## How I measured the candidate
 
@@ -66,7 +66,7 @@ I left it out of the candidate. Its own description says that any tool with a `s
 
 - `toolList` set to `all` with the core profile lists the core tools, including any whose capability is off. A call to one of those still returns the capability refusal.
 - `toolList` set to `enabled` with the core profile lists the core tools whose capability is on. With the default capabilities that is all 24.
-- The full profile changes nothing. It is today's behaviour.
+- The full profile changes nothing: the listing is whatever `toolList` gives.
 
 The profile is read once at server start, like capabilities and `toolList`, so the listing does not change while the server runs and no `tools/list_changed` notice is sent. A profile only removes tools from the listing. A tool outside the profile still answers a call by name, with the same handler and the same gate it has today.
 
@@ -91,7 +91,7 @@ A client whose model can only call tools that appeared in `tools/list` cannot us
 
 ## Compatibility and semver
 
-- The default stays `full`, so `tools/list` is byte for byte what it is today for anyone who sets nothing.
+- The default stays `full`, so the profile adds no limit of its own for anyone who sets nothing. The listing a user who sets nothing gets is decided by `toolList`, whose default became `enabled` in 0.18.0 and is a separate change.
 - The new config key, its environment variable and the discovery tool are additive. The stable surface covers tool names, documented shapes and documented config keys, so this is a minor release with a CHANGELOG entry and a tool reference row. The discovery tool is new and appears only under the core profile, so no default user sees a new name.
 - A profile does not touch the default capability set, `ActionResult`, any tool's input or output shape, or the refusal text.
 - Flipping the default to `core` would change what every default user sees in `tools/list`, and a pinned tool name would vanish from their client. Under the repository's semver rule that needs a minor release, a CHANGELOG entry and a deprecation note, so it would be announced one release ahead and would not ship together with the opt-in.
@@ -100,7 +100,7 @@ A client whose model can only call tools that appeared in `tools/list` cannot us
 
 ## Alternatives considered
 
-- **Do nothing after `toolList`.** About 51,000 tokens remain for a default user. The cut from `enabled` is 24 percent and the cut from core is about 83 percent. Rejected, because the large win is in the number of tools.
+- **Do nothing after `toolList`.** About 51,000 tokens remain for a user on the `enabled` default. The cut from `enabled` is 24 percent and the cut from core is about 83 percent. Rejected, because the large win is in the number of tools.
 - **Capability groups as profiles** (a storage group, a network group, a recording group) that an operator adds to core. Good for the second step, and it needs a stable grouping of 209 tools that nobody has agreed on. I would add groups after a release of core, driven by which tools people ask for.
 - **Lazy loading with `tools/list_changed`.** The server starts with core and announces more tools on demand. It serves clients that honour the notice and does nothing for those that do not. The roadmap puts it after this profile, and I keep it there.
 - **A smaller default and no profile name.** Remove tools from the default listing outright. Breaks the frozen surface for everyone, and gives nobody a way back. Rejected.
