@@ -13,7 +13,7 @@ The error mentions a browser. Run `browxai doctor`. It says whether Google
 Chrome and the bundled Chromium are present. Install Chrome, or fetch Chromium:
 
 ```bash
-npx playwright-core@1.64.1 install chromium
+npx playwright-core@1.65.1 install chromium
 ```
 
 On a machine with no display, such as a server or a container, the first
