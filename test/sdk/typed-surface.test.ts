@@ -18,7 +18,7 @@ import type { SdkTransport } from "../../src/sdk/transport.js";
 const NON_TOOL_MEMBERS = new Set(["callTool", "close"]);
 
 const transport: SdkTransport = {
-  dispatch: async (name) => ({ content: [], data: { ok: true, name } }),
+  dispatch: async (name) => ({ ok: true, name }),
   close: async () => undefined,
 };
 

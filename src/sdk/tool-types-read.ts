@@ -20,10 +20,15 @@ export interface SnapshotArgs extends SessionArg {
    *  a child iframe. `f0` (or omitting this) targets the main frame. */
   frame?: string;
 }
-/** The text content of `snapshot()` isn't structured JSON — it's a serialised
- *  a11y tree. The envelope's `data` field is undefined; callers read
- *  `content[0].text` directly. */
-export type SnapshotResult = BrowxaiResult;
+/** `snapshot()` resolves to the serialised a11y tree as a string, which starts
+ *  with `url:` and is never JSON. A failure (an unknown `frame`, a timeout)
+ *  comes back as `{ ok: false, error }` instead. */
+export interface SnapshotFail {
+  ok: false;
+  error: string;
+  hint?: string;
+}
+export type SnapshotResult = string | SnapshotFail;
 
 export interface FindArgs extends SessionArg {
   query: string;
@@ -54,7 +59,7 @@ export interface FramesListData {
   frames: FrameInfo[];
   tokensEstimate: number;
 }
-export type FramesListResult = BrowxaiResult<FramesListData>;
+export type FramesListResult = FramesListData;
 export interface BBox {
   x: number;
   y: number;
@@ -88,7 +93,7 @@ export interface FindResultData {
   candidates: FindCandidate[];
   warnings?: string[];
 }
-export type FindResult = BrowxaiResult<FindResultData>;
+export type FindResult = FindResultData;
 
 export interface ScreenshotArgs extends SessionArg {
   ref?: string;
@@ -100,9 +105,24 @@ export interface ScreenshotArgs extends SessionArg {
   quality?: number;
   scale?: "css" | "device";
 }
-/** Screenshot returns an MCP `image` content item (and optionally a caption
- *  text part). No structured JSON `data`. */
-export type ScreenshotResult = BrowxaiResult;
+/** With `path` set, or on a refusal, `screenshot()` resolves to this JSON. */
+export interface ScreenshotFileResult {
+  ok: boolean;
+  path?: string;
+  bytes?: number;
+  format?: string;
+  fullPage?: boolean;
+  caption?: string;
+  error?: string;
+  hint?: string;
+  tokensEstimate?: number;
+}
+/** An inline screenshot resolves to a {@link BrowxaiResult} envelope, because
+ *  the PNG or JPEG is an MCP `image` content item (a caption, when asked for,
+ *  is a text item): find it in `content`. A `path` capture or a refusal
+ *  resolves to {@link ScreenshotFileResult}. Tell them apart with
+ *  `"content" in result`. */
+export type ScreenshotResult = BrowxaiResult | ScreenshotFileResult;
 
 export interface ConsoleReadArgs extends SessionArg {
   limit?: number;
@@ -113,7 +133,7 @@ export interface ConsoleRow {
   text: string;
 }
 export type ConsoleReadResultData = ConsoleRow[];
-export type ConsoleReadResult = BrowxaiResult<ConsoleReadResultData>;
+export type ConsoleReadResult = ConsoleReadResultData;
 
 export interface NetworkReadArgs extends SessionArg {
   limit?: number;
@@ -134,7 +154,7 @@ export interface NetworkReadResultData {
   };
   requests: NetworkRequestRow[];
 }
-export type NetworkReadResult = BrowxaiResult<NetworkReadResultData>;
+export type NetworkReadResult = NetworkReadResultData;
 
 export interface WsReadArgs extends SessionArg {
   limit?: number;
@@ -154,7 +174,7 @@ export interface WsReadResultData {
   total: number;
   frames: WsFrame[];
 }
-export type WsReadResult = BrowxaiResult<WsReadResultData>;
+export type WsReadResult = WsReadResultData;
 
 export interface InspectArgs extends SessionArg {
   ref?: string;
@@ -171,7 +191,7 @@ export interface InspectResultData {
   visible?: boolean;
   childCount?: number;
 }
-export type InspectResult = BrowxaiResult<InspectResultData>;
+export type InspectResult = InspectResultData;
 
 export interface TextSearchArgs extends SessionArg {
   text: string;
@@ -192,7 +212,7 @@ export interface TextSearchResultData {
   count: number;
   matches: TextSearchMatch[];
 }
-export type TextSearchResult = BrowxaiResult<TextSearchResultData>;
+export type TextSearchResult = TextSearchResultData;
 
 export interface ExtractArgs extends SessionArg {
   /** JSON-schema-flavoured shape. Kept as `Record<string, unknown>` — full
@@ -232,7 +252,7 @@ export interface ExtractFail {
   tokensEstimate: number;
 }
 export type ExtractResultData = ExtractOk | ExtractFail;
-export type ExtractResult = BrowxaiResult<ExtractResultData>;
+export type ExtractResult = ExtractResultData;
 
 // --- verify family --------------------------------------------------------
 
@@ -251,7 +271,7 @@ export interface VerifyFail {
   failure: VerifyFailure;
 }
 export type VerifyResultData = VerifyOk | VerifyFail;
-export type VerifyResult = BrowxaiResult<VerifyResultData>;
+export type VerifyResult = VerifyResultData;
 
 export type VerifyVisibleArgs = RefTarget & SessionArg;
 export type VerifyTextArgs = RefTarget & SessionArg & { text: string; exact?: boolean };
@@ -295,7 +315,7 @@ export interface GenerateLocatorFail {
   tokensEstimate: number;
 }
 export type GenerateLocatorResultData = GenerateLocatorOk | GenerateLocatorFail;
-export type GenerateLocatorResult = BrowxaiResult<GenerateLocatorResultData>;
+export type GenerateLocatorResult = GenerateLocatorResultData;
 
 // --- plan -----------------------------------------------------------------
 
@@ -333,4 +353,4 @@ export interface PlanFail {
   failure?: { source: "app" | "browxai"; kind: string; expected?: string; actual?: string };
 }
 export type PlanResultData = PlanOk | PlanFail;
-export type PlanResult = BrowxaiResult<PlanResultData>;
+export type PlanResult = PlanResultData;

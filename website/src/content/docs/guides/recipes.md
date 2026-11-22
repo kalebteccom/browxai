@@ -144,7 +144,7 @@ import { createBrowxai } from "browxai";
 
 const browxai = await createBrowxai(); // in-process, one script
 await browxai.navigate({ url: "https://example.com" });
-const page = await browxai.snapshot(); // paragraphs carry their text on the row
+const page = await browxai.snapshot(); // a string: paragraphs carry their text on the row
 console.log(page);
 await browxai.close();
 ```
@@ -152,7 +152,10 @@ await browxai.close();
 Import needs a local install in the script's project (`npm install browxai`), as
 a global install is not importable. Save the script as an ES module (`.mjs`, or
 `"type": "module"` in `package.json`) and run it with Node 22 or newer. Any other
-tool is reachable with `browxai.callTool(name, args)`. `createBrowxai` also takes
+tool is reachable with `browxai.callTool(name, args)`. Each call resolves to the
+tool's own result: a parsed object or array, or a string for a plain-text result
+such as `snapshot()`. An inline `screenshot()` resolves to `{ content, data? }`,
+with the image in `content`. `createBrowxai` also takes
 a `transport` of `"stdio-child"` to run the `browxai` bin as a subprocess, or an
 `endpoint` to attach to a `browxai serve --socket <path>` server that several
 scripts share.

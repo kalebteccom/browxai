@@ -6,7 +6,6 @@
 // re-exports this file — that back-import would be a cycle. See `tool-types.ts`
 // for the authoritative header.
 
-import type { BrowxaiResult } from "./types.js";
 import type { SessionArg } from "./tool-types-shared.js";
 
 // =============================================================================
@@ -25,7 +24,7 @@ export interface AwaitHumanResultData {
   timedOut: boolean;
   error?: string;
 }
-export type AwaitHumanResult = BrowxaiResult<AwaitHumanResultData>;
+export type AwaitHumanResult = AwaitHumanResultData;
 
 export interface NameRefArgs extends SessionArg {
   name: string;
@@ -36,7 +35,7 @@ export interface NameRefResultData {
   name: string;
   ref: string;
 }
-export type NameRefResult = BrowxaiResult<NameRefResultData>;
+export type NameRefResult = NameRefResultData;
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 /** Browser engine a session runs on. Mirrors the host `EngineKind` (kept as a
@@ -89,7 +88,7 @@ export interface OpenSessionResultData {
   openedAt?: string;
   error?: string;
 }
-export type OpenSessionResult = BrowxaiResult<OpenSessionResultData>;
+export type OpenSessionResult = OpenSessionResultData;
 
 export interface CloseSessionArgs {
   session: string;
@@ -99,7 +98,7 @@ export interface CloseSessionResultData {
   session: string;
   wasOpen: boolean;
 }
-export type CloseSessionResult = BrowxaiResult<CloseSessionResultData>;
+export type CloseSessionResult = CloseSessionResultData;
 
 export interface CloseSessionsArgs {
   prefix?: string;
@@ -112,7 +111,7 @@ export interface CloseSessionsResultData {
   count?: number;
   error?: string;
 }
-export type CloseSessionsResult = BrowxaiResult<CloseSessionsResultData>;
+export type CloseSessionsResult = CloseSessionsResultData;
 
 export type ListSessionsArgs = Record<string, never>;
 export interface ListSessionsRow {
@@ -126,4 +125,4 @@ export interface ListSessionsRow {
 export interface ListSessionsResultData {
   sessions: ListSessionsRow[];
 }
-export type ListSessionsResult = BrowxaiResult<ListSessionsResultData>;
+export type ListSessionsResult = ListSessionsResultData;

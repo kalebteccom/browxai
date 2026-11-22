@@ -4,7 +4,7 @@
 import { DEFAULT_CAPABILITIES, type Capability } from "../util/capabilities.js";
 import { capabilityFor, isRegisteredTool, registeredTools } from "./registry.js";
 import type { SdkTransport } from "./transport.js";
-import type { BrowxaiArgs, BrowxaiClient, BrowxaiResult } from "./types.js";
+import type { BrowxaiArgs, BrowxaiClient } from "./types.js";
 import { docsUrl } from "../util/docs-links.js";
 
 /** Error message tag: the tool exists, its capability is not active on this
@@ -103,7 +103,7 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
   let closed = false;
 
   /** Apply the session default + dispatch. */
-  const dispatch = async (toolName: string, args?: BrowxaiArgs): Promise<BrowxaiResult> => {
+  const dispatch = async (toolName: string, args?: BrowxaiArgs): Promise<unknown> => {
     if (closed)
       throw new Error(
         `browxai-sdk: cannot call ${toolName}, the client is closed. Create a new one.`,
@@ -121,7 +121,7 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
    *  name is refused on its own branch BEFORE any capability is resolved, so a
    *  typo can never land on the permissive `human` default. Inner tool names
    *  carried in the args are gated too — see {@link innerToolNames}. */
-  const callTool = async (name: string, args?: BrowxaiArgs): Promise<BrowxaiResult> => {
+  const invoke = async (name: string, args?: BrowxaiArgs): Promise<unknown> => {
     if (!isRegisteredTool(name)) {
       if (!isPluginToolName(name)) throw new Error(unknownToolMessage(name));
       // A plugin tool this process cannot see. Defer: the server's own gate
@@ -136,6 +136,11 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
     }
     return dispatch(name, args);
   };
+
+  /** The public `callTool`: the gate above, with the result typed by the caller.
+   *  The type argument is a claim about the tool's result shape, not a check. */
+  const callTool = <T = unknown>(name: string, args?: BrowxaiArgs): Promise<T> =>
+    invoke(name, args) as Promise<T>;
 
   // Per-tool wrappers — the typed methods declared on BrowxaiClient, one per
   // `SDK_TOOLS` entry. Each forwards through `callTool`, so it is gated exactly
@@ -152,8 +157,7 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
   // `BrowxaiClient` narrow it. `<F>` lets each call site project the wrapper
   // into the exact typed slot without per-method duplication.
   const guarded = <F>(toolName: string): F =>
-    (async (args?: BrowxaiArgs): Promise<BrowxaiResult> =>
-      callTool(toolName, args)) as unknown as F;
+    (async (args?: BrowxaiArgs): Promise<unknown> => callTool(toolName, args)) as unknown as F;
 
   /** Shorthand: pluck a typed-method slot off `BrowxaiClient` for `guarded<F>`'s
    *  type parameter. Keeps the assignment table below readable. */
@@ -175,7 +179,7 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
   // doesn't exist).
   const plugins: Record<
     string,
-    Record<string, (args?: BrowxaiArgs) => Promise<BrowxaiResult>>
+    Record<string, (args?: BrowxaiArgs) => Promise<unknown>>
   > = new Proxy(
     {},
     {
@@ -186,7 +190,7 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
           {
             get(_t2, toolName: string) {
               if (typeof toolName !== "string") return undefined;
-              return (args?: BrowxaiArgs): Promise<BrowxaiResult> =>
+              return (args?: BrowxaiArgs): Promise<unknown> =>
                 // Mirror tool naming: `namespace.tool`. Convert camelCase
                 // tool name back to snake_case? No — the SDK uses the
                 // tool name as-is. Plugin authors declare e.g.

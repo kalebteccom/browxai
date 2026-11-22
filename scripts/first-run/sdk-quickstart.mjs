@@ -27,9 +27,9 @@ try {
   });
   mark("extractMs", t);
   out.extractChars = JSON.stringify(res).length;
-  // res.data is the tool's own result ({ ok, data, evidence, warnings }), so the extracted object is res.data.data.
-  out.title = res.data?.data?.title;
-  out.warnings = res.data?.warnings ?? [];
+  // extract() resolves to the tool's own result ({ ok, data, evidence, warnings }), so the title is at res.data.title.
+  out.title = res?.data?.title;
+  out.warnings = res?.warnings ?? [];
   if (out.title === undefined) out.raw = JSON.stringify(res).slice(0, 600);
   await browxai.close();
   out.ok = true;

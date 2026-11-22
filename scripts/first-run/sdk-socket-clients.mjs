@@ -9,8 +9,9 @@ import { chromeMains, readTable, waitUntil } from "./procs.mjs";
 
 const { FR_SOCKET: socket, FR_URL: url, FR_WORK: work } = process.env;
 const out = { steps: [], counts: {} };
-const text = (r) => (r?.content ?? []).map((c) => c.text ?? "").join("\n");
-const failed = (r) => r?.data?.ok === false;
+// An SDK call resolves to the tool's own result: a parsed object or array, or the text as a string. snapshot() is a string.
+const text = (r) => (typeof r === "string" ? r : JSON.stringify(r ?? null));
+const failed = (r) => typeof r === "object" && r !== null && r.ok === false;
 const count = () => {
   const rows = readTable();
   return rows ? chromeMains(rows, work).length : null;
@@ -49,10 +50,10 @@ try {
 
   // B sees what A opened.
   const listed = await step("B list_sessions", () => b.list_sessions());
-  const row = listed.data?.sessions?.find((s) => s.id === "fr-a");
+  const row = listed?.sessions?.find((s) => s.id === "fr-a");
   out.bSees = Boolean(row);
   out.bSeesUrl = row?.url ?? null;
-  out.bSessionIds = (listed.data?.sessions ?? []).map((s) => s.id);
+  out.bSessionIds = (listed?.sessions ?? []).map((s) => s.id);
 
   // B reads the page A opened: one browser, so one tab.
   const snapB = await step("B snapshot of A's session", () => b.snapshot({ session: "fr-a" }));
@@ -73,7 +74,7 @@ try {
   });
   out.counts.afterBClose = await settle(out.counts.afterA);
   const listedA = await step("A list_sessions", () => a.list_sessions());
-  out.aStillListed = Boolean(listedA.data?.sessions?.some((s) => s.id === "fr-a"));
+  out.aStillListed = Boolean(listedA?.sessions?.some((s) => s.id === "fr-a"));
   const snapA = await step("A snapshot", () => a.snapshot({ session: "fr-a" }));
   out.aStillWorks = /\[ref=e\d+\]/.test(text(snapA)) && text(snapA).includes("Subscribe");
 

@@ -1,6 +1,6 @@
 // SDK transport interface — abstracts the wire between the SDK client and
 // the browxai server. The single method is `dispatch(toolName, args)`: a
-// tool name + JSON args → an MCP-shaped `{ content }` envelope. Three
+// tool name + JSON args → the tool's result, unwrapped (see unwrapResult). Three
 // implementations exist:
 //
 //   1. InProcessTransport (src/sdk/transport-in-process.ts) — drives the
@@ -16,17 +16,15 @@
 //      Windows). The SDK does NOT own the server lifecycle; `close()` only
 //      tears down the local connection.
 
-import type { BrowxaiResult } from "./types.js";
-
 /** Lower-level transport contract. One method, idempotent close. */
 export interface SdkTransport {
-  /** Dispatch a single tool call and return the SDK envelope. */
-  dispatch(toolName: string, args: Record<string, unknown>): Promise<BrowxaiResult>;
+  /** Dispatch a single tool call and return its unwrapped result. */
+  dispatch(toolName: string, args: Record<string, unknown>): Promise<unknown>;
   /** Tear down the transport. Idempotent. */
   close(): Promise<void>;
 }
 
-// The concrete envelope decoder now lives in the ./envelope.js leaf so the
+// The concrete result decoder now lives in the ./envelope.js leaf so the
 // transport adapters can depend on it without cycling through this barrel.
 // Re-exported here so existing `./transport.js` importers keep resolving it.
-export { parseEnvelope } from "./envelope.js";
+export { parseEnvelope, unwrapResult } from "./envelope.js";
