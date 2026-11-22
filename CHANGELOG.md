@@ -12,6 +12,10 @@ surface" covers.
 
 - **`tool_catalog` takes an optional `capability` argument.** Under the `core` profile, a call with no argument still returns every omitted tool, now measured at 35,285 characters (about 8,800 tokens, 185 tools) on 0.19.0, about 76 percent of the core listing. `capability` (one capability name, `none` or `plugin`) returns only that group, with the same reply shape plus a `capability` field and `omitted` counting the group. A value that is not a group answers with an error that lists the valid groups and their tool counts. The argument is one optional string, and it adds about 160 characters to the `tool_catalog` entry in `tools/list`. The core listing measured 46,473 characters (25 tools, about 11,600 tokens) on 0.19.0, 22.7 percent of the default `enabled` listing, and RFC 0010 and the roadmap now carry the measured numbers.
 
+### Changed
+
+- **A guide for containers and CI.** "Run browxai in a container and in CI" covers the reference Docker image, the workspace volume, a shared `serve --socket` server between containers, a CI job in GitHub Actions and plain shell, and which capabilities to leave off. The roadmap marks items 2, 3 and 5 shipped and item 8 built as a guide, and lists what comes next. No change to the npm package.
+
 ## [0.19.0] - 2026-11-22
 
 **Upgrading from 0.18.0.** Two things to know. Playwright moved from 1.64.1 to 1.65.1, so if you use the Chromium fallback you already downloaded, run `npx playwright-core@1.65.1 install chromium` once (machines that use Google Chrome need nothing). And `tools/list` from a `browxai serve --socket` daemon now carries a real one-line description for each tool and the tool's capability in `_meta`, where it carried a placeholder description before. A client that read the old placeholder text should read the new text.
