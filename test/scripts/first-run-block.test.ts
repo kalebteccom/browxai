@@ -55,6 +55,18 @@ const procs = (await import(join(REPO, "scripts/first-run/procs.mjs"))) as {
     step?: number,
   ) => Promise<{ ok: boolean; ms: number; value: unknown }>;
 };
+const sizesCore = (await import(join(REPO, "scripts/first-run/sizes-core.mjs"))) as {
+  atLeast: (version: string | undefined, min: string) => boolean;
+  pct: (part: number, whole: number) => string;
+  splitCore: (
+    tools: Array<{ name: string }>,
+    coreNames: string[],
+  ) => {
+    core: { count: number; chars: number };
+    plugin: Array<{ name: string; chars: number }>;
+    catalog: number | undefined;
+  };
+};
 const pathFacts = (await import(join(REPO, "scripts/first-run/path-facts.mjs"))) as {
   refusalFacts: (root: string) => {
     quote?: string;
@@ -344,5 +356,39 @@ describe("first-run process table filters", () => {
     expect(quick.ok).toBe(true);
     const never = await procs.waitUntil(() => false, 30, 5);
     expect(never.ok).toBe(false);
+  });
+});
+
+describe("first-run core profile rows", () => {
+  it("compares versions against the release that added toolProfile", () => {
+    expect(sizesCore.atLeast("0.18.0", "0.18.0")).toBe(true);
+    expect(sizesCore.atLeast("0.19.0", "0.18.0")).toBe(true);
+    expect(sizesCore.atLeast("1.0.0", "0.18.0")).toBe(true);
+    expect(sizesCore.atLeast("0.18.0-rc.1", "0.18.0")).toBe(true);
+    expect(sizesCore.atLeast("0.17.3", "0.18.0")).toBe(false);
+    expect(sizesCore.atLeast("0.9.9", "0.18.0")).toBe(false);
+    expect(sizesCore.atLeast(undefined, "0.18.0")).toBe(false);
+    expect(sizesCore.atLeast("next", "0.18.0")).toBe(false);
+  });
+
+  it("prints a share with one decimal", () => {
+    expect(sizesCore.pct(40_000, 200_000)).toBe("20.0");
+    expect(sizesCore.pct(1, 3)).toBe("33.3");
+  });
+
+  it("splits a core listing into core tools, plugin tools and the discovery tool", () => {
+    const tool = (name: string, pad = 0) => ({ name, description: "x".repeat(pad) });
+    const tools = [
+      tool("click", 10),
+      tool("fill", 20),
+      tool("tool_catalog", 30),
+      tool("figma_x", 5),
+    ];
+    const out = sizesCore.splitCore(tools, ["click", "fill", "batch"]);
+    expect(out.core.count).toBe(2);
+    expect(out.core.chars).toBe(JSON.stringify(tools[0]).length + JSON.stringify(tools[1]).length);
+    expect(out.catalog).toBe(JSON.stringify(tools[2]).length);
+    expect(out.plugin).toEqual([{ name: "figma_x", chars: JSON.stringify(tools[3]).length }]);
+    expect(sizesCore.splitCore([tool("click")], ["click"]).catalog).toBeUndefined();
   });
 });

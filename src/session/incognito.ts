@@ -1,8 +1,9 @@
 // Incognito launch. A fresh browser process + an *ephemeral* BrowserContext: no
 // profile dir, nothing persisted to disk, everything (cookies, storage, cache)
 // discarded on close. Same safe-by-default flags as managed (no
-// `--disable-web-security`, sandbox on). Use for one-off agentic driving where you
-// explicitly do NOT want a profile trace.
+// `--disable-web-security`). It does not set `chromiumSandbox` either, so
+// Playwright adds --no-sandbox and Chromium's OS sandbox is off. Use for one-off
+// agentic driving where you explicitly do NOT want a profile trace.
 //
 // The no-trace consumer-repo contract is unaffected — there was never any
 // consumer-cwd write; incognito additionally leaves no Chrome profile behind.

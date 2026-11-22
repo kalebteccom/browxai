@@ -1,7 +1,8 @@
 // Section 3, TOOL LIST SIZES: start the installed server over stdio, send tools/list, and record the tool count and the JSON
 // length of the result for BROWX_TOOL_LIST unset (enabled, the default) and all, with the default capabilities and with every
-// documented capability. chars = JSON.stringify of the merged `tools/list` result. Tokens are chars / 4 rounded up: an ESTIMATE, not a count.
-// tools/list starts no browser. Env: FR_ROOT, FR_WORK, FR_OUT. Exit: 0 table printed, 1 a documented setting does not do what
+// documented capability, then the core tool profile (sizes-core.mjs, only when the installed package has `toolProfile`).
+// chars = JSON.stringify of the merged `tools/list` result. Tokens are chars / 4 rounded up: an ESTIMATE, not a count.
+// tools/list starts no browser; the one `tool_catalog` call in the core rows starts none either. Env: FR_ROOT, FR_WORK, FR_OUT. Exit: 0 table printed, 1 a documented setting does not do what
 // the docs say, 2 a tool error (the server does not start).
 import "./crash.mjs";
 import { existsSync, mkdirSync } from "node:fs";
@@ -11,6 +12,7 @@ import { BUDGETS, emit, estTokens, layout } from "./block.mjs";
 import { startMcp } from "./mcp-client.mjs";
 import { cleanEnv } from "./proc.mjs";
 import { recorder } from "./recorder.mjs";
+import { measureCore } from "./sizes-core.mjs";
 
 const { FR_WORK: WORK, FR_OUT: OUT } = process.env;
 if (!WORK || !OUT) {
@@ -191,6 +193,20 @@ try {
   rec.note("could not read the package's capability list to compare");
 }
 
+// Rows 5 and 6: the core profile, skipped with a NOTE when the installed package predates it.
+const coreLines = await measureCore({
+  proj,
+  base,
+  list,
+  row,
+  rec,
+  n,
+  flat,
+  fullRun: bin,
+  enabledDefault,
+  allDefault,
+});
+
 // Where the characters go, and the biggest tools, for the widest listing.
 const rows = [
   { head: "LIST | CAPABILITIES | TOOLS | CHARS | TOKENS (chars / 4)" },
@@ -215,4 +231,5 @@ if (wideAll.ok) {
     head: `largest tools (${wideLabel} all): ${top.map(([name, c]) => `${name} ${n(c)}`).join(", ")}`,
   });
 }
+rows.push(...coreLines);
 finish(rec.diffs.length ? 1 : 0, rows);

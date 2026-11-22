@@ -205,7 +205,8 @@ whose capability is off is missing from it (the operator can set `toolList`
 to `all` to list everything). A tool called by name still gets the refusal
 and its hint. A tool can also be missing from `tools/list` and still work:
 under the `core` profile (`toolProfile`), call `tool_catalog` to see what
-the listing leaves out. Those tools answer a call by name through the same
+the listing leaves out. Its full reply is large, so pass `capability` with one
+group name to get only that group. Those tools answer a call by name through the same
 gate. A
 `policy: …` block means a confirm hook held the action, and the flow isn't
 broken. Ask the human to answer it from the DevTools console context the

@@ -12,11 +12,11 @@ The profile changes what the server lists. It does not change what the server ca
 
 ## The problem, measured
 
-Figures from the CHANGELOG and the docs, then my own estimates, which are marked as such. This RFC was written when `toolList` defaulted to `all`. 0.18.0 flipped that default to `enabled`, so the "default user" figures below are the `all` listing, and a user who sets nothing now gets the `enabled` listing (163 tools, 204,761 characters). Where the text says "today's behaviour" or "byte for byte what it is today", read it as the 0.17 listing, which `toolList: all` still gives.
+Figures from the CHANGELOG and the docs, then my own estimates, which are marked as such. This RFC was written when `toolList` defaulted to `all`. 0.18.0 flipped that default to `enabled`, so the "default user" figures below are the `all` listing, and a user who sets nothing now gets the `enabled` listing (163 tools, 204,946 characters, measured on 0.19.0). Where the text says "today's behaviour" or "byte for byte what it is today", read it as the 0.17 listing, which `toolList: all` still gives.
 
 - `tools/list` holds 209 tools, 269,340 characters, about 67,000 tokens (CHANGELOG, "`tools/list` is about 18 percent smaller"). That is 0.249 tokens per character, and I use that ratio for every token figure below.
 - Before that trim the listing was 328,777 characters (about 82,000 tokens). The shared `session`, `timeoutMs`, `mode`, `contextRef`, `ref` and `coords` descriptions were already shortened, so the remaining lever is the number of tools.
-- `toolList` set to `enabled` leaves out each tool whose capability is off (tool reference, `toolList` section). Under the four default capabilities that is the default-off tools. No exact figure is published. My count of the registration source puts the default-capability tools at about 76 percent of the measured text (145 of the 188 tools I could read), so I estimate an `enabled` listing at 200,000 to 215,000 characters, or 50,000 to 53,000 tokens. The first implementation PR should replace that with a measured number.
+- `toolList` set to `enabled` leaves out each tool whose capability is off (tool reference, `toolList` section). Under the four default capabilities the first-run workflow (`.woodpecker/first-run.yml`) measured it on the published 0.19.0: 163 tools, 204,946 characters, about 51,200 tokens. The estimate I wrote before that run was 200,000 to 215,000 characters.
 - One tool is a large share by itself. `open_session` is about 11,640 characters of source, 4.3 percent of the whole listing, because it carries the mode, engine, profile and policy options.
 
 So a user on `toolList: all` pays about 67,000 tokens (the 0.17 default), an `enabled` user about 51,000 (the default since 0.18.0), and an agent that needs a dozen tools still carries the other hundred and ninety-odd.
@@ -27,7 +27,7 @@ No server was started and nothing was built. A small script read each registrati
 
 The script found 188 of the 209 registrations. The other 21 register inside loops (the `mouse_*`, `touch_*`, `localstorage_*`, `sessionstorage_*`, `emulate_*` and `profile_*` tools), and none of them is a core candidate. The 188 measured tools sum to 232,135 source characters. I filled the 21 at the measured average of 1,235 each, which gives 258,065. The real listing is 269,340, so source characters undercount the wire size by 4.4 percent (the JSON structure around each field). I scaled every figure below by 1.044.
 
-This is an estimate. The ratio assumes the JSON overhead and the 21 unmeasured tools spread evenly, and neither is checked. It is good enough to rank options and to see whether a set lands near a budget. It is not a budget.
+This is an estimate. The ratio assumes the JSON overhead and the 21 unmeasured tools spread evenly, and neither is checked. It is good enough to rank options and to see whether a set lands near a budget. It is not a budget. The estimate is how I chose the set, and the section after the table gives the measured size.
 
 ## The candidate core set
 
@@ -47,16 +47,17 @@ Why these. The loop an agent runs is observe, locate, act, verify, and each step
 
 Why not the rest. `open_session` is the biggest single choice and it is covered below. The other tools in the default capabilities are either rarer (`double_click`, `shortcut`, `choose_option`, `go_forward`, `set_viewport`, the other three `verify_*`, the `act_and_*` family) or a different job (storage, cookies, routes, recording, perf). Each of those is one explicit request away.
 
-### The arithmetic
+### The size, measured
 
-- 42,641 source characters for the 24 tools.
-- Plus a discovery tool (next section). I estimate 900 characters for it, between the 515 of `get_config` and what a name filter and a detail flag add. That is a guess.
-- 43,541 characters, times 1.044, is about 45,400 characters, or about 11,300 tokens.
-- That is 17 percent of today's 269,340 and about 22 percent of the `enabled` estimate.
+The first-run workflow (`.woodpecker/first-run.yml`) measured the published 0.19.0 with the core profile and the default four capabilities. Tokens are characters divided by 4, an estimate.
+
+- 25 tools are listed: the 24 core tools (46,030 characters) plus `tool_catalog` (407 characters). That is 46,473 characters, about 11,600 tokens.
+- Against the default `enabled` listing (163 tools, 204,946 characters) that is 22.7 percent, with 138 fewer tools. Against the full list (209 tools, 270,977 characters) it is 17.1 percent.
+- The estimate I made from source text was about 45,000 characters. The measured listing is 3 percent above it.
 
 ### Whether `open_session` is core
 
-The request for this RFC listed session open and close. With `open_session` the set is 25 tools and about 57,600 characters (14,300 tokens), which is above the roadmap's target of under 50,000 characters. Without it the set is about 45,400.
+The request for this RFC listed session open and close. `open_session` is 12,221 characters in the measured listing, so adding it puts the set near 58,700 characters, above the roadmap's target of under 50,000. Without it the measured listing is 46,473.
 
 I left it out of the candidate. Its own description says that any tool with a `session` argument creates that id on first use, so an agent that wants a second isolated session passes a different id and gets one. `open_session` is for the options: `mode`, `engine`, `profile` and the policies. An agent that needs those is already off the common path and can ask for the full profile. This is the first thing the maintainer might overrule, and the cost of overruling it is about 12,200 characters.
 
@@ -75,7 +76,7 @@ The profile is read once at server start, like capabilities and `toolList`, so t
 Nothing may become undiscoverable, so the core profile ships with two ways to reach the rest.
 
 1. **A config or environment setting picks the full profile.** The operator of a client sets it in that client's MCP entry, so one machine can carry a lean entry for everyday work and a full entry for a heavy session. A client's `initialize` call carries its name, and the server could pick a profile from it. I propose against that. The same server would list different tools to different clients with no setting anyone can read.
-2. **A discovery tool lists everything outside the active listing.** It takes an optional name filter and an optional detail flag. By default it returns each tool's name, one-line description and the capability it needs, and whether that capability is on. With the detail flag set and one name, it returns that tool's full description and input schema. The one-line descriptions come from the first sentence of each description, which averages about 101 characters, so a call that lists all 185 tools outside the core costs about 24,000 characters (6,000 tokens) with the name and capability on each row, paid only when an agent asks. The discovery tool is listed in the core profile only. In the full profile every tool is already listed.
+2. **A discovery tool lists everything outside the active listing.** It takes an optional name filter and an optional detail flag. By default it returns each tool's name, one-line description and the capability it needs, and whether that capability is on. With the detail flag set and one name, it returns that tool's full description and input schema. A reply that lists every tool outside the core is large. The first-run workflow measured one `tool_catalog` call at 35,285 characters (about 8,800 tokens), naming 185 tools, about 191 characters a tool. I had estimated about 24,000 from a 101-character average summary and left out the JSON around each row. One call costs about 76 percent of the core listing, so an agent that wants one group asks for it: the built tool takes one optional `capability` argument (no name filter, no detail flag) that returns only the omitted tools of one group, and no argument gives the full reply. The discovery tool is listed in the core profile only. In the full profile every tool is already listed.
 
 A client whose model can only call tools that appeared in `tools/list` cannot use a name the discovery tool shows it. I could not verify which clients behave that way. For those the discovery tool says which setting to change and that a restart is needed, which is the same instruction the capability refusal gives today. `batch` helps for the 73 batchable tools. A generic call-by-name tool would close the gap for the rest, and I leave it out because it is a second way to reach a gated tool that needs its own threat-model row. See the open questions.
 
@@ -84,6 +85,7 @@ A client whose model can only call tools that appeared in `tools/list` cannot us
 - **The agent cannot find a tool it needs.** The likeliest cases are `set_viewport`, `go_forward`, `double_click`, `choose_option`, `upload_file` and the storage tools. Mitigations: the discovery tool's description says in its first sentence that more tools exist and how to list them. The `driving-browxai` skill gets one paragraph on it. The refusal text for a missing capability is unchanged.
 - **The agent calls a tool that is outside the listing, and the client refuses to send it.** Covered above. The error the agent sees comes from the client, not from browxai, so browxai cannot make that message better. The skill paragraph has to cover it.
 - **The agent loops on the discovery tool.** Each reply names the setting to change, so a second call does not give new information. A test pins that the reply names the setting.
+- **The discovery reply is large.** A full reply is 35,285 characters. The `capability` argument narrows it to one group, and an unknown value answers with an error that lists the valid groups and their tool counts, so a wrong guess costs a few hundred characters.
 - **A tool is core in the constant and gone in the source.** A fitness test compares the frozen core list against the registered tool names and fails on a name that does not exist.
 - **The core set grows by drift.** A budget test pins the listing size of the core profile, and a change to the constant needs an edit to that test.
 - **Plugin tools.** A plugin the operator installed and enabled on purpose should not disappear because the profile is core. I propose plugin tools stay listed under every profile, and the profile applies to core tools only. This is a decision for the maintainer.
@@ -111,13 +113,13 @@ A client whose model can only call tools that appeared in `tools/list` cannot us
 
 The maintainer has three decisions, and I give a recommended answer to each.
 
-1. **Which tools are core.** Recommended: the 24 above, without `open_session`, plus the discovery tool. About 45,400 characters, about 11,300 tokens, under the roadmap target of 50,000. Variants to consider: add `open_session` (57,600), add the other three `verify_*` tools (about 2,500 more), drop `inspect` and `extract` (about 4,600 fewer).
+1. **Which tools are core.** Recommended: the 24 above, without `open_session`, plus the discovery tool. Measured at 46,473 characters, about 11,600 tokens, under the roadmap target of 50,000. Variants to consider, sized from the source estimate: add `open_session` (about 12,200 more), add the other three `verify_*` tools (about 2,500 more), drop `inspect` and `extract` (about 4,600 fewer).
 2. **Whether the default flips.** Recommended: no. Ship the profile opt-in with the default `full`. Revisit once the measured-numbers page exists and the profile has been out for a release. If it flips, it is a separate minor release with the notice described above.
 3. **Whether plugin tools stay listed under the core profile.** Recommended: yes, they stay listed.
 
 ## Honest limits
 
-- The 45,400 figure is derived from source text and a single scale factor. The implementation PR should measure the listing itself, state both numbers, and pin the real one in the budget test.
+- The 46,473 figure is measured from one run of the published 0.19.0 on a Linux CI box. The earlier 45,400 figure came from source text and one scale factor. Other versions and capability sets give other sizes, and the budget test pins the core listing at under 40 percent of the full one.
 - I did not check which MCP clients let a model call a tool that was not in `tools/list`. That decides how useful the discovery tool is on its own. A short test against two or three common clients before the release would answer it.
 - Token counts use the repository's own ratio (about 0.249 tokens per character). Another tokenizer will give a different figure.
 - A smaller listing saves context. It does not make a call faster, and it does not reduce what the agent can do on a full-profile server.
