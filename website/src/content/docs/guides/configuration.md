@@ -53,6 +53,7 @@ persisted layers for that session only.
 | `hideOverlaySelectors`              | CSS selectors for chrome or overlay elements to neutralize non-destructively on every navigation.                                                                     |
 | `plugins`                           | Plugin names to load. A saved list is a subset of `BROWX_PLUGINS`, and a change applies on the next server start.                                                     |
 | `toolList`                          | Which tools `tools/list` reports: `all` (default) or `enabled`, which leaves out tools whose capability is off. Read once at server start.                            |
+| `toolProfile`                       | How many tools `tools/list` reports: `full` (default) or `core`, a set of 24 tools plus plugin tools plus `tool_catalog`. Read once at server start.                  |
 | `unstable`                          | A free-form namespace for experimental knobs. Not stable across versions.                                                                                             |
 
 ### A few keys worth understanding
@@ -95,6 +96,15 @@ Each key opens to the details that the table leaves out.
 </details>
 
 <details>
+<summary><code>toolProfile</code></summary>
+
+**`toolProfile`** is `full` by default: `tools/list` reports every tool. Set it to `core` and the listing holds 24 tools for the observe, locate, act and verify loop (`navigate`, `go_back`, `snapshot`, `find`, `text_search`, `inspect`, `extract`, `screenshot`, `console_read`, `network_read`, `click`, `fill`, `fill_form`, `select`, `hover`, `press`, `scroll`, `wait_for`, `verify_text`, `verify_visible`, `verify_count`, `close_session`, `list_sessions` and `batch`), every plugin tool, and `tool_catalog`. That is a much smaller listing for the model to carry. `tool_catalog` takes no arguments and returns the tools the listing leaves out, grouped by capability, with a one-line summary each. `open_session` is not in the core set, because any tool with a `session` argument creates that session on first use.
+
+The profile changes what is listed and nothing else. A tool it leaves out still answers a call by name, through the same capability gate, with the same refusal and hint. It composes with `toolList`: the capability filter runs first and the profile narrows the result, so `core` with `toolList` set to `all` still lists a core tool whose capability is off. A client that only sends tool names it saw in `tools/list` cannot call a name `tool_catalog` shows it, and needs `full`. Like `toolList`, `toolProfile` is read once at start: a saved change applies after a restart, and `get_config` shows the pending difference. The environment form is `BROWX_TOOL_PROFILE`, and an unknown value stops the server at start.
+
+</details>
+
+<details>
 <summary><code>hideOverlaySelectors</code></summary>
 
 **`hideOverlaySelectors`** injects a CSS-only init script that applies `pointer-events: none; display: none` to matches on every navigation. It is non-destructive (no node removal, so assertions still see the DOM) and uses no agent JavaScript. Prefer it over hand-rolled per-session removal.
@@ -125,6 +135,7 @@ not config.
 - `BROWX_DISABLE_WEB_SECURITY`, unset. `1` or `true` launches managed and incognito sessions with the same-origin policy and CORS off. The only way to turn it on.
 - `BROWX_PLUGINS`, unset. Plugin names a saved `plugins` config list may name. `plugins.json`, written by `browxai plugin install`, is unaffected.
 - `BROWX_TOOL_LIST`, default `all`. `enabled` makes `tools/list` report only the tools whose capability is on. A call by name to an unlisted tool still returns the capability refusal and hint.
+- `BROWX_TOOL_PROFILE`, default `full`. `core` makes `tools/list` report 24 core tools, plugin tools and `tool_catalog`. Every other tool stays callable by name through the same capability gate.
 - `BROWX_CONFIG_READONLY`, unset. `1` or `true` leaves out the write tools and refuses config writes.
 - `BROWX_CREDENTIAL_ORIGINS`, unset. Origins each `get_credential` account may be typed into, as `acct=https://app.example.com|https://sso.example.com,other=host`. `get_credential` refuses an account that is not listed, before the vault is asked. An entry that does not parse is ignored with a startup warning. Read at start.
 

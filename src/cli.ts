@@ -22,6 +22,7 @@ import { resolveConfig } from "./util/config.js";
 import { isHeadlessEnv } from "./util/config-store.js";
 import { resolveWorkspace } from "./util/workspace.js";
 import { PACKAGE_VERSION } from "./util/version.js";
+import { CORE_TOOLS } from "./util/tool-profile.js";
 import { resolveEngineSelection, UnknownEngineError } from "./engine/index.js";
 
 const USAGE = `browxai drives a browser for an AI agent over MCP (Model Context Protocol).
@@ -83,6 +84,9 @@ Usage: browxai [subcommand]
   BROWX_TOOL_LIST=enabled       make tools/list report only the tools this server's
                                 capabilities allow (default: all, which lists every
                                 tool; a disabled tool refuses with a hint either way).
+  BROWX_TOOL_PROFILE=core       make tools/list report a short set of ${CORE_TOOLS.length} core tools,
+                                your plugin tools and tool_catalog, which names the
+                                rest (default: full). Every tool stays callable by name.
 
 All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/).
 `;

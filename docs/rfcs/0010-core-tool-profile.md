@@ -1,7 +1,7 @@
 # RFC 0010: A core tool profile
 
 **Date:** 2026-11-16
-**Status:** Proposed, decision pending. Design only, nothing built. Code waits for the maintainer's decision on the questions in "The decision needed".
+**Status:** Accepted, built opt-in. The maintainer approved the 24-tool core set without `open_session`, the default staying `full`, and plugin tools staying listed. The discovery tool is `tool_catalog`, as proposed below.
 **Trigger:** The roadmap entry for a lean core tool profile. The `toolList` setting shipped in 0.17.0 and cut the listing by what the server cannot run. This RFC is about cutting what a client is unlikely to need.
 
 ## What this is for
@@ -132,7 +132,7 @@ The maintainer has three decisions, and I give a recommended answer to each.
 
 ## Proposed names
 
-These do not exist in `src/` today. They are placeholders for the review.
+The build uses these names.
 
 ```text
 Config key:            toolProfile, values full (default) and core

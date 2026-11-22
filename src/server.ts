@@ -76,6 +76,7 @@ import { describeTarget, asTarget } from "./tools/target-resolve.js";
 import { docsUrl } from "./util/docs-links.js";
 import { createListingTrimStdioTransport, ListingTrimTransport } from "./transport/listing-trim.js";
 import { createToolListing } from "./util/tool-list.js";
+import { registerToolCatalogTool } from "./tools/tool-catalog-tools.js";
 
 export const NAME = "browxai";
 // Derived from package.json — see src/util/version.ts. Never hand-bump.
@@ -106,8 +107,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
    *  passes one, and it gets the same `tools/list` handling. */
   start: (transport?: Transport) => Promise<void>;
   shutdown: () => Promise<void>;
-  /** Whether `tools/list` reports this tool under the `toolList` setting. Every
-   *  tool is listed unless `toolList` is `enabled` and its capability is off. */
+  /** Whether `tools/list` reports this tool under the `toolList` and `toolProfile`
+   *  settings. Every tool is listed unless `toolList` is `enabled` and its capability
+   *  is off, or `toolProfile` is `core` and the tool is outside the core set. */
   isToolListed: (tool: string) => boolean;
   /** Programmatic in-process driving seam: the registered MCP tool handlers,
    *  keyed by tool name, each returning the same `{ content: [...] }` shape an
@@ -136,11 +138,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const config = resolveConfig(cfgEnv);
   // Which tools `tools/list` reports. Read once, like capabilities.
   const toolListMode = resolvedConfig.toolList ?? "all";
+  const toolProfile = resolvedConfig.toolProfile ?? "full";
   // approvals are session-independent policy state — server-level.
   const approvals = new ApprovalStore();
   //  policy: capabilities, confirm-required hooks, origin allow/blocklist.
   const caps = resolveCapabilities(cfgEnv);
-  const listing = createToolListing(toolListMode, caps);
+  const listing = createToolListing(toolListMode, caps, toolProfile);
   // The daemon's answer channel. Reads and removes its two environment
   // variables, and throws on a socket the daemon did not make safely.
   const operator = openOperatorChannel(caps);
@@ -156,6 +159,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   if (toolListMode === "enabled")
     log.info(
       "toolList is enabled: tools/list omits tools whose capability is off. Calling one by name still returns its refusal and hint.",
+    );
+  if (toolProfile === "core")
+    log.info(
+      "toolProfile is core: tools/list reports the core tools, plugin tools and tool_catalog. Every other tool stays callable by name; tool_catalog names them.",
     );
   if (configStore.readonly)
     log.info(
@@ -355,9 +362,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     notePluginTool: listing.notePluginTool,
   });
 
-  // Only `enabled` filters the listing; `all` passes no filter, so the default
-  // listing is the unfiltered one.
-  const listFilter = listing.mode === "enabled" ? listing.isListed : undefined;
+  // The discovery tool registers last, so it sees plugin tools too. The `full`
+  // profile lists everything, so it does not register there.
+  if (toolProfile === "core") registerToolCatalogTool(host, listing.isListed);
+
+  // Only `enabled` and `core` filter the listing; `all` with `full` passes no
+  // filter, so the default listing is the unfiltered one.
+  const listFilter =
+    listing.mode === "enabled" || listing.profile === "core" ? listing.isListed : undefined;
 
   return {
     start: async (inner?: Transport) => {

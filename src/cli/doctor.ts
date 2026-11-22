@@ -21,6 +21,7 @@ import { probeCdp } from "./doctor-cdp.js";
 import { attachCapabilityCheck, cdpAttachRow } from "./doctor-attach.js";
 import { capabilitiesRow } from "./doctor-capabilities.js";
 import { toolListRow } from "./doctor-tool-list.js";
+import { toolProfileRow } from "./doctor-tool-profile.js";
 import {
   chromeCheck,
   chromiumCheck,
@@ -189,6 +190,9 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
   // 6b. Which tools `tools/list` reports.
   checks.push(toolListRow());
 
+  // 6c. How many tools `tools/list` reports.
+  checks.push(toolProfileRow());
+
   // 7. Origin policy.
   try {
     const policy = resolveOriginPolicy();
@@ -297,8 +301,12 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
   // stage reads; doctor NEVER executes a plugin's register module.
   try {
     const ws = resolveWorkspace();
-    // A mistyped BROWX_TOOL_LIST is the tool-list row's error to report.
-    const store = new ConfigStore(ws.root, { ...process.env, BROWX_TOOL_LIST: "" });
+    // A mistyped BROWX_TOOL_LIST or BROWX_TOOL_PROFILE is that row's error to report.
+    const store = new ConfigStore(ws.root, {
+      ...process.env,
+      BROWX_TOOL_LIST: "",
+      BROWX_TOOL_PROFILE: "",
+    });
     checks.push(
       ...pluginChecks({
         workspaceRoot: ws.root,
