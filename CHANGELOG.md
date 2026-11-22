@@ -8,15 +8,19 @@ surface" covers.
 
 ## Unreleased
 
-### Added
+## [0.19.1] - 2026-11-22
 
-- **`tool_catalog` takes an optional `capability` argument.** Under the `core` profile, a call with no argument still returns every omitted tool, now measured at 35,285 characters (about 8,800 tokens, 185 tools) on 0.19.0, about 76 percent of the core listing. `capability` (one capability name, `none` or `plugin`) returns only that group, with the same reply shape plus a `capability` field and `omitted` counting the group. A value that is not a group answers with an error that lists the valid groups and their tool counts. The argument is one optional string, and it adds about 160 characters to the `tool_catalog` entry in `tools/list`. The core listing measured 46,473 characters (25 tools, about 11,600 tokens) on 0.19.0, 22.7 percent of the default `enabled` listing, and RFC 0010 and the roadmap now carry the measured numbers.
+**Upgrading from 0.19.0.** Nothing to do. Browser launch behavior is unchanged. One docs correction matters: browsers browxai launches run without Chromium's OS sandbox, and the first entry below says what that means for you.
 
 ### Changed
 
-- Docs: the README and threat model now say that browsers browxai launches run without Chromium's OS sandbox (Playwright's default).
-- Docs: the tool reference has an "Engine evidence" table with, for each of the eight engines, what ran, where, on which version, on what date and how to rerun it, and `not run` where the repo records no passing run. The README's engine statements now match it: Android has no recorded passing run, `ios-app` has none either, and the Android emulator and Electron runs carry their 0.11.0 date. A row older than the latest release is marked stale in the next release PR.
-- **A guide for containers and CI.** "Run browxai in a container and in CI" covers the reference Docker image, the workspace volume, a shared `serve --socket` server between containers, a CI job in GitHub Actions and plain shell, and which capabilities to leave off. The roadmap marks items 2, 3 and 5 shipped and item 8 built as a guide, and lists what comes next. No change to the npm package.
+- **The README and threat model now say that browsers browxai launches run without Chromium's OS sandbox.** The browsers browxai launches through Playwright (the managed profile, incognito sessions, the installed Chrome it opens by default and the bundled Chromium fallback) run without Chromium's OS sandbox, which is Playwright's default, because browxai never sets `chromiumSandbox`. Earlier README and threat model text said the sandbox was on. The text is corrected and the launch behavior is unchanged. A Chrome started with `browxai chrome start` or `browxai chrome login`, and a Chrome you attach to, keeps its own sandbox. The containment for a launched browser is the container or VM you run browxai in. The threat model has a new paragraph and a "not defended" row for it, and the containers guide and the adopter security page now say the same.
+- **`rrweb` updated from 2.2.0 to 2.2.2.** A patch update of a runtime dependency, plus patch updates of dev dependencies.
+- Docs: a new "Run browxai in a container and in CI" guide, and an "Engine evidence" table in the tool reference with one row per engine (what ran, where, on which version, on what date, how to rerun it). Rows older than the latest release are marked stale, and the README's engine statements match the table.
+
+### Added
+
+- **`tool_catalog` takes an optional `capability` argument (core profile only).** Under the `core` profile, a call with no argument still returns every omitted tool, now measured at 35,285 characters (about 8,800 tokens, 185 tools) on 0.19.0, about 76 percent of the core listing. `capability` (one capability name, `none` or `plugin`) returns only that group, with the same reply shape plus a `capability` field and `omitted` counting the group. A value that is not a group answers with an error that lists the valid groups and their tool counts. The argument is one optional string, and it adds about 160 characters to the `tool_catalog` entry in `tools/list`. The core listing measured 46,473 characters (25 tools, about 11,600 tokens) on 0.19.0, 22.7 percent of the default `enabled` listing, and RFC 0010 and the roadmap now carry the measured numbers.
 
 ## [0.19.0] - 2026-11-22
 
