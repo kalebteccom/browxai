@@ -38,14 +38,14 @@ Chrome, or fetch the bundled Chromium. That is Chromium plus its headless shell,
 about 300 MB to download and about 700 MB on disk.
 
 ```bash
-npx playwright-core@1.64.1 install chromium
+npx playwright-core@1.65.1 install chromium
 ```
 
 A bare Linux image also lacks the system libraries Chromium needs. Add
 `--with-deps` to that command to install them (it needs root).
 
 Firefox and WebKit sessions use their own Playwright builds
-(`npx playwright-core@1.64.1 install firefox webkit`).
+(`npx playwright-core@1.65.1 install firefox webkit`).
 
 browxai looks for Google Chrome at its default install path on each OS, so a
 distro Chromium package is not picked up. With no Chrome it falls back to the

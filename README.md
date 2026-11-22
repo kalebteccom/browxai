@@ -79,7 +79,7 @@ Needs Node 22 or later.
 
 ```bash
 npm install -g browxai
-npx playwright-core@1.64.1 install chromium   # only without Google Chrome: Chromium plus headless shell, about 300 MB download, 700 MB on disk
+npx playwright-core@1.65.1 install chromium   # only without Google Chrome: Chromium plus headless shell, about 300 MB download, 700 MB on disk
 cd your-project
 browxai init .                                # one command: writes .mcp.json and your MCP client config, checks a first snapshot
 ```
@@ -88,7 +88,7 @@ browxai init .                                # one command: writes .mcp.json an
 
 `browxai doctor` checks the machine and prints one line per area, with the next step under anything that fails. `browxai doctor --verbose` prints every check.
 
-browxai launches the Google Chrome already installed on the machine, on one default profile per workspace (`<workspace>/profile`), so logins carry over between sessions. When there is no Chrome it falls back to Playwright's bundled Chromium. `browxai doctor` fails only when neither browser is present. Firefox and WebKit sessions use their own Playwright builds (`npx playwright-core@1.64.1 install firefox webkit`).
+browxai launches the Google Chrome already installed on the machine, on one default profile per workspace (`<workspace>/profile`), so logins carry over between sessions. When there is no Chrome it falls back to Playwright's bundled Chromium. `browxai doctor` fails only when neither browser is present. Firefox and WebKit sessions use their own Playwright builds (`npx playwright-core@1.65.1 install firefox webkit`).
 
 Wire it into an MCP client over the stdio transport, e.g. in an `.mcp.json`:
 
