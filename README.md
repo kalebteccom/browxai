@@ -72,7 +72,7 @@ Two consequences worth knowing before you deploy:
 - **Plugins run in-process with full Node access.** The trust tier tells you where a plugin came from; the loader treats every tier identically at runtime, and nothing intercepts a plugin's calls. Adopting a plugin is exactly as consequential as adding an npm dependency, transitive deps included. See [plugin governance](https://browxai.com/plugins/governance/).
 - **Run it in a container.** For anything beyond driving your own machine against sites you own, run browxai in a container or VM as a non-root user with no route to your local network. [`deploy/Dockerfile`](https://github.com/kalebteccom/browxai/blob/main/deploy/Dockerfile) is a working starting point, and the [deployment checklist](https://browxai.com/security/best-practices/) is short.
 
-Chromium's own sandbox still isolates _page_ content the whole time, which is the boundary the [threat model](https://browxai.com/security/threat-model/) is mostly about. The gap is between the browxai process and your host.
+Browsers that browxai launches itself (a managed profile, an incognito session, the headless shell, the installed Chrome it opens for a session) run with Playwright's default of Chromium's OS sandbox off, because browxai never sets `chromiumSandbox`. In those sessions Chromium's sandbox does not isolate page content from your host. The container or VM you run browxai in is the containment, and the capability gate and origin lists above are policy. A Chrome you start yourself and attach to, `browxai chrome start` included, keeps whatever sandbox that Chrome has, normally on. See the [threat model](https://browxai.com/security/threat-model/).
 
 ## Install
 

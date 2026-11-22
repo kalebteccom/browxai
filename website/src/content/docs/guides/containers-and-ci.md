@@ -88,10 +88,12 @@ and `src/session/chromium-launch-posture.ts`.
 browxai never passes `chromiumSandbox`, so Playwright's own defaults decide the
 rest. In the Playwright source browxai builds on, Chromium gets `--no-sandbox`
 unless a launch sets `chromiumSandbox: true`, and `--disable-dev-shm-usage` is
-among Playwright's default switches. In a container, then, Chromium's own sandbox
-is off, and the container needs no extra privileges or flags for either. The
-container is also the boundary around the browser. That makes the non-root user
-and the security section below matter.
+among Playwright's default switches. So Chromium's own sandbox is off for every
+browser browxai launches, in a container or not, and the container needs no extra
+privileges or flags for either. A Chrome you start yourself and attach to keeps
+its own sandbox. For a launched browser the container is the boundary around page
+content, and the capability gates and origin lists are policy. That makes the
+non-root user and the security section below matter.
 
 ## One server, several containers
 

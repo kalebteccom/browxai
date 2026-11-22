@@ -24,6 +24,18 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 | 10  | Plugin ecosystem growth                      | M    |
 | 11  | An optional natural-language action layer    | L    |
 
+### Chromium sandbox for browsers browxai launches (owner decision pending)
+
+This sits ahead of the security items below and has no number, because it needs a decision before it needs work.
+
+- **Status.** Browsers browxai launches itself (managed profile, incognito, the headless shell, the installed Chrome a session opens) run with Chromium's OS sandbox off. browxai never sets `chromiumSandbox`, and Playwright adds `--no-sandbox` unless it is `true`. The README, the threat model and the containers guide now say so. A Chrome you start yourself and attach to keeps its own sandbox. `src/engine/adapters/chromium.engine.test.ts` pins the current launch options.
+- **Options.**
+  - (a) Keep it off and documented, as now. Containers need nothing extra.
+  - (b) Add an opt-in `chromiumSandbox` config key, default off.
+  - (c) Turn it on by default when the process is not root and the host supports it, with a loud fallback message when it cannot, and keep `--no-sandbox` available for containers.
+- **Recommendation: (c).** Most users run browxai on a laptop as their own user, where the sandbox works, and today those sessions lose the one OS-level boundary around page content. Root and unprivileged containers are the cases where Chromium refuses to start with the sandbox on, so the fallback message and an explicit way to turn it off cover them. It changes launch behavior for every default user, so it ships as a minor with a CHANGELOG note that starts with "Behavior change", and the threat-model rows change in the same PR.
+- **Why it is the owner's call.** It sets the default security posture and can stop a launch from starting on some hosts. Nothing here is decided.
+
 ### 1. List only the tools whose capability is on (S, opt-in in 0.17.0, default in 0.18.0)
 
 - **What.** `toolList` (`BROWX_TOOL_LIST`) shipped in 0.17.0 as an opt-in. With `enabled`, `tools/list` leaves out a tool when its capability is off. A call to a hidden tool still reaches the gate and returns the refusal that names the capability to grant. The owner decided to flip the default to `enabled`, and 0.18.0 does it as a documented behavior change. `toolList: all` or `BROWX_TOOL_LIST=all` brings back the full listing.

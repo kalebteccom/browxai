@@ -14,6 +14,7 @@ surface" covers.
 
 ### Changed
 
+- Docs: the README and threat model now say that browsers browxai launches run without Chromium's OS sandbox (Playwright's default).
 - **A guide for containers and CI.** "Run browxai in a container and in CI" covers the reference Docker image, the workspace volume, a shared `serve --socket` server between containers, a CI job in GitHub Actions and plain shell, and which capabilities to leave off. The roadmap marks items 2, 3 and 5 shipped and item 8 built as a guide, and lists what comes next. No change to the npm package.
 
 ## [0.19.0] - 2026-11-22
