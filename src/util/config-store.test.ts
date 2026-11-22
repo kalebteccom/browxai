@@ -124,6 +124,38 @@ describe("toolList", () => {
   });
 });
 
+describe("toolProfile", () => {
+  it("defaults to full and the env layer sets it, ignoring case and spacing", () => {
+    expect(new ConfigStore(dir, {}).resolve().toolProfile).toBe("full");
+    expect(envLayer({ BROWX_TOOL_PROFILE: " Core " })).toEqual({ toolProfile: "core" });
+    expect(envLayer({ BROWX_TOOL_PROFILE: "" })).toEqual({});
+    expect(new ConfigStore(dir, { BROWX_TOOL_PROFILE: "core" }).resolve().toolProfile).toBe("core");
+  });
+
+  it("stops on an unknown env value and names the valid ones", () => {
+    expect(() => envLayer({ BROWX_TOOL_PROFILE: "lean" })).toThrow(
+      /BROWX_TOOL_PROFILE: unknown value "lean"\. Valid: full, core/,
+    );
+  });
+
+  it("a saved layer overrides the env, and a bad saved value is a malformed file", () => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { toolProfile: "full" } }));
+    expect(new ConfigStore(dir, { BROWX_TOOL_PROFILE: "core" }).resolve().toolProfile).toBe("full");
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { toolProfile: "lean" } }));
+    expect(() => new ConfigStore(dir, {})).toThrow(/user\.toolProfile/);
+  });
+
+  it("round trips through setLayer and a fresh store", () => {
+    const first = new ConfigStore(dir, {});
+    first.setLayer("user", { toolProfile: "core" });
+    const second = new ConfigStore(dir, {});
+    expect(second.getLayer("user")).toEqual({ toolProfile: "core" });
+    expect(second.resolve().toolProfile).toBe("core");
+    second.resetLayer("user");
+    expect(new ConfigStore(dir, {}).resolve().toolProfile).toBe("full");
+  });
+});
+
 describe("envLayer", () => {
   it("parses comma lists and the boolean headless flag", () => {
     expect(

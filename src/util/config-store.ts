@@ -17,6 +17,12 @@ import { log } from "./logging.js";
 import { invariant } from "./invariant.js";
 import { isToolListMode, parseToolList, TOOL_LIST_MODES, type ToolListMode } from "./tool-list.js";
 import {
+  isToolProfile,
+  parseToolProfile,
+  TOOL_PROFILES,
+  type ToolProfile,
+} from "./tool-profile.js";
+import {
   clampPolicy,
   policyAdjustments,
   policyCeiling,
@@ -74,6 +80,11 @@ export interface ResolvedConfig {
    *  out the tools whose capability is off. A tool that is left out still refuses
    *  with its hint when called by name. Read once at server start. */
   toolList?: ToolListMode;
+  /** How many tools `tools/list` reports: `full` (default) or `core`, a fixed set of
+   *  24 tools plus plugin tools plus the `tool_catalog` discovery tool. A tool the
+   *  profile leaves out still answers a call by name, through the same gate. Read
+   *  once at server start. */
+  toolProfile?: ToolProfile;
   /** Experimental / feature-flag knobs. Not stable; shallow-merged across layers. */
   unstable: Record<string, unknown>;
 }
@@ -96,6 +107,7 @@ export const BUILTIN_DEFAULTS: ResolvedConfig = {
   hideOverlaySelectors: [],
   plugins: [],
   toolList: "all",
+  toolProfile: "full",
   unstable: {},
 };
 
@@ -142,6 +154,8 @@ export function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   if (pl) layer.plugins = pl;
   const tl = parseToolList(env.BROWX_TOOL_LIST);
   if (tl) layer.toolList = tl;
+  const tp = parseToolProfile(env.BROWX_TOOL_PROFILE);
+  if (tp) layer.toolProfile = tp;
   return layer;
 }
 
@@ -180,6 +194,9 @@ function parsePersisted(raw: unknown): PersistedFile {
     const toolList = (layer as Record<string, unknown>).toolList;
     if (toolList !== undefined && !isToolListMode(toolList))
       throw new Error(`"${scope}.toolList" is not one of ${TOOL_LIST_MODES.join(", ")}`);
+    const toolProfile = (layer as Record<string, unknown>).toolProfile;
+    if (toolProfile !== undefined && !isToolProfile(toolProfile))
+      throw new Error(`"${scope}.toolProfile" is not one of ${TOOL_PROFILES.join(", ")}`);
     out[scope] = layer;
   }
   return out;
@@ -261,6 +278,7 @@ export class ConfigStore {
       hideOverlaySelectors: layer.hideOverlaySelectors ?? acc.hideOverlaySelectors,
       plugins: layer.plugins ?? acc.plugins,
       toolList: layer.toolList ?? acc.toolList,
+      toolProfile: layer.toolProfile ?? acc.toolProfile,
       unstable: layer.unstable ? { ...acc.unstable, ...layer.unstable } : acc.unstable,
     };
   }

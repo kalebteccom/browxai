@@ -3,6 +3,7 @@ import { capabilityMissing, resolveConfirmHooks, type Capability } from "../util
 import { policyWidening } from "../util/config-ceiling.js";
 import { resolveOriginPolicy } from "../policy/origin.js";
 import { TOOL_LIST_MODES } from "../util/tool-list.js";
+import { TOOL_PROFILES } from "../util/tool-profile.js";
 
 /** The first unparseable origin or unknown confirm hook in a patch, or null.
  *  Each entry is checked on its own; a comma inside one is refused because the
@@ -80,6 +81,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
     hideOverlaySelectors: z.array(z.string()).optional(),
     plugins: z.array(z.string()).optional(),
     toolList: z.enum(TOOL_LIST_MODES).optional(),
+    toolProfile: z.enum(TOOL_PROFILES).optional(),
     unstable: z.record(z.string(), z.unknown()).optional(),
   };
 
@@ -120,15 +122,31 @@ export function registerConfigApprovalTools(host: ToolHost): void {
         // a saved one that differs.
         const liveToolList = host.resolvedConfig.toolList ?? "all";
         const persistedToolList = resolved.toolList ?? "all";
+        // `toolProfile` is read once at start as well, and reported the same way.
+        const liveToolProfile = host.resolvedConfig.toolProfile ?? "full";
+        const persistedToolProfile = resolved.toolProfile ?? "full";
         body = {
           scope: "resolved",
-          config: { ...resolved, capabilities: live, plugins: livePlugins, toolList: liveToolList },
+          config: {
+            ...resolved,
+            capabilities: live,
+            plugins: livePlugins,
+            toolList: liveToolList,
+            toolProfile: liveToolProfile,
+          },
         };
         if (liveToolList !== persistedToolList) {
           body.toolListPendingRestart = {
             active: liveToolList,
             persisted: persistedToolList,
             note: "`toolList` was changed via set_config or the environment, but the server reads it once at start. The change applies after you restart the browxai server. `tools/list` follows `active` until then.",
+          };
+        }
+        if (liveToolProfile !== persistedToolProfile) {
+          body.toolProfilePendingRestart = {
+            active: liveToolProfile,
+            persisted: persistedToolProfile,
+            note: "`toolProfile` was changed via set_config or the environment, but the server reads it once at start. The change applies after you restart the browxai server. `tools/list` follows `active` until then.",
           };
         }
         if (live.join(",") !== persisted.join(",")) {
@@ -162,7 +180,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
       "set_config",
       {
         description:
-          'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. Policy keys can only TIGHTEN against the server environment: `capabilities` must be a subset of the active set (else `error: "capabilities-not-widenable"`); `confirmRequired` add only, `allowedOrigins` narrow only, `blockedOrigins` add only, `disableWebSecurity` off only unless BROWX_DISABLE_WEB_SECURITY=1, `plugins` a subset of BROWX_PLUGINS (else `error: "policy-not-loosenable"`). Saved layers are clamped the same way at every start. `toolList` (`all` or `enabled`) sets what `tools/list` reports, read once at server start.',
+          'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. Policy keys can only TIGHTEN against the server environment: `capabilities` must be a subset of the active set (else `error: "capabilities-not-widenable"`); `confirmRequired` add only, `allowedOrigins` narrow only, `blockedOrigins` add only, `disableWebSecurity` off only unless BROWX_DISABLE_WEB_SECURITY=1, `plugins` a subset of BROWX_PLUGINS (else `error: "policy-not-loosenable"`). Saved layers are clamped the same way at every start. `toolList` (`all` or `enabled`) and `toolProfile` (`full` or `core`) set what `tools/list` reports, read once at server start.',
         inputSchema: {
           scope: z.enum(["user", "project"]).describe("Which persistent layer to write."),
           patch: z
