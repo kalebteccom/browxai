@@ -49,7 +49,7 @@ function describeAuto(label: string, host: HostView) {
   }
   if (host.installed.sandbox) {
     return {
-      detail: `${label}: the installed Chrome tries Chromium's OS sandbox on this host, and a failed start is retried once without it. The bundled Chromium and the headless shell launch without it, because ${host.bundled.reason}.`,
+      detail: `${label}: a launch of the installed Google Chrome tries Chromium's OS sandbox on this host, and a failed start is retried once without it. The bundled browser (the bundled Chromium and the headless shell) skips it, because ${host.bundled.reason}.`,
       fix,
       warn: true,
     };

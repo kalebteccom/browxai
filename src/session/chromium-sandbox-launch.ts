@@ -282,15 +282,25 @@ async function launchRequiringSandbox<T>(
   }
 }
 
+const TARGET_LABEL: Record<SandboxTarget, string> = {
+  installed: "the installed Google Chrome",
+  bundled: "the bundled Chromium and the headless shell",
+};
+
 /** `auto`: skip the sandbox on a host that cannot run it, or where a launch already
  *  failed on it in this process. Otherwise try it once and fall back once. A failure
  *  that does not name the sandbox is never retried. */
 async function launchTryingSandbox<T>(launch: SandboxLaunch<T>, target: SandboxTarget): Promise<T> {
   const decision = decideSandbox(sandboxProbe.gather(), target);
   if (!decision.sandbox) {
+    // Root and a container skip every browser. The kernel facts skip the bundled build only.
+    const appliesTo =
+      decision.verdict === "root" || decision.verdict === "container"
+        ? "every browser browxai launches"
+        : TARGET_LABEL[target];
     warnOnce(
       `auto-off:${decision.verdict}`,
-      `session: Chromium's OS sandbox is off for the browsers browxai launches, because ${decision.reason}. ` +
+      `session: Chromium's OS sandbox is off for ${appliesTo}, because ${decision.reason}. ` +
         "Page content runs without that boundary, so the container or VM is the containment. " +
         `To try the sandbox anyway, set ${CHROMIUM_SANDBOX_ENV}=on. ` +
         `To keep it off and drop this warning, set ${CHROMIUM_SANDBOX_ENV}=off.`,
@@ -306,11 +316,13 @@ async function launchTryingSandbox<T>(launch: SandboxLaunch<T>, target: SandboxT
     if (!isSandboxFailure(err)) throw err;
     failedTargets.add(target);
     warnOnce(
-      "sandbox-failed",
-      `session: Chromium's OS sandbox failed to start (${excerptOf(err)}), so browxai is launching ` +
-        "this browser without it, and will launch later browsers in this process the same way. " +
+      `sandbox-failed:${target}`,
+      `session: Chromium's OS sandbox failed to start for ${TARGET_LABEL[target]} (${excerptOf(err)}), ` +
+        `so browxai is launching it without the sandbox, and will launch later ${TARGET_LABEL[target]} in this process the same way. ` +
         "Page content now runs without Chromium's OS sandbox. " +
-        `Fix the host (user namespaces, an AppArmor policy, running as a non-root user) or set ${CHROMIUM_SANDBOX_ENV}=off ` +
+        "A failure that was only transient is remembered too: restart the server or set " +
+        `${CHROMIUM_SANDBOX_ENV}=on to retry the sandbox. ` +
+        `Otherwise fix the host (user namespaces, an AppArmor policy, running as a non-root user) or set ${CHROMIUM_SANDBOX_ENV}=off ` +
         "to skip the attempt and this warning.",
     );
     return launchWithoutSandbox(launch, "the sandbox failed to start");
