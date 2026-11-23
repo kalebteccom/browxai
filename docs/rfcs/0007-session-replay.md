@@ -1,7 +1,7 @@
 # RFC 0007: session replay, an append-only capture log and an offline player
 
 **Date:** 2026-09-11
-**Status:** Draft. Design only, nothing built.
+**Status:** Phases 1 to 3 shipped in 0.10.1 (capture, archive, player shell, network, WebSocket, console and coverage panels). The network and console panels have since gained filters and a details pane. Phase 4, the public panel API with a documented schema and an example panel, is not built, and phase 5, re-execution, is not started.
 **Trigger:** Owner directive, relayed 2026-09-11: a session replay primitive and "a very capable and extendable player". `CHANGELOG.md` already records the gap: an rrweb-style replay primitive "is not shipped in this cycle ... tracked separately".
 
 ## What this is for

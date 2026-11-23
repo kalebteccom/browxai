@@ -10,13 +10,38 @@
 import { describe, it, expect } from "vitest";
 
 import type { ReplayEvent } from "./schema.js";
-import { redactedMarker } from "./redact.js";
+import { Redactor, redactedMarker } from "./redact.js";
+import {
+  consoleMessageEvent,
+  createClock,
+  netFailedEvent,
+  netRequestEvent,
+  netResponseEvent,
+  pageErrorEvent,
+} from "./sources.js";
+import { SecretRegistry } from "../util/secrets.js";
 import { indexEvents, fromIndex, upToIndex, windowUpTo } from "./player/panels/event-index.js";
 import { mountPanels, type PanelDef, type PanelHost } from "./player/panels/panel-host.js";
-import { displayText, formatBytes } from "./player/panels/panel-ui.js";
-import { buildNetworkRows, resolveNetwork, statusText } from "./player/panels/network-panel.js";
+import { displayText, formatBytes, matchesText } from "./player/panels/panel-ui.js";
+import { blockText, MAX_DETAIL_CHARS } from "./player/panels/panel-detail.js";
+import {
+  bodyGap,
+  buildNetworkRows,
+  netViewMatches,
+  networkDetail,
+  NO_NET_FILTER,
+  resolveNetwork,
+  statusLine,
+  statusText,
+} from "./player/panels/network-panel.js";
 import { buildWsConnections, resolveWs, closeText } from "./player/panels/ws-panel.js";
-import { buildConsoleRows, resolveConsole, levelOf } from "./player/panels/console-panel.js";
+import {
+  buildConsoleRows,
+  consoleDetail,
+  levelLabel,
+  levelOf,
+  resolveConsole,
+} from "./player/panels/console-panel.js";
 import { buildCoverage, resolveCoverage } from "./player/panels/coverage-panel.js";
 
 function ev(t: number, type: string, payload: unknown, v = 1): ReplayEvent {
@@ -641,6 +666,429 @@ describe("panel host", () => {
         seekTo: () => undefined,
       });
       expect(tabs.children.map((t) => t.dataset.count)).toEqual(["3", "2"]);
+    });
+  });
+});
+
+describe("text matching", () => {
+  it("matches case-insensitively over the values a row shows, and an empty needle matches all", () => {
+    expect(matchesText("", ["anything"])).toBe(true);
+    expect(matchesText("   ", [])).toBe(true);
+    expect(matchesText("API/items", ["GET", "https://a.test/api/Items?page=2"])).toBe(true);
+    expect(matchesText("post", ["GET", "https://a.test/x"])).toBe(false);
+  });
+
+  it("matches a redaction marker on its text, so a reviewer can search for what was taken out", () => {
+    const marker = redactedMarker("header");
+    expect(matchesText("redacted: header", [marker])).toBe(true);
+    expect(matchesText("object", [marker])).toBe(false);
+  });
+
+  it("skips an absent value and reads a number or an object as the text it would show", () => {
+    expect(matchesText("undefined", [undefined, null])).toBe(false);
+    expect(matchesText("404", [404])).toBe(true);
+    expect(matchesText("frames", [{ frames: [1] }])).toBe(true);
+  });
+});
+
+describe("network filter", () => {
+  /** Four requests: ok, 404, failed, and one still in flight at the end. */
+  function filterRows() {
+    return buildNetworkRows(
+      indexEvents([
+        ev(0, "net/request", {
+          requestId: "a",
+          request: { url: "https://x.test/api/items", method: "GET" },
+          type: "XHR",
+        }),
+        ev(5, "net/response", { requestId: "a", response: { url: "u", status: 200 } }),
+        ev(10, "net/request", {
+          requestId: "b",
+          request: { url: "https://x.test/api/missing", method: "GET" },
+          type: "Fetch",
+        }),
+        ev(15, "net/response", { requestId: "b", response: { url: "u", status: 404 } }),
+        ev(20, "net/request", {
+          requestId: "c",
+          request: { url: "https://x.test/img.png", method: "GET" },
+          type: "Image",
+        }),
+        ev(25, "net/failed", { requestId: "c", errorText: "net::ERR_ABORTED" }),
+        ev(30, "net/request", {
+          requestId: "d",
+          request: { url: "https://x.test/api/slow", method: "POST" },
+          type: "Fetch",
+        }),
+      ]),
+    );
+  }
+
+  it("gives every row a key that is its position, so a repeated request id stays distinct", () => {
+    const rows = buildNetworkRows(
+      indexEvents([
+        ev(0, "net/request", { requestId: "same", request: { url: "u1", method: "GET" } }),
+        ev(5, "net/request", { requestId: "same", request: { url: "u2", method: "GET" } }),
+      ]),
+    );
+    expect(rows.map((r) => r.key)).toEqual(["0", "1"]);
+  });
+
+  it("filters by text over the method, url, status and type a row shows", () => {
+    const rows = filterRows();
+    const urls = (text: string) =>
+      resolveNetwork(rows, 100, 300, { text, state: "all" }).rows.map((r) => r.requestId);
+    expect(urls("api/")).toEqual(["a", "b", "d"]);
+    expect(urls("POST")).toEqual(["d"]);
+    expect(urls("image")).toEqual(["c"]);
+    expect(urls("404")).toEqual(["b"]);
+    expect(urls("aborted")).toEqual(["c"]);
+    expect(urls("in flight")).toEqual(["d"]);
+    expect(urls("nothing like this")).toEqual([]);
+  });
+
+  it("filters by the status class a row is in at the playhead", () => {
+    const rows = filterRows();
+    const ids = (state: "all" | "pending" | "ok" | "error" | "failed", t = 100) =>
+      resolveNetwork(rows, t, 300, { text: "", state }).rows.map((r) => r.requestId);
+    expect(ids("ok")).toEqual(["a"]);
+    expect(ids("error")).toEqual(["b"]);
+    expect(ids("failed")).toEqual(["c"]);
+    expect(ids("pending")).toEqual(["d"]);
+    // At t=12 the 404 had not arrived, so the request is in flight, not an error.
+    expect(ids("error", 12)).toEqual([]);
+    expect(ids("pending", 12)).toEqual(["b"]);
+  });
+
+  it("does not match text the playhead has not reached", () => {
+    const rows = filterRows();
+    // The failure text arrives at 25. At 22 the request is in flight.
+    expect(resolveNetwork(rows, 22, 300, { text: "aborted", state: "all" }).rows).toEqual([]);
+    expect(resolveNetwork(rows, 25, 300, { text: "aborted", state: "all" }).rows).toHaveLength(1);
+  });
+
+  it("windows over the rows that match, so a filter reaches past the newest rows", () => {
+    const many: ReplayEvent[] = [];
+    for (let i = 0; i < 500; i++) {
+      many.push(
+        ev(i, "net/request", {
+          requestId: String(i),
+          request: {
+            url: i % 100 === 0 ? `https://x.test/rare/${i}` : `https://x.test/common/${i}`,
+            method: "GET",
+          },
+        }),
+      );
+    }
+    const rows = buildNetworkRows(indexEvents(many));
+    const unfiltered = resolveNetwork(rows, 499);
+    expect(unfiltered).toMatchObject({ hidden: 200, total: 500, matched: 500 });
+    const rare = resolveNetwork(rows, 499, 300, { text: "rare", state: "all" });
+    expect(rare.rows.map((r) => r.requestId)).toEqual(["0", "100", "200", "300", "400"]);
+    expect(rare).toMatchObject({ hidden: 0, total: 500, matched: 5 });
+    const capped = resolveNetwork(rows, 499, 2, { text: "rare", state: "all" });
+    expect(capped.rows.map((r) => r.requestId)).toEqual(["300", "400"]);
+    expect(capped).toMatchObject({ hidden: 3, matched: 5 });
+  });
+
+  it("says how many rows match, and how many there are, in the count line", () => {
+    const rows = filterRows();
+    expect(statusLine(resolveNetwork(rows, 100), NO_NET_FILTER)).toBe("4 requests");
+    expect(statusLine(resolveNetwork(rows, 0), NO_NET_FILTER)).toBe("1 request");
+    const filter = { text: "api/", state: "all" as const };
+    expect(statusLine(resolveNetwork(rows, 100, 300, filter), filter)).toBe(
+      "3 of 4 requests match",
+    );
+  });
+
+  it("matches a view the same way the resolver does", () => {
+    const view = resolveNetwork(filterRows(), 100).rows[0]!;
+    expect(netViewMatches(view, NO_NET_FILTER)).toBe(true);
+    expect(netViewMatches(view, { text: "items", state: "ok" })).toBe(true);
+    expect(netViewMatches(view, { text: "items", state: "error" })).toBe(false);
+  });
+});
+
+describe("network details", () => {
+  const request = ev(10, "net/request", {
+    requestId: "1",
+    request: {
+      url: "https://a.test/api/save",
+      method: "POST",
+      headers: { "X-Trace": "t-1", Authorization: redactedMarker("header") },
+      postData: '{"name":"ada"}',
+    },
+    type: "Fetch",
+  });
+  const response = ev(40, "net/response", {
+    requestId: "1",
+    response: {
+      url: "https://a.test/api/save",
+      status: 201,
+      mimeType: "application/json",
+      headers: { "content-type": "application/json", "Set-Cookie": redactedMarker("header") },
+    },
+  });
+
+  const section = (id: string, sections: ReturnType<typeof networkDetail>) =>
+    sections.find((s) => s.id === id)!;
+
+  it("carries the request, the response, the timing and the headers in sorted order", () => {
+    const [row] = buildNetworkRows(indexEvents([request, response]));
+    const sections = networkDetail(row!, "replay");
+    expect(sections.map((s) => s.id)).toEqual([
+      "general",
+      "request-headers",
+      "request-body",
+      "response-headers",
+      "response-body",
+    ]);
+    const general = Object.fromEntries(
+      section("general", sections).fields!.map((f) => [f.label, f.text ?? displayText(f.value)]),
+    );
+    expect(general).toMatchObject({
+      URL: "https://a.test/api/save",
+      Method: "POST",
+      Status: "201",
+      "MIME type": "application/json",
+      "Started at": "10 ms",
+      "Finished at": "40 ms",
+      Duration: "30 ms",
+    });
+    expect(section("request-headers", sections).fields!.map((f) => f.label)).toEqual([
+      "Authorization",
+      "X-Trace",
+    ]);
+    expect(section("request-body", sections).text).toBe('{"name":"ada"}');
+    expect(section("response-headers", sections).fields!.map((f) => f.label)).toEqual([
+      "content-type",
+      "Set-Cookie",
+    ]);
+  });
+
+  it("keeps a header that was taken out as the marker, never as a blank or an object", () => {
+    const [row] = buildNetworkRows(indexEvents([request, response]));
+    const auth = section("request-headers", networkDetail(row!)).fields!.find(
+      (f) => f.label === "Authorization",
+    );
+    expect(displayText(auth?.value)).toBe("[redacted: header]");
+  });
+
+  it("says a body was not captured at a tier that never records one", () => {
+    const [row] = buildNetworkRows(indexEvents([request, response]));
+    for (const tier of ["replay", "actions", undefined] as const) {
+      const body = section("response-body", networkDetail(row!, tier));
+      expect(body.text).toBeUndefined();
+      expect(body.empty).toBe(bodyGap(tier));
+      expect(body.empty).toContain("Not captured at this tier");
+    }
+  });
+
+  it("tells a body missing at the body tier from a body the tier never records", () => {
+    const [row] = buildNetworkRows(indexEvents([request, response]));
+    expect(section("response-body", networkDetail(row!, "reexecutable")).empty).toBe(
+      "No body was recorded for this response.",
+    );
+  });
+
+  it("shows a body the log carries, and a redacted one as its marker", () => {
+    const withBody = (body: unknown) =>
+      buildNetworkRows(
+        indexEvents([request, { ...response, payload: { ...(response.payload as object), body } }]),
+      )[0]!;
+    expect(
+      section("response-body", networkDetail(withBody('{"ok":true}'), "reexecutable")).text,
+    ).toBe('{"ok":true}');
+    const dropped = section(
+      "response-body",
+      networkDetail(withBody(redactedMarker("body-rule")), "reexecutable"),
+    );
+    expect(displayText(dropped.text)).toBe("[redacted: body-rule]");
+  });
+
+  it("names the gap for a request with no response, and for one with no body or headers", () => {
+    const [row] = buildNetworkRows(
+      indexEvents([ev(5, "net/request", { requestId: "9", request: { url: "u", method: "GET" } })]),
+    );
+    const sections = networkDetail(row!, "replay");
+    const general = section("general", sections).fields!;
+    expect(general.find((f) => f.label === "Status")?.text).toBe("no response recorded");
+    expect(general.find((f) => f.label === "Finished at")?.text).toBe("not recorded");
+    expect(section("request-headers", sections).empty).toBe("No request headers recorded.");
+    expect(section("request-body", sections).empty).toBe("No request body.");
+    expect(section("response-headers", sections).empty).toBe("No response recorded.");
+    expect(section("response-body", sections).empty).toBe("No response recorded.");
+  });
+
+  it("reads a failed request as its error text", () => {
+    const [row] = buildNetworkRows(
+      indexEvents([
+        ev(5, "net/request", { requestId: "9", request: { url: "u", method: "GET" } }),
+        ev(8, "net/failed", { requestId: "9", errorText: "net::ERR_ABORTED" }),
+      ]),
+    );
+    const status = section("general", networkDetail(row!)).fields!.find(
+      (f) => f.label === "Status",
+    );
+    expect(status?.text).toBe("failed: net::ERR_ABORTED");
+  });
+
+  it("cuts a very long block at the display cap and says how much it left out", () => {
+    const long = "x".repeat(MAX_DETAIL_CHARS + 25);
+    expect(blockText(long)).toEqual({ text: "x".repeat(MAX_DETAIL_CHARS), cut: 25 });
+    expect(blockText("short")).toEqual({ text: "short", cut: 0 });
+  });
+});
+
+describe("console filter and details", () => {
+  it("filters by message text and by the level label a row shows, with the level filter", () => {
+    const rows = buildConsoleRows(
+      indexEvents([
+        ev(10, "console/message", { type: "log", text: "loaded cart" }),
+        ev(20, "console/message", { type: "warning", text: "slow cart render" }),
+        ev(30, "console/message", { type: "error", text: "cart failed" }),
+        ev(40, "page/error", { text: "Uncaught ReferenceError", stack: "at app.js:1" }),
+      ]),
+    );
+    expect(rows.map((r) => r.key)).toEqual(["0", "1", "2", "3"]);
+    const texts = (text: string, level: "debug" | "warn" | "error" = "debug") =>
+      resolveConsole(rows, 100, level, 400, text).rows.map((r) => r.t);
+    expect(texts("cart")).toEqual([10, 20, 30]);
+    expect(texts("CART", "warn")).toEqual([20, 30]);
+    expect(texts("page error")).toEqual([40]);
+    expect(texts("referenceerror")).toEqual([40]);
+    expect(texts("absent")).toEqual([]);
+    // The playhead still gates the text filter.
+    expect(resolveConsole(rows, 15, "debug", 400, "cart").rows.map((r) => r.t)).toEqual([10]);
+  });
+
+  it("labels a row the way its level cell does", () => {
+    const rows = buildConsoleRows(
+      indexEvents([
+        ev(0, "console/message", { type: "timeEnd", text: "t" }),
+        ev(1, "console/message", { type: "warning", text: "w" }),
+        ev(2, "page/error", { text: "boom" }),
+      ]),
+    );
+    expect(rows.map(levelLabel)).toEqual(["timeEnd", "warn", "page error"]);
+  });
+
+  it("shows the whole message, and a page error's stack or the lack of one", () => {
+    const long = "m".repeat(500);
+    const rows = buildConsoleRows(
+      indexEvents([
+        ev(1, "console/message", { type: "error", text: long }),
+        ev(2, "page/error", { text: "boom", stack: "at a\nat b" }),
+        ev(3, "page/error", { text: "no stack" }),
+      ]),
+    );
+    const log = consoleDetail(rows[0]!);
+    expect(log.map((s) => s.id)).toEqual(["general", "message"]);
+    expect(log[1]?.text).toBe(long);
+    const withStack = consoleDetail(rows[1]!);
+    expect(withStack.map((s) => s.id)).toEqual(["general", "message", "stack"]);
+    expect(withStack[2]?.text).toBe("at a\nat b");
+    expect(consoleDetail(rows[2]!)[2]).toMatchObject({ empty: "No stack trace recorded." });
+  });
+});
+
+describe("registered secrets in the panels", () => {
+  const SECRET = "s3cr3t-value-0xDEADBEEF";
+
+  /** A log written through the real capture adapters with a registered secret, so
+   *  the masking is the shipped masking and the panels see what an archive holds.
+   *  The response carries a body, which only the reexecutable tier records and is
+   *  the widest thing a panel can show. */
+  function maskedLog(): ReplayEvent[] {
+    const registry = new SecretRegistry();
+    registry.register({ name: "TOKEN", value: SECRET });
+    const ctx = { clock: createClock(0), redact: new Redactor({ secrets: registry }) };
+    return [
+      netRequestEvent(
+        ctx,
+        {
+          requestId: "1",
+          request: {
+            url: `https://a.test/api?token=${SECRET}`,
+            method: "POST",
+            headers: { "x-api-key": SECRET, "content-type": "application/json" },
+            postData: JSON.stringify({ token: SECRET }),
+          },
+          type: "Fetch",
+        },
+        10,
+      ),
+      netResponseEvent(
+        ctx,
+        {
+          requestId: "1",
+          response: {
+            url: `https://a.test/api?token=${SECRET}`,
+            status: 200,
+            headers: { "x-echo": SECRET },
+          },
+        },
+        { body: JSON.stringify({ echo: SECRET }), wallMs: 20 },
+      ),
+      netRequestEvent(
+        ctx,
+        { requestId: "2", request: { url: "https://a.test/b", method: "GET" } },
+        30,
+      ),
+      netFailedEvent(ctx, { requestId: "2", errorText: `refused ${SECRET}` }, 40),
+      consoleMessageEvent(ctx, { type: "log", text: `signed in with ${SECRET}` }, 50),
+      pageErrorEvent(ctx, { text: `bad ${SECRET}`, stack: `at login (${SECRET})` }, 60),
+    ];
+  }
+
+  it("never appears in any row, any detail, or anything a filter can match", () => {
+    const index = indexEvents(maskedLog());
+    const netRows = buildNetworkRows(index);
+    const consoleRows = buildConsoleRows(index);
+
+    const everything = JSON.stringify({
+      network: resolveNetwork(netRows, 1000).rows,
+      networkDetails: netRows.map((r) => networkDetail(r, "reexecutable")),
+      console: resolveConsole(consoleRows, 1000).rows,
+      consoleDetails: consoleRows.map((r) => consoleDetail(r)),
+    });
+    expect(everything).not.toContain(SECRET);
+    expect(everything).toContain("<TOKEN>");
+
+    // A filter cannot find a value that was never stored.
+    expect(resolveNetwork(netRows, 1000, 300, { text: SECRET, state: "all" }).rows).toEqual([]);
+    expect(resolveConsole(consoleRows, 1000, "debug", 400, SECRET).rows).toEqual([]);
+    // It finds the mask that stands in for it.
+    expect(resolveConsole(consoleRows, 1000, "debug", 400, "<TOKEN>").rows).toHaveLength(2);
+    expect(resolveNetwork(netRows, 1000, 300, { text: "<TOKEN>", state: "all" }).rows).toHaveLength(
+      2,
+    );
+  });
+});
+
+describe("panel host tier", () => {
+  it("hands a panel the manifest tier, and leaves it unset when the host does not know it", () => {
+    withFakeDocument(() => {
+      const seen: (string | undefined)[] = [];
+      const probe: PanelDef = {
+        id: "probe",
+        title: "Probe",
+        eventTypes: [],
+        mount(_container, api) {
+          seen.push(api.tier);
+        },
+      };
+      const tabs = fakeNode("div");
+      const body = fakeNode("div");
+      const base = {
+        tabs: tabs as unknown as HTMLElement,
+        body: body as unknown as HTMLElement,
+        index: indexEvents(sampleEvents()),
+        panels: [probe],
+        seekTo: () => undefined,
+      };
+      mountPanels(base);
+      mountPanels({ ...base, tier: "actions" });
+      expect(seen).toEqual([undefined, "actions"]);
     });
   });
 });

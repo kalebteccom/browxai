@@ -27,10 +27,16 @@
 // clicked. The host listens once, delegated, for the whole panel body — a panel
 // never holds a reference to the player.
 
+import type { CaptureTier } from "../../schema.js";
 import type { EventIndex, EventRange, EventSource } from "./event-index.js";
 import { el, emptyState } from "./panel-ui.js";
 
 export interface PanelApi extends EventSource {
+  /** The capture tier the manifest declares, when the host knows it. A panel
+   *  uses it to say "not captured at this tier" about data a lower tier never
+   *  records, and to tell that apart from data that was recorded and is
+   *  absent. */
+  readonly tier?: CaptureTier;
   /** Playhead in ms on the artifact clock. */
   playhead(): number;
   /** Move the timeline. What a row click calls. */
@@ -64,6 +70,7 @@ export interface PanelHostOptions {
   index: EventIndex;
   panels: readonly PanelDef[];
   seekTo: (t: number) => void;
+  tier?: CaptureTier;
 }
 
 interface Mounted {
@@ -157,6 +164,7 @@ export function mountPanels(opts: PanelHostOptions): PanelHost {
       def.mount(section, {
         duration: opts.index.duration,
         events: readerFor(opts.index, def.eventTypes),
+        ...(opts.tier !== undefined ? { tier: opts.tier } : {}),
         playhead: () => playhead,
         seekTo: opts.seekTo,
         onSeek: (handler) => entry.listeners.push(handler),

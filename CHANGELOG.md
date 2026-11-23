@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **The replay player's network and console panels filter, show details and seek.** Both panels take a text filter, and the network panel also filters by status (in flight, succeeded, HTTP errors, failed to load) as it stood at the playhead. Selecting a row seeks the replay to that moment and opens a details pane: for a request, the URL, method, status, type, size, timing, headers and bodies, and for a console message, the whole text and a page error's stack. The row the playhead is on is marked and scrolled into view during playback. The pane reads only what the archive carries, so registered secrets stay as their `<NAME>` aliases and dropped headers and bodies stay as `[redacted: reason]`, and below the `reexecutable` tier the response body says it was not captured at this tier. The player is still one HTML file that opens from `file://`. The plugin panel API from RFC 0007 phase 4 is not part of this change.
+
 ## [0.19.1] - 2026-11-22
 
 **Upgrading from 0.19.0.** Nothing to do. Browser launch behavior is unchanged. One docs correction matters: browsers browxai launches run without Chromium's OS sandbox, and the first entry below says what that means for you.

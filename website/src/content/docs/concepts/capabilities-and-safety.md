@@ -99,7 +99,9 @@ Off by default, each opted in deliberately:
   which install and launch apps on an emulator or simulator and drive OS-level
   input. `open_session` checks it before anything boots.
 - `replay` enables `.browx` session-replay capture: a DOM stream plus network and
-  console.
+  console. The archive opens in a single offline HTML player. Its network and
+  console panels filter by text and status and show the masked details of a
+  selected row, so registered secrets stay as their aliases there too.
 - `captcha` enables `solve_captcha`, which sends a captcha to a third-party
   solving service you configure (2Captcha or CapMonster). The API key, page URL
   and site key leave the machine. browxai bundles no solver.
