@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { engineEntry } from "../registry.js";
 import { PlaywrightChromiumAdapter } from "./playwright-chromium.js";
 import { log } from "../../util/logging.js";
+import { resetSandboxWarnings, sandboxProbe } from "../../session/chromium-sandbox-launch.js";
 import "./chromium.engine.js";
 
 // The launch itself is the keystone lane's job (real Chromium). Here the two
@@ -129,18 +130,161 @@ describe("chromium engine — automation switch", () => {
 
 describe("chromium engine — OS sandbox", () => {
   // Playwright adds --no-sandbox to every Chromium it launches unless a launch
-  // passes `chromiumSandbox: true`. browxai passes neither that option nor a
-  // sandbox flag, so these launches run with Chromium's OS sandbox off. The
-  // threat model, the README and the containers guide say so. If this test
-  // changes, update those three in the same change.
-  it("sets no chromiumSandbox and no sandbox flag on either launch", async () => {
-    for (const options of [
-      await capturePersistentOptions({ extensionPaths: ["/tmp/ext-a"], disableWebSecurity: true }),
-      await captureEphemeralLaunchOptions({ backgroundThrottling: "disabled" }),
-    ]) {
+  // passes `chromiumSandbox: true`. browxai passes that option or nothing, never a
+  // sandbox flag of its own, and the mode (`auto` unless the session says otherwise)
+  // decides which. The probe is replaced so each case describes its own host: CI
+  // runs as root, so without it `auto` would always take the no-sandbox branch.
+  // The threat model, the README and the containers guide describe this contract.
+  // If this test changes, update those three in the same change.
+  const NORMAL_USER = {
+    platform: "linux",
+    uid: 1000,
+    maxUserNamespaces: 63000,
+    unprivilegedUsernsClone: 1,
+    apparmorRestrictUserns: 0,
+  } as const;
+  const SANDBOX_ERROR = new Error(
+    "browserType.launchPersistentContext: Target closed\nBrowser logs:\n\nChromium sandboxing failed!",
+  );
+  const warnings = (spy: { mock: { calls: unknown[][] } }): string[] =>
+    spy.mock.calls.map((c) => String(c[0]));
+
+  const spyOnLaunch = (method: "launchPersistent" | "launchEphemeral") =>
+    vi.spyOn(
+      PlaywrightChromiumAdapter.prototype as unknown as Record<
+        string,
+        (...args: unknown[]) => Promise<unknown>
+      >,
+      method,
+    );
+  const modeFor = (method: "launchPersistent" | "launchEphemeral") =>
+    method === "launchEphemeral" ? ("incognito" as const) : ("managed" as const);
+
+  beforeEach(() => {
+    resetSandboxWarnings();
+    vi.spyOn(log, "info").mockImplementation(() => undefined);
+  });
+
+  const launches = [
+    {
+      label: "persistent",
+      capture: (opts: Parameters<typeof capturePersistentOptions>[0]) =>
+        capturePersistentOptions(opts),
+      method: "launchPersistent" as const,
+      optionsOf: (call: unknown) => (call as [{ options: Record<string, unknown> }])[0].options,
+    },
+    {
+      label: "ephemeral",
+      capture: (opts: Parameters<typeof capturePersistentOptions>[0]) =>
+        captureEphemeralLaunchOptions(opts),
+      method: "launchEphemeral" as const,
+      optionsOf: (call: unknown) =>
+        (call as [{ launchOptions: Record<string, unknown> }])[0].launchOptions,
+    },
+  ];
+
+  describe.each(launches)("$label launch", ({ capture, method, optionsOf }) => {
+    it("auto on a normal user's host passes chromiumSandbox: true", async () => {
+      vi.spyOn(sandboxProbe, "gather").mockReturnValue(NORMAL_USER);
+      expect((await capture({})).chromiumSandbox).toBe(true);
+    });
+
+    it("auto as root passes no chromiumSandbox and warns once", async () => {
+      vi.spyOn(sandboxProbe, "gather").mockReturnValue({ ...NORMAL_USER, uid: 0 });
+      const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+      const options = await capture({});
+      expect(options.chromiumSandbox).not.toBe(true);
       expect(options).not.toHaveProperty("chromiumSandbox");
-      expect(JSON.stringify(options.args ?? [])).not.toMatch(/sandbox/);
-    }
+      await capture({});
+      const sandboxWarnings = warnings(warn).filter((w) => w.includes("OS sandbox is off"));
+      expect(sandboxWarnings).toHaveLength(1);
+      expect(sandboxWarnings[0]).toContain("BROWX_CHROMIUM_SANDBOX=on");
+    });
+
+    it("on passes chromiumSandbox: true even as root", async () => {
+      vi.spyOn(sandboxProbe, "gather").mockReturnValue({ ...NORMAL_USER, uid: 0 });
+      expect((await capture({ chromiumSandbox: "on" })).chromiumSandbox).toBe(true);
+    });
+
+    it("off passes no chromiumSandbox on a host that supports it", async () => {
+      vi.spyOn(sandboxProbe, "gather").mockReturnValue(NORMAL_USER);
+      expect(await capture({ chromiumSandbox: "off" })).not.toHaveProperty("chromiumSandbox");
+    });
+
+    it("adds no sandbox flag to the launch args in any mode", async () => {
+      vi.spyOn(sandboxProbe, "gather").mockReturnValue(NORMAL_USER);
+      for (const chromiumSandbox of ["auto", "on", "off"] as const) {
+        const options = await capture({
+          chromiumSandbox,
+          disableWebSecurity: true,
+          backgroundThrottling: "disabled",
+        });
+        expect(JSON.stringify(options.args ?? [])).not.toMatch(/sandbox/);
+      }
+    });
+
+    it("auto retries once without the sandbox on a sandbox failure, and warns", async () => {
+      vi.spyOn(sandboxProbe, "gather").mockReturnValue(NORMAL_USER);
+      const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+      const spy = spyOnLaunch(method)
+        .mockRejectedValueOnce(SANDBOX_ERROR)
+        .mockRejectedValueOnce(LAUNCH_STUBBED);
+      await expect(
+        engineEntry("chromium").makeAdapter({ launchMode: modeFor(method) }),
+      ).rejects.toThrow(LAUNCH_STUBBED);
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(optionsOf(spy.mock.calls[0]).chromiumSandbox).toBe(true);
+      expect(optionsOf(spy.mock.calls[1])).not.toHaveProperty("chromiumSandbox");
+      expect(warnings(warn).some((w) => w.includes("Chromium sandboxing failed"))).toBe(true);
+    });
+
+    it("auto does not retry a failure that is not about the sandbox", async () => {
+      vi.spyOn(sandboxProbe, "gather").mockReturnValue(NORMAL_USER);
+      const spy = spyOnLaunch(method).mockRejectedValue(LAUNCH_STUBBED);
+      await expect(
+        engineEntry("chromium").makeAdapter({ launchMode: modeFor(method) }),
+      ).rejects.toThrow(LAUNCH_STUBBED);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it("auto gives up after one retry when the second launch fails on the sandbox too", async () => {
+      vi.spyOn(sandboxProbe, "gather").mockReturnValue(NORMAL_USER);
+      vi.spyOn(log, "warn").mockImplementation(() => undefined);
+      const spy = spyOnLaunch(method).mockRejectedValue(SANDBOX_ERROR);
+      await expect(
+        engineEntry("chromium").makeAdapter({ launchMode: modeFor(method) }),
+      ).rejects.toThrow(SANDBOX_ERROR);
+      expect(spy).toHaveBeenCalledTimes(2);
+    });
+
+    it("on fails with the fix named and does not retry", async () => {
+      const spy = spyOnLaunch(method).mockRejectedValue(SANDBOX_ERROR);
+      await expect(
+        engineEntry("chromium").makeAdapter({
+          chromiumSandbox: "on",
+          launchMode: modeFor(method),
+        }),
+      ).rejects.toThrow(/BROWX_CHROMIUM_SANDBOX=off/);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("keeps the default-Chrome fallback working when the sandbox is on", async () => {
+    vi.spyOn(sandboxProbe, "gather").mockReturnValue(NORMAL_USER);
+    const notFound = new Error(
+      "Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome",
+    );
+    vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    const spy = vi
+      .spyOn(PlaywrightChromiumAdapter.prototype, "launchPersistent")
+      .mockRejectedValueOnce(notFound)
+      .mockRejectedValueOnce(LAUNCH_STUBBED);
+    await expect(engineEntry("chromium").makeAdapter({})).rejects.toThrow(LAUNCH_STUBBED);
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls[0]![0].options).toHaveProperty("channel", "chrome");
+    expect(spy.mock.calls[0]![0].options).toHaveProperty("chromiumSandbox", true);
+    expect(spy.mock.calls[1]![0].options).not.toHaveProperty("channel");
+    expect(spy.mock.calls[1]![0].options).toHaveProperty("chromiumSandbox", true);
   });
 });
 

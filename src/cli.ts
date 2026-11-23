@@ -100,6 +100,11 @@ Usage: browxai [subcommand]
   BROWX_TOOL_PROFILE=core       make tools/list report a short set of ${CORE_TOOLS.length} core tools,
                                 your plugin tools and tool_catalog, which names the
                                 rest (default: full). Every tool stays callable by name.
+  BROWX_CHROMIUM_SANDBOX=on     Chromium's OS sandbox for the browsers browxai launches:
+                                auto (default) turns it on when the host supports it
+                                and falls back to --no-sandbox with a warning, on
+                                fails a launch that cannot start it, off launches
+                                without it (set off in containers to drop the warning).
 
 All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/).
 `;

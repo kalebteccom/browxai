@@ -4,7 +4,8 @@
 // the substrate selection delegates to the existing CDP/Playwright selectors, and
 // the post-wire is the full Playwright bookkeeping set (the always-true branch the
 // three factories ran for every non-Safari engine). This is pure wiring
-// relocation behind the registry — the chromium CDP path is verbatim.
+// relocation behind the registry. The chromium CDP path is verbatim, except that
+// each launch now also carries the OS-sandbox decision (src/session/chromium-sandbox-launch.ts).
 
 import type { BrowserSession, SessionOptions } from "../../session/types.js";
 import { registerEngine } from "../registry.js";
@@ -23,6 +24,7 @@ import {
   launchWithChannelPlan,
   planChromiumChannel,
 } from "../../session/chromium-launch-posture.js";
+import { launchWithSandboxPlan } from "../../session/chromium-sandbox-launch.js";
 import { PlaywrightChromiumAdapter } from "./playwright-chromium.js";
 import { attachByobDesktop } from "../../session/byob-attach.js";
 
@@ -37,32 +39,41 @@ async function makeChromiumAdapter(opts: SessionOptions): Promise<BrowserSession
     return attachByobDesktop(opts);
   }
   const plan = planChromiumChannel(opts);
+  // Both launches below pass `chromiumSandbox: true` or nothing: the sandbox mode
+  // decides, and Playwright adds `--no-sandbox` when the option is absent.
+  const sandboxMode = opts.chromiumSandbox ?? "auto";
   if (mode === "incognito") {
     const adapter = new PlaywrightChromiumAdapter();
     const { browser, context, page, cdp } = await launchWithChannelPlan(plan, (channelOption) =>
-      adapter.launchEphemeral({
-        launchOptions: {
-          ...buildIncognitoLaunchOptions("chromium", opts),
-          ...automationSwitchOptions(),
-          ...channelOption,
-        },
-        contextOptions: buildIncognitoContextOptions(opts),
-      }),
+      launchWithSandboxPlan(sandboxMode, (sandboxOption) =>
+        adapter.launchEphemeral({
+          launchOptions: {
+            ...buildIncognitoLaunchOptions("chromium", opts),
+            ...automationSwitchOptions(),
+            ...channelOption,
+            ...sandboxOption,
+          },
+          contextOptions: buildIncognitoContextOptions(opts),
+        }),
+      ),
     );
     return finalizeIncognitoSession("chromium", { browser, context, page, cdp });
   }
   const { profileDir, options, chromiumArgs } = buildManagedLaunch("chromium", opts);
   const adapter = new PlaywrightChromiumAdapter();
   const { context, page, cdp } = await launchWithChannelPlan(plan, (channelOption) =>
-    adapter.launchPersistent({
-      profileDir,
-      options: {
-        ...options,
-        ...(chromiumArgs.length ? { args: chromiumArgs } : {}),
-        ...automationSwitchOptions(),
-        ...channelOption,
-      },
-    }),
+    launchWithSandboxPlan(sandboxMode, (sandboxOption) =>
+      adapter.launchPersistent({
+        profileDir,
+        options: {
+          ...options,
+          ...(chromiumArgs.length ? { args: chromiumArgs } : {}),
+          ...automationSwitchOptions(),
+          ...channelOption,
+          ...sandboxOption,
+        },
+      }),
+    ),
   );
   return finalizeManagedSession("chromium", opts, profileDir, { context, page, cdp });
 }

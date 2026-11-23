@@ -23,6 +23,12 @@ import {
   type ToolProfile,
 } from "./tool-profile.js";
 import {
+  CHROMIUM_SANDBOX_MODES,
+  isChromiumSandboxMode,
+  parseChromiumSandbox,
+  type ChromiumSandboxMode,
+} from "./chromium-sandbox.js";
+import {
   clampPolicy,
   policyAdjustments,
   policyCeiling,
@@ -85,6 +91,12 @@ export interface ResolvedConfig {
    *  profile leaves out still answers a call by name, through the same gate. Read
    *  once at server start. */
   toolProfile?: ToolProfile;
+  /** Chromium's OS sandbox for the browsers browxai launches: `auto` (default) turns
+   *  it on when the host supports it and falls back to `--no-sandbox` with a warning,
+   *  `on` requires it, `off` keeps Playwright's default of no sandbox. Read when a
+   *  session launches, so a change applies to the next `open_session`. A policy key:
+   *  saved layers cannot go below the level the environment set. */
+  chromiumSandbox?: ChromiumSandboxMode;
   /** Experimental / feature-flag knobs. Not stable; shallow-merged across layers. */
   unstable: Record<string, unknown>;
 }
@@ -108,6 +120,7 @@ export const BUILTIN_DEFAULTS: ResolvedConfig = {
   plugins: [],
   toolList: "enabled",
   toolProfile: "full",
+  chromiumSandbox: "auto",
   unstable: {},
 };
 
@@ -156,6 +169,8 @@ export function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   if (tl) layer.toolList = tl;
   const tp = parseToolProfile(env.BROWX_TOOL_PROFILE);
   if (tp) layer.toolProfile = tp;
+  const cs = parseChromiumSandbox(env.BROWX_CHROMIUM_SANDBOX);
+  if (cs) layer.chromiumSandbox = cs;
   return layer;
 }
 
@@ -197,6 +212,11 @@ function parsePersisted(raw: unknown): PersistedFile {
     const toolProfile = (layer as Record<string, unknown>).toolProfile;
     if (toolProfile !== undefined && !isToolProfile(toolProfile))
       throw new Error(`"${scope}.toolProfile" is not one of ${TOOL_PROFILES.join(", ")}`);
+    const chromiumSandbox = (layer as Record<string, unknown>).chromiumSandbox;
+    if (chromiumSandbox !== undefined && !isChromiumSandboxMode(chromiumSandbox))
+      throw new Error(
+        `"${scope}.chromiumSandbox" is not one of ${CHROMIUM_SANDBOX_MODES.join(", ")}`,
+      );
     out[scope] = layer;
   }
   return out;
@@ -279,6 +299,7 @@ export class ConfigStore {
       plugins: layer.plugins ?? acc.plugins,
       toolList: layer.toolList ?? acc.toolList,
       toolProfile: layer.toolProfile ?? acc.toolProfile,
+      chromiumSandbox: layer.chromiumSandbox ?? acc.chromiumSandbox,
       unstable: layer.unstable ? { ...acc.unstable, ...layer.unstable } : acc.unstable,
     };
   }

@@ -4,6 +4,7 @@ import { policyWidening } from "../util/config-ceiling.js";
 import { resolveOriginPolicy } from "../policy/origin.js";
 import { TOOL_LIST_MODES } from "../util/tool-list.js";
 import { TOOL_PROFILES } from "../util/tool-profile.js";
+import { CHROMIUM_SANDBOX_MODES } from "../util/chromium-sandbox.js";
 
 /** The first unparseable origin or unknown confirm hook in a patch, or null.
  *  Each entry is checked on its own; a comma inside one is refused because the
@@ -82,6 +83,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
     plugins: z.array(z.string()).optional(),
     toolList: z.enum(TOOL_LIST_MODES).optional(),
     toolProfile: z.enum(TOOL_PROFILES).optional(),
+    chromiumSandbox: z.enum(CHROMIUM_SANDBOX_MODES).optional(),
     unstable: z.record(z.string(), z.unknown()).optional(),
   };
 
@@ -180,7 +182,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
       "set_config",
       {
         description:
-          'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. Policy keys can only TIGHTEN against the server environment: `capabilities` must be a subset of the active set (else `error: "capabilities-not-widenable"`); `confirmRequired` add only, `allowedOrigins` narrow only, `blockedOrigins` add only, `disableWebSecurity` off only unless BROWX_DISABLE_WEB_SECURITY=1, `plugins` a subset of BROWX_PLUGINS (else `error: "policy-not-loosenable"`). Saved layers are clamped the same way at every start. `toolList` (`enabled`, the default, lists only the tools the server can run; `all` lists every tool) and `toolProfile` (`full` or `core`) set what `tools/list` reports, read once at server start.',
+          'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. Policy keys can only TIGHTEN against the server environment: `capabilities` must be a subset of the active set (else `error: "capabilities-not-widenable"`); `confirmRequired` add only, `allowedOrigins` narrow only, `blockedOrigins` add only, `disableWebSecurity` off only unless BROWX_DISABLE_WEB_SECURITY=1, `plugins` a subset of BROWX_PLUGINS, `chromiumSandbox` at least the level BROWX_CHROMIUM_SANDBOX sets (off < auto < on, and auto when it is unset), so `off` needs the environment (else `error: "policy-not-loosenable"`). Saved layers are clamped the same way at every start. `toolList` (`enabled`, the default, lists only the tools the server can run; `all` lists every tool) and `toolProfile` (`full` or `core`) set what `tools/list` reports, read once at server start. `chromiumSandbox` (`auto`, the default, turns Chromium\'s OS sandbox on when the host supports it; `on` requires it; `off` launches without it) applies to sessions opened after the call.',
         inputSchema: {
           scope: z.enum(["user", "project"]).describe("Which persistent layer to write."),
           patch: z
@@ -215,7 +217,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
             ok: false,
             error: "policy-not-loosenable",
             loosening,
-            hint: "`set_config` can only tighten policy keys: add confirm hooks and blocked origins, narrow allowed origins and plugins, turn disableWebSecurity off. Loosening one is the operator's decision, made in the server's environment (BROWX_CONFIRM_REQUIRED, BROWX_ALLOWED_ORIGINS, BROWX_BLOCKED_ORIGINS, BROWX_DISABLE_WEB_SECURITY, BROWX_PLUGINS).",
+            hint: "`set_config` can only tighten policy keys: add confirm hooks and blocked origins, narrow allowed origins and plugins, turn disableWebSecurity off, raise chromiumSandbox toward on. Loosening one is the operator's decision, made in the server's environment (BROWX_CONFIRM_REQUIRED, BROWX_ALLOWED_ORIGINS, BROWX_BLOCKED_ORIGINS, BROWX_DISABLE_WEB_SECURITY, BROWX_PLUGINS, BROWX_CHROMIUM_SANDBOX).",
           });
         }
         configStore.setLayer(scope, patch);

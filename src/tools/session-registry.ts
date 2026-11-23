@@ -199,10 +199,11 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // takes effect on the next open_session without a server restart.
       // `disableWebSecurity` is off by default; `channel` unset launches the
       // installed Chrome (bundled Chromium when it is absent), and the per-session
-      // spec wins.
+      // spec wins. `chromiumSandbox` has no per-session form: it is operator policy.
       const launchConfig = configStore.resolve();
       const disableWebSecurity = launchConfig.disableWebSecurity === true;
       const channel = spec?.channel ?? launchConfig.channel;
+      const chromiumSandbox = launchConfig.chromiumSandbox;
       const backgroundThrottling = spec?.backgroundThrottling;
       // resolve device/viewport — spec overrides config-store defaults.
       const device = resolveDevice({
@@ -292,6 +293,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           device,
           disableWebSecurity,
           channel,
+          chromiumSandbox,
           backgroundThrottling,
           storageState: creationStorageState,
           recordHar: creationRecordHar,
@@ -317,6 +319,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           device,
           disableWebSecurity,
           channel,
+          chromiumSandbox,
           backgroundThrottling,
           storageState: creationStorageState,
           recordHar: creationRecordHar,

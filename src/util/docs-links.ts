@@ -31,6 +31,8 @@ export const docsUrl = {
   threatModel: docLink(THREAT_MODEL),
   /** How to turn a capability on: BROWX_CAPABILITIES, the config ceiling, confirm hooks. */
   threatModelConfiguring: docLink(THREAT_MODEL, "configuring"),
+  /** Which components are trusted, and whether Chromium's OS sandbox is on. */
+  threatModelTrustBoundary: docLink(THREAT_MODEL, "trust-boundary"),
   /** What each capability grants, with its default. */
   threatModelCapabilities: docLink(THREAT_MODEL, "the-capability-set"),
   /** Origin allow and blocklist syntax and matching rules. */

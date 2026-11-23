@@ -24,17 +24,18 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 | 10  | Plugin ecosystem growth                      | M    |
 | 11  | An optional natural-language action layer    | L    |
 
-### Chromium sandbox for browsers browxai launches (owner decision pending)
+### Chromium sandbox for browsers browxai launches (decided: option (c), built)
 
-This sits ahead of the security items below and has no number, because it needs a decision before it needs work.
+This item had no number because it needed a decision before it needed work. The owner chose option (c) and it is built.
 
-- **Status.** Browsers browxai launches itself (managed profile, incognito, the headless shell, the installed Chrome a session opens) run with Chromium's OS sandbox off. browxai never sets `chromiumSandbox`, and Playwright adds `--no-sandbox` unless it is `true`. The README, the threat model and the containers guide now say so. A Chrome you start yourself and attach to keeps its own sandbox. `src/engine/adapters/chromium.engine.test.ts` pins the current launch options.
-- **Options.**
-  - (a) Keep it off and documented, as now. Containers need nothing extra.
+- **Decision.** Turn Chromium's OS sandbox on by default for the browsers browxai launches through Playwright when the process is not root and the host supports it. Fall back to `--no-sandbox` with a loud warning when it cannot. Keep `--no-sandbox` available for containers.
+- **What shipped.** A `chromiumSandbox` config key and `BROWX_CHROMIUM_SANDBOX` env var with `auto` (default), `on` and `off`. `auto` asks for the sandbox unless the process is root, runs in a container, or the Linux kernel allows no unprivileged user namespaces, and retries once without it when a launch fails with an error that names the sandbox. `on` fails the launch when the sandbox cannot start. `off` is the old behavior. The key is a policy key, so a saved layer cannot go below the environment's level. `browxai doctor` has a `chromium-sandbox` row. The README, the threat model, the adopter security page, the containers guide and the tool reference describe it. It shipped with a CHANGELOG entry that starts "Behavior change".
+- **Options that were weighed.**
+  - (a) Keep it off and documented. Containers need nothing extra.
   - (b) Add an opt-in `chromiumSandbox` config key, default off.
-  - (c) Turn it on by default when the process is not root and the host supports it, with a loud fallback message when it cannot, and keep `--no-sandbox` available for containers.
-- **Recommendation: (c).** Most users run browxai on a laptop as their own user, where the sandbox works, and today those sessions lose the one OS-level boundary around page content. Root and unprivileged containers are the cases where Chromium refuses to start with the sandbox on, so the fallback message and an explicit way to turn it off cover them. It changes launch behavior for every default user, so it ships as a minor with a CHANGELOG note that starts with "Behavior change", and the threat-model rows change in the same PR.
-- **Why it is the owner's call.** It sets the default security posture and can stop a launch from starting on some hosts. Nothing here is decided.
+  - (c) Turn it on by default when the process is not root and the host supports it, with a loud fallback message when it cannot, and keep `--no-sandbox` available for containers. Chosen.
+- **Not verified.** No real run on a Linux host with the sandbox on, in a container with user namespaces enabled, or under an AppArmor policy that restricts them. The error-message matching comes from Chromium's and Playwright's wording, not from a captured failure. The keystone lane runs as root, so it still launches without the sandbox, as before.
+- **Done when.** A keystone run on a non-root Linux user shows a launched browser with the sandbox on (for example from `chrome://sandbox`), and one on a host with user namespaces blocked shows the retry warning and a working session. That needs a machine to run on and is not scheduled.
 
 ### 1. List only the tools whose capability is on (S, opt-in in 0.17.0, default in 0.18.0)
 

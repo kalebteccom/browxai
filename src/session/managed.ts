@@ -1,7 +1,10 @@
 // Managed-profile launch. Normal Chrome flags, profile dir rooted at
 // $BROWX_WORKSPACE/profile/. Never `cwd`, never the human's daily-driver profile,
-// never lowered-security flags. It does not set `chromiumSandbox`, so Playwright
-// adds --no-sandbox and Chromium's OS sandbox is off (see docs/threat-model.md).
+// never lowered-security flags. Chromium's OS sandbox follows the `chromiumSandbox`
+// option: `auto` (default) asks Playwright for it when the host supports it and falls
+// back to --no-sandbox with a warning, `on` requires it, `off` keeps Playwright's
+// default of no sandbox (see src/session/chromium-sandbox-launch.ts and
+// docs/threat-model.md).
 //
 // Post-RFC-0004-P1 this factory keeps only its MODE concern: it resolves the
 // engine and hands off to the EngineRegistry, whose `makeAdapter` owns the

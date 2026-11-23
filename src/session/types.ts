@@ -5,6 +5,7 @@
 
 import type { CDPSession, Page } from "playwright-core";
 import type { EngineKind, NativeSessionHandle, SafariSessionHandle } from "../engine/index.js";
+import type { ChromiumSandboxMode } from "../util/chromium-sandbox.js";
 
 export type SessionMode = "managed" | "byob";
 
@@ -76,6 +77,12 @@ export interface SessionOptions {
    *  firefox resolves its own channel from `BROWX_FIREFOX_CHANNEL`, and webkit /
    *  safari / android have none. */
   channel?: string;
+  /** Chromium's OS sandbox for the launch (src/session/chromium-sandbox-launch.ts):
+   *  `auto` (the default when unset) turns it on when the host supports it and falls
+   *  back to `--no-sandbox` with a warning, `on` requires it, `off` keeps Playwright's
+   *  default of no sandbox. Read only by the chromium engine module's managed and
+   *  incognito launches. */
+  chromiumSandbox?: ChromiumSandboxMode;
   /** Chrome pauses `requestAnimationFrame`, throttles timers to once a minute
    *  after five minutes, and can freeze a hidden+occluded tab. `"disabled"`
    *  launches chromium with `--disable-background-timer-throttling

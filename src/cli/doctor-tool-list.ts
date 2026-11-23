@@ -12,10 +12,11 @@ export function toolListRow(env: NodeJS.ProcessEnv = process.env, workspaceRoot?
   let mode: ToolListMode | undefined;
   let explicit: boolean;
   try {
-    // A mistyped BROWX_TOOL_PROFILE is the tool-profile row's error to report.
+    // A mistyped BROWX_TOOL_PROFILE or BROWX_CHROMIUM_SANDBOX is that row's error to report.
     const store = new ConfigStore(workspaceRoot ?? resolveWorkspace(env).root, {
       ...env,
       BROWX_TOOL_PROFILE: "",
+      BROWX_CHROMIUM_SANDBOX: "",
     });
     mode = store.resolve().toolList;
     explicit =

@@ -10,7 +10,7 @@ const AREAS: ReadonlyArray<readonly [label: string, rows: readonly string[]]> = 
   ["node", ["node"]],
   ["install", ["build"]],
   ["workspace", ["workspace"]],
-  ["browser", ["chrome", "chromium"]],
+  ["browser", ["chrome", "chromium", "chromium-sandbox"]],
   ["capabilities", ["capabilities", "byob-attach"]],
   ["attach", ["cdp-attach"]],
   ["settings", ["test-attrs", "confirm-hooks", "origins", "tool-list", "tool-profile"]],

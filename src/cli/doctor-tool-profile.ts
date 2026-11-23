@@ -15,10 +15,11 @@ export function toolProfileRow(
   let profile: ToolProfile | undefined;
   let explicit: boolean;
   try {
-    // A mistyped BROWX_TOOL_LIST is the tool-list row's error to report.
+    // A mistyped BROWX_TOOL_LIST or BROWX_CHROMIUM_SANDBOX is that row's error to report.
     const store = new ConfigStore(workspaceRoot ?? resolveWorkspace(env).root, {
       ...env,
       BROWX_TOOL_LIST: "",
+      BROWX_CHROMIUM_SANDBOX: "",
     });
     profile = store.resolve().toolProfile;
     explicit =
