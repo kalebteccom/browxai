@@ -645,3 +645,165 @@ body:not([data-player-state="ready"]) #panels {
 .prow-cov-step[data-ok="false"] .pcell-verdict {
   color: var(--fail);
 }
+
+/* Panel filters, row state and the details pane (network and console) ───── */
+
+.panel-toolbar {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* The filters are the controls a reviewer reaches for, so they take the full
+   44px target. Rows stay dense on a pointer that can hit them, and grow on a
+   touch screen (below). */
+.panel-toolbar .panel-filter {
+  min-height: 44px;
+}
+
+input.panel-filter {
+  width: 18em;
+  max-width: 100%;
+  background: #1f262e;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 4px 9px;
+  font: inherit;
+}
+
+/* Always rendered, so a count that changes never moves the rows. */
+.panel-status {
+  margin-left: auto;
+  min-height: 1.45em;
+  color: var(--dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(14em, 26em);
+  grid-template-areas: "table detail";
+  align-items: start;
+}
+
+.panel-split > .panel-table {
+  grid-area: table;
+  min-width: 0;
+}
+
+/* First in the DOM so a keyboard user reaches it before the rows, placed to
+   the right by the grid. It keeps its place while the rows scroll. */
+.panel-detail {
+  grid-area: detail;
+  position: sticky;
+  top: 0;
+  min-width: 0;
+  min-height: 6em;
+  max-height: max(8em, calc(35vh - 2rem));
+  overflow: auto;
+  padding: 8px 12px;
+  border-left: 1px solid var(--line);
+  font-size: 11px;
+}
+
+.pd-heading {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pd-title {
+  margin: 10px 0 4px;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pd-row {
+  display: grid;
+  grid-template-columns: 8em minmax(0, 1fr);
+  gap: 8px;
+  padding: 1px 0;
+}
+
+.pd-label {
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+
+.pd-value,
+.pd-block {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.pd-value[data-redacted],
+.pd-block[data-redacted] {
+  color: var(--warn);
+  font-style: italic;
+}
+
+.pd-block {
+  margin: 0;
+  padding: 6px 8px;
+  max-height: 14em;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #10151a;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.pd-note,
+.pd-placeholder {
+  margin: 0;
+  color: var(--dim);
+}
+
+/* The row open in the details pane, and the row the playhead is on. */
+.prow:active {
+  background: #243241;
+}
+
+.prow[aria-pressed="true"] {
+  background: #1d2b3d;
+}
+
+.prow[data-current="true"] {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.prow:focus-visible,
+.panel-tab:focus-visible,
+.panel-filter:focus-visible,
+.panel-detail:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse) {
+  .prow:not(.prow-head),
+  .panel-tab {
+    min-height: 44px;
+    align-items: center;
+  }
+}
+
+@media (max-width: 700px) {
+  .panel-split {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "detail"
+      "table";
+  }
+
+  .panel-detail {
+    position: static;
+    border-left: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}

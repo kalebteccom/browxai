@@ -55,12 +55,18 @@ import {
   type SourceContext,
 } from "../../src/replay/sources.js";
 import { DEFAULT_DROPPED_HEADERS, Redactor, ROOT_PATH } from "../../src/replay/redact.js";
+import { SecretRegistry } from "../../src/util/secrets.js";
 import { buildPlayerHtml, packPlayerHtml } from "../../scripts/build-replay-player.js";
 
 const KEYSTONE_TIMEOUT = 180_000;
 
 const MARKER = "REPLAY-PLAYER-MARKER";
 const TYPED = "typed-into-the-form";
+/** A value registered as a secret before capture. It is written into a URL, a
+ *  header, console text and a stack, and it must not be readable anywhere in
+ *  the player: the archive holds its `<PANEL_TOKEN>` alias instead. */
+const SECRET = "keystone-secret-8f3a91c2";
+const SECRET_ALIAS = "<PANEL_TOKEN>";
 /** An event type this build has never heard of. The forward-compatibility gate. */
 const FUTURE_TYPE = "telemetry/flamechart";
 
@@ -232,11 +238,19 @@ function recordPanelSources(log: ReplayLog, ctx: SourceContext, origin: string):
   log.append(
     netRequestEvent(ctx, {
       requestId: "r1",
-      request: { url: `${origin}/api/items`, method: "GET" },
+      request: {
+        url: `${origin}/api/items?key=${SECRET}`,
+        method: "GET",
+        // One header the redaction rules drop, one that carries a registered
+        // secret and is masked to its alias: the pane has to tell them apart.
+        headers: { authorization: `Bearer ${SECRET}`, "x-api-key": SECRET, accept: "*/*" },
+      },
       type: "XHR",
     }),
   );
-  log.append(consoleMessageEvent(ctx, { type: "warning", text: "fixture console warning" }));
+  log.append(
+    consoleMessageEvent(ctx, { type: "warning", text: `fixture console warning ${SECRET}` }),
+  );
   log.append(wsOpenEvent(ctx, { requestId: "w1", url: `${origin.replace("http", "ws")}/live` }));
   log.append(
     netResponseEvent(ctx, {
@@ -244,7 +258,7 @@ function recordPanelSources(log: ReplayLog, ctx: SourceContext, origin: string):
       response: {
         url: `${origin}/api/items`,
         status: 200,
-        headers: { "content-length": "4096", "set-cookie": "sid=secret" },
+        headers: { "content-length": "4096", "set-cookie": "sid=secret", "x-echo": SECRET },
         mimeType: "application/json",
       },
       type: "XHR",
@@ -276,7 +290,10 @@ function recordPanelSources(log: ReplayLog, ctx: SourceContext, origin: string):
     netFailedEvent(ctx, { requestId: "r3", errorText: "net::ERR_ABORTED", type: "Fetch" }),
   );
   log.append(
-    pageErrorEvent(ctx, { text: "Uncaught TypeError: fixture page error", stack: "at fixture" }),
+    pageErrorEvent(ctx, {
+      text: `Uncaught TypeError: fixture page error ${SECRET}`,
+      stack: `at fixture (${SECRET})`,
+    }),
   );
   log.append(wsCloseEvent(ctx, { requestId: "w1", code: 1001, reason: "going away" }));
 }
@@ -294,11 +311,14 @@ async function captureSession(): Promise<Captured> {
   // carries both marker kinds the panels have to render: `content-length` in
   // the dropped headers (so the network panel has a size it must not show), and
   // "drop every body" (so a WS frame arrives as the marker, not as its text).
+  const secrets = new SecretRegistry();
+  secrets.register({ name: "PANEL_TOKEN", value: SECRET });
   const ctx: SourceContext = {
     clock,
     redact: new Redactor({
       headers: [...DEFAULT_DROPPED_HEADERS, "content-length"],
       bodyPaths: [ROOT_PATH],
+      secrets,
     }),
   };
 
@@ -666,6 +686,283 @@ describePlayer("replay player keystone — capture with browxai, review with bro
             return at === document.getElementById('clock').dataset.t;
           })()`),
         ).toBe(true);
+      } finally {
+        await server.shutdown().catch(() => undefined);
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "filters the network panel, opens a request's masked details, and seeks to it",
+    async () => {
+      const server = await createServer({ attachCdp: endpoint, headless: true });
+      const call = callerFor(server.handlers);
+      const read = async (expr: string): Promise<unknown> =>
+        (await call<{ value?: unknown }>("eval_js", { session: "net-details", expr })).value;
+      const setFilter = (selector: string, value: string): Promise<unknown> =>
+        read(`(() => {
+          const input = document.querySelector(${JSON.stringify(selector)});
+          input.value = ${JSON.stringify(value)};
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          return input.value;
+        })()`);
+      const ids = `Array.from(
+        document.querySelectorAll('.panel-network .prow-net:not(.prow-head)')
+      ).map(r => r.dataset.requestId)`;
+      const section = (id: string): string =>
+        `document.querySelector('.panel-network .panel-detail [data-section="${id}"]').textContent`;
+      try {
+        await call("approve_actions", { scopes: ["byob_action"], ttlSeconds: 600 });
+        await call("open_session", { session: "net-details", mode: "attached" });
+        await call("navigate", { session: "net-details", url: playerUrl });
+        await call("wait_for", {
+          session: "net-details",
+          selector: 'body[data-player-state="ready"]',
+          timeoutMs: 30_000,
+        });
+        const last = captured.expectedSteps.length - 1;
+        await call("click", {
+          session: "net-details",
+          selector: `#steps li.step[data-step-index="${last}"]`,
+        });
+        expect(await read(ids)).toEqual(["r1", "r2", "r3"]);
+
+        // Text filter: over what a row shows, with a count that says what it did.
+        await setFilter("#network-filter", "SLOW");
+        expect(await read(ids)).toEqual(["r2"]);
+        expect(
+          await read(`document.querySelector('.panel-network .panel-status').textContent`),
+        ).toBe("1 of 3 requests match");
+        await setFilter("#network-filter", "no-such-request-anywhere");
+        expect(await read(ids)).toEqual([]);
+        expect(
+          await read(`document.querySelector('.panel-network .panel-empty-text').textContent`),
+        ).toContain("No request matches");
+        // The registered secret was never stored, so a filter cannot find it.
+        await setFilter("#network-filter", SECRET);
+        expect(await read(ids)).toEqual([]);
+        await setFilter("#network-filter", SECRET_ALIAS);
+        expect(await read(ids)).toEqual(["r1"]);
+        await setFilter("#network-filter", "");
+        expect(await read(ids)).toEqual(["r1", "r2", "r3"]);
+
+        // Status filter: the class a row is in at the playhead.
+        await call("select", {
+          session: "net-details",
+          selector: "#network-status",
+          values: ["failed"],
+        });
+        expect(await read(ids)).toEqual(["r3"]);
+        await call("select", {
+          session: "net-details",
+          selector: "#network-status",
+          values: ["pending"],
+        });
+        expect(await read(ids)).toEqual(["r2"]);
+        await call("select", {
+          session: "net-details",
+          selector: "#network-status",
+          values: ["all"],
+        });
+        expect(await read(ids)).toEqual(["r1", "r2", "r3"]);
+
+        // The pane starts empty and reserves its place.
+        expect(
+          await read(`document.querySelector('.panel-network .panel-detail').dataset.state`),
+        ).toBe("empty");
+
+        // The POST: its body was dropped by a redaction rule, and it never got a response.
+        const t2 = await read(`(() => {
+          const row = document.querySelector('.panel-network .prow-net[data-request-id="r2"]');
+          const at = row.dataset.t;
+          row.click();
+          return { at, clock: document.getElementById('clock').dataset.t };
+        })()`);
+        expect((t2 as { at: string; clock: string }).clock).toBe((t2 as { at: string }).at);
+        expect(await read(section("request-body"))).toContain("[redacted: body-rule]");
+        expect(await read(section("response-headers"))).toContain("No response recorded.");
+        expect(
+          await read(
+            `document.querySelector('.panel-network .prow-net[data-request-id="r2"]').getAttribute('aria-pressed')`,
+          ),
+        ).toBe("true");
+
+        // The GET: a dropped header shows its marker, a registered secret its alias.
+        await read(`(() => {
+          document.querySelector('.panel-network .prow-net[data-request-id="r1"]').click();
+          return true;
+        })()`);
+        const requestHeaders = (await read(section("request-headers"))) as string;
+        expect(requestHeaders).toContain("authorization");
+        expect(requestHeaders).toContain("[redacted: header]");
+        expect(requestHeaders).toContain(SECRET_ALIAS);
+        expect(await read(section("response-headers"))).toContain("[redacted: header]");
+        // The tier this artifact was captured at records no bodies, and the pane says so.
+        expect(await read(section("response-body"))).toContain("Not captured at this tier");
+        expect(
+          await read(`document.querySelector('.panel-network .panel-detail h2').textContent`),
+        ).toContain("GET");
+
+        // Selection survives the seek it caused, and the playhead's row is marked.
+        expect(
+          await read(`(() => {
+            const rows = Array.from(
+              document.querySelectorAll('.panel-network .prow-net:not(.prow-head)')
+            );
+            const current = rows.filter(r => r.dataset.current === 'true');
+            return {
+              pressed: rows.filter(r => r.getAttribute('aria-pressed') === 'true').map(r => r.dataset.requestId),
+              currentCount: current.length,
+              currentIsLast: current[0] === rows[rows.length - 1],
+              ariaCurrent: current[0].getAttribute('aria-current'),
+            };
+          })()`),
+        ).toEqual({ pressed: ["r1"], currentCount: 1, currentIsLast: true, ariaCurrent: "true" });
+
+        // Nothing in the page, attributes included, carries the secret.
+        expect(
+          await read(`document.documentElement.outerHTML.includes(${JSON.stringify(SECRET)})`),
+        ).toBe(false);
+      } finally {
+        await server.shutdown().catch(() => undefined);
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "filters the console panel, opens a message's masked details, and seeks to it",
+    async () => {
+      const server = await createServer({ attachCdp: endpoint, headless: true });
+      const call = callerFor(server.handlers);
+      const read = async (expr: string): Promise<unknown> =>
+        (await call<{ value?: unknown }>("eval_js", { session: "console-details", expr })).value;
+      const setFilter = (value: string): Promise<unknown> =>
+        read(`(() => {
+          const input = document.querySelector('#console-filter');
+          input.value = ${JSON.stringify(value)};
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          return input.value;
+        })()`);
+      const rows = `Array.from(
+        document.querySelectorAll('.panel-console .prow-console:not(.prow-head)')
+      ).map(r => r.dataset.source + ':' + r.dataset.level)`;
+      try {
+        await call("approve_actions", { scopes: ["byob_action"], ttlSeconds: 600 });
+        await call("open_session", { session: "console-details", mode: "attached" });
+        await call("navigate", { session: "console-details", url: playerUrl });
+        await call("wait_for", {
+          session: "console-details",
+          selector: 'body[data-player-state="ready"]',
+          timeoutMs: 30_000,
+        });
+        const last = captured.expectedSteps.length - 1;
+        await call("click", {
+          session: "console-details",
+          selector: `#steps li.step[data-step-index="${last}"]`,
+        });
+        await call("click", {
+          session: "console-details",
+          selector: '.panel-tab[data-panel-id="console"]',
+        });
+        expect(await read(rows)).toEqual(["console:warn", "page:error"]);
+
+        await setFilter("WARNING");
+        expect(await read(rows)).toEqual(["console:warn"]);
+        expect(
+          await read(`document.querySelector('.panel-console .panel-status').textContent`),
+        ).toBe("1 of 2 messages shown");
+        await setFilter("page error");
+        expect(await read(rows)).toEqual(["page:error"]);
+        await setFilter(SECRET);
+        expect(await read(rows)).toEqual([]);
+        await setFilter("");
+        expect(await read(rows)).toEqual(["console:warn", "page:error"]);
+
+        // The page error: whole message and stack, masked, and a seek to its time.
+        const picked = await read(`(() => {
+          const row = document.querySelector('.panel-console .prow-console[data-source="page"]');
+          const at = row.dataset.t;
+          row.click();
+          return { at, clock: document.getElementById('clock').dataset.t };
+        })()`);
+        expect((picked as { at: string; clock: string }).clock).toBe((picked as { at: string }).at);
+        const pane = (await read(
+          `document.querySelector('.panel-console .panel-detail').textContent`,
+        )) as string;
+        expect(pane).toContain("Uncaught TypeError: fixture page error");
+        expect(pane).toContain("at fixture (");
+        expect(pane).toContain(SECRET_ALIAS);
+        expect(
+          await read(`(() => {
+            const all = Array.from(
+              document.querySelectorAll('.panel-console .prow-console:not(.prow-head)')
+            );
+            const current = all.filter(r => r.dataset.current === 'true');
+            return {
+              pressed: all.filter(r => r.getAttribute('aria-pressed') === 'true').map(r => r.dataset.source),
+              currentIsLast: current.length === 1 && current[0] === all[all.length - 1],
+            };
+          })()`),
+        ).toEqual({ pressed: ["page"], currentIsLast: true });
+
+        expect(
+          await read(`document.documentElement.outerHTML.includes(${JSON.stringify(SECRET)})`),
+        ).toBe(false);
+      } finally {
+        await server.shutdown().catch(() => undefined);
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "says the network panel is not captured at the actions tier",
+    async () => {
+      // The same log with the network events taken out and a manifest that
+      // declares the tier which never records them. The panel has to name the
+      // tier, since an empty list there is not the same as a quiet page.
+      const raw = await readFile(join(workspace, "replay", "events.jsonl"), "utf8");
+      const events = raw
+        .split("\n")
+        .filter(
+          (line) => line !== "" && !(JSON.parse(line) as { type: string }).type.startsWith("net/"),
+        )
+        .join("\n");
+      const lean = await writeArtifact({
+        workspaceRoot: workspace,
+        path: "replay/actions-tier.browx",
+        manifest: {
+          schemaVersion: 1,
+          sessionId: "capture",
+          clockOrigin: Date.now(),
+          tier: "actions",
+          browxaiVersion: "keystone",
+          engine: "chromium",
+          counts: {},
+        },
+        events: Buffer.from(`${events}\n`, "utf8"),
+      });
+      const url = await packPlayer(lean.path, "actions-tier.html");
+
+      const server = await createServer({ attachCdp: endpoint, headless: true });
+      const call = callerFor(server.handlers);
+      try {
+        await call("approve_actions", { scopes: ["byob_action"], ttlSeconds: 600 });
+        await call("open_session", { session: "actions-tier", mode: "attached" });
+        await call("navigate", { session: "actions-tier", url });
+        await call("wait_for", {
+          session: "actions-tier",
+          selector: 'body[data-player-state="ready"]',
+          timeoutMs: 30_000,
+        });
+        const said = await call<{ ok: boolean }>("verify_text", {
+          session: "actions-tier",
+          selector: ".panel-network .panel-empty-text",
+          text: "Not captured at this tier",
+        });
+        expect(said.ok).toBe(true);
       } finally {
         await server.shutdown().catch(() => undefined);
       }

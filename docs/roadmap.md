@@ -120,6 +120,7 @@ This item had no number because it needed a decision before it needed work. The 
 
 ### 9. Replay player panels (M)
 
+- **Status.** Partly built. The phase 3 network and console panels gained a text filter, a status filter on the network panel, a details pane for the selected row (masked request and response, or the full message and stack) and a marker on the row at the playhead. Selecting a row seeks the replay. Not built: the plugin API, its manifest schema and docs, the example panel, and an element panel. The panels show only what the archive tier carries, and say "not captured at this tier" for a response body below `reexecutable`.
 - **What.** RFC 0007 phase 4: a documented plugin API for player panels, and one example panel. Phase 5, re-running a session to check determinism, stays out.
 - **Why.** Phases 1 to 3 shipped in v0.10.1: the `.browx` archive, the offline HTML player, secret masking at capture. Phase 4 is what lets a team add its own view without forking the player.
 - **Risk.** Medium. Panels run inside a self-contained HTML file opened from disk, so a panel API has to keep the no-server, no-account property and must not give a panel network access.

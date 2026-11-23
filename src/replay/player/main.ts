@@ -205,6 +205,7 @@ async function load(shell: Shell, bytes: Uint8Array): Promise<void> {
     index: indexEvents(artifact.events),
     panels: [networkPanel(), wsPanel(), consolePanel(), coveragePanel()],
     seekTo: (t) => seek(shell, session, t),
+    tier: artifact.manifest.tier,
   });
 
   wireStrip(shell, session);
