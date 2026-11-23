@@ -7,12 +7,13 @@
 #   scripts/ios/wda-run.sh run      # xcodebuild test-without-building (blocks)
 #   scripts/ios/wda-run.sh probe    # read the endpoints browxai calls, print shapes
 #
-# Environment (no value here is a secret, and none is printed except the paths)
+# Environment
 #   WDA_DIR       a checkout of github.com/appium/WebDriverAgent at a pinned tag.
 #   DERIVED_DATA  the derived data directory. build writes it, run reads it.
 #   TARGET        `simulator` or `device`. Default: simulator.
 #   UDID          the simulator or device UDID, for `id=<UDID>`.
-#   TEAM_ID       device builds only: the 10-character Apple Developer Team ID.
+#   BROWXAI_APPLE_TEAM_ID
+#                 device builds only: the 10-character Apple Developer Team ID.
 #   ASC_KEY_PATH, ASC_KEY_ID, ASC_ISSUER_ID
 #                 optional, device builds only. When all three are set, xcodebuild
 #                 uses an App Store Connect API key to create and refresh
@@ -23,15 +24,29 @@
 #   APP_ID        probe only: the bundle id to open a session on.
 #                 Default: com.apple.Preferences
 #
-# The probe prints HTTP status codes and the shape of each JSON reply (key names
-# and value types). It does not print values, so a device address, a screen
-# content or a name stays out of the output.
+# What the output holds. The probe prints HTTP status codes and the shape of each
+# JSON reply (key names and value types), no values. The `build` and `run` output
+# is xcodebuild's own, and a device build prints the signing identity (the name of
+# a person, for an Apple Development certificate), the team, the provisioning
+# profile name, the device name and UDID, and the `run` output shows the phone's
+# address in the ServerURLHere line. This script masks the identity names, the
+# device name and the UDID. The team, the profile name and the address stay, so
+# summarise or mask them before pasting anything into a pull request or a message.
 
 set -euo pipefail
 
 die() {
   printf 'wda-run: %s\n' "$1" >&2
   exit 1
+}
+
+# Mask what identifies a person or a device in xcodebuild output: certificate
+# names (Apple Development, Apple Distribution, Developer ID) and the device name
+# and UDID in a destination line.
+mask() {
+  sed -E \
+    -e 's/((Apple Development|Apple Distribution|iPhone Developer|Developer ID Application): ).*( \([A-Z0-9]{10}\))/\1<NAME>\3/' \
+    -e '/platform:/ { s/(id:)[^,} ]+/\1<UDID>/g; s/(name:)[^}]*[^ }]/\1<DEVICE_NAME>/g; }'
 }
 
 cmd="${1:-}"
@@ -51,8 +66,8 @@ need_xcode() {
     simulator) DEST="platform=iOS Simulator,id=$UDID" ;;
     device)
       DEST="id=$UDID"
-      [ -n "${TEAM_ID:-}" ] || die "TEAM_ID is not set (a device build is signed)"
-      printf '%s' "$TEAM_ID" | grep -Eq '^[A-Z0-9]{10}$' || die "TEAM_ID must be 10 uppercase letters and digits"
+      [ -n "${BROWXAI_APPLE_TEAM_ID:-}" ] || die "BROWXAI_APPLE_TEAM_ID is not set (a device build is signed)"
+      printf '%s' "$BROWXAI_APPLE_TEAM_ID" | grep -Eq '^[A-Z0-9]{10}$' || die "BROWXAI_APPLE_TEAM_ID must be 10 uppercase letters and digits"
       ;;
     *) die "TARGET must be simulator or device" ;;
   esac
@@ -62,7 +77,7 @@ signing_args() {
   # Prints nothing for a simulator. For a device, the team and, when all three
   # variables are set, the API key options.
   if [ "$TARGET" = "device" ]; then
-    printf '%s\n' "-allowProvisioningUpdates" "DEVELOPMENT_TEAM=$TEAM_ID"
+    printf '%s\n' "-allowProvisioningUpdates" "DEVELOPMENT_TEAM=$BROWXAI_APPLE_TEAM_ID"
     if [ -n "${ASC_KEY_PATH:-}" ] && [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ]; then
       printf '%s\n' "-authenticationKeyPath" "$ASC_KEY_PATH" \
         "-authenticationKeyID" "$ASC_KEY_ID" \
@@ -90,7 +105,7 @@ case "$cmd" in
       -scheme WebDriverAgentRunner \
       -destination "$DEST" \
       -derivedDataPath "$DERIVED_DATA" \
-      ${SIGNING[@]+"${SIGNING[@]}"}
+      ${SIGNING[@]+"${SIGNING[@]}"} 2>&1 | mask
     ;;
   run)
     need_xcode
@@ -102,7 +117,7 @@ case "$cmd" in
       -scheme WebDriverAgentRunner \
       -destination "$DEST" \
       -derivedDataPath "$DERIVED_DATA" \
-      ${SIGNING[@]+"${SIGNING[@]}"}
+      ${SIGNING[@]+"${SIGNING[@]}"} 2>&1 | mask
     ;;
   probe)
     [ -n "${WDA_URL:-}" ] || die "WDA_URL is not set"

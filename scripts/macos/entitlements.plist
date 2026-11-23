@@ -3,11 +3,13 @@
 <!--
   Entitlements for the bundled Node binary in the signed macOS app (RFC 0012).
 
-  release-app.sh applies this file to the executable named `node` only. The
-  launcher and every other Mach-O file in the bundle is signed with the hardened
-  runtime and no entitlements.
+  release-app.sh applies this file to Contents/Resources/node/bin/node only, and
+  verify-app.sh fails when any other file carries an entitlement or when that file
+  carries a key beyond allow-jit. The launcher and every other Mach-O file in the
+  bundle is signed with the hardened runtime and no entitlements.
 
-  Start with allow-jit alone. V8 maps its code pages with MAP_JIT, and the
+  Start with allow-jit alone. That minimum is unverified: Node's own release is
+  signed with broader entitlements, so test it on a Mac with a signed Node. V8 maps its code pages with MAP_JIT, and the
   hardened runtime refuses that without this key. Add the next key only after a
   signed build crashes on a Mac without it, and write the crash into the RFC:
 

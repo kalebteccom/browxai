@@ -80,7 +80,7 @@ It names the bundle id and the team and carries no hash of the code. So a new bu
 
 **Why ad-hoc signing breaks grants.** An ad-hoc signature has no team. Its requirement pins the exact hash of that build (`cdhash`). The next build has a different hash, so the system treats it as a different program and asks again, or quietly refuses. A build signed with an Apple Development certificate has a different requirement from a Developer ID one, so a developer build and a release build do not share grants either. A person testing a development build will be asked again after installing the release.
 
-`scripts/macos/verify-app.sh` prints the requirement and can compare it with the one from an earlier build (`DR_BASELINE`). That check is the cheapest proof that an upgrade keeps grants. The first release writes the baseline file, which stays outside the repository.
+`scripts/macos/verify-app.sh` prints the requirement and can compare it with the one from an earlier build (`BROWXAI_DR_BASELINE`). That check is the cheapest proof that an upgrade keeps grants. The first release writes the baseline file, which stays outside the repository.
 
 **Nested code.** The bundled `node` binary is signed with the fixed identifier `<BUNDLE_ID>.node` and the helper with `<BUNDLE_ID>.cloud`, so a requirement that names either one stays the same across builds. The default identifier of a bare executable is its file name.
 
@@ -90,7 +90,7 @@ Notarization requires the hardened runtime on every executable, a secure timesta
 
 | Entitlement                                              | Needed?                    | Reason                                                                                                                                                                                                                                                                               |
 | -------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `com.apple.security.cs.allow-jit`                        | Yes, on `node` only        | V8 compiles JavaScript to machine code in memory mapped with `MAP_JIT`. The hardened runtime refuses that mapping without this key.                                                                                                                                                  |
+| `com.apple.security.cs.allow-jit`                        | Starting point, unverified | V8 compiles JavaScript to machine code in memory mapped with `MAP_JIT`. The hardened runtime refuses that mapping without this key. Whether it is enough on its own is not verified: Node's own release is signed with broader entitlements.                                         |
 | `com.apple.security.cs.allow-unsigned-executable-memory` | No, until a crash shows it | Older V8 paths and some WebAssembly paths ask for plain writable-and-executable memory. Apple silicon with `MAP_JIT` normally does not. Add it only after a signed build fails without it, and record the failure here.                                                              |
 | `com.apple.security.cs.disable-library-validation`       | No                         | It lets the process load a native addon or dylib signed by another team. The production dependencies (`@modelcontextprotocol/sdk`, `playwright-core`, `rrweb`, `zod`) are JavaScript with no `.node` addon. `rrweb` runs inside the browser. Needed only if an addon is added later. |
 | `com.apple.security.cs.allow-dyld-environment-variables` | No                         | Nothing here sets `DYLD_*`.                                                                                                                                                                                                                                                          |
@@ -98,7 +98,7 @@ Notarization requires the hardened runtime on every executable, a secure timesta
 | `com.apple.security.app-sandbox`                         | No                         | The App Sandbox would stop the daemon from starting Chrome, adb and `xcrun`. Developer ID distribution does not require it. The hardened runtime is a different, lighter protection and is the one in use.                                                                           |
 | `com.apple.security.get-task-allow`                      | Never                      | Notarization rejects it.                                                                                                                                                                                                                                                             |
 
-`scripts/macos/entitlements.plist` holds `allow-jit` alone, and `release-app.sh` applies it to the file named `node` and to nothing else. The launcher and the helper get the hardened runtime and no entitlements. Verify on a Mac: dump the official Node binary's entitlements with `codesign -d --entitlements - <node>`, as a baseline for what Node's own release needs, and run the signed build through the keystone suite and `browxai doctor` before widening the list.
+`scripts/macos/entitlements.plist` holds `allow-jit` alone, as the proposed minimum. **That minimum is unverified.** My understanding is that Node's own release is signed with broader entitlements, `allow-unsigned-executable-memory` and `disable-library-validation` among them. I have not confirmed it against the pinned release. So the minimum has to be tested on a Mac with a signed Node: dump the official binary's entitlements with `codesign -d --entitlements - <node>` as the baseline, sign the bundled copy with `allow-jit` alone, and run the keystone suite and `browxai doctor` against it. Widen the list only with a recorded failure. `release-app.sh` applies the file to the one path `Contents/Resources/node/bin/node` and to nothing else, and the launcher and the helper get the hardened runtime and no entitlements. `verify-app.sh` enforces that split: it fails when any other Mach-O file carries an entitlement, and when `node` carries a key other than `allow-jit`. Widening the list means changing both scripts in the same commit as the reason.
 
 ## Building the host: bundle the runtime, not a single executable
 
@@ -114,7 +114,7 @@ Two ways to make a Node program a signed Mac binary.
 
 - Nothing changes in how browxai is built or tested. The same `dist/` that the release workflow builds and checks for reproducibility is what ships.
 - Facts about the repo: no native addon in the production dependencies, `playwright-core` is JavaScript, and a clean install is 110 packages and 61.5 MB in `node_modules` (roadmap item 4, measured on Linux). The Node binary adds about a hundred megabytes, which I have not measured for the pinned release. Chromium is not bundled. The 313 MB browser download stays a separate, on-demand step, as it is for npm users.
-- The launcher is a compiled executable and not a shell script, because a script as the main executable cannot carry its own signature and runs under the interpreter's identity.
+- The launcher is a compiled executable because of the identity the process runs under. A script as the main executable is run by its interpreter, so the running process has the interpreter's code identity (`/bin/sh` or `env`), and a permission prompt or grant is tied to that and not to the app. `codesign` can sign a script, keeping the signature in an extended attribute, but that does not change which program runs.
 
 **Decision: B.** SEA stays a later option if the size or the layout becomes a problem. The pinned Node release comes from nodejs.org, checked against its published `SHASUMS256.txt` and the signature on that file, and re-signed with our identity.
 
@@ -157,7 +157,7 @@ The cloud host agent is a Rust binary that connects a relay to `browxai serve --
 - `BROWXAI_CLOUD_HELPER`: the path to the binary.
 - `BROWXAI_CLOUD_HELPER_SHA256`: its SHA-256.
 
-The helper is optional. With neither variable set, the script builds the plain browxai host app. With one set and not the other, the script stops. With both, it checks the digest and stops on a mismatch, before anything is signed. It also checks that the binary is a Mach-O file with every architecture the app has, that the input app carries the `browxai-cloud` wrapper, and that `--version` prints one line and exits 0.
+The helper is optional. With neither variable set, the script builds the plain browxai host app. With one set and not the other, the script stops. With both, it checks the digest and stops on a mismatch, before anything is signed. It copies the binary into its work directory first, hashes that copy, and uses only the copy from then on, so the file cannot change between the check and the use. It clears the quarantine attribute on the copy, checks that it is a Mach-O file with every architecture the app has, that the input app carries the `browxai-cloud` wrapper, and that `--version` prints exactly one line and exits 0 within ten seconds. The binary is run only after its digest matched. A missing or unreadable architecture list is a failure for the launcher, the bundled `node` and the helper, and the zip's architecture label comes from the launcher and `node`, which must agree.
 
 **Helper contract.** This is what the script needs from the helper. It is a request to the cloud release, not code here.
 
@@ -176,16 +176,16 @@ The helper is optional. With neither variable set, the script builds the plain b
 
 ## Notarization and packaging
 
-`scripts/macos/release-app.sh APP VERSION` does all of this on the owner's Mac. It reads `TEAM_ID` and `KEYCHAIN_PROFILE` from the environment and stops without them.
+`scripts/macos/release-app.sh APP VERSION` does all of this on the owner's Mac. It reads `BROWXAI_APPLE_TEAM_ID` and `BROWXAI_NOTARY_KEYCHAIN_PROFILE` from the environment and stops without them. The `BROWXAI_` prefix keeps it from picking up an unrelated shell variable. It shares the family with the helper's own scripts: `BROWXAI_APPLE_TEAM_ID`, `BROWXAI_APPLE_SIGNING_IDENTITY` and `BROWXAI_NOTARY_KEYCHAIN_PROFILE`.
 
-1. Copy the app to a work directory, so the input is not modified.
-2. Find the Developer ID Application certificate for `TEAM_ID` with `security find-identity -v -p codesigning`, and refuse when none or several match (`SIGN_IDENTITY` picks one).
+1. Resolve the input app and the output directory to real paths. Refuse when the output directory is, contains or sits inside the input app, and when it exists and is not empty. Refuse any symlink in the bundle that resolves outside it. Copy the app to a temporary work directory, which is the only thing the script deletes, so the input is never modified or removed.
+2. Find the Developer ID Application certificate for the team with `security find-identity -v -p codesigning`, and refuse when none or several match (`BROWXAI_APPLE_SIGNING_IDENTITY`, a hash or a full name, picks one). The name is never printed.
 3. Add and sign the helper, when given (above).
 4. Sign every other Mach-O file, then nested bundles, then the app: `codesign --force --options runtime --timestamp`, and the entitlements file on `node`.
 5. `codesign --verify --deep --strict`.
-6. Zip with `ditto -c -k --keepParent` and run `xcrun notarytool submit ... --keychain-profile "$KEYCHAIN_PROFILE" --wait`. The script reads the status from the JSON result. On anything but `Accepted` it saves the notary log to the work directory and stops.
+6. Zip with `ditto -c -k --keepParent` and run `xcrun notarytool submit ... --keychain-profile <KEYCHAIN_PROFILE> --wait`. The script reads the status from the JSON result. On anything but `Accepted` it saves the notary log to the output directory and stops.
 7. `xcrun stapler staple` the app, then `stapler validate`.
-8. `spctl --assess --type execute --verbose=4` must report `Notarized Developer ID`.
+8. `spctl --assess --type execute --verbose=4` must report `Notarized Developer ID`. The output carries the certificate's organization name, so the scripts mask it before printing.
 9. Zip the stapled app, write `browxai-VERSION-macos-ARCH.zip` and its `.sha256`.
 
 The notary credential is an App Store Connect API key stored once with `xcrun notarytool store-credentials <KEYCHAIN_PROFILE>`. The key never enters the repository, a CI system or a command line. A disk image is a later option: `hdiutil`, then sign, notarize and staple the image itself. A zip is enough for the cask.
@@ -194,9 +194,9 @@ The notary credential is an App Store Connect API key stored once with `xcrun no
 
 User level only. No root, no privileged helper, no daemon in `/Library`. The one admin step on the Mac is `sudo safaridriver --enable`, and the owner runs it in Terminal, outside the app.
 
-**Recommended: `SMAppService` with an agent plist inside the bundle** (macOS 13 and later). The launcher calls `SMAppService.agent(plistName:)` and `register()`, and launchd runs the plist's `BundleProgram`. The agent shows in System Settings under Login Items, named after the app, where a person can switch it off. The plist sets:
+**Recommended: `SMAppService` with an agent plist inside the bundle** (macOS 13 and later). The launcher calls `SMAppService.agent(plistName:)` and `register()`, and launchd runs the program the plist names. An agent plist inside a bundle uses bundle-relative paths: `BundleProgram` is `Contents/MacOS/<launcher>`, relative to the app, and not an absolute path. The agent shows in System Settings under Login Items, named after the app, where a person can switch it off. The plist sets:
 
-- `ProgramArguments`: the bundled node with `dist/cli.js serve --socket <SOCKET>`, or a launcher mode that does the same.
+- `ProgramArguments`: the launcher's own name first, then its arguments (`serve --socket <SOCKET>`). The plist holds no path to `node`. The launcher locates the app's own `Contents/Resources/node/bin/node` and `Contents/Resources/app/dist/cli.js` from its own location and runs them, so the app works wherever it is installed. The launcher also expands the `~` in the socket path, which launchd does not.
 - `EnvironmentVariables`: a `PATH` that includes `/opt/homebrew/bin` and `/usr/local/bin`, and any `BROWX_*` setting the user picked. A user-level config layer is the other source.
 - `KeepAlive` and `RunAtLoad`, and `AssociatedBundleIdentifiers` set to `<BUNDLE_ID>` so the system ties the agent to the app.
 
@@ -244,18 +244,18 @@ Slice 5 adds a line to `RELEASING.md`. This RFC does not edit it.
 
 ## Decisions
 
-| #   | Decision                                                                                                                                     | Who                        |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| D1  | Ship a signed, hardened-runtime, notarized, stapled `.app` as the macOS host, plus a Homebrew cask.                                          | Owner                      |
-| D2  | `npm install` stays as it is.                                                                                                                | Owner                      |
-| D3  | The cloud host agent is bundled as an optional helper, signed with the same identity. The OSS repo takes it from a path and a digest.        | Owner                      |
-| D4  | Bundle an official Node binary next to `dist/`, with a compiled launcher. No SEA for now.                                                    | This RFC, owner to confirm |
-| D5  | Developer ID Application certificate for the organization team. Default designated requirement. Bundle id and team id never change.          | This RFC                   |
-| D6  | `allow-jit` on `node` only. Other exceptions are added one at a time, each with a recorded failure. No App Sandbox. No camera or microphone. | This RFC                   |
-| D7  | Login agent through `SMAppService.agent`, user level, with the launchctl plist as fallback.                                                  | This RFC, owner to confirm |
-| D8  | Sign and notarize on the owner's Mac. Notary credential is an App Store Connect API key in the login keychain. Nothing in CI.                | Owner                      |
-| D9  | Zip and cask first. Disk image and Sparkle later.                                                                                            | This RFC                   |
-| D10 | `release.yml` stays unchanged. The owner uploads the signed zip to the Release.                                                              | This RFC                   |
+| #   | Decision                                                                                                                                                                     | Who                        |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| D1  | Ship a signed, hardened-runtime, notarized, stapled `.app` as the macOS host, plus a Homebrew cask.                                                                          | Owner                      |
+| D2  | `npm install` stays as it is.                                                                                                                                                | Owner                      |
+| D3  | The cloud host agent is bundled as an optional helper, signed with the same identity. The OSS repo takes it from a path and a digest.                                        | Owner                      |
+| D4  | Bundle an official Node binary next to `dist/`, with a compiled launcher. No SEA for now.                                                                                    | This RFC, owner to confirm |
+| D5  | Developer ID Application certificate for the organization team. Default designated requirement. Bundle id and team id never change.                                          | This RFC                   |
+| D6  | `allow-jit` on `node` only as a starting point, unverified. Other exceptions are added one at a time, each with a recorded failure. No App Sandbox. No camera or microphone. | This RFC                   |
+| D7  | Login agent through `SMAppService.agent`, user level, with the launchctl plist as fallback.                                                                                  | This RFC, owner to confirm |
+| D8  | Sign and notarize on the owner's Mac. Notary credential is an App Store Connect API key in the login keychain. Nothing in CI.                                                | Owner                      |
+| D9  | Zip and cask first. Disk image and Sparkle later.                                                                                                                            | This RFC                   |
+| D10 | `release.yml` stays unchanged. The owner uploads the signed zip to the Release.                                                                                              | This RFC                   |
 
 ## Open questions
 
@@ -274,12 +274,12 @@ Everything below was reasoned from documentation and from reading `src/`. None o
 1. The exact attribution rules for a child process of the app, a LaunchAgent and a Terminal, for Local Network, Files and Folders and camera and microphone prompts.
 2. Whether the Local Network prompt appears for a plain Node child connecting to a LAN address, and which name it shows. Whether `NSLocalNetworkUsageDescription` in the app's `Info.plist` is what the prompt uses.
 3. What Chrome and Chromium do for camera and microphone when launched by the app.
-4. Which entitlements the official Node binary carries, and whether `allow-jit` alone lets a signed Node start and run the keystone suite on the target macOS.
+4. Which entitlements the official Node binary carries, and whether `allow-jit` alone lets a signed Node start and run the keystone suite on the target macOS. Node's own release is signed with broader entitlements, so a failure here is likely and the list may need `allow-unsigned-executable-memory`.
 5. That `SMAppService.agent` registers from the bundle, from `/Applications`, and after a Homebrew upgrade, and that Local Network and Files prompts name the app.
 6. That `safaridriver --enable` and the Safari engine work with the daemon started by the agent. That `xcrun` from a launchd job finds the active Xcode.
 7. That `playwright-core` 1.65.1 runs from inside a bundle path with spaces, and that its browser cache stays in the user's cache directory.
 8. The size of the Node binary for the pinned release and of the zip.
-9. That a cask upgrade keeps TCC grants, shown by `verify-app.sh` with `DR_BASELINE` across two builds and then by a real upgrade.
+9. That a cask upgrade keeps TCC grants, shown by `verify-app.sh` with `BROWXAI_DR_BASELINE` across two builds and then by a real upgrade.
 10. The pasteboard privacy setting in recent macOS, and whether the write-only clipboard path is affected.
 11. That a password manager CLI still works when called from the app's daemon.
 12. The role needed on the organization team to create a Developer ID certificate and an App Store Connect API key.

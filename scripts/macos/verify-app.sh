@@ -7,23 +7,33 @@
 #   scripts/macos/verify-app.sh <path/to/App.app>
 #
 # Optional environment
-#   EXPECT_TEAM_ID       fail unless every signed file carries this Team ID.
-#   EXPECT_BUNDLE_ID     fail unless the app's identifier is this.
-#   DR_BASELINE          a file that holds the designated requirement of an
-#                        earlier build. If the file exists, the new requirement
-#                        must match it exactly. If it does not, it is created.
-#                        This is the check that a TCC grant survives an upgrade.
+#   BROWXAI_EXPECT_TEAM_ID     fail unless every signed file carries this Team ID.
+#   BROWXAI_EXPECT_BUNDLE_ID   fail unless the app's identifier is this.
+#   BROWXAI_DR_BASELINE        a file that holds the designated requirement of an
+#                              earlier build. If the file exists, the new requirement
+#                              must match it exactly. If it does not, it is created.
+#                              This is the check that a TCC grant survives an upgrade.
 #   BROWXAI_CLOUD_HELPER_SHA256
-#                        when set, the bundled helper's recorded source digest
-#                        must equal it.
+#                              when set, the bundled helper's recorded source digest
+#                              must equal it.
 #
-# The certificate's organization name is masked in the output. Nothing here prints
-# a key, a password or a notary credential, because none is read.
+# The certificate's organization name is masked in everything this script prints,
+# including Gatekeeper's `origin=` line. Nothing here prints a key, a password or a
+# notary credential, because none is read.
+#
+# The entitlement rules are enforced and reported (RFC 0012, D6): the bundled
+# node binary may carry the allow-jit key and no other. Every other Mach-O file must
+# carry none.
 #
 # Exit status: 0 when every check passed, 1 otherwise. Every check runs, so one run
 # lists everything that is wrong.
 
 set -uo pipefail
+
+# The one path that holds the bundled node binary. Keep it equal to NODE_REL in
+# release-app.sh.
+NODE_REL="Contents/Resources/node/bin/node"
+JIT_KEY="com.apple.security.cs.allow-jit"
 
 failures=0
 fail() {
@@ -33,7 +43,22 @@ fail() {
 ok() { printf 'ok:   %s\n' "$1"; }
 step() { printf '\n==> %s\n' "$1"; }
 
-mask() { sed -E 's/(Authority=Developer ID Application: ).*( \([A-Z0-9]{10}\))/\1<ORG_NAME>\2/'; }
+# Hide the organization name that sits in a certificate name: codesign's
+# `Authority=` line and Gatekeeper's `origin=` line both carry it.
+mask() {
+  sed -E 's/(Developer ID (Application|Installer): ).*( \([A-Z0-9]{10}\))/\1<ORG_NAME>\3/'
+}
+
+run_with_timeout() {
+  local secs="$1"
+  shift
+  perl -e 'alarm shift; exec @ARGV or exit 127' "$secs" "$@"
+}
+
+# The top-level entitlement keys of one file, one per line. Empty when it has none.
+entitlement_keys() {
+  codesign -d --entitlements - --xml "$1" 2>/dev/null | plutil -p - 2>/dev/null | sed -n 's/^  "\(.*\)" => .*/\1/p'
+}
 
 [ "$(uname -s)" = "Darwin" ] || {
   echo "verify-app: this runs on macOS only" >&2
@@ -48,7 +73,7 @@ APP="${1%/}"
   echo "verify-app: $APP is not a directory" >&2
   exit 1
 }
-for tool in codesign spctl plutil file; do
+for tool in codesign spctl plutil file perl; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "verify-app: $tool not found on PATH" >&2
     exit 1
@@ -64,13 +89,14 @@ MAIN="$APP/Contents/MacOS/$EXEC_NAME"
   echo "verify-app: Info.plist or the main executable is missing" >&2
   exit 1
 }
+NODE_BIN="$APP/$NODE_REL"
 printf 'bundle id: %s\nversion:   %s\n' "$BUNDLE_ID" "$VERSION"
 
 step "Signature, deep and strict"
 if out="$(codesign --verify --deep --strict --verbose=2 "$APP" 2>&1)"; then
   ok "codesign --verify --deep --strict"
 else
-  printf '%s\n' "$out" >&2
+  printf '%s\n' "$out" | mask >&2
   fail "codesign verification failed"
 fi
 
@@ -84,8 +110,8 @@ team="$(printf '%s\n' "$details" | sed -n 's/^TeamIdentifier=//p' | head -n 1)"
 ident="$(printf '%s\n' "$details" | sed -n 's/^Identifier=//p' | head -n 1)"
 [ -n "$team" ] && [ "$team" != "not set" ] && ok "team id: $team" || fail "no team id (an ad-hoc signature has none)"
 [ "$ident" = "$BUNDLE_ID" ] && ok "signing identifier equals the bundle id" || fail "signing identifier '$ident' differs from the bundle id '$BUNDLE_ID'"
-[ -z "${EXPECT_TEAM_ID:-}" ] || { [ "$team" = "$EXPECT_TEAM_ID" ] && ok "team id equals EXPECT_TEAM_ID" || fail "team id '$team' is not EXPECT_TEAM_ID"; }
-[ -z "${EXPECT_BUNDLE_ID:-}" ] || { [ "$BUNDLE_ID" = "$EXPECT_BUNDLE_ID" ] && ok "bundle id equals EXPECT_BUNDLE_ID" || fail "bundle id '$BUNDLE_ID' is not EXPECT_BUNDLE_ID"; }
+[ -z "${BROWXAI_EXPECT_TEAM_ID:-}" ] || { [ "$team" = "$BROWXAI_EXPECT_TEAM_ID" ] && ok "team id equals BROWXAI_EXPECT_TEAM_ID" || fail "team id '$team' is not BROWXAI_EXPECT_TEAM_ID"; }
+[ -z "${BROWXAI_EXPECT_BUNDLE_ID:-}" ] || { [ "$BUNDLE_ID" = "$BROWXAI_EXPECT_BUNDLE_ID" ] && ok "bundle id equals BROWXAI_EXPECT_BUNDLE_ID" || fail "bundle id '$BUNDLE_ID' is not BROWXAI_EXPECT_BUNDLE_ID"; }
 
 step "Every Mach-O file: signed, hardened, same team"
 checked=0
@@ -107,7 +133,7 @@ ok "$checked Mach-O file(s) checked"
 
 step "Gatekeeper"
 assess="$(spctl --assess --type execute --verbose=4 "$APP" 2>&1)"
-printf '%s\n' "$assess"
+printf '%s\n' "$assess" | mask
 printf '%s\n' "$assess" | grep -q 'Notarized Developer ID' && ok "spctl: Notarized Developer ID" || fail "spctl did not report Notarized Developer ID"
 
 step "Notary ticket"
@@ -126,59 +152,88 @@ else
   printf '%s\n' "$dr" | grep -q "identifier \"$BUNDLE_ID\"" && ok "requirement names the bundle id" || fail "requirement does not name the bundle id"
   printf '%s\n' "$dr" | grep -q 'certificate leaf\[subject.OU\] = ' && ok "requirement names a team" || fail "requirement does not name a team (an ad-hoc signature pins a code hash instead, and a TCC grant does not survive the next build)"
   printf '%s\n' "$dr" | grep -q 'cdhash' && fail "requirement pins a cdhash"
-  if [ -n "${DR_BASELINE:-}" ]; then
-    if [ -f "$DR_BASELINE" ]; then
-      if [ "$(cat "$DR_BASELINE")" = "$dr" ]; then
-        ok "requirement equals the baseline in DR_BASELINE"
+  if [ -n "${BROWXAI_DR_BASELINE:-}" ]; then
+    if [ -f "$BROWXAI_DR_BASELINE" ]; then
+      if [ "$(cat "$BROWXAI_DR_BASELINE")" = "$dr" ]; then
+        ok "requirement equals the baseline in BROWXAI_DR_BASELINE"
       else
-        fail "requirement differs from the baseline in DR_BASELINE. A grant made to the old build will not apply."
+        fail "requirement differs from the baseline in BROWXAI_DR_BASELINE. A grant made to the old build will not apply."
       fi
     else
-      printf '%s\n' "$dr" >"$DR_BASELINE"
-      ok "baseline written to DR_BASELINE"
+      printf '%s\n' "$dr" >"$BROWXAI_DR_BASELINE"
+      ok "baseline written to BROWXAI_DR_BASELINE"
     fi
   fi
 fi
 
-step "Entitlements"
-bad_ent=0
+step "Entitlements (enforced)"
+ent_bad=0
 while IFS= read -r f; do
   file -b "$f" | grep -q 'Mach-O' || continue
-  ent="$(codesign -d --entitlements - --xml "$f" 2>/dev/null | plutil -p - 2>/dev/null || true)"
-  [ -n "$ent" ] || continue
-  printf '%s:\n%s\n' "${f#"$APP"/}" "$ent"
-  printf '%s\n' "$ent" | grep -q 'get-task-allow' && {
-    fail "${f#"$APP"/}: get-task-allow is set, and notarization rejects it"
-    bad_ent=1
-  }
-  printf '%s\n' "$ent" | grep -q 'app-sandbox' && {
-    fail "${f#"$APP"/}: the App Sandbox is on, and the daemon cannot start browsers under it"
-    bad_ent=1
-  }
-  printf '%s\n' "$ent" | grep -Eq 'disable-library-validation|allow-unsigned-executable-memory|allow-dyld-environment-variables' &&
-    printf 'note: %s carries a broader hardened-runtime exception. RFC 0012 says each one needs a recorded reason.\n' "${f#"$APP"/}"
+  rel="${f#"$APP"/}"
+  keys="$(entitlement_keys "$f")"
+  if [ "$f" = "$NODE_BIN" ]; then
+    printf '%s carries: %s\n' "$rel" "$(printf '%s' "$keys" | tr '\n' ' ')"
+    printf '%s\n' "$keys" | grep -qx "$JIT_KEY" || {
+      fail "$rel: $JIT_KEY is missing, and a hardened node cannot run V8's JIT without it"
+      ent_bad=1
+    }
+    extra="$(printf '%s\n' "$keys" | grep -v '^$' | grep -vx "$JIT_KEY" || true)"
+    if [ -n "$extra" ]; then
+      fail "$rel: carries entitlement(s) beyond allow-jit: $(printf '%s' "$extra" | tr '\n' ' '). RFC 0012 allows widening only with a recorded reason, and then this script changes with it."
+      ent_bad=1
+    fi
+  elif [ -n "$keys" ]; then
+    fail "$rel: carries entitlement(s) and only the node binary may: $(printf '%s' "$keys" | tr '\n' ' ')"
+    ent_bad=1
+  fi
 done < <(find "$APP" -type f)
-[ "$bad_ent" -eq 0 ] && ok "no forbidden entitlement"
+[ -e "$NODE_BIN" ] || echo "note: no node binary at $NODE_REL (a plain test app has none)"
+[ "$ent_bad" -eq 0 ] && ok "entitlements match the rules"
 
 HELPER="$APP/Contents/Helpers/browxai-cloud"
 step "Bundled helper"
 if [ ! -e "$HELPER" ]; then
   echo "none (this is the plain browxai host app)"
 else
+  helper_ok=1
   hd="$(codesign -dv --verbose=4 "$HELPER" 2>&1)" || hd=""
   hid="$(printf '%s\n' "$hd" | sed -n 's/^Identifier=//p' | head -n 1)"
-  [ "$hid" = "$BUNDLE_ID.cloud" ] && ok "helper identifier is $hid" || fail "helper identifier is '$hid', expected '$BUNDLE_ID.cloud'"
-  codesign --verify --strict --verbose=2 "$HELPER" >/dev/null 2>&1 && ok "helper signature verifies" || fail "helper signature does not verify"
-  helper_ent="$(codesign -d --entitlements - --xml "$HELPER" 2>/dev/null | plutil -p - 2>/dev/null || true)"
-  [ -z "$helper_ent" ] && ok "helper has no entitlements" || fail "helper carries entitlements: it should have none"
+  hteam="$(printf '%s\n' "$hd" | sed -n 's/^TeamIdentifier=//p' | head -n 1)"
+  if [ "$hid" = "$BUNDLE_ID.cloud" ]; then ok "helper identifier is $hid"; else
+    fail "helper identifier is '$hid', expected '$BUNDLE_ID.cloud'"
+    helper_ok=0
+  fi
+  if [ -n "$hteam" ] && [ "$hteam" = "$team" ]; then ok "helper team equals the app's team"; else
+    fail "helper team '$hteam' differs from the app's '$team'"
+    helper_ok=0
+  fi
+  if codesign --verify --strict --verbose=2 "$HELPER" >/dev/null 2>&1; then ok "helper signature verifies"; else
+    fail "helper signature does not verify"
+    helper_ok=0
+  fi
   [ -f "$APP/Contents/Resources/bin/browxai-cloud" ] && ok "PATH wrapper present" || fail "Contents/Resources/bin/browxai-cloud is missing, so the cask cannot link the helper onto PATH"
-  helper_version="$("$HELPER" --version 2>/dev/null | head -n 1 || true)"
-  printf 'helper version: %s\n' "${helper_version:-unknown}"
-  [ -n "$helper_version" ] || fail "the helper printed no version"
   manifest="$APP/Contents/Resources/bundled-helpers.json"
+  helper_version=""
+  if [ "$helper_ok" -eq 1 ]; then
+    # Run the helper only after its signature, identifier and team all checked out.
+    rc=0
+    vout="$(run_with_timeout 10 "$HELPER" --version 2>/dev/null)" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      fail "the helper's --version exited with status $rc (142 means it timed out after 10 seconds)"
+    else
+      helper_version="$(printf '%s\n' "$vout" | head -n 1)"
+      printf 'helper version: %s\n' "${helper_version:-unknown}"
+      [ -n "$helper_version" ] || fail "the helper printed no version"
+    fi
+  else
+    echo "helper not run: its signature checks failed"
+  fi
   if [ -f "$manifest" ]; then
     printf 'manifest: %s\n' "$(tr -d '\n ' <"$manifest")"
-    grep -q "\"version\": \"$helper_version\"" "$manifest" && ok "manifest version equals the helper's --version" || fail "manifest version differs from the helper's --version"
+    if [ -n "$helper_version" ]; then
+      grep -q "\"version\": \"$helper_version\"" "$manifest" && ok "manifest version equals the helper's --version" || fail "manifest version differs from the helper's --version"
+    fi
     if [ -n "${BROWXAI_CLOUD_HELPER_SHA256:-}" ]; then
       want="$(printf '%s' "$BROWXAI_CLOUD_HELPER_SHA256" | tr 'A-F' 'a-f')"
       grep -q "\"sourceSha256\": \"$want\"" "$manifest" && ok "manifest source digest equals BROWXAI_CLOUD_HELPER_SHA256" || fail "manifest source digest differs from BROWXAI_CLOUD_HELPER_SHA256"
