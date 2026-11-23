@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Changed
+
+- Docs only: RFC 0008 gains a real-device lane plan (section 10), and RFC 0012 proposes a signed, notarized macOS app that hosts the server. The roadmap marks item 7 as plan written, with the device lane as a manual runbook, and adds item 12. New helper scripts, never run in CI: `scripts/ios/wda-run.sh` (build, run and probe WebDriverAgent) and `scripts/macos/release-app.sh`, `scripts/macos/verify-app.sh` and `scripts/macos/entitlements.plist` (sign, notarize and check the app on a Mac). No behavior change.
+
 ## [0.20.0] - 2026-11-23
 
 **Upgrading from 0.19.1.** Browsers browxai launches now try to run with Chromium's OS sandbox on, where they ran without it before. Set `BROWX_CHROMIUM_SANDBOX=off` to restore the old behavior exactly. Root users and containers keep `--no-sandbox` and see one warning per process that says so, and `BROWX_CHROMIUM_SANDBOX=off` silences it. An agent can raise the setting with `set_config`, and cannot lower it below what the server's environment sets. Containers are detected by marker files (`/.dockerenv`, `/run/.containerenv`) and cgroup hints. Where detection misses, the first launch retries once without the sandbox, and later launches of that browser kind in the same process skip it without another failed start.
