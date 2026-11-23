@@ -13,6 +13,9 @@ import "./chromium.engine.js";
 // option-threading — which flags and which `channel` reach Playwright — is
 // asserted without a browser.
 const LAUNCH_STUBBED = new Error("launch stubbed");
+// A second `vi.spyOn` on a method that is already spied returns the same mock, and its
+// calls accumulate. The two capture helpers clear it first, so `calls[0]` is always the
+// launch they just made.
 
 let workspaceRoot: string;
 let originalWorkspace: string | undefined;
@@ -38,6 +41,7 @@ async function capturePersistentOptions(
 ): Promise<Record<string, unknown>> {
   const spy = vi
     .spyOn(PlaywrightChromiumAdapter.prototype, "launchPersistent")
+    .mockClear()
     .mockRejectedValue(LAUNCH_STUBBED);
   await expect(engineEntry("chromium").makeAdapter(opts)).rejects.toThrow(LAUNCH_STUBBED);
   return spy.mock.calls[0]![0].options as unknown as Record<string, unknown>;
@@ -48,6 +52,7 @@ async function captureEphemeralLaunchOptions(
 ): Promise<Record<string, unknown>> {
   const spy = vi
     .spyOn(PlaywrightChromiumAdapter.prototype, "launchEphemeral")
+    .mockClear()
     .mockRejectedValue(LAUNCH_STUBBED);
   await expect(
     engineEntry("chromium").makeAdapter({ ...opts, launchMode: "incognito" }),
