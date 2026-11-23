@@ -42,19 +42,28 @@ async function makeChromiumAdapter(opts: SessionOptions): Promise<BrowserSession
   // Both launches below pass `chromiumSandbox: true` or nothing: the sandbox mode
   // decides, and Playwright adds `--no-sandbox` when the option is absent.
   const sandboxMode = opts.chromiumSandbox ?? "auto";
+  // An installed channel (Chrome, Edge) can run sandboxed on a host where the bundled
+  // build cannot, so the sandbox plan hears which one this attempt launches.
+  const sandboxPlan = (channelOption: { channel?: string }) => ({
+    target: channelOption.channel ? ("installed" as const) : ("bundled" as const),
+    source: opts.chromiumSandboxSource,
+  });
   if (mode === "incognito") {
     const adapter = new PlaywrightChromiumAdapter();
     const { browser, context, page, cdp } = await launchWithChannelPlan(plan, (channelOption) =>
-      launchWithSandboxPlan(sandboxMode, (sandboxOption) =>
-        adapter.launchEphemeral({
-          launchOptions: {
-            ...buildIncognitoLaunchOptions("chromium", opts),
-            ...automationSwitchOptions(),
-            ...channelOption,
-            ...sandboxOption,
-          },
-          contextOptions: buildIncognitoContextOptions(opts),
-        }),
+      launchWithSandboxPlan(
+        sandboxMode,
+        (sandboxOption) =>
+          adapter.launchEphemeral({
+            launchOptions: {
+              ...buildIncognitoLaunchOptions("chromium", opts),
+              ...automationSwitchOptions(),
+              ...channelOption,
+              ...sandboxOption,
+            },
+            contextOptions: buildIncognitoContextOptions(opts),
+          }),
+        sandboxPlan(channelOption),
       ),
     );
     return finalizeIncognitoSession("chromium", { browser, context, page, cdp });
@@ -62,17 +71,20 @@ async function makeChromiumAdapter(opts: SessionOptions): Promise<BrowserSession
   const { profileDir, options, chromiumArgs } = buildManagedLaunch("chromium", opts);
   const adapter = new PlaywrightChromiumAdapter();
   const { context, page, cdp } = await launchWithChannelPlan(plan, (channelOption) =>
-    launchWithSandboxPlan(sandboxMode, (sandboxOption) =>
-      adapter.launchPersistent({
-        profileDir,
-        options: {
-          ...options,
-          ...(chromiumArgs.length ? { args: chromiumArgs } : {}),
-          ...automationSwitchOptions(),
-          ...channelOption,
-          ...sandboxOption,
-        },
-      }),
+    launchWithSandboxPlan(
+      sandboxMode,
+      (sandboxOption) =>
+        adapter.launchPersistent({
+          profileDir,
+          options: {
+            ...options,
+            ...(chromiumArgs.length ? { args: chromiumArgs } : {}),
+            ...automationSwitchOptions(),
+            ...channelOption,
+            ...sandboxOption,
+          },
+        }),
+      sandboxPlan(channelOption),
     ),
   );
   return finalizeManagedSession("chromium", opts, profileDir, { context, page, cdp });

@@ -35,6 +35,26 @@ export function parseChromiumSandbox(
   );
 }
 
+/** Where the effective mode came from. A saved layer beats the environment, so the
+ *  fix for a mode that is too strict depends on this. */
+export type ChromiumSandboxSource = "env" | "user" | "project" | "default";
+
+/** What to change to launch without the sandbox (or to let `auto` fall back), given
+ *  where the effective mode came from. */
+export function sandboxRelaxHint(source: ChromiumSandboxSource | undefined): string {
+  if (source === "user" || source === "project") {
+    return (
+      `Remove chromiumSandbox from the ${source} layer of config.json (a saved value beats ` +
+      `${CHROMIUM_SANDBOX_ENV}). With it gone, ${CHROMIUM_SANDBOX_ENV}=off launches without the sandbox ` +
+      "and an unset variable lets auto try it and fall back when it cannot start."
+    );
+  }
+  return (
+    `Set ${CHROMIUM_SANDBOX_ENV}=off to launch without the sandbox, or auto to try it and ` +
+    "fall back when it cannot start."
+  );
+}
+
 const STRICTNESS: Record<ChromiumSandboxMode, number> = { off: 0, auto: 1, on: 2 };
 
 /** True when `mode` asks for less sandboxing than `floor`. */

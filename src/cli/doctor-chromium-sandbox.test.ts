@@ -71,7 +71,29 @@ describe("chromiumSandboxRow", () => {
   it("reports the level the ceiling holds when a saved layer asks for off", () => {
     save({ user: { chromiumSandbox: "off" } });
     const row = chromiumSandboxRow({}, dir, () => normalUser);
-    expect(row.detail).toMatch(/^auto:/);
+    expect(row.detail).toMatch(/^auto \(default\):/);
+  });
+
+  it("tells the operator to remove a saved on, not to set the env var", () => {
+    save({ project: { chromiumSandbox: "on" } });
+    const row = chromiumSandboxRow({ BROWX_CHROMIUM_SANDBOX: "off" }, dir, () => root);
+    expect(row.warn).toBe(true);
+    expect(row.fix).toContain("Remove chromiumSandbox from the project layer of config.json");
+    expect(row.fix).not.toContain("Set BROWX_CHROMIUM_SANDBOX=off");
+  });
+
+  it("keeps the env hint when the on came from the env", () => {
+    const row = chromiumSandboxRow({ BROWX_CHROMIUM_SANDBOX: "on" }, dir, () => root);
+    expect(row.fix).toContain("Set BROWX_CHROMIUM_SANDBOX=off");
+    expect(row.fix).not.toContain("config.json");
+  });
+
+  it("says the installed Chrome tries the sandbox where AppArmor blocks the bundled build", () => {
+    const row = chromiumSandboxRow({}, dir, () => ({ ...normalUser, apparmorRestrictUserns: 1 }));
+    expect(row.warn).toBe(true);
+    expect(row.detail).toContain("installed Chrome tries");
+    expect(row.detail).toContain("AppArmor");
+    expect(row.detail).toContain("bundled Chromium and the headless shell");
   });
 
   it("fails on a mistyped env value and names the fix", () => {

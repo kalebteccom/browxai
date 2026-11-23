@@ -27,6 +27,7 @@ import {
   isChromiumSandboxMode,
   parseChromiumSandbox,
   type ChromiumSandboxMode,
+  type ChromiumSandboxSource,
 } from "./chromium-sandbox.js";
 import {
   clampPolicy,
@@ -387,6 +388,16 @@ export class ConfigStore {
       for (const c of this.persisted[scope]?.capabilities ?? []) named.add(c);
     }
     return [...named].filter((c) => !ceiling.has(c));
+  }
+
+  /** The layer the effective `chromiumSandbox` came from: the highest layer that
+   *  names the value the resolved config holds. `default` when no layer does. */
+  chromiumSandboxSource(): ChromiumSandboxSource {
+    const effective = this.resolve().chromiumSandbox;
+    if (this.persisted.project?.chromiumSandbox === effective) return "project";
+    if (this.persisted.user?.chromiumSandbox === effective) return "user";
+    if (this.env.chromiumSandbox === effective) return "env";
+    return "default";
   }
 
   /** Inspect one layer (raw, pre-merge) — for `get_config({ scope })`. Reads the

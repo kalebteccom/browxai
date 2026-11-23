@@ -10,8 +10,13 @@
 //   auto  `decideSandbox` reads facts about the host. When the host cannot run the
 //         sandbox the launch goes without it and a warning says why, once per
 //         process. Otherwise the launch asks for the sandbox, and a failure that
-//         names the sandbox is retried once without it, with a loud warning.
-//         Any other failure is not retried.
+//         names the sandbox is retried once without it, with a loud warning. The
+//         failure is remembered for the rest of the process, so later launches skip
+//         the sandbox without a second failed start. Any other failure is not retried.
+//         Root and a container skip the sandbox for every browser. The kernel's
+//         user-namespace and AppArmor facts skip it only for the bundled Chromium
+//         and the headless shell: an installed Chrome or Edge carries its own setuid
+//         helper and AppArmor profile, so it is tried and the retry covers a failure.
 //
 // Not applied to a Chrome browxai does not launch through Playwright: `browxai chrome
 // start` / `chrome login` spawn Chrome directly and keep its sandbox, and an attached
@@ -23,7 +28,12 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { log } from "../util/logging.js";
-import { CHROMIUM_SANDBOX_ENV, type ChromiumSandboxMode } from "../util/chromium-sandbox.js";
+import {
+  CHROMIUM_SANDBOX_ENV,
+  sandboxRelaxHint,
+  type ChromiumSandboxMode,
+  type ChromiumSandboxSource,
+} from "../util/chromium-sandbox.js";
 
 /** What the probe reports about the host. Linux fields are undefined elsewhere, and
  *  when the kernel file is absent or unreadable (an unknown is treated as "try it":
@@ -52,8 +62,48 @@ export interface SandboxDecision {
   reason: string;
 }
 
-/** Decide whether `auto` should ask for the sandbox on a host with these facts. */
-export function decideSandbox(facts: SandboxFacts): SandboxDecision {
+/** Which browser a launch attempt targets. An installed channel (Google Chrome,
+ *  Edge) ships its own setuid sandbox helper and, on a distribution that restricts
+ *  user namespaces, an AppArmor profile, so it can run sandboxed where the bundled
+ *  Chromium and the headless shell cannot. */
+export type SandboxTarget = "installed" | "bundled";
+
+/** The user-namespace facts that rule out the bundled build, or undefined. */
+function usernsBlock(facts: SandboxFacts): SandboxDecision | undefined {
+  if (facts.maxUserNamespaces === 0) {
+    return {
+      sandbox: false,
+      verdict: "no-userns",
+      reason: "the kernel allows no user namespaces (user.max_user_namespaces is 0)",
+    };
+  }
+  if (facts.unprivilegedUsernsClone === 0) {
+    return {
+      sandbox: false,
+      verdict: "no-userns",
+      reason:
+        "the kernel blocks unprivileged user namespaces (kernel.unprivileged_userns_clone is 0)",
+    };
+  }
+  if (facts.apparmorRestrictUserns === 1) {
+    return {
+      sandbox: false,
+      verdict: "apparmor",
+      reason:
+        "an AppArmor policy restricts unprivileged user namespaces (kernel.apparmor_restrict_unprivileged_userns is 1)",
+    };
+  }
+  return undefined;
+}
+
+/** Decide whether `auto` should ask for the sandbox on a host with these facts.
+ *  Root and a container skip it for every target. The user-namespace facts skip it
+ *  only for the bundled build: an installed channel is tried and the one retry
+ *  catches a host where it cannot start. */
+export function decideSandbox(
+  facts: SandboxFacts,
+  target: SandboxTarget = "bundled",
+): SandboxDecision {
   if (facts.uid === 0) {
     return {
       sandbox: false,
@@ -69,29 +119,8 @@ export function decideSandbox(facts: SandboxFacts): SandboxDecision {
         reason: `the process runs in a container (${facts.container})`,
       };
     }
-    if (facts.maxUserNamespaces === 0) {
-      return {
-        sandbox: false,
-        verdict: "no-userns",
-        reason: "the kernel allows no user namespaces (user.max_user_namespaces is 0)",
-      };
-    }
-    if (facts.unprivilegedUsernsClone === 0) {
-      return {
-        sandbox: false,
-        verdict: "no-userns",
-        reason:
-          "the kernel blocks unprivileged user namespaces (kernel.unprivileged_userns_clone is 0)",
-      };
-    }
-    if (facts.apparmorRestrictUserns === 1) {
-      return {
-        sandbox: false,
-        verdict: "apparmor",
-        reason:
-          "an AppArmor policy restricts unprivileged user namespaces (kernel.apparmor_restrict_unprivileged_userns is 1)",
-      };
-    }
+    const block = target === "bundled" ? usernsBlock(facts) : undefined;
+    if (block) return block;
   }
   return { sandbox: true, verdict: "supported", reason: "the host supports it" };
 }
@@ -186,9 +215,15 @@ function excerptOf(err: unknown): string {
 
 const warned = new Set<string>();
 
-/** Forget which one-time warnings were printed. For tests. */
-export function resetSandboxWarnings(): void {
+/** Targets whose sandbox launch failed in this process. A host that hides its
+ *  container (cgroup v2 with no marker file) shows up here after one failed start, and
+ *  later launches skip the sandbox without a second failed browser start. */
+const failedTargets = new Set<SandboxTarget>();
+
+/** Forget the one-time warnings and the remembered failures. For tests. */
+export function resetSandboxState(): void {
   warned.clear();
+  failedTargets.clear();
 }
 
 function warnOnce(key: string, message: string): void {
@@ -198,8 +233,8 @@ function warnOnce(key: string, message: string): void {
 }
 
 const ON_FAILURE_CAUSES =
-  "the process runs as root, the container has no user namespaces (a seccomp profile or " +
-  "the kernel blocks them), or an AppArmor policy restricts unprivileged user namespaces";
+  "the process runs as root, the container has no user namespaces, " +
+  "or an AppArmor policy restricts unprivileged user namespaces";
 
 /** The option a launch merges into its Playwright launch options. */
 export type SandboxLaunchOption = { chromiumSandbox?: true };
@@ -221,8 +256,19 @@ async function launchWithSandbox<T>(
   return result;
 }
 
+/** What `launchWithSandboxPlan` knows about the attempt. */
+export interface SandboxPlanContext {
+  /** Which browser this attempt launches. Defaults to the bundled build. */
+  target?: SandboxTarget;
+  /** Which config layer the mode came from, for the fix an `on` failure names. */
+  source?: ChromiumSandboxSource;
+}
+
 /** `on`: the launch asks for the sandbox and does not fall back. */
-async function launchRequiringSandbox<T>(launch: SandboxLaunch<T>): Promise<T> {
+async function launchRequiringSandbox<T>(
+  launch: SandboxLaunch<T>,
+  source: ChromiumSandboxSource | undefined,
+): Promise<T> {
   try {
     return await launchWithSandbox(launch, "on");
   } catch (err) {
@@ -230,17 +276,17 @@ async function launchRequiringSandbox<T>(launch: SandboxLaunch<T>): Promise<T> {
     throw new Error(
       "browxai: Chromium's OS sandbox failed to start and chromiumSandbox is on, so browxai " +
         `did not fall back to launching without it. Usual causes: ${ON_FAILURE_CAUSES}. ` +
-        `Set ${CHROMIUM_SANDBOX_ENV}=off to launch without the sandbox, or auto to try the ` +
-        `sandbox and fall back when it cannot start.\n\nChromium said: ${excerptOf(err)}`,
+        `${sandboxRelaxHint(source)}\n\nChromium said: ${excerptOf(err)}`,
       { cause: err },
     );
   }
 }
 
-/** `auto`: skip the sandbox on a host that cannot run it, else try it once and fall
- *  back once. A failure that does not name the sandbox is never retried. */
-async function launchTryingSandbox<T>(launch: SandboxLaunch<T>): Promise<T> {
-  const decision = decideSandbox(sandboxProbe.gather());
+/** `auto`: skip the sandbox on a host that cannot run it, or where a launch already
+ *  failed on it in this process. Otherwise try it once and fall back once. A failure
+ *  that does not name the sandbox is never retried. */
+async function launchTryingSandbox<T>(launch: SandboxLaunch<T>, target: SandboxTarget): Promise<T> {
+  const decision = decideSandbox(sandboxProbe.gather(), target);
   if (!decision.sandbox) {
     warnOnce(
       `auto-off:${decision.verdict}`,
@@ -251,13 +297,19 @@ async function launchTryingSandbox<T>(launch: SandboxLaunch<T>): Promise<T> {
     );
     return launchWithoutSandbox(launch, decision.reason);
   }
+  if (failedTargets.has(target)) {
+    return launchWithoutSandbox(launch, "an earlier launch in this process failed on the sandbox");
+  }
   try {
     return await launchWithSandbox(launch, "auto");
   } catch (err) {
     if (!isSandboxFailure(err)) throw err;
-    log.warn(
+    failedTargets.add(target);
+    warnOnce(
+      "sandbox-failed",
       `session: Chromium's OS sandbox failed to start (${excerptOf(err)}), so browxai is launching ` +
-        "this browser without it. Page content now runs without Chromium's OS sandbox. " +
+        "this browser without it, and will launch later browsers in this process the same way. " +
+        "Page content now runs without Chromium's OS sandbox. " +
         `Fix the host (user namespaces, an AppArmor policy, running as a non-root user) or set ${CHROMIUM_SANDBOX_ENV}=off ` +
         "to skip the attempt and this warning.",
     );
@@ -270,8 +322,9 @@ async function launchTryingSandbox<T>(launch: SandboxLaunch<T>): Promise<T> {
 export function launchWithSandboxPlan<T>(
   mode: ChromiumSandboxMode,
   launch: SandboxLaunch<T>,
+  context: SandboxPlanContext = {},
 ): Promise<T> {
   if (mode === "off") return launchWithoutSandbox(launch, "chromiumSandbox is off");
-  if (mode === "on") return launchRequiringSandbox(launch);
-  return launchTryingSandbox(launch);
+  if (mode === "on") return launchRequiringSandbox(launch, context.source);
+  return launchTryingSandbox(launch, context.target ?? "bundled");
 }

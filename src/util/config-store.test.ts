@@ -214,6 +214,29 @@ describe("chromiumSandbox", () => {
     expect(new ConfigStore(dir, {}).resolve().chromiumSandbox).toBe("auto");
   });
 
+  it("reports which layer the effective value came from", () => {
+    expect(new ConfigStore(dir, {}).chromiumSandboxSource()).toBe("default");
+    expect(new ConfigStore(dir, { BROWX_CHROMIUM_SANDBOX: "on" }).chromiumSandboxSource()).toBe(
+      "env",
+    );
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { chromiumSandbox: "on" } }));
+    expect(new ConfigStore(dir, { BROWX_CHROMIUM_SANDBOX: "off" }).chromiumSandboxSource()).toBe(
+      "user",
+    );
+    writeFileSync(
+      join(dir, "config.json"),
+      JSON.stringify({ user: { chromiumSandbox: "on" }, project: { chromiumSandbox: "on" } }),
+    );
+    expect(new ConfigStore(dir, {}).chromiumSandboxSource()).toBe("project");
+  });
+
+  it("names the env when a saved value is clamped up to it", () => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { chromiumSandbox: "auto" } }));
+    const store = new ConfigStore(dir, { BROWX_CHROMIUM_SANDBOX: "on" });
+    expect(store.resolve().chromiumSandbox).toBe("on");
+    expect(store.chromiumSandboxSource()).toBe("env");
+  });
+
   it("a session patch below the ceiling is clamped back up", () => {
     const store = new ConfigStore(dir, {});
     expect(store.resolve({ chromiumSandbox: "off" }).chromiumSandbox).toBe("auto");

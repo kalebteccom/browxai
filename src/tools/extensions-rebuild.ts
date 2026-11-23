@@ -88,6 +88,7 @@ export async function rebuildPersistentForExtensions(
     device,
     disableWebSecurity,
     chromiumSandbox: launchConfig.chromiumSandbox,
+    chromiumSandboxSource: configStore.chromiumSandboxSource(),
     browserType: rebuildEngine,
     ...(extensionPaths.length ? { extensionPaths } : {}),
   });

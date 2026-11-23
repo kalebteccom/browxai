@@ -107,6 +107,17 @@ prints once per process. Set `BROWX_CHROMIUM_SANDBOX=off` (for example
 drop the warning. CI runners that run as root get the same result for the same
 reason, because Chromium does not start its sandbox as root.
 
+Container detection reads marker files and cgroup hints, and a host on cgroup v2
+with no marker file (some containerd and Kubernetes setups) shows neither. There
+the first launch asks for the sandbox, fails, retries once without it and logs
+one warning. Later launches in the same process remember that and skip the sandbox
+with no second failed start. `BROWX_CHROMIUM_SANDBOX=off` skips the first attempt
+too.
+
+On Windows `auto` tries the sandbox and has no launch-time failure signal for a
+restricted environment, such as a Server Core container or a service account. If
+pages crash there, set `BROWX_CHROMIUM_SANDBOX=off`. Windows is not verified.
+
 `on` in a container needs an environment that supports Chromium's sandbox. When
 a launch fails on it, Playwright's own message says to "Configure your environment
 to support sandboxing". This guide does not state which flags or capabilities a

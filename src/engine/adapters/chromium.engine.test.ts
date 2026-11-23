@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { engineEntry } from "../registry.js";
 import { PlaywrightChromiumAdapter } from "./playwright-chromium.js";
 import { log } from "../../util/logging.js";
-import { resetSandboxWarnings, sandboxProbe } from "../../session/chromium-sandbox-launch.js";
+import { resetSandboxState, sandboxProbe } from "../../session/chromium-sandbox-launch.js";
 import "./chromium.engine.js";
 
 // The launch itself is the keystone lane's job (real Chromium). Here the two
@@ -132,8 +132,11 @@ describe("chromium engine — OS sandbox", () => {
   // Playwright adds --no-sandbox to every Chromium it launches unless a launch
   // passes `chromiumSandbox: true`. browxai passes that option or nothing, never a
   // sandbox flag of its own, and the mode (`auto` unless the session says otherwise)
-  // decides which. The probe is replaced so each case describes its own host: CI
-  // runs as root, so without it `auto` would always take the no-sandbox branch.
+  // decides which. The probe is replaced so each case describes its own host. The
+  // Woodpecker lane runs the gate in containers as root, so without it `auto` would
+  // always take the no-sandbox branch there and keep the old launch. The release
+  // workflow's keystone run is non-root on ubuntu-latest with no container, so there
+  // `auto` tries the sandbox or skips it on the host's AppArmor and user-namespace facts.
   // The threat model, the README and the containers guide describe this contract.
   // If this test changes, update those three in the same change.
   const NORMAL_USER = {
@@ -161,7 +164,7 @@ describe("chromium engine — OS sandbox", () => {
     method === "launchEphemeral" ? ("incognito" as const) : ("managed" as const);
 
   beforeEach(() => {
-    resetSandboxWarnings();
+    resetSandboxState();
     vi.spyOn(log, "info").mockImplementation(() => undefined);
   });
 
@@ -267,6 +270,43 @@ describe("chromium engine — OS sandbox", () => {
       ).rejects.toThrow(/BROWX_CHROMIUM_SANDBOX=off/);
       expect(spy).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("tries the default installed Chrome on AppArmor-restricted facts, and skips the bundled build", async () => {
+    vi.spyOn(sandboxProbe, "gather").mockReturnValue({ ...NORMAL_USER, apparmorRestrictUserns: 1 });
+    vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    expect((await capturePersistentOptions({})).chromiumSandbox).toBe(true);
+    expect((await captureEphemeralLaunchOptions({})).chromiumSandbox).toBe(true);
+    const bundled = await capturePersistentOptions({ channel: "chromium" });
+    expect(bundled).not.toHaveProperty("chromiumSandbox");
+    const bundledEphemeral = await captureEphemeralLaunchOptions({ channel: "chromium" });
+    expect(bundledEphemeral).not.toHaveProperty("chromiumSandbox");
+  });
+
+  it("applies the bundled rule to the fallback launch after Chrome is not found", async () => {
+    vi.spyOn(sandboxProbe, "gather").mockReturnValue({ ...NORMAL_USER, apparmorRestrictUserns: 1 });
+    vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    const notFound = new Error(
+      "Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome",
+    );
+    const spy = vi
+      .spyOn(PlaywrightChromiumAdapter.prototype, "launchPersistent")
+      .mockRejectedValueOnce(notFound)
+      .mockRejectedValueOnce(LAUNCH_STUBBED);
+    await expect(engineEntry("chromium").makeAdapter({})).rejects.toThrow(LAUNCH_STUBBED);
+    expect(spy.mock.calls[0]![0].options).toHaveProperty("chromiumSandbox", true);
+    expect(spy.mock.calls[1]![0].options).not.toHaveProperty("chromiumSandbox");
+  });
+
+  it("names the saved layer when an on launch from config fails", async () => {
+    const spy = spyOnLaunch("launchPersistent").mockRejectedValue(SANDBOX_ERROR);
+    await expect(
+      engineEntry("chromium").makeAdapter({
+        chromiumSandbox: "on",
+        chromiumSandboxSource: "project",
+      }),
+    ).rejects.toThrow(/Remove chromiumSandbox from the project layer of config\.json/);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the default-Chrome fallback working when the sandbox is on", async () => {

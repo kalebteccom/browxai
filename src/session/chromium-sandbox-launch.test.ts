@@ -5,11 +5,12 @@ import {
   gatherSandboxFacts,
   isSandboxFailure,
   launchWithSandboxPlan,
-  resetSandboxWarnings,
+  resetSandboxState,
   sandboxProbe,
   type SandboxFacts,
   type SandboxIo,
   type SandboxLaunchOption,
+  type SandboxVerdict,
 } from "./chromium-sandbox-launch.js";
 
 const linuxUser: SandboxFacts = {
@@ -20,8 +21,15 @@ const linuxUser: SandboxFacts = {
   apparmorRestrictUserns: 0,
 };
 
+interface DecideCase {
+  name: string;
+  facts: SandboxFacts;
+  sandbox: boolean;
+  verdict: SandboxVerdict;
+}
+
 describe("decideSandbox", () => {
-  it.each([
+  it.each<DecideCase>([
     { name: "a normal Linux user", facts: linuxUser, sandbox: true, verdict: "supported" },
     {
       name: "a Linux user whose kernel files are absent",
@@ -82,6 +90,54 @@ describe("decideSandbox", () => {
     expect(decision.sandbox).toBe(sandbox);
     expect(decision.verdict).toBe(verdict);
     expect(decision.reason.length).toBeGreaterThan(0);
+  });
+
+  it.each<DecideCase>([
+    {
+      name: "AppArmor-restricted user namespaces (stock Ubuntu 24.04)",
+      facts: { ...linuxUser, apparmorRestrictUserns: 1 },
+      sandbox: true,
+      verdict: "supported",
+    },
+    {
+      name: "no user namespaces (max_user_namespaces 0)",
+      facts: { ...linuxUser, maxUserNamespaces: 0 },
+      sandbox: true,
+      verdict: "supported",
+    },
+    {
+      name: "unprivileged_userns_clone 0",
+      facts: { ...linuxUser, unprivilegedUsernsClone: 0 },
+      sandbox: true,
+      verdict: "supported",
+    },
+    {
+      name: "root",
+      facts: { ...linuxUser, uid: 0 },
+      sandbox: false,
+      verdict: "root",
+    },
+    {
+      name: "a container",
+      facts: { ...linuxUser, container: "/.dockerenv exists" },
+      sandbox: false,
+      verdict: "container",
+    },
+  ])("for an installed channel, $name gives sandbox=$sandbox", ({ facts, sandbox, verdict }) => {
+    const decision = decideSandbox(facts, "installed");
+    expect(decision.sandbox).toBe(sandbox);
+    expect(decision.verdict).toBe(verdict);
+  });
+
+  it("skips the bundled build on the same user-namespace facts", () => {
+    for (const facts of [
+      { ...linuxUser, apparmorRestrictUserns: 1 },
+      { ...linuxUser, maxUserNamespaces: 0 },
+      { ...linuxUser, unprivilegedUsernsClone: 0 },
+    ]) {
+      expect(decideSandbox(facts, "bundled").sandbox).toBe(false);
+      expect(decideSandbox(facts).sandbox).toBe(false);
+    }
   });
 
   it("reports root before a container or a missing user namespace", () => {
@@ -149,7 +205,7 @@ describe("gatherSandboxFacts", () => {
     expect(facts.apparmorRestrictUserns).toBeUndefined();
   });
 
-  it.each([
+  it.each<{ signal: string; files: Record<string, string>; match: RegExp }>([
     { signal: "/.dockerenv", files: { "/.dockerenv": "" }, match: /dockerenv/ },
     { signal: "/run/.containerenv", files: { "/run/.containerenv": "" }, match: /containerenv/ },
     {
@@ -241,7 +297,7 @@ function launcher(outcomes: Array<Error | "ok">) {
 let warn: MockInstance<typeof log.warn>;
 
 beforeEach(() => {
-  resetSandboxWarnings();
+  resetSandboxState();
   warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
   vi.spyOn(log, "info").mockImplementation(() => undefined);
 });
@@ -304,6 +360,35 @@ describe("launchWithSandboxPlan: on", () => {
     const { launch } = launcher([OTHER_ERROR]);
     await expect(launchWithSandboxPlan("on", launch)).rejects.toBe(OTHER_ERROR);
   });
+
+  it.each(["user", "project"] as const)(
+    "tells the operator to remove the saved %s value, not to set the env var first",
+    async (source) => {
+      const { launch } = launcher([SANDBOX_ERROR]);
+      const err = (await launchWithSandboxPlan("on", launch, { source }).then(
+        () => undefined,
+        (e: unknown) => e,
+      )) as Error;
+      expect(err.message).toContain(
+        `Remove chromiumSandbox from the ${source} layer of config.json`,
+      );
+      expect(err.message).toContain("a saved value beats BROWX_CHROMIUM_SANDBOX");
+      expect(err.message).not.toMatch(/^.*Set BROWX_CHROMIUM_SANDBOX=off/m);
+    },
+  );
+
+  it.each(["env", "default", undefined] as const)(
+    "names the env var when the value came from %s",
+    async (source) => {
+      const { launch } = launcher([SANDBOX_ERROR]);
+      const err = (await launchWithSandboxPlan("on", launch, { source }).then(
+        () => undefined,
+        (e: unknown) => e,
+      )) as Error;
+      expect(err.message).toContain("Set BROWX_CHROMIUM_SANDBOX=off");
+      expect(err.message).not.toContain("config.json");
+    },
+  );
 });
 
 describe("launchWithSandboxPlan: auto", () => {
@@ -365,14 +450,6 @@ describe("launchWithSandboxPlan: auto", () => {
     expect(warnings()[0]).toContain("BROWX_CHROMIUM_SANDBOX=off");
   });
 
-  it("warns on every fallback, not only the first", async () => {
-    hostIs(linuxUser);
-    for (let i = 0; i < 2; i++) {
-      await launchWithSandboxPlan("auto", launcher([SANDBOX_ERROR, "ok"]).launch);
-    }
-    expect(warnings()).toHaveLength(2);
-  });
-
   it("does not retry a failure that does not name the sandbox", async () => {
     hostIs(linuxUser);
     const { launch } = launcher([OTHER_ERROR]);
@@ -387,6 +464,61 @@ describe("launchWithSandboxPlan: auto", () => {
     const { launch } = launcher([SANDBOX_ERROR, second]);
     await expect(launchWithSandboxPlan("auto", launch)).rejects.toBe(second);
     expect(launch).toHaveBeenCalledTimes(2);
+  });
+
+  it("remembers a failed launch: later launches skip the sandbox and do not warn again", async () => {
+    hostIs(linuxUser);
+    const first = launcher([SANDBOX_ERROR, "ok"]);
+    await launchWithSandboxPlan("auto", first.launch);
+    expect(first.calls).toEqual([{ chromiumSandbox: true }, {}]);
+    expect(warnings()).toHaveLength(1);
+    for (let i = 0; i < 2; i++) {
+      const later = launcher(["ok"]);
+      await launchWithSandboxPlan("auto", later.launch);
+      expect(later.calls).toEqual([{}]);
+    }
+    expect(warnings()).toHaveLength(1);
+  });
+
+  it("remembers the failure per browser: the other target still gets its one try", async () => {
+    hostIs(linuxUser);
+    await launchWithSandboxPlan("auto", launcher([SANDBOX_ERROR, "ok"]).launch, {
+      target: "installed",
+    });
+    const bundled = launcher([SANDBOX_ERROR, "ok"]);
+    await launchWithSandboxPlan("auto", bundled.launch, { target: "bundled" });
+    expect(bundled.calls).toEqual([{ chromiumSandbox: true }, {}]);
+    expect(warnings()).toHaveLength(1);
+  });
+
+  it("does not remember a failure that did not name the sandbox", async () => {
+    hostIs(linuxUser);
+    await expect(launchWithSandboxPlan("auto", launcher([OTHER_ERROR]).launch)).rejects.toBe(
+      OTHER_ERROR,
+    );
+    const next = launcher(["ok"]);
+    await launchWithSandboxPlan("auto", next.launch);
+    expect(next.calls).toEqual([{ chromiumSandbox: true }]);
+  });
+
+  it("does not let the memory change on: a later on launch still asks", async () => {
+    hostIs(linuxUser);
+    await launchWithSandboxPlan("auto", launcher([SANDBOX_ERROR, "ok"]).launch);
+    const later = launcher(["ok"]);
+    await launchWithSandboxPlan("on", later.launch);
+    expect(later.calls).toEqual([{ chromiumSandbox: true }]);
+  });
+
+  it("tries an installed channel on AppArmor-restricted facts and skips the bundled build", async () => {
+    hostIs({ ...linuxUser, apparmorRestrictUserns: 1 });
+    const installed = launcher(["ok"]);
+    await launchWithSandboxPlan("auto", installed.launch, { target: "installed" });
+    expect(installed.calls).toEqual([{ chromiumSandbox: true }]);
+    const bundled = launcher(["ok"]);
+    await launchWithSandboxPlan("auto", bundled.launch, { target: "bundled" });
+    expect(bundled.calls).toEqual([{}]);
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toContain("AppArmor");
   });
 
   it("does not retry on a host it already skipped the sandbox for", async () => {

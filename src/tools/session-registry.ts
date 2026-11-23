@@ -204,6 +204,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       const disableWebSecurity = launchConfig.disableWebSecurity === true;
       const channel = spec?.channel ?? launchConfig.channel;
       const chromiumSandbox = launchConfig.chromiumSandbox;
+      const chromiumSandboxSource = configStore.chromiumSandboxSource();
       const backgroundThrottling = spec?.backgroundThrottling;
       // resolve device/viewport — spec overrides config-store defaults.
       const device = resolveDevice({
@@ -294,6 +295,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           disableWebSecurity,
           channel,
           chromiumSandbox,
+          chromiumSandboxSource,
           backgroundThrottling,
           storageState: creationStorageState,
           recordHar: creationRecordHar,
@@ -320,6 +322,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           disableWebSecurity,
           channel,
           chromiumSandbox,
+          chromiumSandboxSource,
           backgroundThrottling,
           storageState: creationStorageState,
           recordHar: creationRecordHar,
