@@ -57,6 +57,25 @@ export function el(tag: string, className?: string, text?: string): HTMLElement 
   return node;
 }
 
+/** The text a filter matches against for one value: exactly what the panel
+ *  would show for it, minus the display cap. A redaction marker matches on its
+ *  `[redacted: reason]` text, so a reviewer can search for what was taken out. */
+function searchableText(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (isRedacted(value)) return displayText(value);
+  if (typeof value === "string") return value;
+  return displayText(value, Number.POSITIVE_INFINITY);
+}
+
+/** Case-insensitive substring match over the values a row shows. An empty or
+ *  blank needle matches everything. Pure: the panels call it per row, and the
+ *  unit tests call it without a DOM. */
+export function matchesText(needle: string, values: readonly unknown[]): boolean {
+  const wanted = needle.trim().toLowerCase();
+  if (wanted === "") return true;
+  return values.some((value) => searchableText(value).toLowerCase().includes(wanted));
+}
+
 /** `text` overrides what the cell SHOWS (a formatted size, say) without
  *  changing what it is: the redaction marking still comes off `value`. */
 export function cell(value: unknown, className = "", text = displayText(value)): HTMLElement {
@@ -82,6 +101,38 @@ export function headRow(className: string, labels: readonly string[]): HTMLEleme
   return node;
 }
 
+/** Replace a list's rows and hand keyboard focus back to the row that had it.
+ *  A panel re-renders on every seek, and a row a keyboard user just activated is
+ *  one of the nodes that gets replaced; without this, focus drops to the page
+ *  body and the next key press starts over from the top. Rows carry their
+ *  identity in `data-key`. */
+export function replaceKeepingFocus(container: HTMLElement, nodes: readonly HTMLElement[]): void {
+  const active = document.activeElement;
+  const key =
+    active instanceof HTMLElement && container.contains(active) ? active.dataset.key : undefined;
+  container.replaceChildren(...nodes);
+  if (key === undefined) return;
+  const again = container.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`);
+  again?.focus({ preventScroll: true });
+}
+
+/** A labelled text filter. The label is visible and wraps the input, so the
+ *  control is named for assistive tech without a second element to keep in
+ *  step. `id` is the stable hook tests drive. */
+export function textFilter(
+  id: string,
+  label: string,
+): { label: HTMLElement; input: HTMLInputElement } {
+  const input = el("input", "panel-filter") as HTMLInputElement;
+  input.type = "search";
+  input.id = id;
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  const wrap = el("label", "control", `${label} `);
+  wrap.append(input);
+  return { label: wrap, input };
+}
+
 /** The empty state. A panel over an event type the log does not contain says so
  *  and renders nothing else — it never fails to mount. */
 export function emptyState(text: string, hint?: string): HTMLElement {
@@ -97,6 +148,25 @@ export function emptyState(text: string, hint?: string): HTMLElement {
 export function overflowNote(hidden: number, noun: string): HTMLElement | undefined {
   if (hidden <= 0) return undefined;
   return el("div", "panel-note", `${hidden} earlier ${noun} not shown.`);
+}
+
+/** Selection and playhead state on a row, as attributes the CSS and the tests
+ *  both read. `aria-pressed` says which row is open in the details pane, and
+ *  `aria-current` says which row the playhead is on. */
+export function setSelected(node: HTMLElement, selected: boolean): void {
+  node.setAttribute("aria-pressed", String(selected));
+  if (selected) node.dataset.selected = "true";
+  else delete node.dataset.selected;
+}
+
+export function setCurrent(node: HTMLElement, current: boolean): void {
+  if (current) {
+    node.dataset.current = "true";
+    node.setAttribute("aria-current", "true");
+  } else {
+    delete node.dataset.current;
+    node.removeAttribute("aria-current");
+  }
 }
 
 export function badge(text: string, kind: string): HTMLElement {
