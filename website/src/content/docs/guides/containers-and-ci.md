@@ -77,23 +77,58 @@ skip the warning.
 
 ### Sandbox flags and shared memory
 
-browxai adds no `--no-sandbox` and no `--disable-dev-shm-usage` to the Chromium
-launch. The flags it builds itself are few: `--disable-web-security` and
-`--disable-site-isolation-trials` only when `BROWX_DISABLE_WEB_SECURITY` is set,
-the extension flags when you load an extension, and three background-throttling
-flags when `open_session` gets `backgroundThrottling: "disabled"`. It also drops
-Playwright's `--enable-automation` switch. See `src/session/launch-options.ts`
-and `src/session/chromium-launch-posture.ts`.
+browxai adds no `--disable-dev-shm-usage` to the Chromium launch, and it never
+writes `--no-sandbox` itself. The flags it builds itself are few:
+`--disable-web-security` and `--disable-site-isolation-trials` only when
+`BROWX_DISABLE_WEB_SECURITY` is set, the extension flags when you load an
+extension, and three background-throttling flags when `open_session` gets
+`backgroundThrottling: "disabled"`. It also drops Playwright's
+`--enable-automation` switch. See `src/session/launch-options.ts` and
+`src/session/chromium-launch-posture.ts`.
 
-browxai never passes `chromiumSandbox`, so Playwright's own defaults decide the
-rest. In the Playwright source browxai builds on, Chromium gets `--no-sandbox`
-unless a launch sets `chromiumSandbox: true`, and `--disable-dev-shm-usage` is
-among Playwright's default switches. So Chromium's own sandbox is off for every
-browser browxai launches, in a container or not, and the container needs no extra
-privileges or flags for either. A Chrome you start yourself and attach to keeps
-its own sandbox. For a launched browser the container is the boundary around page
-content, and the capability gates and origin lists are policy. That makes the
-non-root user and the security section below matter.
+Chromium's own OS sandbox is a separate setting, `BROWX_CHROMIUM_SANDBOX`
+(config key `chromiumSandbox`). In the Playwright source browxai builds on,
+Chromium gets `--no-sandbox` unless a launch sets `chromiumSandbox: true`, and
+`--disable-dev-shm-usage` is among Playwright's default switches. The setting
+decides whether browxai passes `chromiumSandbox: true`:
+
+| Value            | What a launched browser does                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `auto` (default) | Asks for the sandbox when the process is not root, not in a container, and the host can run it. Otherwise launches with `--no-sandbox` and logs one warning. |
+| `on`             | Always asks for the sandbox. A launch that cannot start it fails, and the error names `BROWX_CHROMIUM_SANDBOX=off`.                                          |
+| `off`            | Playwright's default: `--no-sandbox`, with no warning.                                                                                                       |
+
+A container is detected from `/.dockerenv`, `/run/.containerenv` or a container
+name in `/proc/1/cgroup`. A container running the reference image needs no
+setting: `auto` launches Chromium with `--no-sandbox` and the container is the
+boundary around page content, as it was before this setting existed. The warning
+prints once per process. Set `BROWX_CHROMIUM_SANDBOX=off` (for example
+`-e BROWX_CHROMIUM_SANDBOX=off` on `docker run`) to say that is on purpose and
+drop the warning. CI runners that run as root get the same result for the same
+reason, because Chromium does not start its sandbox as root.
+
+Container detection reads marker files and cgroup hints, and a host on cgroup v2
+with no marker file (some containerd and Kubernetes setups) shows neither. There
+the first launch asks for the sandbox, fails, retries once without it and logs
+one warning. Later launches in the same process remember that and skip the sandbox
+with no second failed start. `BROWX_CHROMIUM_SANDBOX=off` skips the first attempt
+too.
+
+On Windows `auto` tries the sandbox and has no launch-time failure signal for a
+restricted environment, such as a Server Core container or a service account. If
+pages crash there, set `BROWX_CHROMIUM_SANDBOX=off`. Windows is not verified.
+
+`on` in a container needs an environment that supports Chromium's sandbox. When
+a launch fails on it, Playwright's own message says to "Configure your environment
+to support sandboxing". This guide does not state which flags or capabilities a
+given container runtime needs: see Chromium's sandbox documentation for that. To
+see what `auto` decided on a host and why, run `browxai doctor` there. Its
+`chromium-sandbox` row says.
+
+A Chrome you start yourself and attach to keeps its own sandbox, including one
+started with `browxai chrome start`. With the sandbox off, the container is the
+boundary around page content, and the capability gates and origin lists are
+policy. That makes the non-root user and the security section below matter.
 
 ## One server, several containers
 

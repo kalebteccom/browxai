@@ -91,12 +91,19 @@ function makeMetadataHostDeps(): HostDeps {
   // BROWX_CONFIG_READONLY drops tools from a served registry, not from the
   // capability and batch rows they declare. It reads no policy from the file,
   // so a malformed config.json is the server start's error to report, not this.
-  // `BROWX_TOOL_LIST` and `BROWX_TOOL_PROFILE` only filter `tools/list`, and a
-  // mistyped value is the server start's and `doctor`'s error to report, so both
-  // are cleared here too.
+  // `BROWX_TOOL_LIST` and `BROWX_TOOL_PROFILE` only filter `tools/list`, and
+  // `BROWX_CHROMIUM_SANDBOX` only matters when a browser launches. A mistyped value
+  // is the server start's and `doctor`'s error to report, so all three are cleared
+  // here too.
   const configStore = new ConfigStore(
     workspace.root,
-    { ...process.env, BROWX_CONFIG_READONLY: "", BROWX_TOOL_LIST: "", BROWX_TOOL_PROFILE: "" },
+    {
+      ...process.env,
+      BROWX_CONFIG_READONLY: "",
+      BROWX_TOOL_LIST: "",
+      BROWX_TOOL_PROFILE: "",
+      BROWX_CHROMIUM_SANDBOX: "",
+    },
     { onMalformed: "ignore" },
   );
   const resolvedConfig = configStore.resolve();

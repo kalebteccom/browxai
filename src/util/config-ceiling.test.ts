@@ -62,6 +62,35 @@ describe("clampPolicy", () => {
   });
 });
 
+describe("clampPolicy: chromiumSandbox", () => {
+  it("never goes below the ceiling, where off < auto < on", () => {
+    expect(clampPolicy(cfg({ chromiumSandbox: "off" }), ceil({})).chromiumSandbox).toBe("auto");
+    expect(clampPolicy(cfg({ chromiumSandbox: "auto" }), ceil({})).chromiumSandbox).toBe("auto");
+    expect(clampPolicy(cfg({ chromiumSandbox: "on" }), ceil({})).chromiumSandbox).toBe("on");
+    const on = ceil({ BROWX_CHROMIUM_SANDBOX: "on" });
+    expect(clampPolicy(cfg({ chromiumSandbox: "auto" }), on).chromiumSandbox).toBe("on");
+    const off = ceil({ BROWX_CHROMIUM_SANDBOX: "off" });
+    expect(clampPolicy(cfg({ chromiumSandbox: "off" }), off).chromiumSandbox).toBe("off");
+    expect(clampPolicy(cfg({ chromiumSandbox: "auto" }), off).chromiumSandbox).toBe("auto");
+  });
+});
+
+describe("policyWidening: chromiumSandbox", () => {
+  it("names a value below the ceiling and accepts one at or above it", () => {
+    expect(policyWidening({ chromiumSandbox: "off" }, ceil({}))).toEqual({
+      chromiumSandbox: ["off"],
+    });
+    expect(policyWidening({ chromiumSandbox: "auto" }, ceil({}))).toEqual({});
+    expect(policyWidening({ chromiumSandbox: "on" }, ceil({}))).toEqual({});
+    expect(
+      policyWidening({ chromiumSandbox: "auto" }, ceil({ BROWX_CHROMIUM_SANDBOX: "on" })),
+    ).toEqual({ chromiumSandbox: ["auto"] });
+    expect(
+      policyWidening({ chromiumSandbox: "off" }, ceil({ BROWX_CHROMIUM_SANDBOX: "off" })),
+    ).toEqual({});
+  });
+});
+
 describe("policyWidening", () => {
   const c = ceil({
     BROWX_ALLOWED_ORIGINS: "https://a.example",

@@ -11,10 +11,14 @@
 //   blockedOrigins      superset of the ceiling
 //   disableWebSecurity  can be true only when the env turned it on
 //   plugins             subset of the ceiling
+//   chromiumSandbox     at least the ceiling's level, where off < auto < on. With
+//                       no BROWX_CHROMIUM_SANDBOX the ceiling is auto, so a saved
+//                       layer can ask for on and cannot turn the sandbox off.
 //
 // Origins compare as exact strings. A saved `https://a.example.com` does not
 // narrow an env `https://*.example.com`; list the narrower origin in the env.
 
+import { sandboxBelow, type ChromiumSandboxMode } from "./chromium-sandbox.js";
 import type { ConfigLayer, ResolvedConfig } from "./config-store.js";
 
 export interface PolicyCeiling {
@@ -24,6 +28,7 @@ export interface PolicyCeiling {
   blockedOrigins: readonly string[];
   disableWebSecurity: boolean;
   plugins: readonly string[];
+  chromiumSandbox: ChromiumSandboxMode;
 }
 
 /** Build the ceiling from the env layer, falling back to `defaults`. */
@@ -35,6 +40,7 @@ export function policyCeiling(env: ConfigLayer, defaults: ResolvedConfig): Polic
     blockedOrigins: env.blockedOrigins ?? defaults.blockedOrigins,
     disableWebSecurity: env.disableWebSecurity === true,
     plugins: env.plugins ?? defaults.plugins,
+    chromiumSandbox: env.chromiumSandbox ?? defaults.chromiumSandbox ?? "auto",
   };
 }
 
@@ -60,6 +66,10 @@ export function clampPolicy(c: ResolvedConfig, ceil: PolicyCeiling): ResolvedCon
   };
   if (ceil.disableWebSecurity && c.disableWebSecurity !== false) out.disableWebSecurity = true;
   else delete out.disableWebSecurity;
+  const sandbox = c.chromiumSandbox ?? ceil.chromiumSandbox;
+  out.chromiumSandbox = sandboxBelow(sandbox, ceil.chromiumSandbox)
+    ? ceil.chromiumSandbox
+    : sandbox;
   return out;
 }
 
@@ -90,6 +100,8 @@ export function policyWidening(patch: ConfigLayer, ceil: PolicyCeiling): Record<
     const extra = missing(patch.plugins, ceil.plugins);
     if (extra.length) out.plugins = extra;
   }
+  if (patch.chromiumSandbox && sandboxBelow(patch.chromiumSandbox, ceil.chromiumSandbox))
+    out.chromiumSandbox = [patch.chromiumSandbox];
   return out;
 }
 
@@ -102,6 +114,7 @@ export function policyAdjustments(raw: ResolvedConfig, clamped: ResolvedConfig):
     "blockedOrigins",
     "disableWebSecurity",
     "plugins",
+    "chromiumSandbox",
   ] as const;
   return keys.filter((k) => JSON.stringify(raw[k] ?? null) !== JSON.stringify(clamped[k] ?? null));
 }

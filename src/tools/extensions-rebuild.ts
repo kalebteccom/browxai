@@ -60,7 +60,8 @@ export async function rebuildPersistentForExtensions(
 ): Promise<void> {
   const { caps, configStore, workspace, opts, resolvedConfig } = deps;
   const headless = opts.headless ?? resolvedConfig.headless;
-  const disableWebSecurity = configStore.resolve().disableWebSecurity === true;
+  const launchConfig = configStore.resolve();
+  const disableWebSecurity = launchConfig.disableWebSecurity === true;
   // Relaunch on the directory the session actually launched on. `launchProfile`
   // is set only for an explicit name, so a session on the workspace default
   // profile (maybe BROWX_DEFAULT_PROFILE) still resolves to it.
@@ -86,6 +87,8 @@ export async function rebuildPersistentForExtensions(
     profileDir,
     device,
     disableWebSecurity,
+    chromiumSandbox: launchConfig.chromiumSandbox,
+    chromiumSandboxSource: configStore.chromiumSandboxSource(),
     browserType: rebuildEngine,
     ...(extensionPaths.length ? { extensionPaths } : {}),
   });

@@ -22,6 +22,7 @@ import { attachCapabilityCheck, cdpAttachRow } from "./doctor-attach.js";
 import { capabilitiesRow } from "./doctor-capabilities.js";
 import { toolListRow } from "./doctor-tool-list.js";
 import { toolProfileRow } from "./doctor-tool-profile.js";
+import { chromiumSandboxRow } from "./doctor-chromium-sandbox.js";
 import {
   chromeCheck,
   chromiumCheck,
@@ -225,6 +226,8 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
   const chrome = chromeCheck();
   checks.push(chrome);
   checks.push(await chromiumCheck(!chrome.info));
+  // 8a1. Whether those launches run with Chromium's OS sandbox on this host.
+  checks.push(chromiumSandboxRow());
   checks.push(await firefoxCheck());
   checks.push(await webkitCheck());
 
@@ -301,11 +304,13 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
   // stage reads; doctor NEVER executes a plugin's register module.
   try {
     const ws = resolveWorkspace();
-    // A mistyped BROWX_TOOL_LIST or BROWX_TOOL_PROFILE is that row's error to report.
+    // A mistyped BROWX_TOOL_LIST, BROWX_TOOL_PROFILE or BROWX_CHROMIUM_SANDBOX is
+    // that row's error to report.
     const store = new ConfigStore(ws.root, {
       ...process.env,
       BROWX_TOOL_LIST: "",
       BROWX_TOOL_PROFILE: "",
+      BROWX_CHROMIUM_SANDBOX: "",
     });
     checks.push(
       ...pluginChecks({

@@ -156,6 +156,94 @@ describe("toolProfile", () => {
   });
 });
 
+describe("chromiumSandbox", () => {
+  it("defaults to auto and the env layer sets it, ignoring case and spacing", () => {
+    expect(new ConfigStore(dir, {}).resolve().chromiumSandbox).toBe("auto");
+    expect(envLayer({ BROWX_CHROMIUM_SANDBOX: " On " })).toEqual({ chromiumSandbox: "on" });
+    expect(envLayer({ BROWX_CHROMIUM_SANDBOX: "" })).toEqual({});
+    expect(new ConfigStore(dir, { BROWX_CHROMIUM_SANDBOX: "off" }).resolve().chromiumSandbox).toBe(
+      "off",
+    );
+  });
+
+  it("stops on an unknown env value and names the valid ones", () => {
+    expect(() => envLayer({ BROWX_CHROMIUM_SANDBOX: "yes" })).toThrow(
+      /BROWX_CHROMIUM_SANDBOX: unknown value "yes"\. Valid: auto, on, off/,
+    );
+    expect(() => new ConfigStore(dir, { BROWX_CHROMIUM_SANDBOX: "true" })).toThrow(
+      /BROWX_CHROMIUM_SANDBOX/,
+    );
+  });
+
+  it("a bad saved value is a malformed file", () => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { chromiumSandbox: "maybe" } }));
+    expect(() => new ConfigStore(dir, {})).toThrow(/user\.chromiumSandbox/);
+  });
+
+  it("a saved layer can raise the level above the default and above the env", () => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { chromiumSandbox: "on" } }));
+    expect(new ConfigStore(dir, {}).resolve().chromiumSandbox).toBe("on");
+    expect(new ConfigStore(dir, { BROWX_CHROMIUM_SANDBOX: "off" }).resolve().chromiumSandbox).toBe(
+      "on",
+    );
+  });
+
+  it("a saved off cannot loosen the default or an env on, and the server is told", () => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { chromiumSandbox: "off" } }));
+    const byDefault = new ConfigStore(dir, {});
+    expect(byDefault.resolve().chromiumSandbox).toBe("auto");
+    expect(byDefault.policyAdjustments()).toEqual(["chromiumSandbox"]);
+    const underOn = new ConfigStore(dir, { BROWX_CHROMIUM_SANDBOX: "on" });
+    expect(underOn.resolve().chromiumSandbox).toBe("on");
+  });
+
+  it("an env off lets a saved layer pick any level", () => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { chromiumSandbox: "auto" } }));
+    const store = new ConfigStore(dir, { BROWX_CHROMIUM_SANDBOX: "off" });
+    expect(store.resolve().chromiumSandbox).toBe("auto");
+    expect(store.policyAdjustments()).toEqual([]);
+  });
+
+  it("round trips through setLayer and a fresh store", () => {
+    const first = new ConfigStore(dir, {});
+    first.setLayer("user", { chromiumSandbox: "on" });
+    const second = new ConfigStore(dir, {});
+    expect(second.getLayer("user")).toEqual({ chromiumSandbox: "on" });
+    expect(second.resolve().chromiumSandbox).toBe("on");
+    second.resetLayer("user");
+    expect(new ConfigStore(dir, {}).resolve().chromiumSandbox).toBe("auto");
+  });
+
+  it("reports which layer the effective value came from", () => {
+    expect(new ConfigStore(dir, {}).chromiumSandboxSource()).toBe("default");
+    expect(new ConfigStore(dir, { BROWX_CHROMIUM_SANDBOX: "on" }).chromiumSandboxSource()).toBe(
+      "env",
+    );
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { chromiumSandbox: "on" } }));
+    expect(new ConfigStore(dir, { BROWX_CHROMIUM_SANDBOX: "off" }).chromiumSandboxSource()).toBe(
+      "user",
+    );
+    writeFileSync(
+      join(dir, "config.json"),
+      JSON.stringify({ user: { chromiumSandbox: "on" }, project: { chromiumSandbox: "on" } }),
+    );
+    expect(new ConfigStore(dir, {}).chromiumSandboxSource()).toBe("project");
+  });
+
+  it("names the env when a saved value is clamped up to it", () => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { chromiumSandbox: "auto" } }));
+    const store = new ConfigStore(dir, { BROWX_CHROMIUM_SANDBOX: "on" });
+    expect(store.resolve().chromiumSandbox).toBe("on");
+    expect(store.chromiumSandboxSource()).toBe("env");
+  });
+
+  it("a session patch below the ceiling is clamped back up", () => {
+    const store = new ConfigStore(dir, {});
+    expect(store.resolve({ chromiumSandbox: "off" }).chromiumSandbox).toBe("auto");
+    expect(store.resolve({ chromiumSandbox: "on" }).chromiumSandbox).toBe("on");
+  });
+});
+
 describe("envLayer", () => {
   it("parses comma lists and the boolean headless flag", () => {
     expect(

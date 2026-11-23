@@ -213,6 +213,7 @@ describe("other policy keys cannot be loosened through config", () => {
         ["blockedOrigins", { blockedOrigins: [] }],
         ["disableWebSecurity", { disableWebSecurity: true }],
         ["plugins", { plugins: ["@browxai/plugin-example"] }],
+        ["chromiumSandbox", { chromiumSandbox: "off" }],
       ];
       for (const [key, patch] of patches) {
         const r = await call<{ ok: boolean; error: string; loosening: Record<string, unknown> }>(
@@ -248,6 +249,7 @@ describe("other policy keys cannot be loosened through config", () => {
             blockedOrigins: [],
             disableWebSecurity: true,
             plugins: ["@browxai/plugin-example"],
+            chromiumSandbox: "off",
           },
         }),
       );
@@ -260,6 +262,7 @@ describe("other policy keys cannot be loosened through config", () => {
           blockedOrigins: string[];
           disableWebSecurity?: boolean;
           plugins: string[];
+          chromiumSandbox: string;
         };
       }>("get_config", {});
       expect(cfg.config.confirmRequired).toEqual(
@@ -269,6 +272,7 @@ describe("other policy keys cannot be loosened through config", () => {
       expect(cfg.config.blockedOrigins).toEqual(["http://blocked.invalid"]);
       expect(cfg.config.disableWebSecurity).toBeUndefined();
       expect(cfg.config.plugins).toEqual([]);
+      expect(cfg.config.chromiumSandbox).toBe("auto");
       const listed = await call<{ plugins: unknown[] }>("plugins_list", {});
       expect(listed.plugins).toEqual([]);
       // Behaviour, not just the view: the allowlist and its confirm hook still
