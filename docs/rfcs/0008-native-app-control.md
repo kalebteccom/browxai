@@ -1,7 +1,7 @@
 # RFC 0008: Native app control (iOS simulator and Android emulator as engines)
 
 **Date:** 2026-09-15
-**Status:** Draft. Design only, nothing built.
+**Status:** Draft. The `ios-app` and `android-app` engines are built, and the tool reference says what ships. Section 10 (2026-11-23) adds the real-device lane plan, which is a manual runbook and a follow-up code change.
 **Trigger:** Owner directive relayed by the Control+ team, 2026-09-15. Their QA workflow has a stage where an agent exercises the product and a person signs off on the recording. On web that stage is browxai. On native they plan to adopt Callstack's `agent-device`, chosen after a two-platform trial. This RFC also closes [`references/04-decision-matrix.md`](references/04-decision-matrix.md) **D8**, which has sat blocked on exactly this product input since June 2026.
 
 ## What this is for
@@ -32,7 +32,7 @@ The product input has arrived: native app contexts are in scope, as a first-clas
 - **Licence floor.** browxai is MIT. iOS plumbing may use Apache-2.0 `appium-ios-remotexpc` or MIT `go-ios`. GPL-3.0 `pymobiledevice3` is excluded, directly and transitively, and the dependency audit at add time checks for it by name.
 - **Appium's BiDi is telemetry, not control.** Its three session-level commands are an event-subscription channel. Nothing in this design assumes a BiDi command path on a native driver.
 
-Real devices are out of scope for v1. Simulators and emulators only. §Honest limits says why.
+Real devices are out of scope for v1. Simulators and emulators only. §Honest limits says why. Section 10 plans a manual evidence lane on one real iPhone, which does not change that for the engine's supported surface.
 
 ## What already exists
 
@@ -253,16 +253,159 @@ tail that was unmeasured there is measured there: 115 sites, five phases.
 | P4    | iOS simulator engine over XCUITest                                                                                                                                         | large                     |
 | P5    | Player: a native stage drawing hierarchy keyframes, video segments and touch overlays                                                                                      | medium                    |
 | P6    | CI lanes, build caching, the capability and threat-model docs pass                                                                                                         | medium                    |
+| P7    | Real-device evidence lane: a manual runbook now (section 10), the device launch path as a later code PR                                                                    | small, plus the code PR   |
 
 P1's tail is the compile-error set from making `page()` optional. Every call site that reads it becomes a decision, and the count is unknown until someone flips the type. Measure it before committing P1 to a sprint.
 
 P2 before P4 because Android's plumbing is adb and a device-side server, which is inspectable and cheap to iterate against, while iOS adds WebDriverAgent signing and simulator boot latency to every debug cycle. P3 after P2 so the capture path is designed against a real hierarchy. P5 last because §4 shows the existing player already opens a native archive with reduced fidelity, so the stage is an upgrade with no blocking dependents.
 
+## 10. Real-device lane plan
+
+**Date:** 2026-11-23. **Owner decisions, final:** the device lane is a manual runbook on the owner's Mac, with no self-hosted CI agent and no daemon. The device is one dedicated iPhone on the same network as the Mac, reached by wireless debugging and not by USB. The Apple Developer Program organization team is active. Evidence goes into the engine evidence table by hand, with a date.
+
+This section plans the work. It writes no engine code. Two scripts support it: [`scripts/ios/wda-run.sh`](../../scripts/ios/wda-run.sh) builds, runs and probes WebDriverAgent, and the keystone and engine changes in 10.5 and 10.6 are a later code PR. The owner's own step-by-step checklist for the portal and Mac steps is kept outside this repository.
+
+### 10.1 What runs on the Simulator, with no membership
+
+Nothing here needs a paid team. Run it first, because it is the same WebDriverAgent code that runs on a device.
+
+1. Install Xcode. Check `xcode-select -p`. Accept the license once (`sudo xcodebuild -license accept`) and run `xcodebuild -runFirstLaunch`.
+2. Install an iOS Simulator runtime (Xcode, Settings, Components, or `xcodebuild -downloadPlatform iOS`). Check `xcrun simctl list runtimes`.
+3. Pick a simulator from `xcrun simctl list devices available`. Keep its UDID out of the repository.
+4. Boot it: `xcrun simctl boot <SIM_UDID>`, then `xcrun simctl bootstatus <SIM_UDID> -b`.
+5. Check out WebDriverAgent at one pinned release tag, outside this repository: `git clone --branch <WDA_TAG> --depth 1 https://github.com/appium/WebDriverAgent <WDA_DIR>`. Use the newest tag that builds with the installed Xcode, and write the tag and commit down.
+6. Build for the simulator, which needs no signing: `TARGET=simulator UDID=<SIM_UDID> WDA_DIR=<WDA_DIR> DERIVED_DATA=<DIR> scripts/ios/wda-run.sh build`. The script runs `xcodebuild build-for-testing -scheme WebDriverAgentRunner` with `CODE_SIGNING_ALLOWED=NO`.
+7. Start it: the same variables with `scripts/ios/wda-run.sh run`. It runs `xcodebuild test-without-building` and blocks. A line with `ServerURLHere` names the address. Leave it running.
+8. Probe it from a second terminal: `WDA_URL=http://127.0.0.1:8100 scripts/ios/wda-run.sh probe`. The probe prints HTTP codes and JSON shapes for every endpoint `wda-client.ts` calls, and checks which of two pinch paths the build knows. Compare the output with `src/engine/adapters/ios/wda-client.ts` and `xcui-driver.ts`. This is the first time those shapes meet a real WebDriverAgent.
+9. Run the `simctl` half of the existing keystone: `pnpm test:keystone test/keystone/ios-app.keystone.test.ts`. It starts its own stand-in server, so it does not exercise the WebDriverAgent from step 7. It does prove the lifecycle against a real simulator.
+10. Drive the engine against the real WebDriverAgent by hand, using the shell route. Start the daemon with `BROWX_CAPABILITIES=read,navigation,action,human,native-device BROWX_IOS_DEVICE=<SIM_UDID> BROWX_IOS_APP_ID=com.apple.Preferences BROWX_IOS_WDA_URL=http://127.0.0.1:8100 browxai serve --socket <SOCKET> --engine ios-app`. Then run `browxai call open_session`, `snapshot`, `find`, `click`, `gesture_swipe`, `gesture_pinch` and `screenshot --out <FILE>` with `--socket <SOCKET>`. Note each tool's result.
+11. Record the run (10.7).
+
+This is what roadmap item 7 asks for. It closes the "stand-in only" gap on the Simulator. It can start as soon as a Mac has Xcode.
+
+### 10.2 What needs a device and the organization team
+
+- A development signature on WebDriverAgent, which needs a team, a development certificate, a registered device and a provisioning profile.
+- The phone: Developer Mode on, the Mac trusted, wireless debugging paired.
+- The Mac reaching the phone's address, which on macOS 15 and later is a Local Network permission for the program that connects.
+- Engine code that does not assume a simulator (10.5).
+- The real-device keystone (10.6).
+
+### 10.3 Building and signing WebDriverAgent for the phone
+
+**Provisioning needs.**
+
+- An Apple Development certificate for the team. Xcode creates one when a person signed in to the team opens a signing screen, and the portal can create it by hand.
+- The iPhone registered by UDID. With automatic signing, Xcode registers a connected device itself. The portal's Devices page does it by hand.
+- An App ID for the runner. WebDriverAgent ships with the bundle id `com.facebook.WebDriverAgentRunner`, which belongs to a namespace no other team can register, so the runner target needs an id in the team's namespace. Two ways: register a wildcard App ID `<BUNDLE_ID_PREFIX>.*` once, or register the explicit ids `<BUNDLE_ID_PREFIX>.WebDriverAgentRunner` and its test host form `<BUNDLE_ID_PREFIX>.WebDriverAgentRunner.xctrunner`. The wildcard covers both and takes one portal step. No capability needs enabling on it.
+- A development provisioning profile that contains the certificate, the device and that App ID. Automatic signing makes and renews it when `-allowProvisioningUpdates` is passed.
+
+**Steps.**
+
+1. Open `WebDriverAgent.xcodeproj` in Xcode once. In Signing and Capabilities for `WebDriverAgentLib` and `WebDriverAgentRunner`, turn on Automatically manage signing and pick the team. For `WebDriverAgentRunner` only, change the bundle identifier to `<BUNDLE_ID_PREFIX>.WebDriverAgentRunner`. Do not set the bundle id from the command line: `PRODUCT_BUNDLE_IDENTIFIER=...` on the `xcodebuild` line would apply to every target. The embedded library keeps its own id and needs no profile. Verify on a Mac.
+2. Connect the phone (10.4) and build: `TARGET=device UDID=<DEVICE_UDID> BROWXAI_APPLE_TEAM_ID=<TEAM_ID> WDA_DIR=<WDA_DIR> DERIVED_DATA=<DIR> scripts/ios/wda-run.sh build`. It runs `xcodebuild build-for-testing -destination 'id=<DEVICE_UDID>' -allowProvisioningUpdates DEVELOPMENT_TEAM=<TEAM_ID>`. To let `xcodebuild` manage profiles with an App Store Connect API key and no signed-in Xcode account, also set `ASC_KEY_PATH`, `ASC_KEY_ID` and `ASC_ISSUER_ID`. The script passes them as `-authenticationKeyPath`, `-authenticationKeyID` and `-authenticationKeyIssuerID`.
+3. Run it: the same variables with `scripts/ios/wda-run.sh run`, which is `xcodebuild test-without-building`. The build is reusable until the profile or certificate expires or Xcode changes, so `build` runs rarely and `run` runs for each session.
+4. The phone installs the runner app and starts it. A line with `ServerURLHere->http://<PHONE_IP>:8100<-ServerURLHere` appears in the output. If the phone says the developer is untrusted, trust it under Settings, General, VPN and Device Management.
+5. From the Mac: `WDA_URL=http://<PHONE_IP>:8100 scripts/ios/wda-run.sh probe`.
+
+### 10.4 Preparing the phone and pairing over the network
+
+1. Developer Mode: Settings, Privacy and Security, Developer Mode. The switch appears after the phone has been connected to Xcode once. Turning it on restarts the phone and asks for a passcode after the restart. Verify on the phone whether the Developer settings page also has an automation toggle on this iOS release.
+2. Connect once by cable, unlock the phone and tap Trust.
+3. In Xcode, Window, Devices and Simulators, pick the phone and tick Connect via network. A network icon appears next to it. The Mac and the phone must be on the same subnet, and a guest network with client isolation will not work.
+4. Unplug the cable. `xcrun devicectl list devices` should still list the phone as available. Verify on a Mac that this shows wireless devices.
+5. Set Auto-Lock to Never while a session runs. A locked phone stops the runner.
+6. Local Network on the Mac. macOS 15 and later asks when a program connects to an address on the local network, and the prompt names the program that started the connection. The first `curl` or `node` call to the phone's address from Terminal brings it up. Allow it for Terminal, or whichever program runs the session. It is listed under System Settings, Privacy and Security, Local Network. Verify on a Mac. If `curl` to the phone times out while `xcodebuild` shows the runner started, check this setting first, then the Local Network list on the phone for the runner app.
+7. Give the phone a fixed address on the router, or note that its address changes and update `BROWX_IOS_WDA_URL`.
+
+### 10.5 How browxai connects today, and the code change a device lane needs
+
+I read `src/engine/adapters/ios-app.engine.ts`, `ios/simulator.ts`, `ios/simctl.ts`, `ios/xcui-driver.ts`, `ios/lifecycle.ts` and `ios/wda-client.ts`.
+
+**The WebDriverAgent transport already reaches a remote host.** `WdaClient` takes a base URL from `BROWX_IOS_WDA_URL` (default `http://127.0.0.1:8100`) and calls it with `fetch`. A phone's WebDriverAgent at `http://<PHONE_IP>:8100` needs no transport change. There is no usbmuxd client and none is needed over the network, since the runner listens on the phone's own port.
+
+**Everything else is simulator-only.** A launch does `resolveSimulator` (`simctl list devices --json`, iOS simulator rows only), then `IosSimulator.boot`, `install` and `launch`, all `xcrun simctl`. A phone's UDID is not a simctl device, so `selectDevice` throws `no-simulator`. Three more calls use `simctl` after launch: `IosXcuiDriver.screenshot` (`sim.screenshot`), `IosXcuiDriver.openUrl` (`sim.openUrl`) and every `IosLifecycle` verb.
+
+**The follow-up code PR.** Not written here. It needs these changes, in this order:
+
+1. **Choosing the target.** A way to say the device is a phone: either a new setting, for example `BROWX_IOS_TARGET` with `simulator` and `device`, or a lookup that finds the id in the device list. A `device` target never boots anything.
+2. **Discovery.** List real devices with `xcrun devicectl list devices` (Xcode 15 and later, which covers USB and network devices, and needs no usbmuxd client and no tunnel daemon). `devicectl` writes JSON to a file, so the runner uses a temporary file the way `IosSimulator.screenshot` does. Verify the exact flags with `xcrun devicectl --help`. `device_list` then reports phones next to simulators.
+3. **Lifecycle.** `install` is `xcrun devicectl device install app --device <UDID> <path>`. `launch` and `terminate` can go through WebDriverAgent (its `/session` call with a `bundleId` capability already launches the app, and WebDriverAgent has app launch, terminate and state endpoints), or through `devicectl device process launch`. `terminate` over `devicectl` needs a process id from `devicectl device info processes`. Choose WebDriverAgent first, because it adds no new subprocess call. `app_list` over `devicectl device info apps`. Which endpoints a given WebDriverAgent tag has is what the probe in 10.1 and 10.3 shows.
+4. **Screenshot.** `IosXcuiDriver.screenshot` uses `simctl`. For a phone it must use WebDriverAgent's `GET /session/:id/screenshot`. `WdaClient.screenshot()` already exists and returns base64 PNG, and nothing calls it.
+5. **Deep links.** `simctl openurl` has no phone equivalent in the client. Use a WebDriverAgent deep link call or `devicectl device process launch` with a payload URL. Verify which the pinned tag has.
+6. **The error text.** `WdaUnreachableError` names a simulator destination in its fix. A device target needs its own text that mentions the phone's address, the lock state and the runner.
+7. **Pinch.** `WdaClient.pinch` posts to `/session/:id/element/:id/pinch`. My recollection is that WebDriverAgent serves it under `/wda/element/:id/pinch`. The probe checks both paths. If the real answer is the second, the client has been wrong since it was written, and the Simulator run in 10.1 is what finds it.
+8. **Posture.** `native-device` already gates the engine, and its threat-model row says the same code path aimed at a real device reaches the operator's phone. A device target needs its own loud warning naming the phone, a threat-model row, and the tool reference and README lines that say real devices are out of scope updated to say what is and is not evidenced. The lane uses a dedicated test phone with no personal data on it.
+
+None of this needs a new dependency. GPL-3.0 `pymobiledevice3` stays excluded. The unneeded options are `go-ios` and `appium-ios-remotexpc`, which matter only for a USB path with usbmux forwarding, and the owner chose a network phone.
+
+### 10.6 Keystone adaptation
+
+The current keystone, `test/keystone/ios-app.keystone.test.ts`, has three describes. Against a real WebDriverAgent each one changes like this.
+
+| Current describe                             | Today (stand-in)                                                                                                                                                                               | Against a real WebDriverAgent                                                                                                                                   |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The `native-device` gate                     | Refuses without the capability. Needs no device.                                                                                                                                               | Unchanged, and runs everywhere.                                                                                                                                 |
+| Real simulator lifecycle through `simctl`    | Lists, boots, launches Settings, takes a PNG, terminates, on a real simulator.                                                                                                                 | On a phone the same assertions go through the device lifecycle of 10.5 (list contains the device, launch reports a running app, a PNG of real size, terminate). |
+| The tool surface over a faked WebDriverAgent | A fixed tree with a button named `checkout-submit` labelled "Pay now". Asserts `app://` url, snapshot text, `[ref=eN]`, a tap at a moved position, a PNG from `simctl`, a swipe, two refusals. | The fixture assertions go. The stand-in's tree, its coordinates and its recorded taps cannot exist on a real screen. The next table lists the replacements.     |
+
+| Stand-in assertion                                            | Real replacement                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Snapshot contains `Pay now` and `checkout-submit`             | Snapshot of the Settings app contains a known visible label such as "General" (the phone's language must be English), a role mapped from a real `XCUIElementType`, and at least one `[ref=eN]`. Identifier assertions need an app with identifiers. System Settings does not promise any, so a later phase adds a small fixture app signed with the team. |
+| Re-resolution: move the button, tap lands at the new position | Tap a row, then reuse the old ref and expect a `stale-element` refusal. Count of matches above one is a refusal. The stand-in answers every `/element` query with one id, so neither case was reachable.                                                                                                                                                  |
+| The server records taps and the test checks coordinates       | Check the effect: the snapshot after a tap on "General" shows "About".                                                                                                                                                                                                                                                                                    |
+| `/session` reply shape, `/status`, `/source` envelope         | Passes only if the real reply matches what `WdaClient` unwraps. This is the main thing a real run proves.                                                                                                                                                                                                                                                 |
+| Screenshot is a real `simctl` frame                           | The frame comes from WebDriverAgent. Assert the PNG signature and that its pixel size is a whole multiple of the root element's rect.                                                                                                                                                                                                                     |
+| `gesture_swipe` ok, two CDP-deep refusals                     | Same. Add a `gesture_pinch` call, which the stand-in never exercised.                                                                                                                                                                                                                                                                                     |
+| Not covered                                                   | A find for a missing identifier returns no match. `app_foreground` reports the app's bundle id from `activeAppInfo`. The time of one `snapshot` over the network is recorded, since the dump cost is an open question in this RFC.                                                                                                                        |
+
+The device describe is gated on an environment variable that names the WebDriverAgent address and the app, and skips when it is unset, the way the simulator describe skips without Xcode. It never runs in CI.
+
+### 10.7 Recording evidence
+
+After a run, copy a block like this into the PR or the release notes, then copy the first line of facts into the engine evidence table row for `ios-app` with its date. The table is updated by hand, per [`docs/ai-context/release-process/engine-evidence.md`](../ai-context/release-process/engine-evidence.md).
+
+```
+ios-app evidence
+date:            YYYY-MM-DD
+target:          simulator | device (wireless)
+iOS version:     26.x (build NNNNN)
+device model:    iPhone17,x marketing name, or the simulator device type
+macOS:           26.x
+Xcode:           26.x (build NNNNN)
+WebDriverAgent:  <WDA_TAG> at <WDA_COMMIT>
+browxai:         <version> at <BROWXAI_COMMIT>
+what ran:        probe, shell-route drive, keystone describe names
+result:          the tools that passed, the tools that failed with their error
+snapshot time:   median and worst of N snapshots, in ms
+notes:           anything the stand-in got wrong
+```
+
+The block carries no UDID, no device name, no address, no team id and no screenshot of a personal screen.
+
+### 10.8 Failure modes
+
+| Symptom                                                          | Cause                                                                                                                                                                         | What to do                                                                                                                                                                   |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `xcodebuild` says the profile has expired, or no profile matches | Provisioning profiles for an organization team last one year. A free Personal Team lasts seven days. The Apple Development certificate also lasts one year.                   | Run `build` again with `-allowProvisioningUpdates`. Put the renewal date in the owner's calendar. The Developer ID certificate in RFC 0012 is separate and lasts five years. |
+| The runner starts and stops at once, or the test fails to launch | The phone is locked or asleep                                                                                                                                                 | Unlock it, set Auto-Lock to Never, run again.                                                                                                                                |
+| Xcode says Developer Mode is disabled                            | The switch is off, or the phone was restored                                                                                                                                  | Turn it on in Settings, Privacy and Security, restart, confirm.                                                                                                              |
+| `wda-unreachable` from browxai, or `curl` to the phone times out | The runner is not running, the phone's address changed, the Mac and phone are on different subnets, a VPN on the Mac, or Local Network is off for the program making the call | Check the `ServerURLHere` line, ping the phone, check System Settings, Privacy and Security, Local Network, turn the VPN off.                                                |
+| The phone drops out of `devicectl list devices` after a while    | Wireless debugging lapsed: the phone slept, changed network, or Wi-Fi power-saving                                                                                            | Reconnect once by cable, tick Connect via network again.                                                                                                                     |
+| Build fails on a new Xcode or iOS release                        | WebDriverAgent is tied to Xcode and iOS versions (this RFC's maintenance warning)                                                                                             | Move `<WDA_TAG>` to a newer release and record the new tag.                                                                                                                  |
+| "Untrusted developer" on the phone                               | The team's development certificate is not trusted yet                                                                                                                         | Settings, General, VPN and Device Management, trust it.                                                                                                                      |
+| `snapshot` takes seconds, or times out at 30 seconds             | A deep tree over Wi-Fi. `defaultHttp` times out at 30 s.                                                                                                                      | Record the time. The dump cost is an open question above, and the number goes into the evidence block.                                                                       |
+| A second session fails                                           | One XCUITest runner owns the phone at a time                                                                                                                                  | Stop the other `xcodebuild` run.                                                                                                                                             |
+
+### 10.9 Done
+
+The lane is done when the evidence table's `ios-app` row has a date, an iOS version and a WebDriverAgent tag from a real run, the README's "unproven" wording changes to match, and every shape mismatch the probe found is fixed or written down. The Simulator run in 10.1 can reach that for the Simulator half first. The device half waits for the code PR in 10.5.
+
 ## Honest limits
 
 **What this will not do.**
 
-- **No real devices in v1.** Simulators and emulators only. Real devices need signing, provisioning and, on iOS 17 and later, a sudo-privileged tunnel daemon. That is a separate phase with a separate security review.
+- **No real devices in v1.** Simulators and emulators only. Real devices need signing, provisioning and, with some third-party tools on iOS 17 and later, a sudo-privileged tunnel daemon. That is a separate phase with a separate security review. Section 10 plans it as a manual evidence lane that uses only Xcode's own tools, so no tunnel daemon is involved.
 - **No network interception.** There is no protocol-level tap on a native app without a system proxy or a VPN profile, and installing either is the operator's decision, which browxai never makes on their behalf. `network_read`, `network_body` and `route` refuse, through the same no-op substrate shape Safari uses.
 - **No DOM stream, so no rrweb-class replay.** Native evidence is video plus hierarchy keyframes plus the action log. A reviewer can see what happened and inspect the tree at each action boundary. Scrubbing to an arbitrary instant between two actions shows the video frame and the previous keyframe, and there is nothing to interpolate.
 - **One UiAutomation owner per Android device.** A browxai native session cannot coexist with another UiAutomator client on the same device: a second driver, an Espresso run, a manual `uiautomator dump`, or an accessibility service that grabs the connection. Sessions claim the device under an RFC 0005-style lease keyed on the serial, and a second claim gets a structured refusal naming the holder. There is no way to share.

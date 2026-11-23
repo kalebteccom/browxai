@@ -17,7 +17,7 @@ The "Engine evidence" table in `docs/tool-reference.md` (the Sessions section, p
 - Never write a date or version the repo does not record. A blank is `not run`, or `recorded per run` for a browser build the pipeline downloads.
 - `not run` means the repo records no passing run. It does not say nobody ran the keystone.
 - The capability testbed report is a second source for Chromium only (`packages/capability-testbed/reports/FULL-REPORT.md`, 2026-06-16 as of 0.19.0). Rerun it with `pnpm --filter @browxai/capability-testbed report` when a release touches many tools, and copy the new report date into the note under the table.
-- The `ios-app` row stays `not run` until a keystone run against a real WebDriverAgent is recorded (roadmap item 7).
+- The `ios-app` row stays `not run` until a run against a real WebDriverAgent is recorded (roadmap item 7). Record it with the block in RFC 0008 section 10.7: date, target (simulator or device), iOS version, device model, Xcode version, WebDriverAgent tag and commit, and the browxai commit. Never put a device UDID, name or address in the row.
 
 ## Related
 

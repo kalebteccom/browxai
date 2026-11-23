@@ -1,6 +1,6 @@
 # browxai roadmap
 
-> What we plan to build next, in order, and what we do not plan to build. Written against v0.17.1 on 2026-11-16 and updated for v0.19.0 on 2026-11-22. It is a plan, and an item can move or drop when evidence changes. Dates are not promised.
+> What we plan to build next, in order, and what we do not plan to build. Written against v0.17.1 on 2026-11-16 updated for v0.19.0 on 2026-11-22, with items 7 and 12 updated on 2026-11-23. It is a plan, and an item can move or drop when evidence changes. Dates are not promised.
 
 ## What browxai is for
 
@@ -23,6 +23,7 @@ Ranked by value over cost, then by fit with the capability-gated posture. Size i
 | 9   | Replay player panels (RFC 0007, phase 4)     | M    |
 | 10  | Plugin ecosystem growth                      | M    |
 | 11  | An optional natural-language action layer    | L    |
+| 12  | Signed macOS app (RFC 0012)                  | L    |
 
 ### Chromium sandbox for browsers browxai launches (decided: option (c), built)
 
@@ -102,12 +103,14 @@ This item had no number because it needed a decision before it needed work. The 
 
 ### 7. `ios-app` against a real WebDriverAgent (L)
 
-- **What.** Run the `ios-app` keystone against a real WebDriverAgent on a booted iOS Simulator and record the result.
+- **Status.** Plan written, and the device lane is a manual runbook. RFC 0008 section 10 holds the plan: every Simulator step (no Apple Developer membership needed), what needs a phone and the organization team, the WebDriverAgent build and signing steps, wireless pairing, the code change a device lane needs, the keystone adaptation, the evidence format and the failure modes. `scripts/ios/wda-run.sh` builds, runs and probes a WebDriverAgent. Nothing has been run yet, so the README wording stays "unproven".
+- **What.** Run the `ios-app` engine against a real WebDriverAgent, first on a booted iOS Simulator, then on one dedicated iPhone on the same network (wireless debugging, not USB). Record each run.
 - **Why.** The `simctl` half runs against real simulators. The WebDriverAgent transport has only met a stand-in HTTP server, so the README calls it unproven. A Linux box cannot close this.
-- **Needs.** A macOS machine with Xcode, a booted simulator runtime, a WebDriverAgent build signed for the simulator, and a job that rebuilds it when Xcode moves. RFC 0008 already warns that the Xcode coupling breaks on OS updates and is a standing maintenance cost.
-- **Risk.** High on upkeep, low on posture: it sits behind `native-device`.
-- **Done.** The keystone passes on a real WebDriverAgent with the Xcode and runtime versions recorded, and the README says so. Until then the wording stays "unproven".
-- **First PR.** A runbook for the manual run: install steps, the exact command, what to attach to the release notes. Docs only.
+- **Needs.** A Mac with Xcode and a simulator runtime for the Simulator run, and no membership. For the phone: the active organization team, a development certificate and profile, the phone registered, Developer Mode, and a WebDriverAgent build signed for it. RFC 0008 warns that the Xcode coupling breaks on OS updates and is a standing maintenance cost.
+- **Decisions.** No self-hosted CI agent and no daemon. The owner runs the lane by hand on one Mac and copies the result into the engine evidence table with a date, using the format in RFC 0008 section 10.7.
+- **Risk.** High on upkeep, low on posture: it sits behind `native-device`. A device target also needs a code change (device discovery, lifecycle and screenshot that do not assume `simctl`), which is its own PR with a threat-model row.
+- **Done.** The Simulator run passes against a real WebDriverAgent with the Xcode and runtime versions recorded, the phone run does the same once the device code lands, and the README says so. Until then the wording stays "unproven".
+- **First PR.** The plan and the script, in this docs change. The next PR is the Simulator run's evidence row, then the device launch path.
 
 ### 8. A reference deployment for containers and CI (M, built as a guide)
 
@@ -143,10 +146,25 @@ This item had no number because it needed a decision before it needed work. The 
 - **Done.** An accepted RFC first. Then the capability, the keystone proving the gate blocks, the threat-model row, and a published cost per task.
 - **First PR.** The RFC, after the owner decides yes or no.
 
+### 12. Signed macOS app (RFC 0012) (L)
+
+- **What.** A signed, hardened-runtime, notarized, stapled `.app` that hosts `browxai serve --socket` as a user login agent and carries the CLI inside it, shipped as a zip and a Homebrew cask. It can also embed the cloud host agent as an optional helper, so one app is one permission identity, one notarization and one update channel. `npm install` keeps working as it does today.
+- **Why.** The daemon on a Mac runs under Terminal or a bare `node`, so permission prompts name the wrong program and a grant to `node` covers every Node program. browxai asks macOS for almost nothing itself, so the app adds no permission. It adds a stable name and identity for the permissions its child tools need (Local Network for the iOS device lane is the first), a switch in System Settings, and a download Gatekeeper accepts. RFC 0012 lists each feature and whether it triggers a permission prompt.
+- **Decisions.** Sign and notarize on the owner's Mac, with no signing key or notary credential in CI. `release.yml` stays unchanged. The bundle carries an official Node binary, `dist/` and a compiled launcher. Entitlements start at `allow-jit` on `node` alone.
+- **Risk.** Medium. Several macOS behaviors are marked "verify on a Mac" in the RFC, and the certificate and keychain profile belong to the owner.
+- **Slices.**
+  1. The RFC and the scripts: `scripts/macos/release-app.sh`, `verify-app.sh` and `entitlements.plist`. This is the first PR.
+  2. App bundle layout and launcher code, with the optional helper embedding. Needs the owner's certificate to verify.
+  3. The login item and a `doctor` identity row.
+  4. The Homebrew cask and the update path.
+  5. A release process line in `RELEASING.md`.
+- **Done.** A notarized zip that passes `verify-app.sh`, a cask install that opens with no Gatekeeper warning, and a second build whose designated requirement equals the first.
+- **First PR.** Slice 1, docs and scripts only.
+
 ## Not planned
 
 - **A hosted service, proxies or fingerprint rotation.** browxai is a local server. Item 8 documents how to run it yourself. `stealth` stays a gated posture tweak, and the supported route past a bot challenge is a person signing in with `browxai chrome login`.
-- **Real-device iOS or Android app lanes, and native desktop automation** (Cocoa, Win32, GTK). Devices need code signing and hardware, and a native desktop app has no CDP endpoint. Electron is in scope because it is Chromium.
+- **Real-device iOS or Android app lanes as a supported surface, and native desktop automation** (Cocoa, Win32, GTK). Devices need code signing and hardware, and a native desktop app has no CDP endpoint. Electron is in scope because it is Chromium. The one iPhone evidence lane in item 7 is a manual runbook for recording results, and it does not make real devices a supported target.
 - **A bundled vision or OCR model.** Canvas work stays pixels, gestures and adapter plugins. Understanding the pixels is the host agent's job.
 - **SDKs in other languages.** MCP already serves any client for tools. We revisit when someone needs scripts in another language and asks.
 - **Cross-engine parity.** Chromium has the full surface. The other engines run a curated subset and refuse the CDP-deep tools by name, and that stays.
@@ -168,6 +186,6 @@ Items 1 to 5 are shipped, and item 8 is built as a guide with the compose file a
 - **Item 9, replay player panels.** The panel manifest schema and its docs, with no player change.
 - **Item 10, plugin ecosystem growth.** The "write your first plugin" section in the authoring guide, checked by following it on a clean machine.
 
-Two items stay parked. Item 11, the natural-language action layer, waits for the owner's yes or no on its RFC. Item 7, the real-device iOS lane, waits for a macOS machine with Xcode and a signed WebDriverAgent build, and for the owner.
+Two items stay parked. Item 11, the natural-language action layer, waits for the owner's yes or no on its RFC. Item 7, the iOS lane, has its plan and script written and waits for the owner to run it on a Mac with Xcode. Item 12 has its RFC and scripts, and its next slice waits for the owner's certificate.
 
 See also the [tool reference](./tool-reference.md), the [threat model](./threat-model.md) and the [plugins overview](./plugins.md). Design records live in [docs/rfcs](../docs/rfcs/README.md).
