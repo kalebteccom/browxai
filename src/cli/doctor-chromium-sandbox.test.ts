@@ -95,7 +95,7 @@ describe("chromiumSandboxRow", () => {
     expect(row.detail).not.toContain("the installed Chrome tries");
     expect(row.detail).toContain("AppArmor");
     expect(row.detail).toContain(
-      "the bundled browser (the bundled Chromium and the headless shell) skips it",
+      "The bundled browser (the bundled Chromium and the headless shell) skips it",
     );
   });
 
