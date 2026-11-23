@@ -88,12 +88,15 @@ describe("chromiumSandboxRow", () => {
     expect(row.fix).not.toContain("config.json");
   });
 
-  it("says the installed Chrome tries the sandbox where AppArmor blocks the bundled build", () => {
+  it("says a launch of the installed Chrome tries the sandbox where AppArmor blocks the bundled build", () => {
     const row = chromiumSandboxRow({}, dir, () => ({ ...normalUser, apparmorRestrictUserns: 1 }));
     expect(row.warn).toBe(true);
-    expect(row.detail).toContain("installed Chrome tries");
+    expect(row.detail).toContain("a launch of the installed Google Chrome tries");
+    expect(row.detail).not.toContain("the installed Chrome tries");
     expect(row.detail).toContain("AppArmor");
-    expect(row.detail).toContain("bundled Chromium and the headless shell");
+    expect(row.detail).toContain(
+      "The bundled browser (the bundled Chromium and the headless shell) skips it",
+    );
   });
 
   it("fails on a mistyped env value and names the fix", () => {

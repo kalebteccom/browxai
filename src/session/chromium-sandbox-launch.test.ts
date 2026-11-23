@@ -488,7 +488,26 @@ describe("launchWithSandboxPlan: auto", () => {
     const bundled = launcher([SANDBOX_ERROR, "ok"]);
     await launchWithSandboxPlan("auto", bundled.launch, { target: "bundled" });
     expect(bundled.calls).toEqual([{ chromiumSandbox: true }, {}]);
-    expect(warnings()).toHaveLength(1);
+    expect(warnings()).toHaveLength(2);
+  });
+
+  it("warns once per browser kind and names the kind each time", async () => {
+    hostIs(linuxUser);
+    await launchWithSandboxPlan("auto", launcher([SANDBOX_ERROR, "ok"]).launch, {
+      target: "installed",
+    });
+    await launchWithSandboxPlan("auto", launcher(["ok"]).launch, { target: "installed" });
+    await launchWithSandboxPlan("auto", launcher([SANDBOX_ERROR, "ok"]).launch, {
+      target: "bundled",
+    });
+    await launchWithSandboxPlan("auto", launcher(["ok"]).launch, { target: "bundled" });
+    const warned = warnings();
+    expect(warned).toHaveLength(2);
+    expect(warned[0]).toContain("the installed Google Chrome");
+    expect(warned[1]).toContain("the bundled Chromium and the headless shell");
+    for (const w of warned) {
+      expect(w).toContain("restart the server or set BROWX_CHROMIUM_SANDBOX=on to retry");
+    }
   });
 
   it("does not remember a failure that did not name the sandbox", async () => {
@@ -519,6 +538,13 @@ describe("launchWithSandboxPlan: auto", () => {
     expect(bundled.calls).toEqual([{}]);
     expect(warnings()).toHaveLength(1);
     expect(warnings()[0]).toContain("AppArmor");
+    expect(warnings()[0]).toContain("the bundled Chromium and the headless shell");
+  });
+
+  it("says a root skip covers every browser", async () => {
+    hostIs({ ...linuxUser, uid: 0 });
+    await launchWithSandboxPlan("auto", launcher(["ok"]).launch, { target: "installed" });
+    expect(warnings()[0]).toContain("every browser browxai launches");
   });
 
   it("does not retry on a host it already skipped the sandbox for", async () => {

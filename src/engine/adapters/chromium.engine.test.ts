@@ -314,7 +314,19 @@ describe("chromium engine — OS sandbox", () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the default-Chrome fallback working when the sandbox is on", async () => {
+  it("on with a named Chrome that is not installed rethrows the not-found error unchanged and does not retry", async () => {
+    const notFound = new Error(
+      "Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome",
+    );
+    const spy = spyOnLaunch("launchPersistent").mockRejectedValue(notFound);
+    await expect(
+      engineEntry("chromium").makeAdapter({ chromiumSandbox: "on", channel: "chrome" }),
+    ).rejects.toBe(notFound);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toMatchObject({ options: { chromiumSandbox: true } });
+  });
+
+  it("keeps the default-Chrome fallback working under auto", async () => {
     vi.spyOn(sandboxProbe, "gather").mockReturnValue(NORMAL_USER);
     const notFound = new Error(
       "Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome",
