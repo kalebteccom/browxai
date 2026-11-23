@@ -336,7 +336,7 @@ Persistence model: each call records the resolved value on the session's `device
 
 This table says what ran on each of the eight engines, where, on which version, on what date, and how to rerun it. A date is a day the repo records a passing run: a release date in the CHANGELOG or the date of a report. `not run` means the repo records no passing run for that engine.
 
-**Rule.** A row dated before the latest release is marked stale in the next release PR, and the release checklist includes refreshing these dates. The table was written against 0.19.0 (2026-11-22) and refreshed in the 0.19.1 release PR.
+**Rule.** A row dated before the latest release is marked stale in the next release PR, and the release checklist includes refreshing these dates. The table was written against 0.19.0 (2026-11-22) and refreshed in the 0.19.1 and 0.20.0 release PRs.
 
 | engine        | What ran                                                                                                                                         | Where                                               | Version                                                   | Date                        | How to rerun                                                                                                                                                                           |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- | --------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -351,9 +351,9 @@ This table says what ran on each of the eight engines, where, on which version, 
 
 How to read the table:
 
-- The three CI rows take their date from the release. RELEASING.md requires a green `pnpm test:keystone` before a release, and the repo keeps no CI run logs, so the 0.19.0 release date is the record. The 0.19.1 PR leaves those three dates at 0.19.0, because the repo records no green run for 0.19.1 yet. The browser build numbers come from the run itself, so they are not repeated here.
+- The three CI rows take their date from the release. RELEASING.md requires a green `pnpm test:keystone` before a release, and the repo keeps no CI run logs, so the 0.19.0 release date is the record. The 0.19.1 and 0.20.0 PRs leave those three dates at 0.19.0, because the repo records no green run for either release yet. The browser build numbers come from the run itself, so they are not repeated here.
 - The `safari`, `android-app` and `electron` dates come from CHANGELOG lines: the 0.10.0 line "22 of 23 keystone files green, including real Safari.app", and the 0.11.0 lines for the Android 14 emulator and the VS Code run. No Safari version was written down for that run. A later probe of Safari 26.5 on macOS 26.5 is recorded in the RFC 0002 research notes. That probe was a separate run.
-- `(stale)` marks a row dated before the latest release (0.19.0), whose run nobody has repeated since. The `safari`, `android-app` and `electron` rows are stale.
+- `(stale)` marks a row dated before the latest release (0.20.0), whose run nobody has repeated since. The `safari`, `android-app` and `electron` rows are stale. The three CI rows are not marked: they move to the release date once a green 0.20.0 run is recorded.
 - The 0.10.0 changelog records the `android` keystone as skipped for lack of a device, and no later entry records a pass.
 - The `ios-app` engine reads its hierarchy from WebDriverAgent. Only a stand-in server has answered so far. The roadmap tracks the run against a real WebDriverAgent as item 7.
 - A second suite, the capability testbed, drives every tool against a test app: `pnpm --filter @browxai/capability-testbed report`. Its latest recorded pass is on Chromium, on 2026-06-16: 196 pass, 0 fail, 0 error and 2 skip. The repo records no testbed run on another engine.
