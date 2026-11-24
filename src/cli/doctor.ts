@@ -23,6 +23,7 @@ import { capabilitiesRow } from "./doctor-capabilities.js";
 import { toolListRow } from "./doctor-tool-list.js";
 import { toolProfileRow } from "./doctor-tool-profile.js";
 import { chromiumSandboxRow } from "./doctor-chromium-sandbox.js";
+import { macosAppRow } from "./doctor-macos-app.js";
 import {
   chromeCheck,
   chromiumCheck,
@@ -59,7 +60,7 @@ export interface Check {
 /** Printed to stdout for `--help` (exit 0, from `cli.ts`) and to stderr when
  *  the arguments are wrong (exit 2). */
 export const DOCTOR_USAGE =
-  "usage: browxai doctor [--verbose]\n  --verbose   print every check, including the opt-in engines\n";
+  "usage: browxai doctor [--verbose]\n  --verbose   print every check, including the opt-in engines (on macOS, also where browxai runs from)\n";
 
 export async function runDoctor(args: readonly string[] = []): Promise<number> {
   const opts = parseDoctorArgs(args);
@@ -102,6 +103,11 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
       fix: "reinstall browxai (`npm install -g browxai`), or run `pnpm build` in a source checkout",
     });
   }
+
+  // 1b. macOS only: does browxai run from the signed Browxai app, and what does its
+  // signature say? No row elsewhere. Informational: it warns, it never fails doctor.
+  const macosApp = macosAppRow();
+  if (macosApp) checks.push(macosApp);
 
   // 2. $BROWX_WORKSPACE writable?
   try {

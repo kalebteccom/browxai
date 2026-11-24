@@ -24,7 +24,7 @@ describe("browxai doctor arguments", () => {
   ])("prints usage and exits 2 for %s, running no check", async (_name, args) => {
     expect(await runDoctor(args)).toBe(2);
     expect(err).toBe(
-      "usage: browxai doctor [--verbose]\n  --verbose   print every check, including the opt-in engines\n",
+      "usage: browxai doctor [--verbose]\n  --verbose   print every check, including the opt-in engines (on macOS, also where browxai runs from)\n",
     );
     expect(out).toBe("");
   });
