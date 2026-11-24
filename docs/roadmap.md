@@ -154,10 +154,10 @@ This item had no number because it needed a decision before it needed work. The 
 - **Risk.** Medium. Several macOS behaviors are marked "verify on a Mac" in the RFC, and the certificate and keychain profile belong to the owner.
 - **Slices.**
   1. The RFC and the scripts: `scripts/macos/release-app.sh`, `verify-app.sh` and `entitlements.plist`. This is the first PR.
-  2. App bundle layout and launcher code, with the optional helper embedding. Written, unverified until built on the Mac: the Swift launcher, the two plist templates, the pinned Node download and `scripts/macos/build-app.sh`. The helper itself is added by `release-app.sh`. Needs the owner's certificate to verify.
-  3. The login item and a `doctor` identity row.
-  4. The Homebrew cask and the update path.
-  5. A release process line in `RELEASING.md`.
+  2. App bundle layout and launcher code, with the optional helper embedding. Built and notarized once on one Mac (2026-11-24, macOS 26.5, arm64): the Swift launcher, the two plist templates, the pinned Node download and `scripts/macos/build-app.sh` produced an app that `release-app.sh` signed and Apple notarized, that `verify-app.sh` passed, and whose bundled Node ran `browxai doctor` and a headless Chromium session. Not yet run: the login item, the x86_64 and universal builds, the cloud helper embedding, running from `/Applications`. The helper itself is added by `release-app.sh`.
+  3. The login item and a `doctor` identity row. The `doctor` row is written. The login item belongs to the launcher code of slice 2. Written, unverified until built and run on a Mac.
+  4. The Homebrew cask and the update path: `packaging/homebrew/browxai.rb`, `scripts/macos/make-cask.sh` and the RFC's "Homebrew" section. Written, unverified until built and run on a Mac. Creating the tap repository is the owner's step.
+  5. The manual macOS app section of `RELEASING.md`. Written, unverified until built and run on a Mac.
 - **Done.** A notarized zip that passes `verify-app.sh`, a cask install that opens with no Gatekeeper warning, and a second build whose designated requirement equals the first.
 - **First PR.** Slice 1, docs and scripts only. Slice 2 followed as sources and a build script that the owner builds on a Mac.
 
