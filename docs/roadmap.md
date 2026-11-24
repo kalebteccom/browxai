@@ -154,12 +154,12 @@ This item had no number because it needed a decision before it needed work. The 
 - **Risk.** Medium. Several macOS behaviors are marked "verify on a Mac" in the RFC, and the certificate and keychain profile belong to the owner.
 - **Slices.**
   1. The RFC and the scripts: `scripts/macos/release-app.sh`, `verify-app.sh` and `entitlements.plist`. This is the first PR.
-  2. App bundle layout and launcher code, with the optional helper embedding. Needs the owner's certificate to verify.
+  2. App bundle layout and launcher code, with the optional helper embedding. Written, unverified until built on the Mac: the Swift launcher, the two plist templates, the pinned Node download and `scripts/macos/build-app.sh`. The helper itself is added by `release-app.sh`. Needs the owner's certificate to verify.
   3. The login item and a `doctor` identity row.
   4. The Homebrew cask and the update path.
   5. A release process line in `RELEASING.md`.
 - **Done.** A notarized zip that passes `verify-app.sh`, a cask install that opens with no Gatekeeper warning, and a second build whose designated requirement equals the first.
-- **First PR.** Slice 1, docs and scripts only.
+- **First PR.** Slice 1, docs and scripts only. Slice 2 followed as sources and a build script that the owner builds on a Mac.
 
 ## Not planned
 
@@ -186,6 +186,6 @@ Items 1 to 5 are shipped, and item 8 is built as a guide with the compose file a
 - **Item 9, replay player panels.** The panel manifest schema and its docs, with no player change.
 - **Item 10, plugin ecosystem growth.** The "write your first plugin" section in the authoring guide, checked by following it on a clean machine.
 
-Two items stay parked. Item 11, the natural-language action layer, waits for the owner's yes or no on its RFC. Item 7, the iOS lane, has its plan and script written and waits for the owner to run it on a Mac with Xcode. Item 12 has its RFC and scripts, and its next slice waits for the owner's certificate.
+Two items stay parked. Item 11, the natural-language action layer, waits for the owner's yes or no on its RFC. Item 7, the iOS lane, has its plan and script written and waits for the owner to run it on a Mac with Xcode. Item 12 has its RFC, scripts and slice 2 sources written, and waits for the owner to build and sign them on a Mac.
 
 See also the [tool reference](./tool-reference.md), the [threat model](./threat-model.md) and the [plugins overview](./plugins.md). Design records live in [docs/rfcs](../docs/rfcs/README.md).

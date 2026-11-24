@@ -17,7 +17,7 @@ Numbered RFCs for substantive design proposals. Each RFC is `NNNN-short-slug.md`
 | [0009](0009-page-free-session-port.md)      | A Page-free session port (close the `page()` bypass; Target / Event / Element substrates)                  | P1 shipped (#89): ports split, `TargetSubstrate`, declaration-keyed selection. P2-P5 not built.                                                        |
 | [0010](0010-core-tool-profile.md)           | A core tool profile (a named subset of tools, listed only when asked for, to cut `tools/list` cost)        | Proposed, decision pending. Design only, nothing built.                                                                                                |
 | [0011](0011-shell-route.md)                 | A shell route (call one tool from the command line against `serve --socket`, for agents with shell access) | Accepted, built. `browxai tools` and `browxai call`, a client of `serve --socket`.                                                                     |
-| [0012](0012-signed-macos-app.md)            | A signed, notarized macOS app that hosts the server (login agent, bundled Node, optional bundled helper)   | Proposed. Owner direction recorded. Design and release scripts only, nothing built.                                                                    |
+| [0012](0012-signed-macos-app.md)            | A signed, notarized macOS app that hosts the server (login agent, bundled Node, optional bundled helper)   | Proposed. Owner direction recorded. Design, release scripts and the app sources written, nothing built on a Mac yet.                                   |
 
 ## Reference corrections
 

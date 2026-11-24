@@ -10,6 +10,7 @@ surface" covers.
 
 ### Changed
 
+- RFC 0012 slice 2, no change to the npm package: the macOS app sources are written and not yet built on a Mac. They are a Swift launcher in `macos/launcher/`, the Info.plist and login agent plist templates, a pinned Node version in `macos/node-version.txt` and `scripts/macos/build-app.sh`, which assembles the unsigned `Browxai.app` that `release-app.sh` signs. RFC 0012 gains a Build section with the owner's commands, and the helper's signing identifier is now `com.kalebtec.browxai-cloud`.
 - Docs only: RFC 0008 gains a real-device lane plan (section 10), and RFC 0012 proposes a signed, notarized macOS app that hosts the server. The roadmap marks item 7 as plan written, with the device lane as a manual runbook, and adds item 12. New helper scripts, never run in CI: `scripts/ios/wda-run.sh` (build, run and probe WebDriverAgent) and `scripts/macos/release-app.sh`, `scripts/macos/verify-app.sh` and `scripts/macos/entitlements.plist` (sign, notarize and check the app on a Mac). No behavior change.
 
 ## [0.20.0] - 2026-11-23

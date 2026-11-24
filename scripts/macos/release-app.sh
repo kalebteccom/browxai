@@ -38,6 +38,9 @@
 #       Contents/Helpers/browxai-cloud and signs it before anything else. With
 #       neither, the app is the plain browxai host app. One set without the other
 #       stops the run.
+#   BROWXAI_CLOUD_HELPER_IDENTIFIER
+#       the code signing identifier for the helper. Default: com.kalebtec.browxai-cloud,
+#       the identifier the cloud release signs with. verify-app.sh reads the same variable.
 #
 # The input app is copied first, and the copy is signed. The input is never changed
 # or deleted: the script removes nothing but its own temporary work directory.
@@ -60,6 +63,10 @@ set -euo pipefail
 # The one path that holds the bundled node binary. The signing step and the
 # entitlements check use this variable and no file-name match.
 NODE_REL="Contents/Resources/node/bin/node"
+
+# The helper's signing identifier. It is the one the cloud release signs with, so it is
+# not derived from the bundle id. Override only to match a different helper release.
+HELPER_ID="${BROWXAI_CLOUD_HELPER_IDENTIFIER:-com.kalebtec.browxai-cloud}"
 
 die() {
   printf 'release-app: %s\n' "$1" >&2
@@ -341,8 +348,8 @@ if [ -n "$HELPER_COPY" ]; then
   # Recorded inside the bundle, so verify-app.sh and the support path can read it.
   # sourceSha256 is the digest of the file as the cloud release produced it. The
   # signed file differs, because signing rewrites the binary.
-  printf '{\n  "helpers": [\n    {\n      "name": "browxai-cloud",\n      "path": "Contents/Helpers/browxai-cloud",\n      "identifier": "%s.cloud",\n      "version": "%s",\n      "sourceSha256": "%s"\n    }\n  ]\n}\n' \
-    "$BUNDLE_ID" "$HELPER_VERSION" "$expected_sha" >"$APP/Contents/Resources/bundled-helpers.json"
+  printf '{\n  "helpers": [\n    {\n      "name": "browxai-cloud",\n      "path": "Contents/Helpers/browxai-cloud",\n      "identifier": "%s",\n      "version": "%s",\n      "sourceSha256": "%s"\n    }\n  ]\n}\n' \
+    "$HELPER_ID" "$HELPER_VERSION" "$expected_sha" >"$APP/Contents/Resources/bundled-helpers.json"
 fi
 
 # --- sign, inside out --------------------------------------------------------
@@ -362,7 +369,7 @@ sign_file() {
 if [ -n "$HELPER" ]; then
   step "Signing the helper first, with a fixed identifier and no entitlements"
   codesign --force --sign "$IDENTITY" --options runtime --timestamp \
-    --identifier "$BUNDLE_ID.cloud" "$HELPER"
+    --identifier "$HELPER_ID" "$HELPER"
   codesign --verify --strict --verbose=2 "$HELPER"
 fi
 
