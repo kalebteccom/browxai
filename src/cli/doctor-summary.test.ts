@@ -152,6 +152,17 @@ describe("doctor summary", () => {
     expect(text).not.toMatch(/node +v20\.0\.0\n {4}next:/);
   });
 
+  it("leaves an informational macos-app row out and shows a warning in its own area", () => {
+    const info: Check = { name: "macos-app", ok: true, info: true, detail: "not in the app" };
+    expect(summarize([...OK, info]).map((a) => a.label)).not.toContain("macos-app");
+    const warn: Check = { name: "macos-app", ok: true, warn: true, detail: "not signed", fix: "x" };
+    const areas = summarize([...OK, warn]).map((a) => a.label);
+    expect(areas.indexOf("macos-app")).toBe(areas.indexOf("install") + 1);
+    const { text, allOk } = formatDoctor([...OK, warn], OPTS);
+    expect(allOk).toBe(true);
+    expect(text).toMatch(/⚠ macos-app +not signed\n {4}next: x\n/);
+  });
+
   it("says one area needs a fix in the singular", () => {
     const checks = OK.map((c) => (c.name === "node" ? { ...c, ok: false, fix: "upgrade" } : c));
     const { text } = formatDoctor(checks, OPTS);

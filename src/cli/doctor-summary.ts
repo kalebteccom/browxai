@@ -9,6 +9,7 @@ import type { Check } from "./doctor.js";
 const AREAS: ReadonlyArray<readonly [label: string, rows: readonly string[]]> = [
   ["node", ["node"]],
   ["install", ["build"]],
+  ["macos-app", ["macos-app"]],
   ["workspace", ["workspace"]],
   ["browser", ["chrome", "chromium", "chromium-sandbox"]],
   ["capabilities", ["capabilities", "byob-attach"]],

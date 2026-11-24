@@ -155,9 +155,9 @@ This item had no number because it needed a decision before it needed work. The 
 - **Slices.**
   1. The RFC and the scripts: `scripts/macos/release-app.sh`, `verify-app.sh` and `entitlements.plist`. This is the first PR.
   2. App bundle layout and launcher code, with the optional helper embedding. Needs the owner's certificate to verify.
-  3. The login item and a `doctor` identity row.
-  4. The Homebrew cask and the update path.
-  5. A release process line in `RELEASING.md`.
+  3. The login item and a `doctor` identity row. The `doctor` row is written. The login item belongs to the launcher code of slice 2. Written, unverified until built and run on a Mac.
+  4. The Homebrew cask and the update path: `packaging/homebrew/browxai.rb`, `scripts/macos/make-cask.sh` and the RFC's "Homebrew" section. Written, unverified until built and run on a Mac. Creating the tap repository is the owner's step.
+  5. The manual macOS app section of `RELEASING.md`. Written, unverified until built and run on a Mac.
 - **Done.** A notarized zip that passes `verify-app.sh`, a cask install that opens with no Gatekeeper warning, and a second build whose designated requirement equals the first.
 - **First PR.** Slice 1, docs and scripts only.
 
