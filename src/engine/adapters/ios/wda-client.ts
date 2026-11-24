@@ -216,9 +216,11 @@ export class WdaClient {
 
   /** `XCUIElement.pinch(withScale:velocity:)` is element-scoped in XCUITest, so
    *  the pinch applies to the element under `elementId` — the application element
-   *  when the caller pinches the whole screen. */
+   *  when the caller pinches the whole screen. WebDriverAgent serves this under
+   *  `/wda/element/:id/pinch`. The plain `/element/:id/pinch` route answers
+   *  "unknown command" (measured against WebDriverAgent v16.15.3 on a real iPhone). */
   async pinch(elementId: string, scale: number, velocity: number): Promise<void> {
-    await this.post(`${this.scoped()}/element/${elementId}/pinch`, { scale, velocity });
+    await this.post(`${this.scoped()}/wda/element/${elementId}/pinch`, { scale, velocity });
   }
 
   /** The application element id — the pinch target for a whole-screen gesture. */

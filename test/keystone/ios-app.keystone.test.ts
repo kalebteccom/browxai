@@ -104,12 +104,14 @@ function sourceTree(submitY: number): unknown {
 interface FakeWda {
   url: string;
   taps: Array<{ x: number; y: number }>;
+  pinches: Array<{ scale: number; velocity: number }>;
   setSubmitY(y: number): void;
   close(): Promise<void>;
 }
 
 async function startFakeWda(): Promise<FakeWda> {
   const taps: Array<{ x: number; y: number }> = [];
+  const pinches: Array<{ scale: number; velocity: number }> = [];
   let submitY = 700;
   const server: Server = createHttpServer((req, res) => {
     const url = req.url ?? "";
@@ -134,6 +136,23 @@ async function startFakeWda(): Promise<FakeWda> {
         taps.push(JSON.parse(text) as { x: number; y: number });
         return res.end(JSON.stringify({ value: null }));
       }
+      // Pinch is served only under `/wda/element/:id/pinch`. The plain
+      // `/element/:id/pinch` answers "unknown command", as a real WebDriverAgent
+      // does, so a client posting to the wrong route fails here as it would on a
+      // device.
+      const pinch = /\/session\/[^/]+\/(wda\/)?element\/[^/]+\/pinch$/.exec(url);
+      if (pinch) {
+        if (!pinch[1]) {
+          res.statusCode = 404;
+          return res.end(
+            JSON.stringify({
+              value: { error: "unknown command", message: "Unhandled endpoint", traceback: "" },
+            }),
+          );
+        }
+        pinches.push(JSON.parse(text) as { scale: number; velocity: number });
+        return res.end(JSON.stringify({ value: null }));
+      }
       if (url.includes("/element") && !url.includes("/value")) {
         return res.end(JSON.stringify({ value: { "element-6066-11e4-a52e-4f735466cecf": "E1" } }));
       }
@@ -146,6 +165,7 @@ async function startFakeWda(): Promise<FakeWda> {
   return {
     url: `http://127.0.0.1:${port}`,
     taps,
+    pinches,
     setSubmitY: (y) => {
       submitY = y;
     },
@@ -318,6 +338,23 @@ describeSim("ios-app keystone — the tool surface over a faked WebDriverAgent",
       expect(Buffer.from(image!.data, "base64").subarray(0, 8).toString("hex")).toBe(
         "89504e470d0a1a0a",
       );
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "gesture_pinch posts to the /wda/element pinch route, the one a real WebDriverAgent serves",
+    async () => {
+      const pinched = await callJson<{ ok: boolean; error?: string }>("gesture_pinch", {
+        session: SESSION,
+        coords: { x: 200, y: 400 },
+        scale: 2,
+      });
+      expect(pinched.error, "the stand-in answers the plain /element pinch route with 404").toBe(
+        undefined,
+      );
+      expect(pinched.ok).toBe(true);
+      expect(wda.pinches).toEqual([{ scale: 2, velocity: 1 }]);
     },
     KEYSTONE_TIMEOUT,
   );
