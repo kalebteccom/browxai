@@ -107,6 +107,24 @@ describe("WdaClient endpoints", () => {
       result: "E7",
       body: { using: "accessibility id", value: "checkout-submit" },
     },
+    {
+      // WebDriverAgent serves the pinch under `/wda/element/:id/pinch`. The plain
+      // `/element/:id/pinch` answers "unknown command" on a real iPhone, so an
+      // exact URL match here is what keeps the old route from coming back.
+      label: "pinches on the /wda/element route a real WebDriverAgent serves",
+      answers: { "/pinch": null },
+      run: (c: WdaClient) => c.pinch("E9", 2, 1.5),
+      url: "http://127.0.0.1:8100/session/S1/wda/element/E9/pinch",
+      body: { scale: 2, velocity: 1.5 },
+    },
+    {
+      label: "finds the application element by class name for a whole-screen pinch",
+      answers: { "/element": { "element-6066-e4a": "APP1" } },
+      run: (c: WdaClient) => c.activeElementRoot(),
+      url: "http://127.0.0.1:8100/session/S1/element",
+      result: "APP1",
+      body: { using: "class name", value: "XCUIElementTypeApplication" },
+    },
   ] as Array<{
     label: string;
     answers: Record<string, unknown>;

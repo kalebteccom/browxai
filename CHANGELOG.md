@@ -8,9 +8,14 @@ surface" covers.
 
 ## Unreleased
 
+### Fixed
+
+- iOS engine: pinch posts to the route WebDriverAgent serves (`/wda/element/:id/pinch`), found by the first run against a real iPhone.
+
 ### Changed
 
 - Docs only: RFC 0008 gains a real-device lane plan (section 10), and RFC 0012 proposes a signed, notarized macOS app that hosts the server. The roadmap marks item 7 as plan written, with the device lane as a manual runbook, and adds item 12. New helper scripts, never run in CI: `scripts/ios/wda-run.sh` (build, run and probe WebDriverAgent) and `scripts/macos/release-app.sh`, `scripts/macos/verify-app.sh` and `scripts/macos/entitlements.plist` (sign, notarize and check the app on a Mac). No behavior change.
+- Docs: the first run of `scripts/ios/wda-run.sh probe` against a real WebDriverAgent (v16.15.3 on an iPhone 17e, iOS 27.2, Xcode 26.5, 2026-11-24) is recorded in RFC 0008 section 10.10, in a second `ios-app` row of the engine evidence table, in the README and in the roadmap. The engine itself has not run against a device yet.
 
 ## [0.20.0] - 2026-11-23
 

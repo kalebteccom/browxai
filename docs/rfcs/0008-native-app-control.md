@@ -276,7 +276,7 @@ Nothing here needs a paid team. Run it first, because it is the same WebDriverAg
 5. Check out WebDriverAgent at one pinned release tag, outside this repository: `git clone --branch <WDA_TAG> --depth 1 https://github.com/appium/WebDriverAgent <WDA_DIR>`. Use the newest tag that builds with the installed Xcode, and write the tag and commit down.
 6. Build for the simulator, which needs no signing: `TARGET=simulator UDID=<SIM_UDID> WDA_DIR=<WDA_DIR> DERIVED_DATA=<DIR> scripts/ios/wda-run.sh build`. The script runs `xcodebuild build-for-testing -scheme WebDriverAgentRunner` with `CODE_SIGNING_ALLOWED=NO`.
 7. Start it: the same variables with `scripts/ios/wda-run.sh run`. It runs `xcodebuild test-without-building` and blocks. A line with `ServerURLHere` names the address. Leave it running.
-8. Probe it from a second terminal: `WDA_URL=http://127.0.0.1:8100 scripts/ios/wda-run.sh probe`. The probe prints HTTP codes and JSON shapes for every endpoint `wda-client.ts` calls, and checks which of two pinch paths the build knows. Compare the output with `src/engine/adapters/ios/wda-client.ts` and `xcui-driver.ts`. This is the first time those shapes meet a real WebDriverAgent.
+8. Probe it from a second terminal: `WDA_URL=http://127.0.0.1:8100 scripts/ios/wda-run.sh probe`. The probe prints HTTP codes and JSON shapes for every endpoint `wda-client.ts` calls, and checks which of two pinch paths the build knows (the answer for v16.15.3 is in 10.10). Compare the output with `src/engine/adapters/ios/wda-client.ts` and `xcui-driver.ts`. This is the first time those shapes meet a real WebDriverAgent.
 9. Run the `simctl` half of the existing keystone: `pnpm test:keystone test/keystone/ios-app.keystone.test.ts`. It starts its own stand-in server, so it does not exercise the WebDriverAgent from step 7. It does prove the lifecycle against a real simulator.
 10. Drive the engine against the real WebDriverAgent by hand, using the shell route. Start the daemon with `BROWX_CAPABILITIES=read,navigation,action,human,native-device BROWX_IOS_DEVICE=<SIM_UDID> BROWX_IOS_APP_ID=com.apple.Preferences BROWX_IOS_WDA_URL=http://127.0.0.1:8100 browxai serve --socket <SOCKET> --engine ios-app`. Then run `browxai call open_session`, `snapshot`, `find`, `click`, `gesture_swipe`, `gesture_pinch` and `screenshot --out <FILE>` with `--socket <SOCKET>`. Note each tool's result.
 11. Record the run (10.7).
@@ -334,7 +334,7 @@ I read `src/engine/adapters/ios-app.engine.ts`, `ios/simulator.ts`, `ios/simctl.
 4. **Screenshot.** `IosXcuiDriver.screenshot` uses `simctl`. For a phone it must use WebDriverAgent's `GET /session/:id/screenshot`. `WdaClient.screenshot()` already exists and returns base64 PNG, and nothing calls it.
 5. **Deep links.** `simctl openurl` has no phone equivalent in the client. Use a WebDriverAgent deep link call or `devicectl device process launch` with a payload URL. Verify which the pinned tag has.
 6. **The error text.** `WdaUnreachableError` names a simulator destination in its fix. A device target needs its own text that mentions the phone's address, the lock state and the runner.
-7. **Pinch.** `WdaClient.pinch` posts to `/session/:id/element/:id/pinch`. My recollection is that WebDriverAgent serves it under `/wda/element/:id/pinch`. The probe checks both paths. If the real answer is the second, the client has been wrong since it was written, and the Simulator run in 10.1 is what finds it.
+7. **Pinch. Resolved.** `WdaClient.pinch` posted to `/session/:id/element/:id/pinch`. The first real-device run (10.10) showed that WebDriverAgent v16.15.3 answers that path with "unknown command" and serves the pinch under `/wda/element/:id/pinch`. The client now posts there, with the same `scale` and `velocity` body, and the keystone's stand-in refuses the old path the way the real build does.
 8. **Posture.** `native-device` already gates the engine, and its threat-model row says the same code path aimed at a real device reaches the operator's phone. A device target needs its own loud warning naming the phone, a threat-model row, and the tool reference and README lines that say real devices are out of scope updated to say what is and is not evidenced. The lane uses a dedicated test phone with no personal data on it.
 
 None of this needs a new dependency. GPL-3.0 `pymobiledevice3` stays excluded. The unneeded options are `go-ios` and `appium-ios-remotexpc`, which matter only for a USB path with usbmux forwarding, and the owner chose a network phone.
@@ -400,6 +400,46 @@ The block carries no UDID, no device name, no address, no team id and no screens
 ### 10.9 Done
 
 The lane is done when the evidence table's `ios-app` row has a date, an iOS version and a WebDriverAgent tag from a real run, the README's "unproven" wording changes to match, and every shape mismatch the probe found is fixed or written down. The Simulator run in 10.1 can reach that for the Simulator half first. The device half waits for the code PR in 10.5.
+
+### 10.10 First real-device run (2026-11-24)
+
+The first run of `scripts/ios/wda-run.sh probe` against a real WebDriverAgent, with no mocks. It used the evidence block of 10.7.
+
+```
+ios-app evidence
+date:            2026-11-24
+target:          device (wireless)
+iOS version:     27.2
+device model:    iPhone18,5 (iPhone 17e)
+Xcode:           26.5
+WebDriverAgent:  v16.15.3 (appium/WebDriverAgent), automatic signing, Apple Developer Program organization team
+what ran:        scripts/ios/wda-run.sh probe
+result:          every endpoint below answered as listed, one route corrected (pinch)
+```
+
+WebDriverAgent was built with automatic signing for the organization team, with the runner target's bundle id under the owner's own prefix. The Mac reached the phone over the local network.
+
+| Call                                                                   | Result                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /status`                                                          | 200. The value has `build`, `os`, `device`, `ios`, `message`, `state` and `ready`.                                                                                                                                                                                                                                                                                                                         |
+| `POST /session`                                                        | 200. A session id came back.                                                                                                                                                                                                                                                                                                                                                                               |
+| `GET /session/:id/source?format=json`                                  | 200. Nodes carry `customActions`, `nativeFrame`, `label`, `rawIdentifier`, `traits`, `frame`, `isVisible`, `type`, `value`, `isEnabled`, `children`, `isAccessible`, `isNativeAccessibilityElement`, `isFocused`, `name`, `rect` and `placeholderValue`. `rawIdentifier` is present on some nodes. `isVisible` arrives as the strings `0` and `1`. The root type is `Application`, with 12 distinct types. |
+| `GET /session/:id/screenshot`                                          | 200. The value is a base64 string.                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET /session/:id/wda/activeAppInfo`                                   | 200. The value has `processArguments`, `name`, `pid` and `bundleId`.                                                                                                                                                                                                                                                                                                                                       |
+| `POST /session/:id/element`, accessibility id, an id that is not there | 404. The error has `error`, `message` and `traceback`.                                                                                                                                                                                                                                                                                                                                                     |
+| `POST /session/:id/element`, class name for the application            | 200.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `DELETE /session/:id`                                                  | 200.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `POST /session/:id/element/:id/pinch`                                  | 404, "unknown command". This build does not serve the route.                                                                                                                                                                                                                                                                                                                                               |
+| `POST /session/:id/wda/element/:id/pinch`                              | 404, "stale element reference", for an element id that does not exist. The route exists.                                                                                                                                                                                                                                                                                                                   |
+
+**What it proves.** WebDriverAgent builds, signs, runs and answers on a real iPhone over the local network, and it answers every endpoint the engine reads. The fields `toNativeTree` reads are in the phone's source dump, including `rawIdentifier` on some nodes and `isVisible` as the strings `0` and `1`, which the unit tests already cover. The pinch route was wrong, and the first run found it. Pinch is fixed (10.5, item 7), and the stand-in in the keystone now serves the real route only.
+
+**What it does not prove.**
+
+- The engine has not run against the phone. Device selection, install and launch still use `simctl`, so `open_session` cannot target a phone. That is the follow-up code PR in 10.5.
+- The probe sends fake element ids for the pinch and for the missing-identifier find, so no gesture ran and the error code of the missing-identifier 404 is a shape check only.
+- The keystone was not run against this WebDriverAgent. It still uses its stand-in server.
+- One phone, one iOS release and one WebDriverAgent tag. The snapshot time for a real screen is not recorded yet.
 
 ## Honest limits
 
