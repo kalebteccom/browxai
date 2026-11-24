@@ -8,8 +8,13 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **`browxai doctor` has a `macos-app` row on macOS that says where browxai runs from.** Run from npm or a source checkout, it says that permission grants attach to the launching terminal or MCP client. Run from inside the signed Browxai app (the running `node` is under a `.app/Contents/` directory whose bundle id is `com.kalebtec.browxai`), it runs `codesign -dv --verbose=4` and `codesign --verify --strict` on the bundle and shows whether it is signed, its identifier and team id, whether the hardened runtime is on, whether the signature verifies, and whether the login agent is registered when the launcher reports it. The row never fails doctor or changes its exit code. The short output shows it only as a `⚠` when the app is unsigned, the signature does not verify, the signature has no team id or the hardened runtime is off, and `--verbose` always shows it. Linux and Windows get no row and their output is unchanged. No signed app is published yet, so for now every Mac reports the first case.
+
 ### Changed
 
+- Docs and packaging for the signed macOS app (RFC 0012, slices 3 to 5), written and unverified until built and run on a Mac: a Homebrew cask template (`packaging/homebrew/browxai.rb`) and `scripts/macos/make-cask.sh`, which prints the finished cask for a release zip with its real SHA-256 and needs no network. RFC 0012 gains a "Homebrew" section with the update path, `RELEASING.md` gains a manual "macOS app" section, and the roadmap marks the slices. The package publish is unchanged. The tap repository name `kalebteccom/homebrew-tap` is a proposal, and creating it is the owner's step.
 - Docs only: RFC 0008 gains a real-device lane plan (section 10), and RFC 0012 proposes a signed, notarized macOS app that hosts the server. The roadmap marks item 7 as plan written, with the device lane as a manual runbook, and adds item 12. New helper scripts, never run in CI: `scripts/ios/wda-run.sh` (build, run and probe WebDriverAgent) and `scripts/macos/release-app.sh`, `scripts/macos/verify-app.sh` and `scripts/macos/entitlements.plist` (sign, notarize and check the app on a Mac). No behavior change.
 
 ## [0.20.0] - 2026-11-23

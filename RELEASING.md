@@ -40,6 +40,22 @@ a version bump.
 9. Create the GitHub Release from the tag, pasting the `CHANGELOG.md`
    section; the workflow attaches `sbom.cdx.json` automatically.
 
+## macOS app (manual, on the owner's Mac)
+
+The npm publish above is unchanged. The signed macOS app ([RFC 0012](docs/rfcs/0012-signed-macos-app.md)) is a separate artifact that the owner builds, signs, notarizes and uploads by hand, on a Mac, until a Mac CI lane exists. `release.yml` holds no signing key or notary credential and does not build the app, and a missing app never blocks an npm release. Start after step 9 above, once the tag has published and the GitHub Release exists.
+
+The Team ID and the notary keychain profile name come from the environment (`BROWXAI_APPLE_TEAM_ID`, `BROWXAI_NOTARY_KEYCHAIN_PROFILE`). The certificate and the notary credential stay in the owner's keychain. None of them goes into the repository, a script or an issue.
+
+1. Check out the release tag and build: `pnpm install --frozen-lockfile && pnpm build`. The app ships the `dist/` that the release workflow already built and checked for reproducibility.
+2. Assemble the unsigned app with `scripts/macos/build-app.sh`. Its header comment lists its arguments and where it writes `Browxai.app`. Check that it exits 0 and that the architecture is the one you mean to ship (`lipo -archs` on the launcher and on `Contents/Resources/node/bin/node` agree).
+3. To bundle the cloud host agent, download its binary and its SHA-256 from the cloud release and export `BROWXAI_CLOUD_HELPER` (the path) and `BROWXAI_CLOUD_HELPER_SHA256`. Set both or neither.
+4. Sign, notarize and staple: `scripts/macos/release-app.sh <path/to/Browxai.app> X.Y.Z`. Check the output for notary status `Accepted`, a passing `stapler validate` and Gatekeeper's `Notarized Developer ID`. It writes `browxai-X.Y.Z-macos-<arch>.zip`, its `.sha256` file and the stapled app into `BROWXAI_OUT_DIR`.
+5. Verify the result: `scripts/macos/verify-app.sh <out dir>/Browxai.app`, with `BROWXAI_EXPECT_TEAM_ID`, `BROWXAI_EXPECT_BUNDLE_ID=com.kalebtec.browxai` and `BROWXAI_DR_BASELINE` pointing at the designated requirement file of the previous release, kept outside the repository. The run must exit 0 with no `FAIL:` line. The first release writes the baseline file. Every later release must equal it, which keeps users' permission grants across an update.
+6. Upload the zip and its `.sha256` file to the GitHub Release by hand, for example `gh release upload vX.Y.Z <zip> <zip>.sha256`. Check that the asset name is exactly `browxai-X.Y.Z-macos-<arch>.zip`, because the cask builds its download URL from it.
+7. Fill the cask: `scripts/macos/make-cask.sh [--with-helper] <zip> X.Y.Z > browxai.rb`. Use `--with-helper` only when step 3 ran. The script needs no network. It stops when the zip name, the version or the `.sha256` file disagree, and prints the SHA-256 it used.
+8. Update the tap: put `browxai.rb` at `Casks/browxai.rb` in the tap repository (`kalebteccom/homebrew-tap` is the proposed name, the owner creates it once, see RFC 0012, "Homebrew"), then run `brew style` and `brew audit --cask --online browxai`. On a Mac that has the previous release installed, run `brew upgrade --cask browxai`. Check that the app opens with no Gatekeeper warning, that `browxai doctor` shows the `macos-app` row as signed with the expected team id, and that earlier permission grants still apply.
+9. Record the run. Like a by-hand engine run in [`docs/ai-context/release-process/engine-evidence.md`](docs/ai-context/release-process/engine-evidence.md), a macOS app release writes down the macOS version it was verified on (`sw_vers -productVersion`), the architecture, the app version and the date, in the CHANGELOG line for the release. Never record a serial number, a hostname or a certificate name. An app release with no recorded run is `not run`.
+
 ## Documentation site
 
 The public docs site is an Astro + Starlight build in `website/` (which
