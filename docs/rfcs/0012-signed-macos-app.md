@@ -348,7 +348,7 @@ Slice 4 adds the cask as a template, `packaging/homebrew/browxai.rb`, and `scrip
 
 - It downloads `browxai-<version>-macos-<arch>.zip` from the GitHub Release `v<version>`, the file `release-app.sh` writes, and Homebrew checks the SHA-256.
 - It moves `Browxai.app` into `/Applications` and links `Contents/Resources/bin/browxai` onto `PATH`. For a build with the bundled helper, built with `make-cask.sh --with-helper`, it links `browxai-cloud` as well.
-- It requires macOS 13 (Ventura) or later, the same floor as `LSMinimumSystemVersion` and `SMAppService`. An `arm64` or `x64` zip adds the matching architecture requirement. A `universal` zip adds none.
+- It requires macOS 13 (Ventura) or later with `depends_on macos: :ventura`, the same floor as `LSMinimumSystemVersion` and `SMAppService`. An `arm64` or `x64` zip adds a `depends_on arch:` line before it, because `brew style` wants the architecture first. A `universal` zip has only the macOS line.
 - `livecheck` reads the latest GitHub release.
 - `brew uninstall --cask browxai` stops the login agent and quits the app. `--zap` also trashes the app's Application Support and cache folders, its preferences, and the fallback LaunchAgent plist. It leaves the workspace (`~/.browxai`) alone, because the profiles, saved logins and replay archives in it are the user's data.
 

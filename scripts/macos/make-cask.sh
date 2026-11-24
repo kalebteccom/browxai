@@ -95,7 +95,8 @@ sed_args=(
   -e "s|__ARCH__|$ARCH|g"
 )
 if [ -z "$ARCH_SYMBOL" ]; then
-  # A universal app runs on both architectures, so no architecture requirement.
+  # A universal app runs on both architectures, so no architecture requirement. The
+  # template keeps the arch line ahead of the macos line, the order brew style wants.
   sed_args+=(-e '/^  depends_on arch:/d')
 else
   sed_args+=(-e "s|__ARCH_SYMBOL__|$ARCH_SYMBOL|g")
