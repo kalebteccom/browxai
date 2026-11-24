@@ -1,0 +1,25 @@
+#!/bin/sh
+# Contents/Resources/bin/browxai: the browxai command that the Homebrew cask links
+# onto PATH. It finds the app from its own real path (through any symlink) and hands
+# over to the compiled launcher, which runs the bundled node on dist/cli.js with
+# BROWX_SOCKET defaulted to the app's socket. Every step is an exec, so stdin,
+# exit codes and signals pass through unchanged.
+
+self="$0"
+while [ -L "$self" ]; do
+  dir="$(cd -P "$(dirname "$self")" && pwd -P)" || exit 127
+  target="$(readlink "$self")"
+  case "$target" in
+    /*) self="$target" ;;
+    *) self="$dir/$target" ;;
+  esac
+done
+dir="$(cd -P "$(dirname "$self")" && pwd -P)" || exit 127
+contents="$(cd -P "$dir/../.." && pwd -P)" || exit 127
+launcher="$contents/MacOS/browxai-launcher"
+
+if [ ! -x "$launcher" ]; then
+  echo "browxai: the launcher is missing from the app at $contents" >&2
+  exit 127
+fi
+exec "$launcher" cli "$@"

@@ -1,7 +1,7 @@
 # RFC 0012: A signed, notarized macOS app that hosts the browxai server
 
 **Date:** 2026-11-23
-**Status:** Proposed. The owner's direction is recorded below. Slice 1 (two scripts and the entitlements file) is written and syntax-checked. Slices 3 to 5 (the `doctor` identity row, the Homebrew cask and the release steps in `RELEASING.md`) are written, unverified until built and run on a Mac. Every statement about macOS behavior that this RFC could not check on a Mac is marked "verify on a Mac" and collected in the last section.
+**Status:** Proposed. The owner's direction is recorded below. Slice 1 (two scripts and the entitlements file) is written and syntax-checked. Slice 2 (the launcher, the bundle templates and the assembly script) was built, signed, notarized and stapled once on one Mac on 2026-11-24, and the signed app ran `browxai doctor`, a daemon and a headless Chromium session. Slices 3 to 5 (the `doctor` identity row, the Homebrew cask and the release steps in `RELEASING.md`) are written, unverified until built and run on a Mac. The login item, an Intel or universal build, the cloud helper and the cask have not been run. Every statement about macOS behavior that this RFC could not check on a Mac is marked "verify on a Mac" and collected in the last section, with the resolved ones dated.
 **Trigger:** The owner asked for browxai on macOS to ship as a signed, notarized app, where today it is an unsigned Node process, and said to bundle the cloud host agent into it.
 
 ## What this is for
@@ -82,7 +82,7 @@ It names the bundle id and the team and carries no hash of the code. So a new bu
 
 `scripts/macos/verify-app.sh` prints the requirement and can compare it with the one from an earlier build (`BROWXAI_DR_BASELINE`). That check is the cheapest proof that an upgrade keeps grants. The first release writes the baseline file, which stays outside the repository.
 
-**Nested code.** The bundled `node` binary is signed with the fixed identifier `<BUNDLE_ID>.node` and the helper with `<BUNDLE_ID>.cloud`, so a requirement that names either one stays the same across builds. The default identifier of a bare executable is its file name.
+**Nested code.** The bundled `node` binary is signed with the fixed identifier `<BUNDLE_ID>.node` and the helper with `com.kalebtec.browxai-cloud` (the identifier the cloud release signs with, not derived from the bundle id), so a requirement that names either one stays the same across builds. The default identifier of a bare executable is its file name.
 
 ## Hardened runtime and entitlements
 
@@ -122,7 +122,7 @@ Two ways to make a Node program a signed Mac binary.
 
 ## The bundle layout
 
-Slice 2 builds this. Names in angle brackets are placeholders.
+`scripts/macos/build-app.sh` builds this (slice 2). Names in angle brackets are placeholders. The chosen values are in the Build section.
 
 ```
 <APP_NAME>.app/
@@ -150,7 +150,7 @@ The scripts under `Resources/bin` are sealed as resources, so the bundle signatu
 
 The cloud host agent is a Rust binary that connects a relay to `browxai serve --socket` on the user's machine. A separate release outside this repository builds it. The app embeds it as an optional helper.
 
-**Layout and names.** `Contents/Helpers/browxai-cloud`, signed with the fixed identifier `<BUNDLE_ID>.cloud`, the hardened runtime, a secure timestamp and no entitlements. A Rust binary needs no JIT. The wrapper `Contents/Resources/bin/browxai-cloud` resolves its own real path through any symlink and runs the helper. The Homebrew cask links that wrapper onto `PATH`, so the pairing command is `browxai-cloud` in any Terminal. A wrapper on `PATH` is a plain child of Terminal, which is fine: the helper opens an outbound connection to the internet and to the local socket, and neither is a protected resource.
+**Layout and names.** `Contents/Helpers/browxai-cloud`, signed with the fixed identifier `com.kalebtec.browxai-cloud`, the hardened runtime, a secure timestamp and no entitlements. A Rust binary needs no JIT. The wrapper `Contents/Resources/bin/browxai-cloud` resolves its own real path through any symlink and runs the helper. The Homebrew cask links that wrapper onto `PATH`, so the pairing command is `browxai-cloud` in any Terminal. A wrapper on `PATH` is a plain child of Terminal, which is fine: the helper opens an outbound connection to the internet and to the local socket, and neither is a protected resource.
 
 **How the release script obtains the binary without the OSS repo depending on private source.** The repository holds no reference to the helper's source, its repository or its build. The cloud release publishes a universal macOS binary and a SHA-256 of it as release artifacts. The owner downloads both. `release-app.sh` takes them from two environment variables:
 
@@ -190,13 +190,111 @@ The helper is optional. With neither variable set, the script builds the plain b
 
 The notary credential is an App Store Connect API key stored once with `xcrun notarytool store-credentials <KEYCHAIN_PROFILE>`. The key never enters the repository, a CI system or a command line. A disk image is a later option: `hdiutil`, then sign, notarize and staple the image itself. A zip is enough for the cask.
 
+## Build
+
+Slice 2 adds the sources and the assembly script. The author wrote them without a Mac, and the owner has since built, signed and notarized the app once (see "First run on a Mac" below). Everything below is what the owner runs on a Mac with Xcode or its command line tools (for `swiftc`, `lipo` and `notarytool`), `pnpm` 9 and a network connection.
+
+**Values chosen for the scripts.** These are public identifiers, not secrets. The Team ID is not among them and stays an environment input.
+
+| Value                      | Chosen                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| Bundle identifier          | `com.kalebtec.browxai`. Never changes.                                         |
+| App name and bundle        | `Browxai`, so `Browxai.app`. LSUIElement is true, so there is no Dock icon.    |
+| Main executable            | `Contents/MacOS/browxai-launcher`                                              |
+| Node binary identifier     | `com.kalebtec.browxai.node`                                                    |
+| Helper identifier          | `com.kalebtec.browxai-cloud`                                                   |
+| Login agent label and file | `com.kalebtec.browxai.agent`, in `Contents/Library/LaunchAgents/<label>.plist` |
+| Minimum macOS (Info.plist) | 13.0                                                                           |
+| Architectures              | `arm64` by default. `BROWXAI_ARCHS="arm64 x86_64"` builds a universal app.     |
+| Default socket             | `~/Library/Application Support/Browxai/run/browxai.sock`, directory mode 0700  |
+| Agent log                  | `~/Library/Logs/Browxai/browxai.log`, mode 0600, rotated once at 5 MB          |
+| Node version               | the one line in `macos/node-version.txt`                                       |
+
+**What the launcher does.** `macos/launcher/main.swift` is one file that builds with plain `swiftc`, with no package manifest and no Xcode project. It finds the app from its own real path and never from `PATH`.
+
+- `run [--socket PATH]` makes the socket directory (mode 0700) and the log file (mode 0600), and replaces itself with `node dist/cli.js serve --socket PATH`. The socket comes from `--socket`, then `BROWX_SOCKET`, then the default above. A path over 103 bytes is refused. The agent's environment is a fixed `PATH` (system directories first, then Homebrew), `HOME`, `USER`, `LOGNAME`, `TMPDIR`, the locale variables and every `BROWX_*` variable. Nothing else passes through.
+- `cli ARGS...` replaces itself with `node dist/cli.js ARGS...` in the caller's own environment, and defaults `BROWX_SOCKET` to the app's socket. The `Resources/bin/browxai` wrapper calls it, so `browxai` on `PATH` is the bundled CLI.
+- `helper ARGS...` does the same for `Contents/Helpers/browxai-cloud`. The `Resources/bin/browxai-cloud` wrapper calls it. A build without the helper says so and exits 1.
+- `login-item status|register|unregister` uses `SMAppService.agent(plistName:)`. Where the API is missing (macOS before 13) or `register` fails, it prints a shell script that writes a plain launchd agent with absolute paths and loads it with `launchctl bootstrap`.
+- `version` prints the app version.
+
+**What `build-app.sh` does.** It never writes into the working tree. It asks for one argument, a new or empty output directory.
+
+1. Reads the version from `package.json` and the Node version from `macos/node-version.txt`.
+2. Downloads `SHASUMS256.txt` for that Node version from nodejs.org, then each darwin tarball, and checks the SHA-256 before extracting. It takes `bin/node` and `LICENSE` and nothing else. With `BROWXAI_NODE_KEYRING` set to a keyring of the Node release keys, it also checks the signature on `SHASUMS256.txt` with `gpgv`. This is the script's only network use.
+3. Builds the launcher with `swiftc -O -target <arch>-apple-macos12.0` per architecture and joins the results with `lipo` when there are two. The deployment target is lower than the app's floor so the launcher can print the launchctl fallback on a Mac without `SMAppService`.
+4. Copies `dist/`, `package.json` and the production `node_modules`. From a checkout the dependencies come from `pnpm deploy --prod` into a temporary directory, which reads the lockfile. From an installed package (set `BROWXAI_SOURCE_DIR`) they are copied from its `node_modules`. The `.bin` shims and the package manager's bookkeeping files are dropped, because they hold absolute paths. Symlinks that remain stay relative and inside the bundle.
+5. Fills `macos/Info.plist.in` and `macos/launchagent.plist.in`, lints both with `plutil`, and copies the two wrappers.
+6. Checks every path that `release-app.sh` and `verify-app.sh` read, checks the symlinks, and on the host architecture runs `browxai-launcher version`.
+
+The result:
+
+```
+Browxai.app/
+  Contents/
+    Info.plist
+    MacOS/browxai-launcher
+    Library/LaunchAgents/com.kalebtec.browxai.agent.plist
+    Resources/
+      node/bin/node
+      app/dist/
+      app/node_modules/
+      app/package.json
+      bin/browxai
+      bin/browxai-cloud
+      node-LICENSE
+      THIRD_PARTY_NOTICES.md
+      sbom.cdx.json              only when the source has one
+```
+
+`Contents/Helpers/` and `bundled-helpers.json` are absent on purpose. `release-app.sh` adds the helper, so the unsigned app is the same for every release flavor.
+
+**The owner's steps, in order.** Placeholders in angle brackets are for the owner to fill in. The scripts never read a certificate, a key or the notary credential. `release-app.sh` finds the Developer ID Application certificate in the login keychain and passes only the keychain profile name to `notarytool`.
+
+1. Build the app, from a checkout of the release tag:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm build
+pnpm sbom
+scripts/macos/build-app.sh "$HOME/browxai-macos/unsigned"
+```
+
+2. Sign, notarize, staple and zip it. The helper variables are optional, both or neither:
+
+```bash
+export BROWXAI_APPLE_TEAM_ID=<TEAM_ID>
+export BROWXAI_NOTARY_KEYCHAIN_PROFILE=<KEYCHAIN_PROFILE>
+# export BROWXAI_CLOUD_HELPER=<path to the helper binary>
+# export BROWXAI_CLOUD_HELPER_SHA256=<its SHA-256>
+BROWXAI_OUT_DIR="$HOME/browxai-macos/signed" \
+  scripts/macos/release-app.sh "$HOME/browxai-macos/unsigned/Browxai.app" <VERSION>
+```
+
+3. Verify the result:
+
+```bash
+BROWXAI_EXPECT_TEAM_ID="$BROWXAI_APPLE_TEAM_ID" BROWXAI_EXPECT_BUNDLE_ID=com.kalebtec.browxai \
+  scripts/macos/verify-app.sh "$HOME/browxai-macos/signed/Browxai.app"
+```
+
+4. Try the login agent from the signed app, in `/Applications`:
+
+```bash
+/Applications/Browxai.app/Contents/MacOS/browxai-launcher login-item register
+/Applications/Browxai.app/Contents/MacOS/browxai-launcher login-item status
+/Applications/Browxai.app/Contents/Resources/bin/browxai tools
+```
+
+`register` works only on a signed copy. When it reports `requires approval`, switch Browxai on in System Settings, General, Login Items & Extensions.
+
 ## Login item mechanics
 
 User level only. No root, no privileged helper, no daemon in `/Library`. The one admin step on the Mac is `sudo safaridriver --enable`, and the owner runs it in Terminal, outside the app.
 
 **Recommended: `SMAppService` with an agent plist inside the bundle** (macOS 13 and later). The launcher calls `SMAppService.agent(plistName:)` and `register()`, and launchd runs the program the plist names. An agent plist inside a bundle uses bundle-relative paths: `BundleProgram` is `Contents/MacOS/<launcher>`, relative to the app, and not an absolute path. The agent shows in System Settings under Login Items, named after the app, where a person can switch it off. The plist sets:
 
-- `ProgramArguments`: the launcher's own name first, then its arguments (`serve --socket <SOCKET>`). The plist holds no path to `node`. The launcher locates the app's own `Contents/Resources/node/bin/node` and `Contents/Resources/app/dist/cli.js` from its own location and runs them, so the app works wherever it is installed. The launcher also expands the `~` in the socket path, which launchd does not.
+- `ProgramArguments`: the launcher's own name first, then its arguments (`run`). The plist holds no path to `node` and none to the socket: `run` takes the socket from `--socket`, then `BROWX_SOCKET`, then the default below. The launcher locates the app's own `Contents/Resources/node/bin/node` and `Contents/Resources/app/dist/cli.js` from its own location and runs them, so the app works wherever it is installed. The launcher also expands the `~` in the socket path, which launchd does not.
 - `EnvironmentVariables`: a `PATH` that includes `/opt/homebrew/bin` and `/usr/local/bin`, and any `BROWX_*` setting the user picked. A user-level config layer is the other source.
 - `KeepAlive` and `RunAtLoad`, and `AssociatedBundleIdentifiers` set to `<BUNDLE_ID>` so the system ties the agent to the app.
 
@@ -279,8 +377,8 @@ Slice 4 adds the cask as a template, `packaging/homebrew/browxai.rb`, and `scrip
 
 ## Open questions
 
-1. The bundle identifier and the app's display name.
-2. Apple silicon only, an Intel build, or a universal app. A universal app doubles the Node payload and needs a universal launcher.
+1. The bundle identifier and the app's display name. The scripts use `com.kalebtec.browxai` and `Browxai`.
+2. Apple silicon only, an Intel build, or a universal app. A universal app doubles the Node payload and needs a universal launcher. The build script defaults to `arm64` and builds a universal app on request.
 3. Minimum macOS. 13.0 is the floor for `SMAppService`. Is a lower floor with the launchctl fallback worth the second code path?
 4. Where the cask lives: a tap under the organization, or a submission to the main cask repository, which has its own notability and signing rules.
 5. Whether to build the stdio bridge so MCP clients can use the app's daemon.
@@ -289,27 +387,56 @@ Slice 4 adds the cask as a template, `packaging/homebrew/browxai.rb`, and `scrip
 
 ## Verify on a Mac
 
-Everything below was reasoned from documentation and from reading `src/`. None of it was run.
+The items below were reasoned from documentation and from reading `src/`, then checked one by one. An item marked "Resolved" was observed on one machine, on 2026-11-24: macOS 26.5 (25F71), arm64, Xcode 26.5, Node 26.13.1 as pinned. "Verified on one machine" is the strongest claim any of them makes. The others are open.
 
-1. The exact attribution rules for a child process of the app, a LaunchAgent and a Terminal, for Local Network, Files and Folders and camera and microphone prompts.
-2. Whether the Local Network prompt appears for a plain Node child connecting to a LAN address, and which name it shows. Whether `NSLocalNetworkUsageDescription` in the app's `Info.plist` is what the prompt uses.
-3. What Chrome and Chromium do for camera and microphone when launched by the app.
-4. Which entitlements the official Node binary carries, and whether `allow-jit` alone lets a signed Node start and run the keystone suite on the target macOS. Node's own release is signed with broader entitlements, so a failure here is likely and the list may need `allow-unsigned-executable-memory`.
-5. That `SMAppService.agent` registers from the bundle, from `/Applications`, and after a Homebrew upgrade, and that Local Network and Files prompts name the app.
-6. That `safaridriver --enable` and the Safari engine work with the daemon started by the agent. That `xcrun` from a launchd job finds the active Xcode.
-7. That `playwright-core` 1.65.1 runs from inside a bundle path with spaces, and that its browser cache stays in the user's cache directory.
-8. The size of the Node binary for the pinned release and of the zip.
-9. That a cask upgrade keeps TCC grants, shown by `verify-app.sh` with `BROWXAI_DR_BASELINE` across two builds and then by a real upgrade.
-10. The pasteboard privacy setting in recent macOS, and whether the write-only clipboard path is affected.
-11. That a password manager CLI still works when called from the app's daemon.
-12. The role needed on the organization team to create a Developer ID certificate and an App Store Connect API key.
-13. That the cask installs and upgrades with `brew install --cask` and `brew upgrade --cask` from the tap, passes `brew style` and `brew audit --cask`, and links `browxai` onto `PATH`. That the `launchctl` label (`com.kalebtec.browxai.agent`) and the Application Support folder name in the cask match what the launcher uses, and that the zap list is complete.
-14. That `browxai doctor` on a Mac reports the signed app as expected: the `codesign` output parses, the `login-item status` wording maps to the login agent line, and a build from the app's own `node` path is found inside the bundle.
+### First run on a Mac
+
+The owner ran the scripts from this branch on that machine.
+
+- `scripts/macos/build-app.sh` built an unsigned `Browxai.app` (arm64, 202 MB). Its own layout, symlink and smoke checks passed.
+- `release-app.sh` signed the nested `node` with `allow-jit` and the app with Developer ID, the hardened runtime and a secure timestamp. Apple notarized it with status `Accepted`. The first submission took about 45 minutes. The script stapled the ticket, and `spctl` reported `accepted, source=Notarized Developer ID`.
+- `verify-app.sh` printed `all checks passed`: the team id and bundle id matched, two Mach-O files were signed and hardened, `stapler validate` passed, the designated requirement named the bundle id and a team, and only `node` carried an entitlement (`com.apple.security.cs.allow-jit`).
+- The signed app's bundled Node ran `browxai doctor` with every row green. Through the app's `Resources/bin/browxai` wrapper, `browxai serve --socket` and `browxai call` opened a headless Chromium session, navigated to a page and took a snapshot. The server logged `session: Chromium OS sandbox on (mode auto)`.
+
+Not run yet: `login-item register|status|unregister`, the agent plist running at login, attribution after `execve`, an x86_64 or universal build, the cloud helper embedding, the cask install, and running the app from `/Applications`.
+
+### The list
+
+Resolved:
+
+- **Item 4.** Which entitlements the official Node binary carries, and whether `allow-jit` alone lets a signed Node start and run. **Resolved 2026-11-24, verified on one machine:** with `allow-jit` as the only entitlement, the signed Node ran `browxai doctor`, a daemon and a Playwright-launched Chromium session under the hardened runtime. The keystone suite itself was not run against the signed app, so widen the list only if a later flow fails. What the official binary's own entitlements are was not recorded.
+- **Item 15.** That `swiftc -O -target <arch>-apple-macos12.0` builds `macos/launcher/main.swift`. **Resolved for arm64, 2026-11-24:** it compiled on Xcode 26.5 and the launcher ran. The x86_64 build, a `lipo` join, and the launcher on the oldest macOS the app supports are still open.
+- **Item 16.** That `pnpm deploy --prod` accepts the root project of this workspace. **Resolved 2026-11-24:** `pnpm --filter browxai deploy --prod` worked on the pinned pnpm, and the resulting bundle passed the layout and symlink checks.
+- **Item 17.** That `plutil -extract` reads `package.json`. **Resolved 2026-11-24:** the version and name were read and the build went through. Whether `plutil` or the `sed` fallback answered was not recorded.
+
+Partly resolved:
+
+- **Item 8.** The size of the Node binary for the pinned release and of the zip. The unsigned arm64 app is 202 MB. The Node binary and the zip sizes were not recorded.
+
+Open:
+
+- **Item 1.** The exact attribution rules for a child process of the app, a LaunchAgent and a Terminal, for Local Network, Files and Folders and camera and microphone prompts.
+- **Item 2.** Whether the Local Network prompt appears for a plain Node child connecting to a LAN address, and which name it shows. Whether `NSLocalNetworkUsageDescription` in the app's `Info.plist` is what the prompt uses.
+- **Item 3.** What Chrome and Chromium do for camera and microphone when launched by the app.
+- **Item 5.** That `SMAppService.agent` registers from the bundle, from `/Applications`, and after a Homebrew upgrade, and that Local Network and Files prompts name the app.
+- **Item 6.** That `safaridriver --enable` and the Safari engine work with the daemon started by the agent. That `xcrun` from a launchd job finds the active Xcode.
+- **Item 7.** That `playwright-core` 1.65.1 runs from inside a bundle path with spaces, and that its browser cache stays in the user's cache directory.
+- **Item 9.** That a cask upgrade keeps TCC grants, shown by `verify-app.sh` with `BROWXAI_DR_BASELINE` across two builds and then by a real upgrade.
+- **Item 10.** The pasteboard privacy setting in recent macOS, and whether the write-only clipboard path is affected.
+- **Item 11.** That a password manager CLI still works when called from the app's daemon.
+- **Item 12.** The role needed on the organization team to create a Developer ID certificate and an App Store Connect API key.
+- **Item 13.** That the cask installs and upgrades with `brew install --cask` and `brew upgrade --cask` from the tap, passes `brew style` and `brew audit --cask`, and links `browxai` onto `PATH`. That the `launchctl` label (`com.kalebtec.browxai.agent`) and the Application Support folder name in the cask match what the launcher uses, and that the zap list is complete.
+- **Item 14.** That `browxai doctor` on a Mac reports the signed app as expected: the `codesign` output parses, the `login-item status` wording maps to the login agent line, and a build from the app's own `node` path is found inside the bundle. The `doctor` run in the first run above was green, but the `macos-app` row's `codesign` parsing and `login-item status` mapping were not singled out.
+- **Item 18.** That the official Node release for the pinned version runs on the oldest macOS in `LSMinimumSystemVersion`. It ran on macOS 26.5. Node's own floor can be higher than 13.0.
+- **Item 19.** That a process that replaces itself with `node` through `execve` keeps the app's attribution for Local Network and Files prompts, when started by the login agent. This is the largest open item.
+- **Item 20.** That `SMAppService.agent(plistName:)` registers from a launcher run by path, that the status values match the messages, and what the agent plist's `AssociatedBundleIdentifiers` does for the name shown in Login Items.
+- **Item 21.** That the agent log under `~/Library/Logs/Browxai` gets the daemon's output.
+- **Item 22.** That an Intel or universal build assembles, signs and runs, and that `release-app.sh` accepts the cloud helper embedding.
 
 ## Slices
 
 1. **This RFC and the scripts.** `release-app.sh`, `verify-app.sh` and `entitlements.plist`, written and syntax-checked, never run.
-2. **App bundle layout and launcher code, with the optional helper embedding.** Needs the owner's certificate to verify. Includes the assembly step, the wrappers and the pinned Node download with its checksum.
+2. **App bundle layout and launcher code, with the optional helper embedding.** Needs the owner's certificate to verify. Includes the assembly step, the wrappers and the pinned Node download with its checksum. Built and notarized once on one Mac. The helper itself is added by `release-app.sh`, as designed above.
 3. **Login item and a `doctor` identity row.** The `doctor` row is written (`src/cli/doctor-macos-app.ts`). The login item belongs to the launcher code of slice 2.
 4. **Homebrew cask and the update path.** Written: `packaging/homebrew/browxai.rb`, `scripts/macos/make-cask.sh` and the "Homebrew" section. Never run.
 5. **The macOS app section of `RELEASING.md`.** Written.

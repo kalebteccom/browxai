@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template for Contents/Info.plist of Browxai.app (RFC 0012).
+  scripts/macos/build-app.sh fills the placeholders below and lints the result.
+
+    @BUNDLE_ID@        the bundle identifier. Part of every permission grant, so it never changes.
+    @APP_NAME@         the app name and the bundle file name without .app.
+    @EXECUTABLE@       the launcher in Contents/MacOS.
+    @VERSION@          the browxai version, equal to package.json#version.
+    @BUNDLE_VERSION@   the numeric part of the version, for CFBundleVersion.
+
+  The only usage description is NSLocalNetworkUsageDescription. RFC 0012 decided
+  against camera and microphone strings: no browxai feature uses them.
+  LSUIElement keeps the app out of the Dock and the app switcher.
+-->
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>@EXECUTABLE@</string>
+  <key>CFBundleIdentifier</key>
+  <string>@BUNDLE_ID@</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>@APP_NAME@</string>
+  <key>CFBundleDisplayName</key>
+  <string>@APP_NAME@</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>@VERSION@</string>
+  <key>CFBundleVersion</key>
+  <string>@BUNDLE_VERSION@</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.developer-tools</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>browxai connects to browsers and devices on your local network when you ask it to, for example a Chrome on another computer or an iOS device.</string>
+</dict>
+</plist>

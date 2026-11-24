@@ -1,0 +1,29 @@
+#!/bin/sh
+# Contents/Resources/bin/browxai-cloud: the pairing command for the cloud helper that
+# some builds of the app embed. The Homebrew cask links it onto PATH. It finds the
+# app from its own real path (through any symlink) and hands over to the launcher,
+# which runs Contents/Helpers/browxai-cloud with BROWX_SOCKET defaulted to the
+# app's socket. A build without the helper says so and exits 1.
+
+self="$0"
+while [ -L "$self" ]; do
+  dir="$(cd -P "$(dirname "$self")" && pwd -P)" || exit 127
+  target="$(readlink "$self")"
+  case "$target" in
+    /*) self="$target" ;;
+    *) self="$dir/$target" ;;
+  esac
+done
+dir="$(cd -P "$(dirname "$self")" && pwd -P)" || exit 127
+contents="$(cd -P "$dir/../.." && pwd -P)" || exit 127
+launcher="$contents/MacOS/browxai-launcher"
+
+if [ ! -x "$launcher" ]; then
+  echo "browxai-cloud: the launcher is missing from the app at $contents" >&2
+  exit 127
+fi
+if [ ! -x "$contents/Helpers/browxai-cloud" ]; then
+  echo "browxai-cloud: this build of the app has no cloud helper." >&2
+  exit 1
+fi
+exec "$launcher" helper "$@"
