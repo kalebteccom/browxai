@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template for the SMAppService agent plist (RFC 0012). build-app.sh fills the
+  placeholders and writes it to Contents/Library/LaunchAgents/@BUNDLE_ID@.agent.plist.
+  The launcher registers it with SMAppService.agent(plistName: "@BUNDLE_ID@.agent.plist").
+
+    @BUNDLE_ID@   the bundle identifier, the same value as in Info.plist.
+    @EXECUTABLE@  the launcher in Contents/MacOS.
+
+  BundleProgram is relative to the app, so the app works wherever it is installed.
+  The plist holds no path to node: the launcher finds Contents/Resources/node/bin/node
+  from its own location. The socket path is not here either. `run` takes it from
+  BROWX_SOCKET or its default under ~/Library/Application Support/Browxai/run.
+
+  KeepAlive restarts the daemon after a crash or a signal. A clean exit (status 0)
+  stays stopped, so stopping the daemon on purpose does not start a loop.
+  ThrottleInterval spaces the restarts at least ten seconds apart.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@BUNDLE_ID@.agent</string>
+  <key>BundleProgram</key>
+  <string>Contents/MacOS/@EXECUTABLE@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@EXECUTABLE@</string>
+    <string>run</string>
+  </array>
+  <key>AssociatedBundleIdentifiers</key>
+  <array>
+    <string>@BUNDLE_ID@</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin</string>
+  </dict>
+</dict>
+</plist>

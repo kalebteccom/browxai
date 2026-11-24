@@ -34,6 +34,8 @@ set -uo pipefail
 # release-app.sh.
 NODE_REL="Contents/Resources/node/bin/node"
 JIT_KEY="com.apple.security.cs.allow-jit"
+# Keep equal to HELPER_ID in release-app.sh.
+HELPER_ID="${BROWXAI_CLOUD_HELPER_IDENTIFIER:-com.kalebtec.browxai-cloud}"
 
 failures=0
 fail() {
@@ -200,8 +202,8 @@ else
   hd="$(codesign -dv --verbose=4 "$HELPER" 2>&1)" || hd=""
   hid="$(printf '%s\n' "$hd" | sed -n 's/^Identifier=//p' | head -n 1)"
   hteam="$(printf '%s\n' "$hd" | sed -n 's/^TeamIdentifier=//p' | head -n 1)"
-  if [ "$hid" = "$BUNDLE_ID.cloud" ]; then ok "helper identifier is $hid"; else
-    fail "helper identifier is '$hid', expected '$BUNDLE_ID.cloud'"
+  if [ "$hid" = "$HELPER_ID" ]; then ok "helper identifier is $hid"; else
+    fail "helper identifier is '$hid', expected '$HELPER_ID'"
     helper_ok=0
   fi
   if [ -n "$hteam" ] && [ "$hteam" = "$team" ]; then ok "helper team equals the app's team"; else
