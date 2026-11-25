@@ -5,7 +5,7 @@
 # The repo is public, so Woodpecker never runs pull_request events; a branch is gated by the pipeline of its push. GATE vs MAIN: every gate step runs on pushes to any branch except main, once, before the merge. A push to main runs only `main-check`: the squash merge landed a tree that was gated at the same head, so nothing is rebuilt.
 when:
   - event: push
-# SHAPE: `install` runs once and every other step depends only on it, so typecheck, lint, format, static checks, supply-chain checks and the package build run side by side on the shared workspace (the slot pool caps how many heavy commands run at once). Steps merge the `install` step (`<<: *step`) and override name, depends_on, commands.
+# SHAPE: `install` runs once and every other step depends only on it, so lint, format, the two static bundles (typecheck, static and supply-chain checks, docs checks and the docs build) and the package build run side by side on the shared workspace (the slot pool caps how many heavy commands run at once). Steps merge the `install` step (`<<: *step`) and override name, depends_on, commands.
 # No installed dependency is bound to the Node ABI: install scripts are off (.npmrc) and the only native code, sharp, ships Node-API prebuilds as per-platform packages; so one install under Node 22 serves the Node 26 steps.
 # Node 22 is the declared floor in `engines` (the Safari BiDi client uses Node's global WebSocket); 26 is what development runs on. The unit suite runs on both, in its own workflow (tests.yml), with its own checkout, so it does not share one with the `pnpm build` of package-contents. It is not sharded: it takes 0.4 to 0.7 min, so shards would only add slot churn.
 # WORKAROUND: the trackxai-ci images carry pnpm 9.15.9 but package.json pins pnpm@9.0.0, so plain node images plus corepack honour `packageManager`. The store location comes from an env var, so no step runs `pnpm config set`.
@@ -30,12 +30,6 @@ steps:
       - corepack enable
       - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
   - <<: *step
-    name: typecheck
-    depends_on: [install]
-    commands:
-      - corepack enable
-      - bash scripts/gate-slot.sh pnpm typecheck
-  - <<: *step
     name: lint
     depends_on: [install]
     commands:
@@ -47,53 +41,58 @@ steps:
     commands:
       - corepack enable
       - bash scripts/gate-slot.sh pnpm format:check
-  # Unused dependencies, layering (depcruise, errors) and duplication (jscpd, fails above its threshold) budgets.
+  # BUNDLES: the seven short static steps (typecheck, static-checks, supply-chain, copy-rules, examples, design-rules, docs-build, 0.9 to 1.5 min each by median) run as two steps of about 4.3 and 4.2 min, one gate slot each. Peak slot demand of this workflow drops by 5 (seven slots become two). Total slot-minutes stay about the same (about 8.5 either way), so the gain is 5 fewer container starts and a lower peak, not less slot time. Each bundle runs its commands one after the other under a single gate-slot call, keeps going after a failure so one run shows every red command, prints each failure as it happens, and fails the step at the end with the list of failed commands. The 20 min slot budget covers a whole bundle, so it is raised to 30 min.
+  # BUNDLE_LOOP is defined in the first bundle and reused by the second through a YAML alias. No brace-style variable references (see the NOTE above secret-scan).
+  # static-1: typecheck, unused dependencies, layering (depcruise, errors) and duplication (jscpd, fails above its threshold) budgets, then the supply-chain checks (dependency scan, licenses, lockfile); the scan needs the network, so it stays off the lint and test steps.
   - <<: *step
-    name: static-checks
+    name: static-1
     depends_on: [install]
     commands:
       - corepack enable
-      - bash scripts/gate-slot.sh pnpm run depcheck
-      - bash scripts/gate-slot.sh pnpm depcruise
-      - bash scripts/gate-slot.sh pnpm jscpd:check
-  # Copy rules on user-visible docs text: no filler words, no "rather than" or "not just" closers.
+      - &bundle-loop |
+        BUNDLE_LOOP='failed=""
+        for cmd in "$@"; do
+          echo "==> bundle: $cmd"
+          t=$SECONDS
+          if bash -c "$cmd"; then
+            echo "==> bundle: passed after $((SECONDS - t))s: $cmd"
+          else
+            echo "==> bundle: FAILED after $((SECONDS - t))s: $cmd" >&2
+            failed="$failed [$cmd]"
+          fi
+        done
+        if [ -n "$failed" ]; then
+          echo "==> bundle: failed commands:$failed" >&2
+          exit 1
+        fi
+        echo "==> bundle: all commands passed"'
+      - >-
+        GATE_STEP_BUDGET_SECS=1800 bash scripts/gate-slot.sh bash -c "$BUNDLE_LOOP" bundle
+        "pnpm typecheck"
+        "pnpm run depcheck"
+        "pnpm depcruise"
+        "pnpm jscpd:check"
+        "pnpm audit:prod"
+        "pnpm licenses:check"
+        "node scripts/lockfile-lint.mjs"
+  # static-2: copy rules on user-visible docs text (no filler words, no "rather than" or "not just" closers), example commands and config blocks in the README and docs (BROWX_* names, CLI subcommands and flags, MCP config JSON; this step has no dist/, so the CLI probes are skipped, package-contents repeats the check after the build and runs them), every `npx playwright-core@X.Y.Z` pin in the docs against the version pnpm-lock.yaml resolves, design rules on the docs site (no em or en dashes in copy, no monospace or tracked uppercase outside real code), then the docs site build (sync-docs, astro build with the links validator, then check-h1: one exposed h1 per page), the same command Netlify and release.sh run.
+  # ORDER: docs:build is last on purpose. Its sync-docs step writes website/src/content/docs, which the four checks before it read; as separate steps they raced it, here they see the checked-out tree.
   - <<: *step
-    name: copy-rules
-    depends_on: [install]
-    commands:
-      - bash scripts/gate-slot.sh node scripts/check-copy-rules.mjs
-  # Example commands and config blocks in the README and docs: BROWX_* names, CLI subcommands and flags, MCP config JSON. The second command checks every `npx playwright-core@X.Y.Z` pin in the docs against the version pnpm-lock.yaml resolves. This step has no dist/, so the CLI probes are skipped; package-contents repeats the check after the build and runs them.
-  - <<: *step
-    name: examples
-    depends_on: [install]
-    commands:
-      - bash scripts/gate-slot.sh node scripts/check-examples.mjs
-      - bash scripts/gate-slot.sh node scripts/check-playwright-pin.mjs
-  # Design rules on the docs site: no em or en dashes in copy, no monospace or tracked uppercase outside real code.
-  - <<: *step
-    name: design-rules
-    depends_on: [install]
-    commands:
-      - bash scripts/gate-slot.sh node scripts/check-design-rules.mjs
-  # Supply-chain checks (dependency scan, licenses, lockfile); the scan needs the network, so it stays off the lint and test steps.
-  - <<: *step
-    name: supply-chain
-    depends_on: [install]
-    commands:
-      - corepack enable
-      - bash scripts/gate-slot.sh pnpm audit:prod
-      - bash scripts/gate-slot.sh pnpm licenses:check
-      - bash scripts/gate-slot.sh node scripts/lockfile-lint.mjs
-  # Docs site build (sync-docs, astro build with the links validator, then check-h1: one exposed h1 per page), the same command Netlify and release.sh run. About 20 s after install.
-  - <<: *step
-    name: docs-build
-    # WORKAROUND: Astro needs Node 22.23.4 or newer and the node:22 image is older, so this step runs on Node 26 like the keystone steps (the Node 22 install serves it, see SHAPE above). Node 25 and later stopped bundling corepack.
+    name: static-2
+    # WORKAROUND: Astro needs Node 22.23.4 or newer and the node:22 image is older, so this bundle runs on Node 26 like the keystone steps (the Node 22 install serves it, see SHAPE above). Node 25 and later stopped bundling corepack.
     image: node:26-bookworm
     depends_on: [install]
     commands:
       - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
-      - bash scripts/gate-slot.sh pnpm docs:build
+      - *bundle-loop
+      - >-
+        GATE_STEP_BUDGET_SECS=1800 bash scripts/gate-slot.sh bash -c "$BUNDLE_LOOP" bundle
+        "node scripts/check-copy-rules.mjs"
+        "node scripts/check-examples.mjs"
+        "node scripts/check-playwright-pin.mjs"
+        "node scripts/check-design-rules.mjs"
+        "pnpm docs:build"
   - <<: *step
     name: package-contents
     image: node:26-bookworm
