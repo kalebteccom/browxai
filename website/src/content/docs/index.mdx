@@ -21,7 +21,7 @@ import Shot from "../../components/Shot.astro";
   <div class="browx-hero-copy">
     <div class="browx-wordmark">brow<span class="x">x</span>ai</div>
     <div class="browx-lede">
-      browxai is an MCP server that lets an AI agent drive a web page or a native app with the same tools.
+      One MCP tool surface to read, find and drive web pages and native mobile apps.
     </div>
     <InstallCommand command="npm install -g browxai" />
     <a href="/getting-started/" class="browx-hero-link">Get started</a>
@@ -68,8 +68,8 @@ import Shot from "../../components/Shot.astro";
         "The same sample projects app at 390 px wide in its mobile layout, run through browxai, annotated with refs from the snapshot: e10 for the search input and e13 for the first Open button.",
     }}
     caption={{
-      wide: "A sample app run through browxai: the refs the agent can act on.",
-      narrow: "The same sample app at 390 px, in its mobile layout.",
+      wide: "Snapshot the page and get stable refs your agent can act on.",
+      narrow: "Same app at 390 px, with mobile layout refs.",
     }}
   />
   <span class="browx-shot-step">Find</span>
@@ -81,8 +81,8 @@ import Shot from "../../components/Shot.astro";
         "The sample projects app at 390 px wide in its mobile layout, run through browxai, with numbered boxes over six elements, each number mapped to a ref. Mark 6 is e13, the first Open button.",
     }}
     caption={{
-      wide: "Sample app run through browxai: number the candidates, then say click 3.",
-      narrow: "Sample app at 390 px, mobile layout: number the candidates, then say click 6.",
+      wide: "Overlay numbered marks on candidates, then click by number.",
+      narrow: "Numbered marks at 390 px: pick a candidate and click.",
     }}
   />
   <span class="browx-shot-step">Act</span>
@@ -94,8 +94,8 @@ import Shot from "../../components/Shot.astro";
         "The sample projects app at 390 px wide in its mobile layout, run through browxai, with the Account menu open after one click and the diff browxai returned: aria-expanded false to true and 6 nodes added.",
     }}
     caption={{
-      wide: "Sample app run through browxai: one click, one diff.",
-      narrow: "Sample app at 390 px, mobile layout: one click, one diff.",
+      wide: "Click once and get back the exact DOM diff.",
+      narrow: "One click at 390 px, one DOM diff back.",
     }}
   />
 </div>
@@ -108,14 +108,14 @@ import Shot from "../../components/Shot.astro";
     <span class="browx-card-mark">Native</span>
     <h3>Native apps, same tools</h3>
     <div class="browx-card-text">
-      <code>native-device</code> drives apps on an <a href="/concepts/overview/#native-apps-desktop-apps-and-sessions">Android emulator and the iOS Simulator</a>.
+      Use <code>native-device</code> to drive apps on an <a href="/concepts/overview/#native-apps-desktop-apps-and-sessions">Android emulator or the iOS Simulator</a>.
     </div>
   </div>
   <div class="browx-card">
     <span class="browx-card-mark">Capabilities</span>
     <h3>Four on, the rest off</h3>
     <div class="browx-card-text">
-      Four capabilities are on by default, and the rest are off behind <a href="/concepts/capabilities-and-safety/">tested gates</a>.
+      Four core capabilities start enabled; everything else stays off behind <a href="/concepts/capabilities-and-safety/">tested gates</a>.
     </div>
   </div>
 </div>
