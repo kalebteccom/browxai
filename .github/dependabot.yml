@@ -3,7 +3,12 @@ version: 2
 # Policy:
 #   - Weekly schedule (axios + Kong 2024 pattern: malicious dep ships, every
 #     instant-merging adopter eats it within 5 minutes).
-#   - Group dev-deps patches into a single PR.
+#   - Group updates so a week of bumps is a few PRs, not one per package: one PR
+#     for dev-dependency patches, one for dev-dependency minors, one for
+#     production-dependency patches and minors. Every PR is re-gated on each
+#     push to main (the branch rule needs an up-to-date branch), so fewer open
+#     PRs means fewer re-runs. At most 3 open PRs per ecosystem. Groups are
+#     matched in the order written, so a dev patch lands in dev-deps-patch.
 #   - Ignore semver-major across the board — every major bump is a human
 #     review (security regressions tend to ride along on major upgrades).
 #   - github-actions ecosystem included; these are code-execution changes and
@@ -19,13 +24,22 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     cooldown:
       default-days: 7
     groups:
       dev-deps-patch:
         dependency-type: development
         update-types:
+          - patch
+      dev-deps-minor:
+        dependency-type: development
+        update-types:
+          - minor
+      prod-deps:
+        dependency-type: production
+        update-types:
+          - minor
           - patch
     ignore:
       - dependency-name: "*"
@@ -36,7 +50,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     cooldown:
       default-days: 7
     ignore:
