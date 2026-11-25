@@ -1,0 +1,39 @@
+# ci-optimised: v1
+# The unit suite (vitest, hermetic, browser-free) on Node 22 and Node 26, split out of gate.yml into a workflow of its own. Same rules as gate.yml: push events only (the repo is public), heavy commands through scripts/gate-slot.sh, images by exact tag, no brace-style variable references. Runs in parallel with gate.yml and browser.yml on every branch except main; a push to main only runs `main-check` in gate.yml.
+# WHY A WORKFLOW: Woodpecker workspaces are per workflow, so this file installs for itself (the pnpm store is cached on the host) and its checkout is not shared with the `pnpm build` of gate.yml's package-contents step. The required status check `ci/woodpecker/push/woodpecker` is the status of woodpecker.yml, whose `depends_on` lists this workflow, so a red unit run still blocks the merge.
+# No installed dependency is bound to the Node ABI (see gate.yml, SHAPE), so one install under Node 22 serves the Node 26 step. The unit suite is not sharded: it takes 0.4 to 0.7 min.
+when:
+  - event: push
+    branch:
+      exclude: [main]
+steps:
+  - &step
+    name: install
+    image: node:22-bookworm
+    depends_on: []
+    volumes:
+      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
+      - /home/gitops/cache/browxai/corepack:/corepack
+      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
+    environment:
+      COREPACK_HOME: /corepack
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      npm_config_store_dir: /pnpm-store
+    commands:
+      - corepack enable
+      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
+  - <<: *step
+    name: test-node22
+    depends_on: [install]
+    commands:
+      - corepack enable
+      - bash scripts/gate-slot.sh pnpm test
+  - <<: *step
+    name: test-node26
+    # WORKAROUND: Node 25 and later stopped bundling corepack, so install it when the image lacks it.
+    image: node:26-bookworm
+    depends_on: [install]
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - bash scripts/gate-slot.sh pnpm test
