@@ -10,16 +10,16 @@ cask "browxai" do
   url "https://github.com/kalebteccom/browxai/releases/download/v#{version}/browxai-#{version}-macos-__ARCH__.zip",
       verified: "github.com/kalebteccom/browxai/"
   name "Browxai"
-  desc "Browser control for AI agents, hosted by a signed macOS app"
-  homepage "https://browxai.com"
+  desc "Browser control for AI agents, hosted by a signed app"
+  homepage "https://browxai.com/"
 
   livecheck do
     url :url
     strategy :github_latest
   end
 
-  depends_on macos: ">= :ventura"
   depends_on arch: :__ARCH_SYMBOL__
+  depends_on macos: :ventura
 
   app "Browxai.app"
   binary "#{appdir}/Browxai.app/Contents/Resources/bin/browxai"
