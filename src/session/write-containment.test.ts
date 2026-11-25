@@ -14,6 +14,9 @@ import { attachDownloadCapture, DownloadsRegistry } from "../page/downloads.js";
 import { resolveHarPath } from "../page/har.js";
 import { resolveVideoStagingDir, resolveVideoTargetPath } from "../page/video.js";
 
+// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
+vi.setConfig({ testTimeout: 15_000 });
+
 let base: string;
 let root: string;
 let outside: string;

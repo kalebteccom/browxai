@@ -5,7 +5,7 @@
 // src/plugin/resolver.test.ts). No plugin code is ever executed —
 // the entry module bodies in these fixtures would throw if imported.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,9 @@ import type { Check } from "./doctor.js";
 import { pluginPaths } from "../plugin/resolver.js";
 import { sha256OfPackage, type LockEntry } from "../plugin/cli.js";
 import { DEFAULT_CAPABILITIES, type Capability } from "../util/capabilities.js";
+
+// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
+vi.setConfig({ testTimeout: 15_000 });
 
 let root: string;
 

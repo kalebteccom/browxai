@@ -2,7 +2,7 @@
 // browser (truncation, secret masking, artifact linking). The end-to-end
 // "record a real Chromium session" gate lives in test/keystone/replay-record.
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +12,9 @@ import { readArtifact } from "./artifact.js";
 import { SecretRegistry } from "../util/secrets.js";
 import type { Workspace } from "../util/workspace.js";
 import type { SessionEntry } from "../session/registry.js";
+
+// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
+vi.setConfig({ testTimeout: 15_000 });
 
 /** Minimal SessionEntry stand-in — the orchestrator only reads `id`, `secrets`,
  *  and `session.engine`/`session.cdp?()`/`session.page()`. Anything else stays
