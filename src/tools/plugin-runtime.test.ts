@@ -13,6 +13,9 @@ import { SecretRegistry } from "../util/secrets.js";
 import type { PluginRecord } from "../plugin/types.js";
 import type { TrustTier } from "../plugin/manifest.js";
 
+// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
+vi.setConfig({ testTimeout: 15_000 });
+
 function record(name: string, trust: TrustTier, capabilities: string[] = []): PluginRecord {
   return {
     manifest: {

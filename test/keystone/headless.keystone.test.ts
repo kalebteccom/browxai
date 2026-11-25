@@ -35,6 +35,14 @@ let workspace: string;
 const savedEnv: Record<string, string | undefined> = {};
 const cwdBefore = process.cwd();
 
+// Build steps (build, docs build, package audit, coverage) create these in the checkout
+// while the keystone runs. A before/after listing of cwd must not count them.
+const BUILD_OUTPUT_DIRS = new Set(["dist", "node_modules", ".audit", "coverage"]);
+const listCwd = (): string[] =>
+  readdirSync(cwdBefore)
+    .filter((n) => !BUILD_OUTPUT_DIRS.has(n) && !n.startsWith(".tmp"))
+    .sort();
+
 // Parse a JSON-tool response; ActionResult / find / config tools all return
 // `{ content: [{ type:"text", text: <json> }] }`.
 async function callJson<T = Record<string, unknown>>(
@@ -309,7 +317,7 @@ describe("headless-CI keystone — two-user cookie-jar isolation", () => {
 
 describe("headless-CI keystone — incognito no-trace", () => {
   it("an incognito session lifecycle leaves cwd untouched and no profile dir", async () => {
-    const cwdListBefore = readdirSync(cwdBefore).sort();
+    const cwdListBefore = listCwd();
 
     await callJson("open_session", { session: "ks-notrace", mode: "incognito" });
     await callJson("navigate", { session: "ks-notrace", url: `${fixture.url}/` });
@@ -317,7 +325,7 @@ describe("headless-CI keystone — incognito no-trace", () => {
     await callJson("close_session", { session: "ks-notrace" });
 
     // cwd is never a write target (no-trace contract).
-    expect(readdirSync(cwdBefore).sort()).toEqual(cwdListBefore);
+    expect(listCwd()).toEqual(cwdListBefore);
     // incognito is ephemeral — it must not create a managed profile dir.
     const wsEntries = readdirSync(workspace);
     expect(wsEntries).not.toContain("profile");

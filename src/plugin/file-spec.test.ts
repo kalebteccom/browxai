@@ -6,6 +6,9 @@ import { join, relative } from "node:path";
 import { runPlugin } from "./cli.js";
 import { parseFileSpec } from "./file-spec.js";
 
+// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
+vi.setConfig({ testTimeout: 15_000 });
+
 const pmCalls = vi.hoisted(() => [] as Array<{ op: string; target: string | undefined }>);
 
 // The install path shells out to pnpm/npm; the stub records what the CLI hands

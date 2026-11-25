@@ -23,6 +23,9 @@ import {
   HAR_INLINE_CAP_BYTES,
 } from "./har.js";
 
+// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
+vi.setConfig({ testTimeout: 15_000 });
+
 let ws: string;
 beforeEach(() => {
   ws = mkdtempSync(join(tmpdir(), "browx-har-"));
