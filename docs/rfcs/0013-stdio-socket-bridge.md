@@ -1,7 +1,7 @@
 # RFC 0013: A stdio-to-socket bridge for MCP clients
 
 **Date:** 2026-11-26
-**Status:** Proposed, awaiting reviewer sign-off. Design only, nothing built. The decision list near the end is what the reviewer signs.
+**Status:** Accepted. Decisions D1 to D12 are signed off with their recommended defaults. Slice S1 is built: the daemon listing of D2, the relay and the `browxai bridge` subcommand without `--start`, and the socket check of D10, which also covers `browxai call`, `browxai tools` and the SDK's socket transport. Slices S2 and S3 are not built.
 **Trigger:** Open question 5 of [RFC 0012](0012-signed-macos-app.md): whether to build the stdio bridge so MCP clients can use the app's daemon.
 
 ## The problem
@@ -18,7 +18,7 @@ I read the files named in each line. Version numbers for the MCP SDK are from th
 
 - **The daemon** (`src/cli/serve.ts`). `browxai serve --socket PATH` listens on a Unix socket or a Windows named pipe. Each accepted connection gets its own MCP server object from `createClientServer` (`src/cli/serve-client.ts`). All of them call the handler maps of one `createServer` result, so there is one session registry, one config store and one capability set.
 - **The socket** (`src/cli/serve-socket.ts`). Created with the umask set to `0177`, so the file is mode `0600` from the start. A leftover socket at the path is removed. Anything else there stops the start with exit 2. A named pipe is listened on as given, with no file mode.
-- **The framing** (`src/transport/socket-transport.ts`). Newline-delimited JSON through the SDK's `ReadBuffer` and `serializeMessage`, the same framing as stdio. A line over 32 MiB makes the receiving end destroy the connection. `SocketTransport` builds its `ReadBuffer` with no size option, and the SDK copy I read caps that buffer at 10 MiB by default. I did not run it, so which limit applies first is unverified. See "Could not verify".
+- **The framing** (`src/transport/socket-transport.ts`). Newline-delimited JSON through the SDK's `ReadBuffer` and `serializeMessage`, the same framing as stdio. A line over 32 MiB makes the receiving end destroy the connection. When this RFC was written, `SocketTransport` built its `ReadBuffer` with no size option, and the SDK caps that buffer at 10 MiB by default, so a line between 10 and 32 MiB failed in the data handler. Slice S1 set the buffer's cap from the line limit, so 32 MiB is the limit that applies.
 - **What the daemon answers.** `initialize` and `ping` come from the SDK. `tools/list` and `tools/call` come from `createClientServer`. The declared capabilities are `{ tools: {} }`, with no `listChanged`.
 - **The daemon's listing** (`src/cli/serve-listing.ts`). Each entry has the first sentence of the tool's description (140 characters at most), an open input schema (`{ type: "object", additionalProperties: true }`) and the tool's capability in `_meta` under `browxai/capability`. A plugin tool is listed with a fixed line. The listing follows `toolList` and `toolProfile`.
 - **The stdio server's listing** (`src/server.ts`, `src/transport/listing-trim.ts`). The stdio server uses the SDK's high-level `McpServer`, so each entry has the full description and the real input schema. The SDK's `McpServer` declares `tools.listChanged: true` when a tool is registered. I found no call to `sendToolListChanged` in `src/`.
@@ -272,15 +272,15 @@ Each has a recommended default. A sign-off with no comment accepts the defaults.
 | D7  | `--start`.                                                          | Opt-in, app only, through a new launcher command that kickstarts the registered agent. It never registers the agent and never runs `serve`. Ships with slice 2.                                                                                        |
 | D8  | What `init` writes when run from the app.                           | The bridge for user-level entries. The workspace `.mcp.json` keeps its stdio entries, with a printed line that says so. The other choice writes the bridge there too and drops per-workspace settings.                                                 |
 | D9  | `BROWX_*` settings in a bridge entry.                               | Ignore them and name them on standard error. Do not forward them to the daemon.                                                                                                                                                                        |
-| D10 | The owner check on the socket before connecting.                    | Yes for the bridge. Whether `browxai call` and the SDK get the same check is a separate change.                                                                                                                                                        |
+| D10 | The owner check on the socket before connecting.                    | Yes for the bridge. At sign-off the check was extended to `browxai call`, `browxai tools` and the SDK, and it also refuses a symbolic link and a socket open to group or others.                                                                       |
 | D11 | The `macos-app` row gains daemon reachability.                      | Yes, informational only.                                                                                                                                                                                                                               |
 | D12 | The abort signal and progress in the daemon's `tools/call` handler. | Out of scope here. The relay carries both already.                                                                                                                                                                                                     |
 
 ## Could not verify
 
 - Every SDK fact above was read from version 1.30.0 in `node_modules`, and `package.json` asks for `^1.32.2`. That covers the `McpServer` `listChanged` declaration, the dropped response after a cancel, the `StdioServerTransport` `maxBufferSize` option and its lack of an end-of-input handler, and `InMemoryTransport`.
-- Whether the SDK's 10 MiB `ReadBuffer` default applies inside `SocketTransport` before the 32 MiB check, and what the daemon does when `append` throws inside the socket's data handler, which has no `try`. Test 6 records it. The tool reference states 32 MiB.
-- That the low-level `Server` leaves `tools/call` arguments alone when the listing carries a closed schema.
+- Resolved in S1: the SDK's 10 MiB `ReadBuffer` default did apply inside `SocketTransport` before the 32 MiB check, and `append` threw inside the socket's data handler. The buffer's cap now follows the line limit and the handler closes the connection on any error.
+- Resolved in S1: the low-level `Server` leaves `tools/call` arguments alone when the listing carries a closed schema. `src/cli/serve-client.test.ts` holds the check.
 - Nothing was run on a Mac: `launchctl kickstart` on an agent that `SMAppService` registered, a client app starting the wrapper by absolute path, a sandboxed client reaching the socket folder, and what a cask upgrade does to an open bridge.
 - Which config scope each client prefers when a project file and a user entry share a name. I did not check it per client.
 - Nothing on Windows.

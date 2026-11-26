@@ -26,8 +26,9 @@ export type ClientHandlers = Pick<
 /** A new MCP server for one client connection, not yet connected to a transport. */
 export function createClientServer(browxai: ClientHandlers): McpServer {
   const mcp = new McpServer({ name: NAME, version: VERSION }, { capabilities: { tools: {} } });
-  // One-line descriptions and the capability of each tool, so `browxai tools` can print
-  // them. The input schema stays open (see `listedTool`).
+  // The full description, the input schema and the capability of each tool (see
+  // `listedTool`). The schema is for the client to read: the call handler below does
+  // not apply it.
   mcp.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: Object.keys(browxai.handlers)
       .filter((name) => browxai.isToolListed(name))
