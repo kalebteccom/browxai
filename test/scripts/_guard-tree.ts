@@ -19,6 +19,14 @@ import { fileURLToPath } from "node:url";
 
 export const REPO = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
+/** Per-test budget for a describe whose tests spawn a guard. Each spawn starts a
+ *  cold `node`, which can take seconds on a loaded CI box. */
+export const SPAWN_TEST_TIMEOUT = 60_000;
+
+/** A guard that runs longer than this is killed, so the test fails with the
+ *  script's name before vitest's own budget runs out. */
+const SPAWN_TIMEOUT = 45_000;
+
 const roots: string[] = [];
 
 /** Remove every tree made since the last call. Wire to afterEach. */
@@ -64,6 +72,8 @@ export function runNode(root: string, script: string, args: string[] = []): Ran 
   const r = spawnSync(process.execPath, [join(root, script), ...args], {
     cwd: root,
     encoding: "utf8",
+    timeout: SPAWN_TIMEOUT,
   });
+  if (r.error) throw new Error(`${script} did not finish: ${r.error.message}`);
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }

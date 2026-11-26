@@ -3,7 +3,7 @@
 // doc files and asserts the exit code and the file:line message.
 
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanTrees, makeTree, runNode } from "./_guard-tree.js";
+import { cleanTrees, makeTree, runNode, SPAWN_TEST_TIMEOUT } from "./_guard-tree.js";
 
 afterEach(cleanTrees);
 
@@ -40,7 +40,7 @@ function run(files: Record<string, string>, version = "1.65.1") {
   return runNode(makeTree({ "pnpm-lock.yaml": lock(version), ...files }, [GUARD]), GUARD);
 }
 
-describe("check-playwright-pin", () => {
+describe("check-playwright-pin", { timeout: SPAWN_TEST_TIMEOUT }, () => {
   it("exits 0 when every pin equals the lockfile version", () => {
     const { code, out } = run({
       "README.md": cmd("1.65.1"),
