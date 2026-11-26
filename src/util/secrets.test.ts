@@ -278,6 +278,137 @@ describe("SecretRegistry.applyMaskInText — encoded forms", () => {
   });
 });
 
+describe("SecretRegistry: a value re-escaped inside a string", () => {
+  const reg = (value: string): SecretRegistry => {
+    const r = new SecretRegistry();
+    r.register({ name: "SEC", value });
+    return r;
+  };
+
+  // [label, value, JSON-escaped renderings, HTML-escaped renderings]
+  const CASES: Array<[string, string, string[], string[]]> = [
+    [
+      "a quote and a backslash",
+      'pa"ss\\1x',
+      ['pa\\"ss\\\\1x'],
+      ["pa&quot;ss\\1x", "pa&#34;ss\\1x"],
+    ],
+    ["a slash", "ab/cd+ef==", ["ab\\/cd+ef=="], []],
+    [
+      "an ampersand",
+      "tom&jerry",
+      ["tom\\u0026jerry"],
+      ["tom&amp;jerry", "tom&#38;jerry", "tom&#x26;jerry"],
+    ],
+    [
+      "angle brackets",
+      "x<y>z123",
+      ["x\\u003cy\\u003ez123", "x\\u003Cy\\u003Ez123"],
+      ["x&lt;y&gt;z123", "x&#60;y&#62;z123", "x&#x3c;y&#x3e;z123", "x&#x3C;y&#x3E;z123"],
+    ],
+    [
+      "an apostrophe",
+      "it's-a-key",
+      ["it\\u0027s-a-key"],
+      ["it&#39;s-a-key", "it&#x27;s-a-key", "it&#039;s-a-key", "it&apos;s-a-key"],
+    ],
+    [
+      "a non-ASCII letter",
+      "contraseña",
+      ["contrase\\u00f1a", "contrase\\u00F1a"],
+      ["contrase&#241;a", "contrase&#xf1;a", "contrase&#xF1;a"],
+    ],
+    [
+      "a slash next to a non-ASCII letter",
+      "niño/2024",
+      ["niño\\/2024", "ni\\u00f1o\\/2024"],
+      ["ni&#241;o/2024"],
+    ],
+    [
+      "every HTML-sensitive character at once",
+      "a&b\"c<d>e'f",
+      ['a\\u0026b\\"c\\u003cd\\u003ee\\u0027f'],
+      ["a&amp;b\"c&lt;d&gt;e'f", "a&amp;b&quot;c<d>e'f", "a&amp;b&quot;c&lt;d&gt;e&#39;f"],
+    ],
+  ];
+
+  it.each(CASES)("%s: masked inside JSON that a string holds", (_label, value, jsonForms) => {
+    const r = reg(value);
+    for (const rendering of jsonForms) {
+      // A response body that is itself JSON, as written by a server.
+      const body = `{"key":"${rendering}","n":1}`;
+      expect(r.applyMaskInText(body)).toBe('{"key":"<SEC>","n":1}');
+      // The same body as one string leaf of a tool result.
+      const result = JSON.stringify({ ok: true, body });
+      expect(JSON.parse(r.applyMaskInResultText(result))).toEqual({
+        ok: true,
+        body: '{"key":"<SEC>","n":1}',
+      });
+      const pretty = JSON.stringify({ ok: true, body }, null, 2);
+      expect(JSON.parse(r.applyMaskInResultText(pretty))).toEqual({
+        ok: true,
+        body: '{"key":"<SEC>","n":1}',
+      });
+    }
+  });
+
+  const HTML_CASES = CASES.filter(([, , , htmlForms]) => htmlForms.length > 0);
+  it.each(HTML_CASES)("%s: masked inside an HTML snippet", (_label, value, _json, htmlForms) => {
+    const r = reg(value);
+    for (const rendering of htmlForms) {
+      const html = `<input name="k" value="${rendering}"><p>${rendering}</p>`;
+      expect(r.applyMaskInText(html)).toBe('<input name="k" value="<SEC>"><p><SEC></p>');
+      const result = JSON.stringify({ ok: true, html });
+      expect(JSON.parse(r.applyMaskInResultText(result))).toEqual({
+        ok: true,
+        html: '<input name="k" value="<SEC>"><p><SEC></p>',
+      });
+    }
+  });
+
+  it.each(CASES)("%s: the forms it already had still mask", (_label, value) => {
+    const r = reg(value);
+    const b64 = Buffer.from(value, "utf8").toString("base64");
+    expect(r.applyMaskInText(`v=${value};`)).toBe("v=<SEC>;");
+    expect(r.applyMaskInText(`v=${encodeURIComponent(value)};`)).toBe("v=<SEC>;");
+    expect(r.applyMaskInText(`v=${b64};`)).toBe("v=<SEC>;");
+    expect(JSON.parse(r.applyMaskInResultText(JSON.stringify({ v: value })))).toEqual({
+      v: "<SEC>",
+    });
+  });
+
+  it("masking an escaped form is idempotent", () => {
+    const r = reg("tom&jerry");
+    const once = r.applyMaskInText("<b>tom&amp;jerry</b> tom\\u0026jerry");
+    expect(once).toBe("<b><SEC></b> <SEC>");
+    expect(r.applyMaskInText(once)).toBe(once);
+    expect(r.applyMaskInResultText(once)).toBe(once);
+  });
+
+  it("a value under six characters is masked as typed only", () => {
+    const r = reg("a&b<c");
+    expect(r.applyMaskInText("v=a&amp;b&lt;c")).toBe("v=a&amp;b&lt;c");
+    expect(r.applyMaskInText("v=a\\u0026b\\u003cc")).toBe("v=a\\u0026b\\u003cc");
+    expect(r.applyMaskInText("v=a&b<c")).toBe("v=<SEC>");
+  });
+
+  it("a value of letters and digits leaves escaped look-alikes of other text alone", () => {
+    const r = reg("Abc123xyz");
+    const text = "Tom &amp; Jerry \\u0026 co, see x\\/y";
+    expect(r.applyMaskInText(text)).toBe(text);
+    expect(r.applyMaskInResultText(JSON.stringify({ text }))).toBe(JSON.stringify({ text }));
+  });
+
+  it("two values, one inside the other, still mask longest first when escaped", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "SHORT", value: "tom&jerry" });
+    r.register({ name: "LONG", value: "tom&jerry&spike" });
+    expect(r.applyMaskInText("a tom&amp;jerry&amp;spike b tom&amp;jerry c")).toBe(
+      "a <LONG> b <SHORT> c",
+    );
+  });
+});
+
 describe("SecretRegistry.containsAnySecret — screenshot warning probe", () => {
   it("flags every registered name whose value appears in the text", () => {
     const r = new SecretRegistry();
