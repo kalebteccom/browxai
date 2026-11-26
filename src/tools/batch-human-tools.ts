@@ -2,6 +2,7 @@ import { runBatch } from "../util/batch.js";
 import { log } from "../util/logging.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./host.js";
+import { jsonResult } from "./json-result.js";
 
 /** Build the DevTools-prompt body for an `await_human` call. Extracting the
  *  four-way kind dispatch into a pure helper keeps the handler under the
@@ -113,30 +114,15 @@ export function registerBatchHumanTools(
         ) {
           value = (sig.data as { value: unknown }).value;
         }
-        return {
-          content: [
-            { type: "text", text: JSON.stringify({ kind, value, timedOut: false }, null, 2) },
-          ],
-        };
+        return jsonResult({ kind, value, timedOut: false });
       } catch (e) {
         const timedOut = e instanceof Error && e.message.includes("timed out");
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  kind,
-                  value: null,
-                  timedOut,
-                  error: timedOut ? undefined : e instanceof Error ? e.message : String(e),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          kind,
+          value: null,
+          timedOut,
+          error: timedOut ? undefined : e instanceof Error ? e.message : String(e),
+        });
       }
     },
   );
@@ -207,9 +193,7 @@ export function registerBatchHumanTools(
         handlers: toolHandlers,
         stopOnError,
       });
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }],
-      };
+      return jsonResult(report);
     },
   );
 }

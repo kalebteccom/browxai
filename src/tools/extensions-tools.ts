@@ -19,6 +19,7 @@ import type {
   ServerServicesHost,
 } from "./host.js";
 import { requirePage } from "../engine/index.js";
+import { jsonResult, jsonResultWithEstimate, type TextResponse } from "./json-result.js";
 
 /**
  * Chrome-extension management tools: extensions_install / extensions_list /
@@ -82,29 +83,14 @@ export function registerExtensionsTools(
       const headless = !!(opts.headless ?? resolvedConfig.headless);
       const r = refuseExtensionsIfUnsupported({ mode: e.mode, headless, tool });
       if (r) {
-        const body = { ok: false, error: r.error, hint: r.hint };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResultWithEstimate({ ok: false, error: r.error, hint: r.hint });
       }
     }
     return null;
   };
 
   /** Envelope helper for the extension tools. */
-  const extensionEnvelope = (
-    e: SessionEntry,
-    extra: Record<string, unknown>,
-  ): { content: Array<{ type: "text"; text: string }> } => {
+  const extensionEnvelope = (e: SessionEntry, extra: Record<string, unknown>): TextResponse => {
     const body: Record<string, unknown> = {
       ok: true,
       session: e.id,
@@ -112,30 +98,16 @@ export function registerExtensionsTools(
       ...extra,
     };
     body.tokensEstimate = estimateTokens(JSON.stringify(body));
-    return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    return jsonResult(body);
   };
 
-  const extensionErrorEnvelope = (
-    tool: string,
-    err: unknown,
-  ): { content: Array<{ type: "text"; text: string }> } => {
+  const extensionErrorEnvelope = (tool: string, err: unknown): TextResponse => {
     const body = {
       ok: false,
       action: { type: tool },
       error: err instanceof Error ? err.message : String(err),
     };
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify(
-            { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-            null,
-            2,
-          ),
-        },
-      ],
-    };
+    return jsonResultWithEstimate(body);
   };
 
   register(

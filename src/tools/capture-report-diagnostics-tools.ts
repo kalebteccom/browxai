@@ -18,15 +18,7 @@ import { engineDeclares } from "../engine/index.js";
 import { SESSION_ARG } from "./schemas.js";
 import { fileWriteGate } from "./file-write-gate.js";
 import type { ToolHost } from "./host.js";
-
-/** Stamp the body with its token estimate and wrap it as a tool text response —
- *  the shared shape every `export_playwright_script` failure/early return uses. */
-function exportScriptResult(body: Record<string, unknown>): {
-  content: Array<{ type: "text"; text: string }>;
-} {
-  const withTokens = { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) };
-  return { content: [{ type: "text" as const, text: JSON.stringify(withTokens, null, 2) }] };
-}
+import { jsonResult, jsonResultWithEstimate } from "./json-result.js";
 
 /** Filter a diagnostics record against the `diagnostics_search` query. The
  *  `tool` filter implies a `call` record; the `category` filter implies a `note`
@@ -110,7 +102,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
         liveSessions: registry.list().map((s) => ({ id: s.id, mode: s.mode })),
         ...(lastReplay ? { replayArtifact: lastReplay } : {}),
       };
-      return { content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }] };
+      return jsonResult(report);
     },
   );
 
@@ -135,7 +127,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
         tokensEstimate: 0,
       };
       body.tokensEstimate = estimateTokens(JSON.stringify(body));
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResult(body);
     },
   );
 
@@ -210,7 +202,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
         },
         tokensEstimate: estimateTokens(JSON.stringify({ insight, category, severity, ref })),
       };
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResult(body);
     },
   );
 
@@ -281,7 +273,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
         tokensEstimate: 0,
       };
       body.tokensEstimate = estimateTokens(JSON.stringify(body));
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResult(body);
     },
   );
 
@@ -346,7 +338,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
         tokensEstimate: 0,
       };
       body.tokensEstimate = estimateTokens(JSON.stringify(body));
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResult(body);
     },
   );
 
@@ -380,7 +372,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
       const e = await entryFor(session);
       const snap = e.recorder.inspect();
       if (!snap) {
-        return exportScriptResult({
+        return jsonResultWithEstimate({
           ok: false,
           tool: "export_playwright_script",
           error:
@@ -394,7 +386,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
       const lowered = lowerTraceToSpec(snap.name, snap.steps);
       const check = parsePlaywrightSpec(lowered.source);
       if (!check.ok) {
-        return exportScriptResult({
+        return jsonResultWithEstimate({
           ok: false,
           tool: "export_playwright_script",
           error: `generated spec failed the structural parse-check: ${check.reason}`,
@@ -414,7 +406,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
           writtenPath = resolved;
           writtenBytes = Buffer.byteLength(lowered.source, "utf8");
         } catch (err) {
-          return exportScriptResult({
+          return jsonResultWithEstimate({
             ok: false,
             tool: "export_playwright_script",
             error: err instanceof Error ? err.message : String(err),
@@ -440,7 +432,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
         tokensEstimate: 0,
       };
       body.tokensEstimate = estimateTokens(JSON.stringify(body));
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResult(body);
     },
   );
 }

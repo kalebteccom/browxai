@@ -5,11 +5,12 @@ import { matchesResponse } from "../page/await_network.js";
 import { sanitizeUrl } from "../util/url-sanitizer.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost, ToolResponse } from "./host.js";
+import { jsonResult } from "./json-result.js";
 
 /** Wrap a JSON body as a tool text response — the shape the determinism handlers
  *  return. */
 function determinismJson(body: object): ToolResponse {
-  return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+  return jsonResult(body);
 }
 
 /** A structured `{ok:false, error}` envelope. */
@@ -95,19 +96,11 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
             'BYOB / attached Chrome: this virtual-clock policy stays in effect on the attached browser after browxai detaches. Release it (mode:"release"), reload, or close the page when you\'re done, or the page keeps a frozen wall clock.';
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
+        return jsonResult({ ...body, tokensEstimate });
       } catch (err) {
         const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
         const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
+        return jsonResult({ ...body, tokensEstimate });
       }
     },
   );
@@ -149,19 +142,11 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
             "BYOB / attached Chrome: this Math.random override is installed on the attached browser's context and stays in effect for as long as the context lives. Close the tab or context when you're done to drop it.";
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
+        return jsonResult({ ...body, tokensEstimate });
       } catch (err) {
         const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
         const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
+        return jsonResult({ ...body, tokensEstimate });
       }
     },
   );
@@ -256,14 +241,7 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
         );
       const innerArgs = { ...(args.action.args ?? {}), session: args.session };
       const [aRes, network] = await Promise.all([toolHandlers[innerTool]!(innerArgs), waitP]);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ action: parseInner(aRes), network }, null, 2),
-          },
-        ],
-      };
+      return jsonResult({ action: parseInner(aRes), network });
     },
   );
 

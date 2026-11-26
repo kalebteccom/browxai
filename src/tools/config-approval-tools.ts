@@ -5,6 +5,7 @@ import { resolveOriginPolicy } from "../policy/origin.js";
 import { TOOL_LIST_MODES } from "../util/tool-list.js";
 import { TOOL_PROFILES } from "../util/tool-profile.js";
 import { CHROMIUM_SANDBOX_MODES } from "../util/chromium-sandbox.js";
+import { jsonResult } from "./json-result.js";
 
 /** The first unparseable origin or unknown confirm hook in a patch, or null.
  *  Each entry is checked on its own; a comma inside one is refused because the
@@ -61,9 +62,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
 
   // ---------- config store ----------
 
-  const refusal = (body: Record<string, unknown>) => ({
-    content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }],
-  });
+  const refusal = (body: Record<string, unknown>) => jsonResult(body);
 
   const CONFIG_PATCH_SCHEMA = {
     testAttributes: z.array(z.string()).optional(),
@@ -168,7 +167,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
       } else {
         body = { scope, config: configStore.getLayer(scope) };
       }
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResult(body);
     },
   );
 
@@ -221,18 +220,12 @@ export function registerConfigApprovalTools(host: ToolHost): void {
           });
         }
         configStore.setLayer(scope, patch);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: true, scope, written: Object.keys(patch), resolved: configStore.resolve() },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          ok: true,
+          scope,
+          written: Object.keys(patch),
+          resolved: configStore.resolve(),
+        });
       },
     );
 
@@ -245,18 +238,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
       },
       async ({ scope }) => {
         configStore.resetLayer(scope);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: true, cleared: scope, resolved: configStore.resolve() },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({ ok: true, cleared: scope, resolved: configStore.resolve() });
       },
     );
 
@@ -292,24 +274,13 @@ export function registerConfigApprovalTools(host: ToolHost): void {
         if (g) return g;
         const ttl = ttlSeconds ?? 3600;
         for (const scope of scopes) approvals.grant(scope, ttl);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: true,
-                  granted: scopes,
-                  ttlSeconds: ttl,
-                  expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
-                  note: "Each call into a granted scope is logged. Subsequent approve_actions calls for the same scope reset the TTL.",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          ok: true,
+          granted: scopes,
+          ttlSeconds: ttl,
+          expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
+          note: "Each call into a granted scope is logged. Subsequent approve_actions calls for the same scope reset the TTL.",
+        });
       },
     );
   }
@@ -322,13 +293,6 @@ export function registerConfigApprovalTools(host: ToolHost): void {
         "List live pre-approvals from `approve_actions`: scope, grantedAt, expiresAt, uses, remainingMs.",
       inputSchema: {},
     },
-    async () => ({
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify({ approvals: approvals.list() }, null, 2),
-        },
-      ],
-    }),
+    async () => jsonResult({ approvals: approvals.list() }),
   );
 }

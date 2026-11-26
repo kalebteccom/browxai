@@ -1,6 +1,7 @@
 import { REF_OR_SELECTOR, ACTION_OPTS } from "./schemas.js";
 import { actionTool, type ActionToolHost } from "./action-tool.js";
 import type { ServerServicesHost } from "./host.js";
+import { jsonResult } from "./json-result.js";
 
 /**
  * Form/element action verbs: hover / select / wait_for / scroll / choose_option.
@@ -199,22 +200,11 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
       const e = await host.entryFor(args.session);
       const target = host.asTarget(args, "choose_option", e.refs);
       if ("coords" in target) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error:
-                    "choose_option requires a ref/selector/named target (the combobox/menu trigger), not coords",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          ok: false,
+          error:
+            "choose_option requires a ref/selector/named target (the combobox/menu trigger), not coords",
+        });
       }
       const td = host.actionTimeout(args);
       return host.asActionResultText(

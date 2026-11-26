@@ -19,6 +19,7 @@ import type {
   TargetHost,
 } from "./host.js";
 import { requirePage } from "../engine/index.js";
+import { errorResult, jsonResult } from "./json-result.js";
 
 /**
  * Permission-state read + notification policy + device-request read tools:
@@ -88,20 +89,9 @@ export function registerSessionNotificationDeviceTools(
           states: out,
           tokensEstimate: estimateTokens(JSON.stringify(out)),
         };
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -142,20 +132,9 @@ export function registerSessionNotificationDeviceTools(
         ).catch(() => undefined);
         const tokensEstimate = estimateTokens(JSON.stringify(resolved));
         const body = { ok: true, session: e.id, policy: resolved, tokensEstimate };
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -191,20 +170,9 @@ export function registerSessionNotificationDeviceTools(
           requests: records,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );

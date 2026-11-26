@@ -10,6 +10,7 @@ import type {
   ActionHost,
   ServerServicesHost,
 } from "./host.js";
+import { errorResult, jsonResult } from "./json-result.js";
 
 /**
  * Coordinate-space gesture tools: mouse_wheel / gesture_pinch / gesture_swipe.
@@ -58,20 +59,9 @@ export function registerGestureCoordTools(
           cfgActionTimeout(),
           "mouse_wheel",
         );
-        return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+        return jsonResult(r);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );

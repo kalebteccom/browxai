@@ -11,6 +11,7 @@ import type {
   EnvelopeHost,
   ServerServicesHost,
 } from "./host.js";
+import { errorResult } from "./json-result.js";
 
 /**
  * Multi-field form-fill tool: `fill_form`. Compose N field fills (plus an optional
@@ -117,18 +118,7 @@ export function registerFormsFillTools(
           mappedSubmit = fieldArgToTarget(args.submit, "submit", e.refs);
         }
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
 
       const td = actionTimeout(args);

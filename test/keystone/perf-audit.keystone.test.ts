@@ -48,7 +48,8 @@ beforeAll(async () => {
   }
   workspace = mkdtempSync(join(tmpdir(), "browx-perf-audit-ks-"));
   process.env.BROWX_WORKSPACE = workspace;
-  process.env.BROWX_CAPABILITIES = "read,navigation,action,human";
+  // `file-io` for the trace and coverage evidence files the two tools write.
+  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,file-io";
 
   fixture = await startFixture();
   server = await createServer({ headless: true });

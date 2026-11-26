@@ -265,6 +265,7 @@ export function registerDeepPerfTools(host: ToolHost): void {
   // Capability split (also in util/capabilities.ts):
   //   perf_audit, coverage_stop, layout_thrash_trace, memory_diff → `read`
   //   coverage_start                                                 → `action`
+  //   perf_audit and layout_thrash_trace add `file-io` for the trace files they write.
 
   register(
     "perf_audit",
@@ -273,7 +274,7 @@ export function registerDeepPerfTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        'Run the performance analysers on this session and return a report with remediations: the one-call alternative to `perf_start`, `perf_stop` and `perf_insights`. It records a CDP trace, JS and CSS coverage and network response metadata for `durationMs` (default 5000, max 30000), then runs 8 analysers. `categories` (default all): `render-blocking`, `unused-code` (scripts or stylesheets under 30% used), `oversize-images` (over 500 KB), `layout-thrashing` (over 5 forced layouts), `long-tasks` (over 50 ms), `leak-suspects` (over 10% retainer growth; needs `memory_diff` data), `cache-opportunities` (static assets with missing or short Cache-Control), `font-loading` (fonts loaded over 200 ms after document start). Returns `{summary:{score, topIssues[]}, byCategory:{[cat]:{issues[], remediations[]}}, evidence:{tracePath, coveragePath?}, warnings[], tokensEstimate}`. `format:"summary"` (default) keeps 3 issues and 3 remediations per category within a 2000-token budget (dropped entries are noted in `warnings[]`); `"full"` is unbounded. Evidence files are written under `<workspace>/perf/<sessionId>-audit-<ts>.json` (plus coverage JSON) and open in DevTools.',
+        'Run the performance analysers on this session and return a report with remediations: the one-call alternative to `perf_start`, `perf_stop` and `perf_insights`. It records a CDP trace, JS and CSS coverage and network response metadata for `durationMs` (default 5000, max 30000), then runs 8 analysers. `categories` (default all): `render-blocking`, `unused-code` (scripts or stylesheets under 30% used), `oversize-images` (over 500 KB), `layout-thrashing` (over 5 forced layouts), `long-tasks` (over 50 ms), `leak-suspects` (over 10% retainer growth; needs `memory_diff` data), `cache-opportunities` (static assets with missing or short Cache-Control), `font-loading` (fonts loaded over 200 ms after document start). Returns `{summary:{score, topIssues[]}, byCategory:{[cat]:{issues[], remediations[]}}, evidence:{tracePath, coveragePath?}, warnings[], tokensEstimate}`. `format:"summary"` (default) keeps 3 issues and 3 remediations per category within a 2000-token budget (dropped entries are noted in `warnings[]`); `"full"` is unbounded. Evidence files are written under `<workspace>/perf/<sessionId>-audit-<ts>.json` (plus coverage JSON) and open in DevTools. Requires the `file-io` capability (off by default).',
       inputSchema: {
         categories: z
           .array(z.enum(ALL_AUDIT_CATEGORIES as [string, ...string[]]))
@@ -303,6 +304,10 @@ export function registerDeepPerfTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("perf_audit", e);
       if (eg) return eg;
+      // Every audit writes its trace (and coverage) evidence files. After the
+      // engine gate, as in `perf_stop`.
+      const fg = fileWriteGate(gateCheck, "perf_audit", "its trace and coverage evidence files");
+      if (fg) return fg;
       return jsonToolResult(async () => {
         const r = await runPerfAudit(requireCdp(e.session), workspace.root, e.id, {
           categories: categories,

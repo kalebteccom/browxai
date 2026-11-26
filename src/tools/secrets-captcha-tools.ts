@@ -14,15 +14,14 @@ import { estimateTokens } from "../util/tokens.js";
 import type { ToolHost } from "./host.js";
 import { SESSION_ARG } from "./schemas.js";
 import { requirePage } from "../engine/index.js";
+import {
+  errorResult,
+  jsonResult,
+  jsonResultWithEstimate,
+  type TextResponse,
+} from "./json-result.js";
 
 type CaptchaPage = ReturnType<typeof requirePage>;
-
-/** Stamp a captcha result body with its token estimate and wrap it as a tool
- *  text response — the shared shape every solve_captcha envelope uses. */
-function captchaJsonResult(body: object): { content: Array<{ type: "text"; text: string }> } {
-  const withTokens = { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) };
-  return { content: [{ type: "text" as const, text: JSON.stringify(withTokens, null, 2) }] };
-}
 
 /** Read the widget site-key from a selector — `data-sitekey` (the
  *  reCAPTCHA/hCaptcha/Turnstile convention) first, then common alternatives.
@@ -48,11 +47,8 @@ async function readSiteKeyFromSelector(
 
 /** The `{ok:false}` envelope the credentials tools return before any vault
  *  call: a rejected account name, or nothing to bind a password to. */
-function accountRefusal(
-  provider: string,
-  error: string,
-): { content: Array<{ type: "text"; text: string }> } {
-  return captchaJsonResult({ ok: false, provider, error });
+function accountRefusal(provider: string, error: string): TextResponse {
+  return jsonResultWithEstimate({ ok: false, provider, error });
 }
 
 /** The origins the operator listed for `account` in `BROWX_CREDENTIAL_ORIGINS`,
@@ -88,7 +84,7 @@ function oathtoolCredentialError(): string {
 
 /** Either the Playwright `Page` the selector-derived site-key read needs, or the
  *  structured refusal to return instead. */
-type SiteKeyPage = { page: CaptchaPage } | { refusal: ReturnType<typeof captchaJsonResult> };
+type SiteKeyPage = { page: CaptchaPage } | { refusal: TextResponse };
 
 /** Acquire the `Page` the site-key read walks, or refuse structurally.
  *
@@ -106,7 +102,7 @@ function pageForSiteKeyRead(
     return { page: requirePage(session) };
   } catch (err) {
     return {
-      refusal: captchaJsonResult({
+      refusal: jsonResultWithEstimate({
         ok: false,
         provider,
         error: `solve_captcha: cannot read a site-key from a selector on this session: ${
@@ -177,18 +173,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
           ...(scope !== undefined && scope !== "" ? { scope } : {}),
         });
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
       const origins = e.secrets.scopeOrigins(name);
       const body = {
@@ -205,7 +190,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
           JSON.stringify({ ok: true, registered: name, scope, origins, names: e.secrets.names() }),
         ),
       };
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResult(body);
     },
   );
 
@@ -275,8 +260,8 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       // via env without restarting (env is the source of truth).
       const cfg = resolveCaptchaProvider(process.env);
       if (!cfg.ok) {
-        if (cfg.reason === "unconfigured") return captchaJsonResult(unconfiguredFailure());
-        return captchaJsonResult({
+        if (cfg.reason === "unconfigured") return jsonResultWithEstimate(unconfiguredFailure());
+        return jsonResultWithEstimate({
           ok: false,
           provider: null,
           error: cfg.error ?? "captcha provider config is incomplete",
@@ -290,7 +275,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       try {
         pageUrl = await targetFor(e).url();
       } catch {
-        return captchaJsonResult({
+        return jsonResultWithEstimate({
           ok: false,
           provider: cfg.config.provider,
           error: "session has no active page",
@@ -305,7 +290,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
         if ("refusal" in read) return read.refusal;
         resolvedSiteKey = await readSiteKeyFromSelector(read.page, selector);
         if (!resolvedSiteKey) {
-          return captchaJsonResult({
+          return jsonResultWithEstimate({
             ok: false,
             provider: cfg.config.provider,
             error: `solve_captcha: could not read a site-key attribute from selector "${selector}"`,
@@ -326,8 +311,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       // solver-issued token containing a registered value (unlikely but
       // defensible) doesn't bypass the egress layer.
       const masked = e.secrets.applyMaskDeep(result);
-      const body = { ...masked, tokensEstimate: estimateTokens(JSON.stringify(masked)) };
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResultWithEstimate(masked);
     },
   );
 
@@ -360,11 +344,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       const bad = accountError(account);
       if (bad) return accountRefusal(credentialsResolved.config.provider, bad);
       const result = await credentialsResolved.provider.getTotp(account);
-      const body = {
-        ...result,
-        tokensEstimate: estimateTokens(JSON.stringify(result)),
-      };
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResultWithEstimate(result);
     },
   );
 
@@ -404,11 +384,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       // `applyCredentialToRegistry` strips `_password` before the result leaves
       // this module — so the response we serialise never contains cleartext.
       const result = applyCredentialToRegistry(raw, e.secrets, account, origins);
-      const body = {
-        ...result,
-        tokensEstimate: estimateTokens(JSON.stringify(result)),
-      };
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResultWithEstimate(result);
     },
   );
 }

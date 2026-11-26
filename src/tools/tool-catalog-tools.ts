@@ -16,6 +16,7 @@ import { z } from "zod";
 import { capabilityMissing, type Capability } from "../util/capabilities.js";
 import { TOOL_CATALOG_TOOL } from "../util/tool-profile.js";
 import type { ConfigHost, RegisterHost, ServerServicesHost } from "./host.js";
+import { jsonResult } from "./json-result.js";
 
 /** Group label for tools that declare no capability (session lifecycle, `batch`, config). */
 export const NO_CAPABILITY = "none";
@@ -88,7 +89,7 @@ export function registerToolCatalogTool(
           tools: groups.get(capability),
         })),
       };
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResult(body);
     },
   );
 }
