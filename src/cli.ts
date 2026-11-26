@@ -80,6 +80,13 @@ Usage: browxai [subcommand]
                                 \`-\` reads the arguments from standard input.
                                 Keep secrets out of the command line: it shows
                                 up in process listings.
+  browxai bridge                an MCP server on stdio that relays every message
+                                to that daemon, so an MCP client drives the
+                                daemon's sessions. Use it as the command of the
+                                client's server entry. --socket <p> or
+                                BROWX_SOCKET, --connect-timeout <ms>. Exit 0
+                                the client closed, 1 internal error, 2 usage,
+                                3 no daemon.
   browxai plugin <sub>          install, remove, list, info, upgrade or sync
                                 plugins. Everything stays in the workspace.
                                 \`browxai plugin help\` lists them.
