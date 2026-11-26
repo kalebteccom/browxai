@@ -1,25 +1,32 @@
 import {
   chmodSync,
   existsSync,
+  fstatSync,
   mkdirSync,
   lstatSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   readlinkSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { basename, join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { codexToml, type ClientSystem, type ServerEntry } from "./init-clients.js";
-import { applyUserConfig, lineDiff, planUserConfig } from "./init-user-config.js";
+import {
+  applyUserConfig,
+  lineDiff,
+  planUserConfig,
+  type UserConfigIo,
+  type UserConfigPlan,
+} from "./init-user-config.js";
 
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
+type AddPlan = Extract<UserConfigPlan, { kind: "add" }>;
 
 const ENTRY: ServerEntry = {
   command: "node",
@@ -280,11 +287,50 @@ describe("planUserConfig", () => {
   });
 });
 
+/** `applyUserConfig` without the flush to disk. These tests read back what was
+ *  written, which the page cache serves. A real flush can take seconds on a busy disk. */
+function apply(plan: AddPlan, io: UserConfigIo = {}): void {
+  applyUserConfig(plan, { sync: () => {}, ...io });
+}
+
 describe("applyUserConfig", () => {
-  it("writes the file and its parent directory, with no temp file left", () => {
+  it("flushes the backup and the new file to disk, each before its rename", () => {
+    const path = join(home, ".cursor", "mcp.json");
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(path, '{ "mcpServers": {} }\n');
+    const plan = planUserConfig("cursor", ENTRY, sys);
+    if (plan.kind !== "add") throw new Error("expected add");
+    const steps: string[] = [];
+    applyUserConfig(plan, {
+      sync: (fd) => {
+        expect(fstatSync(fd).size).toBeGreaterThan(0);
+        steps.push("sync");
+      },
+      rename: (from, to) => {
+        steps.push(`rename ${basename(String(to))}`);
+        renameSync(from, to);
+      },
+    });
+    expect(steps).toEqual(["sync", "rename mcp.json.browxai-bak", "sync", "rename mcp.json"]);
+  });
+
+  // The one test that calls the real fsync. Two flushes ran past 5 s on a loaded
+  // CI disk, so it carries its own timeout.
+  it("replaces an existing file through the real fsync", { timeout: 30_000 }, () => {
+    const path = join(home, ".cursor", "mcp.json");
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(path, '{ "mcpServers": {} }\n');
     const plan = planUserConfig("cursor", ENTRY, sys);
     if (plan.kind !== "add") throw new Error("expected add");
     applyUserConfig(plan);
+    expect(JSON.parse(readFileSync(path, "utf8")).mcpServers.browxai).toEqual(ENTRY);
+    expect(readFileSync(`${path}.browxai-bak`, "utf8")).toBe('{ "mcpServers": {} }\n');
+  });
+
+  it("writes the file and its parent directory, with no temp file left", () => {
+    const plan = planUserConfig("cursor", ENTRY, sys);
+    if (plan.kind !== "add") throw new Error("expected add");
+    apply(plan);
     expect(JSON.parse(readFileSync(plan.path, "utf8")).mcpServers.browxai).toEqual(ENTRY);
     expect(readdirSync(join(home, ".cursor"))).toEqual(["mcp.json"]);
   });
@@ -298,7 +344,7 @@ describe("applyUserConfig", () => {
     const rename = (): void => {
       throw Object.assign(new Error("EROFS: read-only file system"), { code: "EROFS" });
     };
-    expect(() => applyUserConfig(plan, rename)).toThrow(/EROFS/);
+    expect(() => apply(plan, { rename })).toThrow(/EROFS/);
     expect(readFileSync(path, "utf8")).toBe('{ "mcpServers": {} }\n');
     expect(readdirSync(join(home, ".cursor"))).toEqual(["mcp.json"]);
   });
@@ -309,7 +355,7 @@ describe("applyUserConfig", () => {
     writeFileSync(path, '{ "mcpServers": {} }\n');
     const plan = planUserConfig("cursor", ENTRY, sys);
     if (plan.kind !== "add") throw new Error("expected add");
-    applyUserConfig(plan);
+    apply(plan);
     expect(readFileSync(path, "utf8")).toContain('"browxai"');
   });
 
@@ -320,7 +366,7 @@ describe("applyUserConfig", () => {
     chmodSync(path, 0o600);
     const plan = planUserConfig("cursor", ENTRY, sys);
     if (plan.kind !== "add") throw new Error("expected add");
-    applyUserConfig(plan);
+    apply(plan);
     expect(statSync(path).mode & 0o777).toBe(0o600);
     expect(JSON.parse(readFileSync(path, "utf8")).mcpServers.other.env.TOKEN).toBe("x");
   });
@@ -331,7 +377,7 @@ describe("applyUserConfig", () => {
     writeFileSync(path, '{ "mcpServers": {} }\n');
     const plan = planUserConfig("cursor", ENTRY, sys);
     if (plan.kind !== "add") throw new Error("expected add");
-    applyUserConfig(plan);
+    apply(plan);
     expect(readFileSync(`${path}.browxai-bak`, "utf8")).toBe('{ "mcpServers": {} }\n');
     expect(readdirSync(join(home, ".cursor")).sort()).toEqual(["mcp.json", "mcp.json.browxai-bak"]);
   });
@@ -346,7 +392,7 @@ describe("applyUserConfig", () => {
       symlinkSync(other, `${path}.browxai-tmp`);
       const plan = planUserConfig("cursor", ENTRY, sys);
       if (plan.kind !== "add") throw new Error("expected add");
-      applyUserConfig(plan);
+      apply(plan);
       expect(readFileSync(other, "utf8")).toBe("keep me\n");
       expect(JSON.parse(readFileSync(path, "utf8")).mcpServers.browxai).toEqual(ENTRY);
     },
@@ -364,7 +410,7 @@ describe("applyUserConfig", () => {
       symlinkSync(real, link);
       const plan = planUserConfig("cursor", ENTRY, sys);
       if (plan.kind !== "add") throw new Error("expected add");
-      applyUserConfig(plan);
+      apply(plan);
       expect(lstatSync(link).isSymbolicLink()).toBe(true);
       expect(readlinkSync(link)).toBe(real);
       expect(JSON.parse(readFileSync(real, "utf8")).mcpServers.browxai).toEqual(ENTRY);
@@ -382,7 +428,7 @@ describe("applyUserConfig", () => {
     writeFileSync(join(`${path}.browxai-bak`, "x"), "");
     const plan = planUserConfig("cursor", ENTRY, sys);
     if (plan.kind !== "add") throw new Error("expected add");
-    expect(() => applyUserConfig(plan)).toThrow();
+    expect(() => apply(plan)).toThrow();
     expect(readFileSync(path, "utf8")).toBe('{ "mcpServers": {} }\n');
     expect(readdirSync(join(home, ".cursor")).sort()).toEqual(["mcp.json", "mcp.json.browxai-bak"]);
   });
@@ -390,7 +436,7 @@ describe("applyUserConfig", () => {
   it.skipIf(process.platform === "win32")("creates a new file as 0600", () => {
     const plan = planUserConfig("cursor", ENTRY, sys);
     if (plan.kind !== "add") throw new Error("expected add");
-    applyUserConfig(plan);
+    apply(plan);
     expect(statSync(plan.path).mode & 0o777).toBe(0o600);
   });
 
@@ -402,7 +448,7 @@ describe("applyUserConfig", () => {
     chmodSync(path, 0o640);
     const plan = planUserConfig("cursor", ENTRY, sys);
     if (plan.kind !== "add") throw new Error("expected add");
-    applyUserConfig(plan);
+    apply(plan);
     expect(statSync(path).mode & 0o777).toBe(0o640);
     expect(statSync(`${path}.browxai-bak`).mode & 0o777).toBe(0o640);
   });
@@ -411,8 +457,8 @@ describe("applyUserConfig", () => {
     const path = join(home, ".cursor", "mcp.json");
     mkdirSync(join(home, ".cursor"));
     writeFileSync(path, "first\n");
-    applyUserConfig({ kind: "add", path, before: "first\n", after: "second\n" });
-    applyUserConfig({ kind: "add", path, before: "second\n", after: "third\n" });
+    apply({ kind: "add", path, before: "first\n", after: "second\n" });
+    apply({ kind: "add", path, before: "second\n", after: "third\n" });
     expect(readFileSync(path, "utf8")).toBe("third\n");
     expect(readFileSync(`${path}.browxai-bak`, "utf8")).toBe("second\n");
   });
@@ -422,7 +468,7 @@ describe("applyUserConfig", () => {
     mkdirSync(join(home, ".cursor"));
     const bytes = Buffer.from([0xff, 0xfe, 0x00, 0x7b]);
     writeFileSync(path, bytes);
-    applyUserConfig({ kind: "add", path, before: "", after: "{}\n" });
+    apply({ kind: "add", path, before: "", after: "{}\n" });
     expect(readFileSync(`${path}.browxai-bak`).equals(bytes)).toBe(true);
   });
 
@@ -432,7 +478,7 @@ describe("applyUserConfig", () => {
     writeFileSync(path, 'model = "x"\n');
     const plan = planUserConfig("codex", ENTRY, sys);
     if (plan.kind !== "add") throw new Error("expected add");
-    applyUserConfig(plan);
+    apply(plan);
     expect(readFileSync(path, "utf8")).toBe(`model = "x"\n\n${codexToml(ENTRY)}\n`);
     expect(readFileSync(`${path}.browxai-bak`, "utf8")).toBe('model = "x"\n');
   });
@@ -444,7 +490,7 @@ describe("applyUserConfig", () => {
     symlinkSync(missing, link);
     const plan = planUserConfig("cursor", ENTRY, sys);
     if (plan.kind !== "add") throw new Error("expected add");
-    expect(() => applyUserConfig(plan)).toThrow(/symlink to a file that does not exist/);
+    expect(() => apply(plan)).toThrow(/symlink to a file that does not exist/);
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(existsSync(missing)).toBe(false);
     expect(readdirSync(join(home, ".cursor"))).toEqual(["mcp.json"]);
@@ -453,9 +499,7 @@ describe("applyUserConfig", () => {
   it("throws and writes nothing when the config path is a directory", () => {
     const path = join(home, ".cursor", "mcp.json");
     mkdirSync(path, { recursive: true });
-    expect(() => applyUserConfig({ kind: "add", path, before: "", after: "{}\n" })).toThrow(
-      /EISDIR/,
-    );
+    expect(() => apply({ kind: "add", path, before: "", after: "{}\n" })).toThrow(/EISDIR/);
     expect(statSync(path).isDirectory()).toBe(true);
     expect(readdirSync(join(home, ".cursor"))).toEqual(["mcp.json"]);
     expect(readdirSync(path)).toEqual([]);
@@ -464,7 +508,7 @@ describe("applyUserConfig", () => {
   it("throws when the parent path is a file", () => {
     writeFileSync(join(home, ".cursor"), "not a directory");
     const path = join(home, ".cursor", "mcp.json");
-    expect(() => applyUserConfig({ kind: "add", path, before: "", after: "{}\n" })).toThrow();
+    expect(() => apply({ kind: "add", path, before: "", after: "{}\n" })).toThrow();
     expect(readFileSync(join(home, ".cursor"), "utf8")).toBe("not a directory");
   });
 
@@ -477,9 +521,7 @@ describe("applyUserConfig", () => {
       writeFileSync(path, '{ "mcpServers": {} }\n');
       chmodSync(dir, 0o500);
       try {
-        expect(() => applyUserConfig({ kind: "add", path, before: "", after: "{}\n" })).toThrow(
-          /EACCES/,
-        );
+        expect(() => apply({ kind: "add", path, before: "", after: "{}\n" })).toThrow(/EACCES/);
         expect(readFileSync(path, "utf8")).toBe('{ "mcpServers": {} }\n');
         expect(readdirSync(dir)).toEqual(["mcp.json"]);
       } finally {
@@ -497,7 +539,7 @@ describe("applyUserConfig", () => {
       chmodSync(path, 0o400);
       const plan = planUserConfig("cursor", ENTRY, sys);
       if (plan.kind !== "add") throw new Error("expected add");
-      applyUserConfig(plan);
+      apply(plan);
       expect(statSync(path).mode & 0o777).toBe(0o400);
       expect(JSON.parse(readFileSync(path, "utf8")).mcpServers.browxai).toEqual(ENTRY);
     },

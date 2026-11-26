@@ -35,6 +35,7 @@ import {
   reinjectDeviceEmuOnPage,
   DEVICE_EMU_PAGE_SCRIPT,
 } from "./device-emu.js";
+import { BindingGuard, DEFAULT_BUDGETS } from "./binding-guard.js";
 import type { BrowserContext, Page } from "playwright-core";
 
 // ---- fakes ----------------------------------------------------------------
@@ -492,10 +493,17 @@ describe("fs-picker binding handlers", () => {
   async function setupCheck(
     policy: ConstructorParameters<typeof FsPickerPolicyState>[0],
     ask?: FsPickerAskHandler,
+    guard?: BindingGuard,
   ) {
     const state = new FsPickerPolicyState(policy);
     const bindings = new Map<string, Binding>();
-    await attachFsPickerPolicy(fakeContext({ bindings }), state, ws, ask ?? (async () => null));
+    await attachFsPickerPolicy(
+      fakeContext({ bindings }),
+      state,
+      ws,
+      ask ?? (async () => null),
+      guard,
+    );
     const check = bindings.get("__browx_fs_picker_check");
     const write = bindings.get("__browx_fs_picker_write");
     if (!check || !write) throw new Error("bindings not installed");
@@ -679,31 +687,37 @@ describe("fs-picker binding handlers", () => {
   });
 
   it("a write shed over budget truncates the file, and every later op rejects", async () => {
-    const { state, check, write } = await setupCheck({ mode: "allow" });
+    // The guard reads this clock, so the bucket refills only when the test says so.
+    let nowMs = 0;
+    const shedReports: number[] = [];
+    const guard = new BindingGuard({ now: () => nowMs, report: (f) => shedReports.push(f.shed) });
+    const { state, check, write } = await setupCheck({ mode: "allow" }, undefined, guard);
     state.pushResponse("showSaveFilePicker", [{ path: "flood.txt" }]);
     const handleId = (await decide(check, { api: "showSaveFilePicker" })).files[0]!.handleId;
     const source = { page: {} };
     const op = (name: string, data: string | null = null) =>
       JSON.stringify({ handleId, op: name, data });
-    // A writer that does not await each chunk: 1100 one-byte chunks at once.
-    for (let i = 0; i < 1100; i++) {
+    // A writer that does not await each chunk: the burst plus 76 one-byte chunks,
+    // all at the same instant on the clock.
+    const burst = DEFAULT_BUDGETS.write.burst;
+    for (let i = 0; i < burst + 76; i++) {
       try {
         void write(source, op("write", "b64:QQ=="));
       } catch {
         // A chunk admitted after the first shed rejects; the loop does not await.
       }
     }
-    // Wait for a few tokens to refill: this chunk is admitted but follows a gap.
-    await new Promise((r) => setTimeout(r, 120));
+    // 120 ms refills 12 tokens: this chunk is admitted but follows a gap.
+    nowMs += 120;
     const call = (o: string) => Promise.resolve().then(() => write(source, o));
     await expect(call(op("write", "b64:Qg=="))).rejects.toThrow(/dropped/);
     // close finalises the file with what arrived, and still reports the failure.
     await expect(call(op("close"))).rejects.toThrow(/dropped/);
+    // The first chunk over budget was reported, and the file holds the burst exactly.
+    expect(shedReports[0]).toBe(1);
     const body = readFileSync(join(ws, "flood.txt"), "utf8");
     expect(body).toMatch(/^A+$/);
-    // The burst plus whatever refilled while the loop ran, and well short of 1100.
-    expect(body.length).toBeGreaterThanOrEqual(1024);
-    expect(body.length).toBeLessThan(1100);
+    expect(body.length).toBe(burst);
   });
 });
 

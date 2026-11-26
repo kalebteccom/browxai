@@ -16,9 +16,6 @@ import {
 } from "./asset-export.js";
 import { NetworkBuffer, type NetworkEntry } from "./network.js";
 
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
-
 describe("sanitiseAssetFilename", () => {
   it("strips path separators (forward + back)", () => {
     expect(sanitiseAssetFilename("a/b/c.png")).toBe("a_b_c.png");
