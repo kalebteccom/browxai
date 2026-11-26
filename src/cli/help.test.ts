@@ -116,7 +116,7 @@ describe("subcommand usage registry", () => {
   });
 
   it("keeps the shell route usage in 80 columns and warns about the command line", () => {
-    for (const flag of ["--socket", "--connect-timeout"])
+    for (const flag of ["--socket", "--connect-timeout", "--start"])
       expect(usageFor("bridge"), flag).toContain(flag);
     for (const name of ["tools", "call", "bridge"]) {
       for (const line of usageFor(name)!.split("\n")) {

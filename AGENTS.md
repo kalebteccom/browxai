@@ -67,9 +67,9 @@ Safe by default — no auto-broadening. Every off-by-default capability has a pe
 | --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
 | ON by default   | `read`                | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot                  |
 | ON by default   | `navigation`          | navigate (web, `about:blank`, `data:`; other schemes are opt-in), go_back, go_forward, scroll, set_viewport   |
-| ON by default   | `action`              | click, fill, select, drag, hover, press, wait_for, route, set_* emulation                                     |
+| ON by default   | `action`              | click, fill, select, drag, hover, press, wait_for, route (data and static requests), set_* emulation          |
 | ON by default   | `human`               | confirmation hooks, await_human                                                                               |
-| OFF + loud-warn | `eval`                | `eval_js`, `poll_eval` — arbitrary JS in page context                                                         |
+| OFF + loud-warn | `eval`                | `eval_js`, `poll_eval`: arbitrary JS in page context; `route` answering document, script or worker requests   |
 | OFF + loud-warn | `network-body`        | `network_body`, `caches_get` bodies, `start_har` `embed`/`attach`: full response bodies                       |
 | OFF + loud-warn | `byob-attach`         | attach to user's existing Chrome (desktop or Android), or a running desktop Electron app (no managed profile) |
 | OFF             | `clipboard`           | `shortcut` copy/cut/paste writes the OS clipboard (write-only, never read back)                               |

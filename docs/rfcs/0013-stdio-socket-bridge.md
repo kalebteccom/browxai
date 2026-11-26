@@ -1,7 +1,7 @@
 # RFC 0013: A stdio-to-socket bridge for MCP clients
 
 **Date:** 2026-11-26
-**Status:** Accepted. Decisions D1 to D12 are signed off with their recommended defaults. Slice S1 is built: the daemon listing of D2, the relay and the `browxai bridge` subcommand without `--start`, and the socket check of D10, which also covers `browxai call`, `browxai tools` and the SDK's socket transport. Slices S2 and S3 are not built.
+**Status:** Accepted. Decisions D1 to D12 are signed off with their recommended defaults. Slice S1 is built: the daemon listing of D2, the relay and the `browxai bridge` subcommand without `--start`, and the socket check of D10, which also covers `browxai call`, `browxai tools` and the SDK's socket transport. Slice S2 is written: the `init` branch for a run from the app, the `macos-app` reachability detail, the launcher's `login-item start` command and `--start`. Slice S3 is written: the guide, the threat-model rows, the skill note, the README line and the pointer in RFC 0012. Nothing in S2 has run on a Mac. The guide holds the checks the owner runs there.
 **Trigger:** Open question 5 of [RFC 0012](0012-signed-macos-app.md): whether to build the stdio bridge so MCP clients can use the app's daemon.
 
 ## The problem
@@ -65,7 +65,7 @@ The bridge never runs `serve`, never starts a Node daemon of its own and never r
 browxai-launcher login-item start
 ```
 
-That command does not exist today. It would call `launchctl kickstart` for the label `com.kalebtec.browxai.agent` in the user's `gui` domain. It starts nothing when the agent is not registered or is switched off in System Settings, and says so. Outside the app, `--start` exits 2. Whether `kickstart` starts an agent that `SMAppService` registered is unverified until run on a Mac.
+Slice S2 added that command to the launcher. It calls `launchctl kickstart` for the label `com.kalebtec.browxai.agent` in the user's `gui` domain. It checks the agent's `SMAppService` status first, and starts nothing when the agent is not registered or is switched off in System Settings, and says so with exit 2. On a macOS without `SMAppService` it goes to `kickstart` directly. Outside the app, `--start` exits 2. Whether `kickstart` starts an agent that `SMAppService` registered is unverified until run on a Mac.
 
 ## The relay
 

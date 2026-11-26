@@ -309,7 +309,7 @@ Verify on a Mac: that `SMAppService.agent` runs under the app's identity for Loc
 ## How MCP clients connect
 
 - **Shell and SDK.** `browxai call` and `browxai tools` (RFC 0011) and the SDK's `createBrowxai({ endpoint: "unix://..." })` connect to the socket. These commands never look for a socket (`src/cli/shell-connect.ts`), so the `Resources/bin/browxai` wrapper sets `BROWX_SOCKET` to the app's path when the variable is unset.
-- **MCP clients that spawn a stdio server** (Claude Desktop, Cursor and others) start `browxai` and talk over its standard input. That process is its own server with its own session registry. **No stdio-to-socket bridge exists today.** An MCP client that wants the app's daemon needs one, which is a new subcommand. It is a follow-up and not part of the four slices below. Until then, the app's daemon serves the shell route, the SDK, the operator channel and live view, and a stdio client keeps running its own browxai process as it does today.
+- **MCP clients that spawn a stdio server** (Claude Desktop, Cursor and others) start `browxai` and talk over its standard input. That process is its own server with its own session registry. `browxai bridge` connects such a client to the app's daemon: it speaks MCP on stdio and relays every message to the socket. It is specified in [RFC 0013](0013-stdio-socket-bridge.md) and was not part of the four slices below. The client's entry is the app's `browxai` command with the one argument `bridge`, and `browxai init` writes that entry when it runs from the app. `bridge --start` asks the launcher's `login-item start` command to start a registered agent that is stopped. A bare `browxai` in a client's entry still starts a server of its own.
 
 ## npm and the app side by side
 

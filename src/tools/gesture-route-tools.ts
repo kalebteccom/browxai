@@ -7,6 +7,8 @@ import type {
   ToolResponse,
 } from "./host.js";
 import type { RouteResult, UnrouteResult } from "../page/network-substrate.js";
+import { executableContentTypeReason, isExecutableContentType } from "../page/fulfil-policy.js";
+import { errorResult, jsonResult } from "./json-result.js";
 
 /**
  * Request route-mocking tools: route / route_queue / unroute. Per-session canned
@@ -28,42 +30,56 @@ export function registerGestureRouteTools(
 ): void {
   const { z, register, gateCheck, subInterfaceGate, entryFor } = host;
 
-  /** The one renderer for both outcomes. Success is the pre-seam body verbatim —
-   *  `{ok:true, …, active}` — and a refusal is the shared engine-refusal envelope
-   *  (`{ok, error, engine, hint}`), so a caller classifies "this engine cannot" by
-   *  the same shape it does everywhere else. */
+  /** The one renderer for both outcomes. Success is `{ok:true, …, active}`, and
+   *  a refusal is the shared engine-refusal envelope (`{ok, error, engine, hint}`),
+   *  so a caller classifies "this engine cannot" by the same shape it does
+   *  everywhere else. */
   const routeText = (r: RouteResult | UnrouteResult): ToolResponse => {
-    const body =
-      r.kind === "refusal"
-        ? { ok: false, error: r.error, engine: r.engine, hint: r.hint }
-        : r.kind === "installed"
-          ? {
-              ok: true,
-              key: r.key,
-              ...(r.queued !== undefined ? { queued: r.queued } : {}),
-              active: r.active,
-            }
-          : { ok: true, removed: r.removed, active: r.active };
-    return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    if (r.kind === "refusal") {
+      return jsonResult({ ok: false, error: r.error, engine: r.engine, hint: r.hint });
+    }
+    const skipped =
+      r.skippedExecutable !== undefined ? { skippedExecutable: r.skippedExecutable } : {};
+    if (r.kind === "removed") {
+      return jsonResult({ ok: true, removed: r.removed, ...skipped, active: r.active });
+    }
+    return jsonResult({
+      ok: true,
+      key: r.key,
+      ...(r.queued !== undefined ? { queued: r.queued } : {}),
+      fulfils: r.fulfils,
+      ...skipped,
+      active: r.active,
+    });
   };
 
-  const errText = (err: unknown): ToolResponse => ({
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          { ok: false, error: err instanceof Error ? err.message : String(err) },
-          null,
-          2,
-        ),
-      },
-    ],
-  });
+  /** The capability arm both install tools share. A canned response the page
+   *  would run is `eval`'s to give, so: a document or script `contentType` is
+   *  refused here, at install, with the standard capability envelope; and
+   *  `allowExecutable` tells the substrate whether the route may answer a
+   *  document, script or worker request at all. Both read `eval` through
+   *  `gateCheck`, the one place a tool file asks about a capability. */
+  const fulfilGate = (
+    tool: string,
+    contentTypes: ReadonlyArray<string | undefined>,
+  ): { refusal: ToolResponse } | { allowExecutable: boolean } => {
+    const executable = contentTypes.find(isExecutableContentType);
+    if (executable !== undefined) {
+      const refusal = gateCheck(tool, ["eval"], executableContentTypeReason(executable));
+      if (refusal) return { refusal };
+    }
+    return { allowExecutable: gateCheck(tool, ["eval"]) === null };
+  };
 
   const ROUTE_RESPONSE = {
     status: z.number().int().optional().describe("HTTP status (default 200)."),
     body: z.string().optional().describe("Response body (default empty)."),
-    contentType: z.string().optional().describe("Content-Type (default application/json)."),
+    contentType: z
+      .string()
+      .optional()
+      .describe(
+        "Content-Type (default application/json). An HTML, XHTML, SVG or JavaScript type needs the `eval` capability.",
+      ),
     delayMs: z
       .number()
       .int()
@@ -78,7 +94,7 @@ export function registerGestureRouteTools(
     {
       capability: "action",
       description:
-        "Intercept requests matching `urlPattern` (a Playwright glob) and answer every match with one canned response, to stand in for a backend in QA. Use `route_queue` for different responses per request and `unroute` to remove a route. Per session; dropped when the session closes.",
+        "Intercept requests matching `urlPattern` (a Playwright glob) and answer every match with one canned response, to stand in for a backend in QA. It answers data and static requests (xhr, fetch, eventsource, image, media, font, stylesheet, texttrack, manifest); a matching document, script or worker request goes to the real network unless the server has the `eval` capability (the result's `fulfils` says which applies). Use `route_queue` for different responses per request and `unroute` to remove a route. Per session; dropped when the session closes.",
       inputSchema: {
         urlPattern: z.string().describe("Playwright URL glob, e.g. `**/api/records*`."),
         method: z
@@ -94,6 +110,8 @@ export function registerGestureRouteTools(
     async ({ urlPattern, method, status, body, contentType, delayMs, session }) => {
       const g = gateCheck("route");
       if (g) return g;
+      const fg = fulfilGate("route", [contentType]);
+      if ("refusal" in fg) return fg.refusal;
       const e = await entryFor(session);
       const sg = subInterfaceGate("route", "network", e);
       if (sg) return sg;
@@ -106,10 +124,11 @@ export function registerGestureRouteTools(
             body,
             contentType,
             delayMs,
+            allowExecutable: fg.allowExecutable,
           }),
         );
       } catch (err) {
-        return errText(err);
+        return errorResult(err);
       }
     },
   );
@@ -119,7 +138,7 @@ export function registerGestureRouteTools(
     {
       capability: "action",
       description:
-        "Intercept `urlPattern` and answer successive matches from `responses[]` (one per request, in order); once the list is used up, matches go to the real network. Each response has its own `delayMs`: give the first a long delay and the second a short one to make responses arrive out of request order (the race-condition case). Use `route` for one fixed response. Per session.",
+        "Intercept `urlPattern` and answer successive matches from `responses[]` (one per request, in order); once the list is used up, matches go to the real network. Each response has its own `delayMs`: give the first a long delay and the second a short one to make responses arrive out of request order (the race-condition case). Like `route`, it answers data and static requests only unless the server has `eval`, and a match it leaves to the network consumes no entry. Use `route` for one fixed response. Per session.",
       inputSchema: {
         urlPattern: z.string().describe("Playwright URL glob, such as `**/api/records*`."),
         method: z
@@ -136,13 +155,25 @@ export function registerGestureRouteTools(
     async ({ urlPattern, method, responses, session }) => {
       const g = gateCheck("route_queue");
       if (g) return g;
+      const fg = fulfilGate(
+        "route_queue",
+        responses.map((r) => r.contentType),
+      );
+      if ("refusal" in fg) return fg.refusal;
       const e = await entryFor(session);
       const sg = subInterfaceGate("route_queue", "network", e);
       if (sg) return sg;
       try {
-        return routeText(await e.networkSubstrate.route({ urlPattern, method, responses }));
+        return routeText(
+          await e.networkSubstrate.route({
+            urlPattern,
+            method,
+            responses,
+            allowExecutable: fg.allowExecutable,
+          }),
+        );
       } catch (err) {
-        return errText(err);
+        return errorResult(err);
       }
     },
   );
@@ -152,7 +183,7 @@ export function registerGestureRouteTools(
     {
       capability: "action",
       description:
-        "Remove a route added by `route` or `route_queue`, by `urlPattern` (and `method`). With no `urlPattern` it removes every route this session added.",
+        "Remove a route added by `route` or `route_queue`, by `urlPattern` (and `method`). With no `urlPattern` it removes every route this session added. `skippedExecutable` in the result counts the document, script and worker requests the removed routes left to the real network.",
       inputSchema: {
         urlPattern: z.string().optional().describe("Omit to clear ALL of this session's routes."),
         method: z
@@ -171,7 +202,7 @@ export function registerGestureRouteTools(
       try {
         return routeText(await e.networkSubstrate.unroute({ urlPattern, method }));
       } catch (err) {
-        return errText(err);
+        return errorResult(err);
       }
     },
   );
