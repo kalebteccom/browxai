@@ -8,13 +8,13 @@
 // standard error. With a name it prints that tool's full description and input schema
 // from this install's own registration table, with no daemon needed.
 
-import { z } from "zod";
 import { collectToolMetadata } from "../tools/tool-metadata.js";
 import type { ToolRegistration } from "../tools/host.js";
 import { parseToolsArgs } from "./shell-args.js";
 import { connectDaemon, DaemonUnreachableError } from "./shell-connect.js";
 import { processIo, settle, type ShellIo } from "./shell-io.js";
-import { CAPABILITY_META_KEY, toolRow, type ToolRow } from "./serve-listing.js";
+import { CAPABILITY_META_KEY, inputSchemaOf, toolRow, type ToolRow } from "./serve-listing.js";
+import { summaryOf } from "../tools/tool-catalog-tools.js";
 import { EXIT, type ExitCode } from "./shell-result.js";
 
 /** Printed for `browxai tools --help` (exit 0, from `cli.ts`) and to standard error
@@ -49,7 +49,8 @@ function localRows(): ToolRow[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** The rows a daemon's `tools/list` reports, by name. */
+/** The rows a daemon's `tools/list` reports, by name. The daemon lists each tool's full
+ *  description, and a row shows its first sentence. */
 async function daemonRows(socket: string | undefined): Promise<ToolRow[]> {
   const client = await connectDaemon(socket);
   try {
@@ -60,7 +61,7 @@ async function daemonRows(socket: string | undefined): Promise<ToolRow[]> {
         return {
           name: tool.name,
           capability: typeof capability === "string" ? capability : "unknown",
-          description: tool.description ?? "",
+          description: summaryOf(tool.description ?? ""),
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -78,20 +79,6 @@ export function formatRows(rows: readonly ToolRow[]): string {
     (r) => `${r.name.padEnd(nameWidth)}  ${r.capability.padEnd(capWidth)}  ${r.description}`,
   );
   return `${lines.join("\n")}\n`;
-}
-
-/** A tool's input schema as JSON Schema, or undefined when it cannot be converted. */
-function inputSchemaOf(reg: ToolRegistration): Record<string, unknown> | undefined {
-  try {
-    const shape = reg.inputSchema ?? {};
-    const schema: Record<string, unknown> = {
-      ...z.toJSONSchema(z.object(shape), { unrepresentable: "any", io: "input" }),
-    };
-    delete schema.$schema;
-    return schema;
-  } catch {
-    return undefined;
-  }
 }
 
 /** The text `browxai tools NAME` prints. */

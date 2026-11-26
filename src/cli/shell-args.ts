@@ -1,9 +1,9 @@
-// Argument parsing for `browxai call` and `browxai tools`. Pure: nothing here reads a
+// Argument parsing for `browxai call`, `browxai tools` and `browxai bridge`. Pure: nothing here reads a
 // file, the environment or standard input. The caller passes the environment in, and
 // `shell-input.ts` turns the parsed values into a JSON object.
 
-/** Where `browxai call` and `browxai tools` look for the daemon's socket when no
- *  `--socket` is given. There is no default path and no search. */
+/** Where `browxai call`, `browxai tools` and `browxai bridge` look for the daemon's
+ *  socket when no `--socket` is given. There is no default path and no search. */
 export const SOCKET_ENV = "BROWX_SOCKET";
 /** The session id `browxai call` adds to the arguments when neither `--session` nor
  *  the arguments carry one. */
@@ -178,6 +178,42 @@ export function parseToolsArgs(
       name,
       socket: clean(values.get("--socket")) ?? clean(env[SOCKET_ENV]),
       json: bools.has("--json"),
+    },
+  };
+}
+
+/** How long `browxai bridge` waits at start for a daemon to answer on the socket, in
+ *  milliseconds, by default. */
+export const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
+
+export interface BridgeArgs {
+  readonly socket: string | undefined;
+  /** How long to keep trying the socket at start. 0 tries once. */
+  readonly connectTimeoutMs: number;
+}
+
+const BRIDGE_FLAGS: FlagSpec = { values: ["--socket", "--connect-timeout"], bools: [] };
+
+/** Parse the arguments after `bridge`. */
+export function parseBridgeArgs(
+  args: readonly string[],
+  env: Readonly<Record<string, string | undefined>>,
+): Parsed<BridgeArgs> {
+  const split = splitArgs(args, BRIDGE_FLAGS);
+  if (!split.ok) return split;
+  const { values, positionals } = split.value;
+  // The text is not echoed: a client that put its input here would print it.
+  if (positionals.length > 0) return { ok: false, message: "bridge takes flags only" };
+  const raw = values.get("--connect-timeout");
+  if (raw !== undefined && !/^\d+$/.test(raw)) {
+    return { ok: false, message: "--connect-timeout takes whole milliseconds (0 tries once)" };
+  }
+  return {
+    ok: true,
+    value: {
+      socket: clean(values.get("--socket")) ?? clean(env[SOCKET_ENV]),
+      connectTimeoutMs:
+        raw === undefined ? DEFAULT_CONNECT_TIMEOUT_MS : Math.min(Number(raw), MAX_TIMEOUT_MS),
     },
   };
 }

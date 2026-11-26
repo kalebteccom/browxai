@@ -160,7 +160,7 @@ This item had no number because it needed a decision before it needed work. The 
   5. The manual macOS app section of `RELEASING.md`. Written, unverified until built and run on a Mac.
 - **Done.** A notarized zip that passes `verify-app.sh`, a cask install that opens with no Gatekeeper warning, and a second build whose designated requirement equals the first.
 - **First PR.** Slice 1, docs and scripts only. Slice 2 followed as sources and a build script that the owner builds on a Mac.
-- **Follow-up.** MCP clients start a stdio server of their own and do not reach the app's daemon. RFC 0013 (`docs/rfcs/0013-stdio-socket-bridge.md`) proposes a stdio-to-socket bridge for them. It is a design waiting for sign-off, with nothing built.
+- **Follow-up.** MCP clients start a stdio server of their own and do not reach the app's daemon. RFC 0013 (`docs/rfcs/0013-stdio-socket-bridge.md`) specifies a stdio-to-socket bridge for them, and it is accepted. Its first slice is built: `browxai bridge` relays an MCP client's stdio to a `serve --socket` daemon. The `init` and `doctor` changes, the `--start` flag and the setup guide are not built.
 
 ## Not planned
 

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_CONNECT_TIMEOUT_MS,
   DEFAULT_MAX_CHARS,
   DEFAULT_TIMEOUT_MS,
   MAX_TIMEOUT_MS,
+  parseBridgeArgs,
   parseCallArgs,
   parseToolsArgs,
   SESSION_ENV,
@@ -151,5 +153,47 @@ describe("parseToolsArgs", () => {
     const parsed = parseToolsArgs(args, {});
     expect(parsed.ok).toBe(false);
     if (!parsed.ok) expect(parsed.message).toContain(message);
+  });
+});
+
+describe("parseBridgeArgs", () => {
+  it("takes --socket and --connect-timeout, and waits 15 seconds by default", () => {
+    expect(DEFAULT_CONNECT_TIMEOUT_MS).toBe(15_000);
+    expect(parseBridgeArgs(["--socket", "/tmp/b.sock"], {})).toEqual({
+      ok: true,
+      value: { socket: "/tmp/b.sock", connectTimeoutMs: 15_000 },
+    });
+    expect(parseBridgeArgs(["--socket=/tmp/b.sock", "--connect-timeout", "0"], {})).toEqual({
+      ok: true,
+      value: { socket: "/tmp/b.sock", connectTimeoutMs: 0 },
+    });
+  });
+
+  it("falls back to BROWX_SOCKET, and the flag wins", () => {
+    const env = { [SOCKET_ENV]: "/tmp/env.sock" };
+    expect(parseBridgeArgs([], env)).toMatchObject({ value: { socket: "/tmp/env.sock" } });
+    expect(parseBridgeArgs(["--socket", "/tmp/flag.sock"], env)).toMatchObject({
+      value: { socket: "/tmp/flag.sock" },
+    });
+    expect(parseBridgeArgs([], {})).toMatchObject({ ok: true, value: { socket: undefined } });
+  });
+
+  it("rejects an unknown flag, a flag with no value and a timeout that is not a number", () => {
+    expect(parseBridgeArgs(["--start"], {})).toEqual({
+      ok: false,
+      message: 'unknown argument "--start"',
+    });
+    expect(parseBridgeArgs(["--socket"], {})).toEqual({
+      ok: false,
+      message: "--socket needs a value",
+    });
+    expect(parseBridgeArgs(["--connect-timeout", "soon"], {}).ok).toBe(false);
+    expect(parseBridgeArgs(["--connect-timeout", "-5"], {}).ok).toBe(false);
+  });
+
+  it("takes no positional argument and never echoes one", () => {
+    const parsed = parseBridgeArgs(['{"password":"hunter2"}'], {});
+    expect(parsed.ok).toBe(false);
+    expect(JSON.stringify(parsed)).not.toContain("hunter2");
   });
 });

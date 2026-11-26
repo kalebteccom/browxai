@@ -1,10 +1,13 @@
-// What the daemon's `tools/list` says about each tool: a real one-line description and
-// the capability the tool needs, so `browxai tools` can print both without a second
-// source. The description is the first sentence of the one the tool registered with,
-// and the capability is the one the call-time gate reads. A tool with no registration
-// record is a plugin tool: its own description and capability stay inside the plugin
-// runtime, so it is listed with a fixed line and the `plugin` label.
+// What the daemon's `tools/list` says about each tool: the full description, the real
+// input schema and the capability the tool needs. An MCP client behind `browxai bridge`
+// reads the description and the schema as it would from the stdio server, and
+// `browxai tools` prints the name, the capability and the first sentence. All three
+// come from the tool's registration record, and the capability is the one the call-time
+// gate reads. A tool with no registration record is a plugin tool: its own description,
+// schema and capability stay inside the plugin runtime, so it is listed with a fixed
+// line, an open schema and the `plugin` label.
 
+import { z } from "zod";
 import { NO_CAPABILITY, PLUGIN_GROUP, summaryOf } from "../tools/tool-catalog-tools.js";
 import type { ToolRegistration } from "../tools/host.js";
 
@@ -31,14 +34,34 @@ export function toolRow(name: string, reg: ToolRegistration | undefined): ToolRo
   };
 }
 
-/** The `tools/list` entry for one tool. The input schema stays open: the handler
- *  validates, and a closed schema would strip arguments on this path. */
+/** The schema listed when a tool has none to show: any object. */
+const OPEN_SCHEMA = { type: "object" as const, additionalProperties: true };
+
+/** A tool's input schema as JSON Schema, or undefined when it cannot be converted. */
+export function inputSchemaOf(reg: ToolRegistration): Record<string, unknown> | undefined {
+  try {
+    const shape = reg.inputSchema ?? {};
+    const schema: Record<string, unknown> = {
+      ...z.toJSONSchema(z.object(shape), { unrepresentable: "any", io: "input" }),
+    };
+    delete schema.$schema;
+    return schema;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The `tools/list` entry for one tool: its full description, its input schema and its
+ *  capability in `_meta`. The schema describes the arguments and does not filter them:
+ *  the daemon's `tools/call` handler passes the arguments through as sent, and the
+ *  tool's own handler validates. A plugin tool, or a schema that cannot be converted,
+ *  is listed with an open schema. */
 export function listedTool(name: string, reg: ToolRegistration | undefined) {
-  const row = toolRow(name, reg);
+  const schema = reg === undefined ? undefined : inputSchemaOf(reg);
   return {
     name,
-    description: row.description,
-    inputSchema: { type: "object" as const, additionalProperties: true },
-    _meta: { [CAPABILITY_META_KEY]: row.capability },
+    description: reg === undefined ? PLUGIN_TOOL_SUMMARY : reg.description,
+    inputSchema: schema === undefined ? OPEN_SCHEMA : { ...schema, type: "object" as const },
+    _meta: { [CAPABILITY_META_KEY]: toolRow(name, reg).capability },
   };
 }
