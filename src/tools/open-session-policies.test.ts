@@ -44,3 +44,34 @@ describe("resolveOpenSessionPolicies — HAR bodies", () => {
     expect(asked.flat()).not.toContain("network-body");
   });
 });
+
+// Seeding a new session changes what its pages see, as `inject_storage_state`
+// and `route` do, so a server without `action` refuses those arguments.
+describe("resolveOpenSessionPolicies — state seeding", () => {
+  const refusal = (r: ReturnType<typeof resolveOpenSessionPolicies>) => {
+    expect(r.ok).toBe(false);
+    return r.ok ? undefined : JSON.parse((r.response.content[0] as { text: string }).text);
+  };
+
+  it.each([
+    ["storageState", { storageState: true, hars: false }],
+    ["hars", { storageState: false, hars: true }],
+  ] as const)("refuses %s without action", (_name, seeds) => {
+    const { gateCheck } = gate(["read", "navigation", "human"]);
+    const body = refusal(resolveOpenSessionPolicies(gateCheck, "s", undefined, { seeds }));
+    expect(body.requiredCapability).toBe("action");
+  });
+
+  it("allows both with action", () => {
+    const { gateCheck } = gate(["read", "action"]);
+    const seeds = { storageState: true, hars: true };
+    expect(resolveOpenSessionPolicies(gateCheck, "s", undefined, { seeds }).ok).toBe(true);
+  });
+
+  it("asks nothing when the call seeds nothing", () => {
+    const { gateCheck, asked } = gate(["read"]);
+    const seeds = { storageState: false, hars: false };
+    expect(resolveOpenSessionPolicies(gateCheck, "s", undefined, { seeds }).ok).toBe(true);
+    expect(asked.flat()).not.toContain("action");
+  });
+});
