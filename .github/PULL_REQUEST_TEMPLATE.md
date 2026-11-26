@@ -17,7 +17,7 @@ What this changes and **why** (the why matters more than the what).
 
 ## UI and copy
 
-- [ ] ui-rules checked: yes, <what was checked> (docs/ui-rules.md), or n/a (no UI or copy change)
+- [ ] ui-rules checked: yes, <what was checked>; unchecked: <what was not>, or `ui-rules checked: n/a docs only` (see docs/ui-rules.md, "PR line")
 
 ## Checklist
 

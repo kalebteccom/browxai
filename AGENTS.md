@@ -163,6 +163,16 @@ The single index of every check is
 A guardrail is relaxed only via an RFC amendment, never an inline disable. The
 PR-time `architecture-fitness-auditor` agent re-runs the suite against the diff.
 
+## UI and copy rules
+
+Any change to `website/`, the README, published docs or user-visible strings follows [`docs/ui-rules.md`](docs/ui-rules.md). The rules in short:
+
+- Flat look, `--space-*` tokens, 44px tap targets, visible `:focus-visible`, transitions on `transform` and `opacity` only with a reduced-motion substitution, no horizontal scroll at 320px.
+- Plain copy. No em dashes, no "rather than" or "not just", no operator detail on public pages. A copy change updates every locale.
+- The "Design engineering checks" table in `docs/ui-rules.md` has 14 rows with stable ids (M1, A3, S7 and so on). Cite the row id in a PR or review.
+- Verify at 390 and 1280, light and dark, every shipped locale, each touched page plus the home page. Name anything not captured as unchecked. Captures stay outside the repo.
+- Every PR body carries `ui-rules checked: yes, <what was checked>` (with an `unchecked:` list), or `ui-rules checked: n/a docs only`. A UI or copy PR without it is sent back.
+
 ## Workspace + paths
 
 All file IO is `$BROWX_WORKSPACE`-rooted, never `cwd`. The chokepoint is `resolveWorkspacePath` in `src/util/workspace.ts`. The no-trace contract (recorded session artifacts leave no trace outside the workspace) is enforced by tests in `src/util/no-trace.test.ts`. Any new code path that touches the filesystem MUST go through `resolveWorkspacePath`.
