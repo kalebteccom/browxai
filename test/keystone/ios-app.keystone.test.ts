@@ -220,9 +220,16 @@ describe("ios-app keystone — the native-device capability gate", () => {
       try {
         const opened = await gated.handlers
           .open_session({ session: "ios-gated" })
-          .then((r) => JSON.parse((r.content[0] as { text: string }).text) as { ok?: boolean })
+          .then(
+            (r) =>
+              JSON.parse((r.content[0] as { text: string }).text) as {
+                ok?: boolean;
+                requiredCapability?: string;
+              },
+          )
           .catch((err: unknown) => ({ ok: false, error: String(err) }));
         expect(opened.ok, JSON.stringify(opened)).not.toBe(true);
+        expect(opened).toMatchObject({ requiredCapability: "native-device" });
         expect(JSON.stringify(opened)).toMatch(/native-device/);
         // And it refuses at SESSION CREATION, so nothing was booted, installed or
         // launched before the gate ran.

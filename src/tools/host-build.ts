@@ -19,6 +19,7 @@ import type { RefRegistry } from "../page/refs.js";
 import { touchAttachLease } from "../session/attach-pool.js";
 import { clampTimeout, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
 import { jsonResultWithEstimate } from "./json-result.js";
+import { engineCapabilityRefusal } from "./engine-capability-gate.js";
 import { invariant } from "../util/invariant.js";
 import type { Workspace } from "../util/workspace.js";
 import { type DiagnosticsRecorder } from "../util/diagnostics.js";
@@ -498,7 +499,9 @@ export function buildHost(deps: HostDeps): ToolHost {
           return await handler(args);
         } catch (err) {
           const refusal =
-            askHumanProfileRefusal(gateCheck, err) ?? byobAttachRefusal(gateCheck, err);
+            askHumanProfileRefusal(gateCheck, err) ??
+            byobAttachRefusal(gateCheck, err) ??
+            engineCapabilityRefusal(gateCheck, err);
           if (refusal) return refusal;
           throw err;
         }

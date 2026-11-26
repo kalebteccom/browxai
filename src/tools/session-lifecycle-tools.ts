@@ -9,6 +9,7 @@ import {
 import { askHumanProfileRefusal } from "./ask-human-gate.js";
 import { byobAttachRefusal } from "./byob-attach-gate.js";
 import { resolveOpenSessionPolicies } from "./open-session-policies.js";
+import { engineCapabilityRefusal } from "./engine-capability-gate.js";
 import { isValidProfileName, PROFILE_NAME_RULE } from "../util/profile-name.js";
 import { openSessionPrecheck } from "./open-session-precheck.js";
 import type {
@@ -106,10 +107,12 @@ export function registerSessionLifecycleTools(
   host: RegisterHost & GateHost & SessionHost & ServerServicesHost & TargetHost,
 ): void {
   const { z, register, registry, targetFor, gateCheck } = host;
-  // Session creation throws these two gate errors; open_session reports them
+  // Session creation throws these three gate errors; open_session reports them
   // in the standard capability-refusal shape.
   const gateRefusalFor = (err: unknown) =>
-    askHumanProfileRefusal(gateCheck, err) ?? byobAttachRefusal(gateCheck, err);
+    askHumanProfileRefusal(gateCheck, err) ??
+    byobAttachRefusal(gateCheck, err) ??
+    engineCapabilityRefusal(gateCheck, err);
 
   register(
     "open_session",

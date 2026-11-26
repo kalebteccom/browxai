@@ -94,13 +94,17 @@ describe("android-app capability gate — the refusal RFC 0008 §8 requires", ()
         });
         const body = JSON.parse((res.content[0] as { text: string }).text) as {
           ok?: boolean;
-          error?: string;
+          requiredCapability?: string;
+          reason?: string;
+          hint?: string;
         };
         expect(body.ok).toBe(false);
-        expect(body.error).toMatch(/native-device/);
+        // The standard gate refusal, so a caller reads the capability by field.
+        expect(body.requiredCapability).toBe("native-device");
         // The refusal names the capability AND how to grant it, so the fix is in
-        // the error.
-        expect(body.error).toMatch(/BROWX_CAPABILITIES/);
+        // the result.
+        expect(body.reason).toMatch(/native-device/);
+        expect(body.hint).toMatch(/BROWX_CAPABILITIES/);
       } finally {
         await server.shutdown().catch(() => undefined);
       }
