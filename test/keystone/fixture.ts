@@ -514,6 +514,38 @@ const WORKERS_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+// Secret-cut keystone — page text longer than its caps. `#tok` is a plain text
+// input (no placeholder, no aria-label), so the DOM walk names it by its value;
+// `#hidden-tok` sits under aria-hidden, so only the DOM walk sees it. `#post`
+// sends the worker a message with `#tok`'s value at offset 3,990, and the
+// worker posts it straight back into the page-side ring.
+const SECRET_CUT_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>secret cut</title>
+<style>
+  #tok { position: absolute; left: 10px; top: 10px; width: 300px; height: 30px; }
+  #hidden-wrap { position: absolute; left: 10px; top: 60px; }
+  #post { position: absolute; left: 10px; top: 110px; }
+</style></head>
+<body>
+<input id="tok" type="text" />
+<div id="hidden-wrap" aria-hidden="true"><input id="hidden-tok" type="text" /></div>
+<button id="post" type="button" onclick="post()">post</button>
+<output id="worker-state">idle</output>
+<script>
+  var src = "self.addEventListener('message', function (ev) { self.postMessage(ev.data); });";
+  var w = new Worker(URL.createObjectURL(new Blob([src], { type: "application/javascript" })));
+  w.addEventListener("message", function () {
+    document.getElementById("worker-state").textContent = "echoed";
+  });
+  function post() {
+    var v = document.getElementById("tok").value;
+    w.postMessage(new Array(3991).join("x") + v + new Array(101).join("y"));
+  }
+</script>
+</body>
+</html>`;
+
 // Service-worker keystone — the page registers `/sw.js` (scope `/`), and once
 // the worker is active posts it "ping". The worker answers the sender with
 // "pong:ping" through `client.postMessage`; the page's own `message` listener
@@ -1370,6 +1402,11 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/workers-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(WORKERS_PAGE);
+      return;
+    }
+    if (u.pathname === "/secret-cut-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(SECRET_CUT_PAGE);
       return;
     }
     if (u.pathname === "/sw-page") {
