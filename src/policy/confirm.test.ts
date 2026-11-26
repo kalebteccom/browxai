@@ -8,7 +8,8 @@ import {
 } from "./confirm.js";
 import { resolveOriginPolicy, type OriginPolicy } from "./origin.js";
 import { BrowxBridge } from "../helper/bridge.js";
-import { log } from "../util/logging.js";
+import { log, setLogMask } from "../util/logging.js";
+import { SecretRegistry } from "../util/secrets.js";
 
 const NO_POLICY: OriginPolicy = { allowed: [], blocked: [] };
 
@@ -391,5 +392,92 @@ describe("confirmLanding", () => {
       }),
     );
     expect(decision.ok).toBe(true);
+  });
+});
+
+describe("confirm log lines: URL redaction and the log mask", () => {
+  const TOKEN = "tok-9f8e7d6c";
+  let written: string[];
+
+  beforeEach(() => {
+    const secrets = new SecretRegistry();
+    // Registered before stderr is captured: the first registration logs a warning.
+    const quiet = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    secrets.register({ name: "TOKEN", value: TOKEN });
+    quiet.mockRestore();
+    setLogMask((text) => secrets.applyMaskInText(text));
+    written = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
+      written.push(String(chunk));
+      return true;
+    });
+  });
+
+  afterEach(() => {
+    setLogMask(null);
+    vi.restoreAllMocks();
+  });
+
+  const offAllowlist = resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://on.example" });
+
+  it("a navigate with no hook logs the URL without its query, and masks a registered value in the path", async () => {
+    const decision = await confirmNavigation(
+      `https://off.example/reset/${TOKEN}?next=${TOKEN}&session=abc123#frag-${TOKEN}`,
+      ctx({ hooks: new Set(), isByob: false, policy: offAllowlist }),
+    );
+    expect(decision.ok).toBe(true);
+    expect(written).toHaveLength(1);
+    expect(written[0]).toContain(
+      "warn browxai: navigate: https://off.example/reset/<TOKEN>?…#… is off the allowed-origins list",
+    );
+    expect(written[0]).not.toContain(TOKEN);
+    expect(written[0]).not.toContain("abc123");
+  });
+
+  it("a blocked-origin navigate logs the URL without userinfo", async () => {
+    const userinfo = ["user", TOKEN].join(":");
+    await confirmNavigation(
+      `https://${userinfo}@ads.example.com/banner?id=7`,
+      ctx({
+        hooks: new Set(),
+        isByob: false,
+        policy: resolveOriginPolicy({ BROWX_BLOCKED_ORIGINS: "https://ads.example.com" }),
+      }),
+    );
+    expect(written).toHaveLength(1);
+    expect(written[0]).toContain(
+      'navigate: https://ads.example.com/banner?… is blocked by BROWX_BLOCKED_ORIGINS entry "https://ads.example.com"',
+    );
+    expect(written[0]).not.toContain(TOKEN);
+    expect(written[0]).not.toContain("user");
+  });
+
+  it("the confirm-hook prompt line is redacted and masked, and the operator still gets the full URL", async () => {
+    const ask = vi.fn(async () => ({ decision: "approve" as const }));
+    const bridge = new BrowxBridge({ operator: { ask, close: () => undefined }, sessionId: "a" });
+    const url = `https://off.example/reset/${TOKEN}?next=${TOKEN}`;
+    const decision = await confirmNavigation(
+      url,
+      ctx({ bridge, isByob: false, policy: offAllowlist }),
+    );
+    expect(decision).toEqual({ ok: true, reason: "human-approved", asked: true });
+    const line = written.find((w) => w.includes("confirm navigate (off-allowlist)"));
+    expect(line).toBeDefined();
+    expect(line).toContain(
+      "info browxai: confirm navigate (off-allowlist): https://off.example/reset/<TOKEN>?… → ",
+    );
+    expect(written.join("")).not.toContain(TOKEN);
+    const req = (ask.mock.calls[0] as unknown as [{ prompt: { summary: string } }])[0];
+    expect(req.prompt.summary).toContain(url);
+  });
+
+  it("with no mask installed the same line still has no query value", async () => {
+    setLogMask(null);
+    await confirmNavigation(
+      "https://off.example/reset?token=abc123",
+      ctx({ hooks: new Set(), isByob: false, policy: offAllowlist }),
+    );
+    expect(written[0]).toContain("navigate: https://off.example/reset?… is off");
+    expect(written[0]).not.toContain("abc123");
   });
 });

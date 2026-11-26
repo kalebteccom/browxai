@@ -48,6 +48,15 @@ export function maskToolResponse<T extends ToolResponse>(
   return changed ? { ...res, content } : res;
 }
 
+/** Mask registered values in one log entry. The logger's mask hook calls this
+ *  with the same registries a tool result is masked with. A log entry is plain
+ *  text with a JSON tail, so it is scanned as text and never parsed. */
+export function maskLogText(text: string, registries: readonly SecretRegistry[]): string {
+  let out = text;
+  for (const r of registries) out = r.applyMaskInText(out);
+  return out;
+}
+
 /** The result the MCP SDK builds for a handler that throws: the error message
  *  as one text item, with `isError: true`. Built here so the message goes
  *  through the same masking pass as any other result before it is sent. */
