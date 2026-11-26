@@ -12,12 +12,11 @@ import type {
   ToolResponse,
 } from "./host.js";
 import { requirePage } from "../engine/index.js";
+import { errorResult, jsonResult } from "./json-result.js";
 
 /** A structured `{ok:false, error}` envelope as a tool text response. */
 function batchJsonError(error: string): ToolResponse {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error }, null, 2) }],
-  };
+  return jsonResult({ ok: false, error });
 }
 
 /**
@@ -153,14 +152,7 @@ export function registerBatchActTools(
               ok: false,
               error: aRes.reason instanceof Error ? aRes.reason.message : String(aRes.reason),
             };
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ action: actionOut, sample: sampleOut }, null, 2),
-          },
-        ],
-      };
+      return jsonResult({ action: actionOut, sample: sampleOut });
     },
   );
 
@@ -196,21 +188,10 @@ export function registerBatchActTools(
       if (g) return g;
       const innerTool = args.action.tool;
       if (!BATCH_ALLOWED_TOOLS.has(innerTool) || innerTool === "act_and_diff") {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error: `act_and_diff: inner tool "${innerTool}" not allowed (batch, await_human and recording tools cannot be inner tools, nor can the tool itself)`,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          ok: false,
+          error: `act_and_diff: inner tool "${innerTool}" not allowed (batch, await_human and recording tools cannot be inner tools, nor can the tool itself)`,
+        });
       }
       const ig = gateCheck(innerTool);
       if (ig) return ig;
@@ -236,27 +217,9 @@ export function registerBatchActTools(
         // response was already masked by its own handler; the diff is the
         // remaining literal-value channel and is masked here.
         const maskedDiff = egressFor(e).maskDeep(diff);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ action: parseInner(actionResp), diff: maskedDiff }, null, 2),
-            },
-          ],
-        };
+        return jsonResult({ action: parseInner(actionResp), diff: maskedDiff });
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -338,21 +301,10 @@ export function registerBatchActTools(
       // already excludes. The whitelist is the source of truth.
       for (const c of calls) {
         if (!BATCH_ALLOWED_TOOLS.has(c.tool)) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    ok: false,
-                    error: `flake_check: inner tool "${c.tool}" not allowed (batch, flake_check, await_human and recording tools cannot be inner tools)`,
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return jsonResult({
+            ok: false,
+            error: `flake_check: inner tool "${c.tool}" not allowed (batch, flake_check, await_human and recording tools cannot be inner tools)`,
+          });
         }
       }
       const report = await runFlakeCheck(calls, {
@@ -361,9 +313,7 @@ export function registerBatchActTools(
         allowed: BATCH_ALLOWED_TOOLS,
         handlers: toolHandlers,
       });
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }],
-      };
+      return jsonResult(report);
     },
   );
 }
