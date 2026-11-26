@@ -20,6 +20,7 @@ import {
   pressChecked,
 } from "./actions-secrets.js";
 import { directClick } from "./actions-direct-dispatch.js";
+import { gotoWithCommitResend, resentWarning } from "./navigate-commit.js";
 import { invariant } from "../util/invariant.js";
 // The eleven verb argument shapes live on the vendor-free leaf
 // `actions-types.ts`, above both this Playwright adapter and the Safari one, so
@@ -192,10 +193,13 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
 export async function navigate(ctx: ActionContext, args: NavigateArgs): Promise<ActionResult> {
   const descriptor: DispatchedAction = { type: "navigate", url: args.url };
   return runInActionWindow(ctx, descriptor, args, async () => {
-    await ctx.page.goto(args.url, {
-      waitUntil: "domcontentloaded",
-      timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS,
-    });
+    const { resent } = await gotoWithCommitResend(
+      ctx.page,
+      args.url,
+      args.deadlineMs ?? DEFAULT_TIMEOUT_MS,
+    );
+    // The probe carries the warning only; navigate has no element of its own.
+    return resent ? { stillAttached: true, warnings: [resentWarning()] } : undefined;
   });
 }
 
