@@ -111,3 +111,21 @@ export {
   AndroidEmulatorAdapter,
   type AndroidEmulatorDeps,
 } from "./adapters/android-app/emulator.js";
+export {
+  defaultDevicectlRunner,
+  listDevicesArgs as devicectlListDevicesArgs,
+  versionArgs as devicectlVersionArgs,
+  parsePhysicalDevices,
+  type DevicectlRunner,
+  type IosPhysicalDevice,
+} from "./adapters/ios/devicectl.js";
+export {
+  deviceAllowlistFrom,
+  deviceAppsFrom,
+  iosTargetFrom,
+  isAllowlisted,
+  namedDeviceEntry,
+  type IosTarget,
+} from "./adapters/ios/device-config.js";
+export { partitionByAllowlist } from "./adapters/ios/device-discovery.js";
+export { defaultHttp as defaultWdaHttp, type Http as WdaHttp } from "./adapters/ios/wda-client.js";

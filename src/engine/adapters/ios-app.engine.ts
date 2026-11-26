@@ -33,6 +33,7 @@ import { IosSimulator, resolveSimulator } from "./ios/simulator.js";
 import { IosXcuiDriver } from "./ios/xcui-driver.js";
 import { IosLifecycle } from "./ios/lifecycle.js";
 import { DEFAULT_WDA_URL, WdaClient } from "./ios/wda-client.js";
+import { iosTargetFrom, refuseDeviceSession } from "./ios/device-config.js";
 
 /** The environment the operator configures an ios-app session with. */
 export interface IosLaunchEnv {
@@ -65,7 +66,11 @@ export interface IosAdapterDeps {
 
 /** Boot, install, launch, attach — and hand back the native session handle. */
 export async function launchIosSession(deps: IosAdapterDeps = {}): Promise<IosNativeHandle> {
-  const env = iosEnvFrom(deps.env ?? process.env);
+  const rawEnv = deps.env ?? process.env;
+  // The target decides everything after it, so it is read first. A device target
+  // refuses here, before simctl or devicectl runs (RFC 0014 §1).
+  if (iosTargetFrom(rawEnv) === "device") refuseDeviceSession(rawEnv);
+  const env = iosEnvFrom(rawEnv);
   if (!env.appId) {
     throw new Error(
       "ios-app-no-bundle-id: the ios-app engine drives one application, named by its bundle id. " +

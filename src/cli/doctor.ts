@@ -25,6 +25,7 @@ import { toolListRow } from "./doctor-tool-list.js";
 import { toolProfileRow } from "./doctor-tool-profile.js";
 import { chromiumSandboxRow } from "./doctor-chromium-sandbox.js";
 import { macosAppCheck } from "./doctor-macos-daemon.js";
+import { iosDeviceChecks } from "./doctor-ios-device.js";
 import {
   chromeCheck,
   chromiumCheck,
@@ -292,6 +293,11 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
         `implemented: ${IMPLEMENTED_ENGINES.join(", ")}`,
     });
   }
+
+  // 8c. The ios-app engine's physical-device target. Rows only when
+  // BROWX_IOS_TARGET is `device` or the selected engine is `ios-app`. They warn,
+  // they never fail doctor.
+  checks.push(...(await iosDeviceChecks({ iosEngineSelected: selectedEngine === "ios-app" })));
 
   // 9. Plugins — declaration / install drift / lock health / manifest
   // sanity. Pure inspection of the same files the runtime's resolution
