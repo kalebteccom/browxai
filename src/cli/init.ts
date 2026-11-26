@@ -54,6 +54,8 @@ export interface InitDeps {
   applyConfig?: typeof applyUserConfig;
   /** The Browxai app this process runs from, or undefined outside it. */
   appBundle?: () => string | undefined;
+  /** Picks the test attributes when `--test-attrs` is absent. */
+  sniffAttrs?: (workspace: string) => { attrs: string[]; note: string };
 }
 
 /** Printed to stdout for `--help` (exit 0, from `cli.ts`) and to stderr when
@@ -97,7 +99,7 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   let testAttrs = opts.testAttrs;
   let sniffNote = "";
   if (!testAttrs) {
-    const sniffed = sniffTestAttributes(workspace);
+    const sniffed = (deps.sniffAttrs ?? sniffTestAttributes)(workspace);
     testAttrs = sniffed.attrs.join(",");
     sniffNote = sniffed.note;
   }
@@ -377,7 +379,7 @@ function parseArgs(args: string[]): InitOpts | null {
  *
  * Best-effort and bounded: walks at most 200 source files.
  */
-function sniffTestAttributes(workspace: string): { attrs: string[]; note: string } {
+export function sniffTestAttributes(workspace: string): { attrs: string[]; note: string } {
   const KNOWN = ["data-testid", "data-type", "data-test", "data-cy", "data-qa", "data-test-id"];
   const counts = new Map<string, number>(KNOWN.map((a) => [a, 0]));
   const candidates = [
@@ -429,13 +431,15 @@ function sniffTestAttributes(workspace: string): { attrs: string[]; note: string
   return { attrs: sorted, note: `(sniffed ${scanned} source file(s); hits: ${summary})` };
 }
 
-function walk(dir: string, maxDepth: number, visit: (file: string) => boolean): void {
-  if (maxDepth < 0) return;
+/** Calls `visit` on each file under `dir`; stops the whole walk, ancestors
+ *  included, once `visit` returns false. Returns false when it stopped. */
+function walk(dir: string, maxDepth: number, visit: (file: string) => boolean): boolean {
+  if (maxDepth < 0) return true;
   let entries: string[];
   try {
     entries = readdirSync(dir);
   } catch {
-    return;
+    return true;
   }
   for (const e of entries) {
     if (e === "node_modules" || e === ".git" || e === "dist" || e.startsWith(".")) continue;
@@ -446,9 +450,11 @@ function walk(dir: string, maxDepth: number, visit: (file: string) => boolean): 
     } catch {
       continue;
     }
-    if (st.isDirectory()) walk(full, maxDepth - 1, visit);
-    else if (st.isFile()) {
-      if (!visit(full)) return;
+    if (st.isDirectory()) {
+      if (!walk(full, maxDepth - 1, visit)) return false;
+    } else if (st.isFile()) {
+      if (!visit(full)) return false;
     }
   }
+  return true;
 }

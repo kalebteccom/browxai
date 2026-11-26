@@ -3,7 +3,7 @@
 // the exit code.
 
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanTrees, makeTree, runNode } from "./_guard-tree.js";
+import { cleanTrees, makeTree, runNode, SPAWN_TEST_TIMEOUT } from "./_guard-tree.js";
 
 afterEach(cleanTrees);
 
@@ -32,7 +32,7 @@ const CHANGELOG = [
   "",
 ].join("\n");
 
-describe("changelog-section", () => {
+describe("changelog-section", { timeout: SPAWN_TEST_TIMEOUT }, () => {
   it("prints the section of a tag, without the heading or the next section", () => {
     const root = makeTree({ "CHANGELOG.md": CHANGELOG });
     const r = runNode(root, SCRIPT, ["v0.22.0"]);

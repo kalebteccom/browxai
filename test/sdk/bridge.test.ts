@@ -219,8 +219,13 @@ skipIfWindows("browxai bridge across a daemon restart", () => {
   const stopDaemon = async (): Promise<void> => {
     const server = netServer;
     netServer = undefined;
+    // Stop accepting first: a redial that reaches a listener still open would start a
+    // handshake, and the call during the gap would be held instead of refused.
+    const closed = new Promise<void>((resolve) =>
+      server ? server.close(() => resolve()) : resolve(),
+    );
     for (const s of sockets) s.destroy();
-    await new Promise<void>((resolve) => (server ? server.close(() => resolve()) : resolve()));
+    await closed;
   };
 
   beforeAll(async () => {

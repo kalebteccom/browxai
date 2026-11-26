@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
-import { cleanTrees, makeTree, REPO, runNode } from "./_guard-tree.js";
+import { cleanTrees, makeTree, REPO, runNode, SPAWN_TEST_TIMEOUT } from "./_guard-tree.js";
 
 afterEach(cleanTrees);
 
@@ -38,29 +38,30 @@ function copyFiles(page: string): Record<string, string> {
 const checkCopy = (page: string, extra: Record<string, string> = {}) =>
   runNode(makeTree({ ...copyFiles(page), ...extra }, [COPY]), COPY);
 
-describe("check-copy-rules", () => {
+describe("check-copy-rules", { timeout: SPAWN_TEST_TIMEOUT }, () => {
   it("exits 0 on clean copy", () => {
     const { code, out } = checkCopy("A clean sentence.\n");
     expect(out).toContain("check-copy-rules:");
     expect(code).toBe(0);
   });
 
-  const banned = ["robust", "seamless", "comprehensive", "leverage", "delve", "crucial"];
-  it.each(banned)("fails on the filler word %s", (word) => {
-    const { code, out } = checkCopy(`This is ${word} enough.\n`);
+  it("fails on every filler word, one finding per line", () => {
+    const banned = ["robust", "seamless", "comprehensive", "leverage", "delve", "crucial"];
+    const { code, out } = checkCopy(banned.map((word) => `This is ${word} enough.\n`).join(""));
     expect(code).toBe(1);
-    expect(out).toContain("banned-word");
-    expect(out).toContain(`"${word}"`);
+    banned.forEach((word, i) => {
+      expect(out).toContain(`${PAGE}:${i + 1}: banned-word: "${word}"`);
+    });
   });
 
-  it.each(["rather than", "not just", "not merely", "isn't about"])(
-    "fails on the contrast closer '%s'",
-    (phrase) => {
-      const { code, out } = checkCopy(`It is fast, ${phrase} slow.\n`);
-      expect(code).toBe(1);
-      expect(out).toContain("contrast-closer");
-    },
-  );
+  it("fails on every contrast closer, one finding per line", () => {
+    const closers = ["rather than", "not just", "not merely", "isn't about"];
+    const { code, out } = checkCopy(closers.map((p) => `It is fast, ${p} slow.\n`).join(""));
+    expect(code).toBe(1);
+    closers.forEach((phrase, i) => {
+      expect(out).toContain(`${PAGE}:${i + 1}: contrast-closer: "${phrase}"`);
+    });
+  });
 
   it("fails on a banned word in the README and in a component", () => {
     const readme = checkCopy("Clean.\n", { "README.md": "A seamless install.\n" });
@@ -77,7 +78,7 @@ describe("check-copy-rules", () => {
   });
 });
 
-describe("check-h1", () => {
+describe("check-h1", { timeout: SPAWN_TEST_TIMEOUT }, () => {
   const html = (body: string) => `<!doctype html><html><body>${body}</body></html>`;
   const run = (pages: Record<string, string>) => {
     const files: Record<string, string> = {};

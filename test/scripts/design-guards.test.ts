@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { REPO, cleanTrees, makeTree, runNode } from "./_guard-tree.js";
+import { REPO, SPAWN_TEST_TIMEOUT, cleanTrees, makeTree, runNode } from "./_guard-tree.js";
 
 afterEach(cleanTrees);
 
@@ -70,7 +70,7 @@ function expectRule(rule: string, overrides: Record<string, string | null>) {
   expect(out).toContain(`: ${rule}:`);
 }
 
-describe("check-design-rules: clean tree", () => {
+describe("check-design-rules: clean tree", { timeout: SPAWN_TEST_TIMEOUT }, () => {
   it("exits 0 on a tree with no violations", () => {
     const { code, out } = check();
     expect(out).toContain("check-design-rules: ok");
@@ -78,7 +78,7 @@ describe("check-design-rules: clean tree", () => {
   });
 });
 
-describe("check-design-rules: prose", () => {
+describe("check-design-rules: prose", { timeout: SPAWN_TEST_TIMEOUT }, () => {
   const cases: Array<[string, Record<string, string>]> = [
     ["em dash in site content", { [PAGE]: "A sentence — with a dash.\n" }],
     ["en dash in site content", { [PAGE]: "Pages 3–5 cover it.\n" }],
@@ -120,7 +120,7 @@ describe("check-design-rules: prose", () => {
   });
 });
 
-describe("check-design-rules: css", () => {
+describe("check-design-rules: css", { timeout: SPAWN_TEST_TIMEOUT }, () => {
   const cases: Array<[string, string, string]> = [
     [
       "mono-outside-code",
@@ -170,7 +170,7 @@ describe("check-design-rules: css", () => {
   });
 });
 
-describe("check-design-rules: share card", () => {
+describe("check-design-rules: share card", { timeout: SPAWN_TEST_TIMEOUT }, () => {
   const realOg = readFileSync(join(REPO, OG), "utf8");
 
   it("passes on the real gen-og.mjs", () => {
