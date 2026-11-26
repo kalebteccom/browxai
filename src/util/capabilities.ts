@@ -466,9 +466,11 @@ const DEFAULT_CONFIRM_HOOKS: readonly ConfirmHook[] = [
 ];
 
 /** Default hooks whose absence makes the server stricter, so leaving one out
- *  of a custom list needs no warning. Without `native_device_app` an app off
- *  BROWX_IOS_DEVICE_APPS refuses on a phone with no prompt. */
-const STRICTER_WHEN_ABSENT: readonly ConfirmHook[] = ["native_device_app"];
+ *  of a custom list needs no warning, and a saved config layer may remove one
+ *  but never add one the environment left out (`config-ceiling.ts`). Without
+ *  `native_device_app` an app off BROWX_IOS_DEVICE_APPS refuses on a phone with
+ *  no prompt. */
+export const STRICTER_WHEN_ABSENT: readonly ConfirmHook[] = ["native_device_app"];
 
 /** Hooks the parser accepts that no tool consults yet. */
 const RESERVED_CONFIRM_HOOKS: readonly ConfirmHook[] = ["file_download", "file_upload"];
