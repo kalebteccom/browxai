@@ -24,6 +24,8 @@ export interface ClientSystem {
   home: string;
   env: NodeJS.ProcessEnv;
   exists(path: string): boolean;
+  /** Flushes a written config file to disk. Unset means the real `fsync`. */
+  fsync?: (fd: number) => void;
 }
 
 export function realSystem(): ClientSystem {

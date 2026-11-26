@@ -116,6 +116,11 @@ window.addEventListener("load", function () { window.startFlood(${FLOOD_MS}); })
 const QUIET_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>quiet</title></head>
 <body>${PAGE_BODY}<script>${ASK_SCRIPT}</script></body></html>`;
 
+// Chunks the over-budget writer fires. The write bucket holds 1024 and refills
+// 100 a second while the chunks cross to Node, so a slow box admits more of them.
+// 7500 stays over budget for a burst that takes up to a minute to arrive.
+const OVER_CHUNKS = 7500;
+
 // A page that saves a file the way real code does: `writeLoop(n, awaitEach)`
 // writes n 1 KiB chunks through `createWritable()`, either awaiting each chunk or
 // firing them all and awaiting once, then closes. The outcome lands in the title.
@@ -123,7 +128,7 @@ const WRITER_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>wri
 <body>
 <button data-testid="w-await" onclick="writeLoop(300, true)">await 300</button>
 <button data-testid="w-burst" onclick="writeLoop(900, false)">burst 900</button>
-<button data-testid="w-over" onclick="writeLoop(1500, false)">burst 1500</button>
+<button data-testid="w-over" onclick="writeLoop(${OVER_CHUNKS}, false)">burst ${OVER_CHUNKS}</button>
 <script>
   async function writeLoop(n, awaitEach) {
     var h = await window.showSaveFilePicker({ suggestedName: "o.bin" });
@@ -355,13 +360,13 @@ describe("binding budget — file writer loops, real Chromium", () => {
       // a truncated file.
       const over = await save("w-over", "over.bin");
       expect(over.title, "the page is not told the save worked").not.toBe("WRITE-ok");
-      expect(over.bytes ?? 0).toBeLessThan(1500 * 1024);
       // The drop is logged from the shed callback, which can land after the page
       // title settles, so wait for the line instead of reading the buffer once.
       await waitFor(
         () => stderrLog.some((l) => l.includes("file write dropped over the binding call budget")),
         { timeoutMs: 15_000, what: "file write dropped log line" },
       );
+      expect(over.bytes ?? 0).toBeLessThan(OVER_CHUNKS * 1024);
     },
     KEYSTONE_TIMEOUT,
   );

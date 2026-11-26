@@ -82,12 +82,7 @@ describe("browxai init", () => {
 
   it("shows the diff, then writes the user-level file on --write-user-config", async () => {
     const home = mkdtempSync(join(tmpdir(), "browxai-home-"));
-    const system: ClientSystem = {
-      platform: "darwin",
-      home,
-      env: { PATH: "" },
-      exists: existsSync,
-    };
+    const system = homeSystem(home);
     try {
       const code = await runInit(
         [dir, "--test-attrs", "data-testid", "--no-smoke", "--write-user-config", "cursor"],
@@ -168,8 +163,19 @@ describe("browxai init", () => {
   });
 });
 
+/** These tests are about what init writes. The flush to disk is covered in
+ *  init-user-config.test.ts, and a real one can take seconds on a busy disk. */
+const noSync = (): void => {};
+
 function homeSystem(home: string, over: Partial<ClientSystem> = {}): ClientSystem {
-  return { platform: "darwin", home, env: { PATH: "" }, exists: existsSync, ...over };
+  return {
+    platform: "darwin",
+    home,
+    env: { PATH: "" },
+    exists: existsSync,
+    fsync: noSync,
+    ...over,
+  };
 }
 
 describe("browxai init --write-user-config", () => {

@@ -72,7 +72,8 @@ export function registerFormsRecordingModeTools(
         "When set, browxai writes a `.browx` archive on `end_recording`. The archive carries the " +
         "DOM stream, network/WS metadata (bodies at `reexecutable`), console output and action " +
         "calls. **The artifact is as sensitive as the session it recorded** — treat it as production " +
-        "data. Registered secrets are masked at capture time before anything reaches disk.",
+        "data. Registered secrets are masked at capture time, and again over the whole log when " +
+        "`end_recording` writes the archive.",
     );
 
   register(

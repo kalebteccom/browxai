@@ -32,6 +32,9 @@ import {
   type ScopeOrigin,
 } from "./secret-scope.js";
 import { docsUrl } from "./docs-links.js";
+import { secretForms } from "./secret-forms.js";
+
+export { ENCODED_FORM_MIN_LENGTH } from "./secret-forms.js";
 
 /** A registered secret. `name` is the agent-facing alias (`PASSWORD`),
  *  `value` the real string that gets substituted in/out, and optional
@@ -206,7 +209,11 @@ export class SecretRegistry {
    *  and the form-body `+`-for-space form) and its base64 and base64url
    *  encodings, all in this one pass. The value must be encoded on its own: a
    *  base64 of a larger string (`Authorization: Basic base64(user:pass)`) does
-   *  not contain the value's own base64 and is not masked. */
+   *  not contain the value's own base64 and is not masked.
+   *
+   *  A value holding a character that JSON or HTML escaping rewrites is also
+   *  matched as those encoders write it (`secret-forms.ts` lists the forms),
+   *  so it is masked inside a string that itself holds JSON or markup. */
   applyMaskInText(text: string): string {
     if (this.byName.size === 0 || !text) return text;
     let out = text;
@@ -228,15 +235,15 @@ export class SecretRegistry {
    *  layout (two-space indent or compact). Non-JSON text gets
    *  `applyMaskInText`.
    *
-   *  Fast path: text that contains no registered value, raw or JSON-encoded,
-   *  comes back untouched with no parse, which is the case for every result a
-   *  sink already masked. That also makes the method idempotent. */
+   *  Fast path: text that contains no form of a registered value, as it is or
+   *  JSON-encoded, comes back untouched with no parse, which is the case for
+   *  every result a sink already masked. That also makes the method
+   *  idempotent. */
   applyMaskInResultText(text: string): string {
     if (this.byName.size === 0 || !text) return text;
-    const entries = this.entriesByValueLenDesc();
-    const hit =
-      this.maskForms().some((f) => text.includes(f.form)) ||
-      entries.some((e) => text.includes(jsonEncoded(e.value)));
+    const hit = this.maskForms().some(
+      (f) => text.includes(f.form) || (f.inJson !== undefined && text.includes(f.inJson)),
+    );
     if (!hit) return text;
     let parsed: unknown;
     try {
@@ -372,21 +379,14 @@ export class SecretRegistry {
     if (this.formsCache) return this.formsCache;
     const forms: MaskForm[] = [];
     for (const { name, value } of this.byName.values()) {
-      for (const form of encodedForms(value)) forms.push({ name, form });
+      for (const form of secretForms(value)) {
+        const inJson = jsonEncoded(form);
+        forms.push(inJson === form ? { name, form } : { name, form, inJson });
+      }
     }
     forms.sort((a, b) => b.form.length - a.form.length);
     this.formsCache = forms;
     return forms;
-  }
-
-  /** Internal: entries sorted by descending value-length, so longer values
-   *  mask before their shorter prefixes / substrings. Recomputed each call —
-   *  the registry is bounded (32) and only walked per egress sink, so the
-   *  sort cost is negligible and a stale cache can never leak a partial value. */
-  private entriesByValueLenDesc(): SecretEntry[] {
-    const arr = [...this.byName.values()];
-    arr.sort((a, b) => b.value.length - a.value.length);
-    return arr;
   }
 }
 
@@ -394,29 +394,9 @@ export class SecretRegistry {
 interface MaskForm {
   name: string;
   form: string;
-}
-
-/** Shorter values are masked as typed only. Their encodings are short
- *  enough to turn up by chance in unrelated text. */
-export const ENCODED_FORM_MIN_LENGTH = 6;
-
-/** The value, plus its percent-encoded and base64 forms when it is long
- *  enough. Duplicates collapse (an alphanumeric value encodes to itself). */
-function encodedForms(value: string): string[] {
-  if (value.length < ENCODED_FORM_MIN_LENGTH) return [value];
-  const bytes = Buffer.from(value, "utf8");
-  const base64 = bytes.toString("base64");
-  const forms = [
-    value,
-    encodeURIComponent(value),
-    // application/x-www-form-urlencoded, as URLSearchParams and HTML forms write it.
-    new URLSearchParams([["", value]]).toString().slice(1),
-    base64,
-    bytes.toString("base64url"),
-  ];
-  // Unpadded base64 too, so a value whose padding was stripped is caught.
-  if (base64.endsWith("=")) forms.push(base64.replace(/=+$/, ""));
-  return [...new Set(forms)];
+  /** `form` as a JSON string literal holds it, when that differs. A result
+   *  text is JSON, so a form with a quote or backslash sits in it this way. */
+  inJson?: string;
 }
 
 /** A value as it appears inside a JSON string literal. */

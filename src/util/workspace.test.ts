@@ -22,6 +22,15 @@ import {
   resolveWorkspaceWritePath,
 } from "./workspace.js";
 
+// Build steps (build, docs build, package audit, coverage) create these in the checkout
+// while the unit suite runs. A before/after listing of the repo root must not count them.
+const BUILD_OUTPUT_DIRS = new Set(["dist", "node_modules", ".audit", "coverage"]);
+
+/** `readdirSync(dir)` minus known build output, so only files the code under test makes show up. */
+function listIgnoringBuildOutput(dir: string): string[] {
+  return readdirSync(dir).filter((n) => !BUILD_OUTPUT_DIRS.has(n) && !n.startsWith(".tmp"));
+}
+
 let tmp: string;
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), "browx-test-"));
@@ -40,7 +49,7 @@ describe("resolveWorkspace (no-trace contract)", () => {
   });
 
   it("creates subdirs on demand without polluting cwd", () => {
-    const cwdBefore = readdirSync(process.cwd());
+    const cwdBefore = listIgnoringBuildOutput(process.cwd());
     const root = join(tmp, "ws");
     const ws = resolveWorkspace({ BROWX_WORKSPACE: root });
     const profile = ws.sub("profile");
@@ -49,13 +58,38 @@ describe("resolveWorkspace (no-trace contract)", () => {
     expect(existsSync(logs)).toBe(true);
     expect(profile).toBe(join(resolve(root), "profile"));
     // cwd untouched — the no-trace contract holds for the resolver.
-    expect(readdirSync(process.cwd())).toEqual(cwdBefore);
+    expect(listIgnoringBuildOutput(process.cwd())).toEqual(cwdBefore);
   });
 
   it("falls back to ~/.browxai when BROWX_WORKSPACE is unset", () => {
     // We don't actually create here — assert path shape only.
     const ws = resolveWorkspace({ BROWX_WORKSPACE: "" });
     expect(ws.root).toMatch(/\.browxai$/);
+  });
+});
+
+describe("listIgnoringBuildOutput (test helper)", () => {
+  it("hides build output and .tmp* entries and keeps everything else", () => {
+    for (const d of ["dist", "node_modules", ".audit", "coverage", ".tmp-build", ".tmp"]) {
+      mkdirSync(join(tmp, d));
+    }
+    for (const d of ["src", ".browxai", "profile", "distro"]) mkdirSync(join(tmp, d));
+    writeFileSync(join(tmp, "stray.txt"), "x");
+    expect(listIgnoringBuildOutput(tmp).sort()).toEqual([
+      ".browxai",
+      "distro",
+      "profile",
+      "src",
+      "stray.txt",
+    ]);
+  });
+
+  it("still shows a new entry that is not build output", () => {
+    const before = listIgnoringBuildOutput(tmp);
+    mkdirSync(join(tmp, "dist"));
+    expect(listIgnoringBuildOutput(tmp)).toEqual(before);
+    writeFileSync(join(tmp, "leaked.json"), "{}");
+    expect(listIgnoringBuildOutput(tmp)).not.toEqual(before);
   });
 });
 

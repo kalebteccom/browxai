@@ -1059,8 +1059,10 @@ describe("registered secrets in the panels", () => {
     expect(resolveConsole(consoleRows, 1000, "debug", 400, SECRET).rows).toEqual([]);
     // It finds the mask that stands in for it.
     expect(resolveConsole(consoleRows, 1000, "debug", 400, "<TOKEN>").rows).toHaveLength(2);
+    // One network row: the failed request's error text. The first request's
+    // URL is recorded without its query string, so the mask is not in it.
     expect(resolveNetwork(netRows, 1000, 300, { text: "<TOKEN>", state: "all" }).rows).toHaveLength(
-      2,
+      1,
     );
   });
 });

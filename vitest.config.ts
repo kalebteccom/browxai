@@ -6,6 +6,11 @@ import { defineConfig, configDefaults } from "vitest/config";
 // config (`pnpm test:keystone`, vitest.keystone.config.ts) in a separate CI job.
 export default defineConfig({
   test: {
+    // One timeout policy for the unit lane. A CI box runs several gate steps on
+    // the same cores, and a test that touches a temp dir or spawns a process can
+    // run past the 5 s default there. Local runs keep 5 s, so a slow test still
+    // shows up on a quiet machine. A test that needs longer sets its own timeout.
+    testTimeout: process.env.CI ? 15_000 : 5_000,
     exclude: [
       ...configDefaults.exclude,
       "**/dist/**",

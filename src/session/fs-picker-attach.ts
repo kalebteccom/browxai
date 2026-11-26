@@ -13,7 +13,7 @@ import type { BrowserContext } from "playwright-core";
 import { writeFileSync, appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, basename } from "node:path";
 import { log } from "../util/logging.js";
-import { bindingGuard } from "./binding-guard.js";
+import { bindingGuard, type BindingGuard } from "./binding-guard.js";
 import {
   resolveWorkspaceFsPath,
   SUPPORTED_FS_PICKER_APIS,
@@ -78,6 +78,8 @@ export async function attachFsPickerPolicy(
   state: FsPickerPolicyState,
   workspaceRoot: string,
   askHandler: FsPickerAskHandler,
+  // The shared guard in production. A test passes its own to drive the clock.
+  guard: BindingGuard = bindingGuard,
 ): Promise<void> {
   if (state.hasContext(context)) return;
   state.markContext(context);
@@ -92,7 +94,7 @@ export async function attachFsPickerPolicy(
     // Over budget a call answers deny, or never settles; it never hands out a handle.
     await context.exposeBinding(
       "__browx_fs_picker_check",
-      bindingGuard.wrap(
+      guard.wrap(
         "fs_picker_check",
         "decision",
         async (_source, payload: string) => {
@@ -163,7 +165,7 @@ export async function attachFsPickerPolicy(
     // chunk cannot land after the gap and leave a file with a hole in it.
     await context.exposeBinding(
       "__browx_fs_picker_write",
-      bindingGuard.wrap(
+      guard.wrap(
         "fs_picker_write",
         "write",
         (_source, payload: string) => {

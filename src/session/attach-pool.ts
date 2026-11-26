@@ -3,6 +3,7 @@
 
 import type { Page } from "playwright-core";
 import { log } from "../util/logging.js";
+import { redactUrlForLog } from "../util/url-sanitizer.js";
 
 export const DEFAULT_ATTACH_LEASE_TTL_MS = 300_000;
 export const DEFAULT_ATTACH_POOL_MAX = 8;
@@ -227,7 +228,7 @@ export function acquireTarget(
     const reclaimed = leases.reclaimExpired(spec.endpoint);
     if (reclaimed.length > 0) {
       log.warn(
-        `attach pool: reclaimed ${reclaimed.length} idle lease(s) on ${spec.endpoint}: ` +
+        `attach pool: reclaimed ${reclaimed.length} idle lease(s) on ${redactUrlForLog(spec.endpoint)}: ` +
           reclaimed.map((l) => `${l.sessionId}→${l.targetId}`).join(", "),
       );
     }
