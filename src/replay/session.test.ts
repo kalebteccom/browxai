@@ -7,8 +7,10 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { gunzipSync } from "node:zlib";
+
 import { ReplaySession } from "./session.js";
-import { readArtifact } from "./artifact.js";
+import { readArtifact, zipRead } from "./artifact.js";
 import { SecretRegistry } from "../util/secrets.js";
 import type { Workspace } from "../util/workspace.js";
 import type { SessionEntry } from "../session/registry.js";
@@ -48,6 +50,22 @@ function tempWorkspace(): { workspace: Workspace; dispose: () => void } {
     defaultProfile: () => join(root, "profile"),
   };
   return { workspace, dispose: () => rmSync(root, { recursive: true, force: true }) };
+}
+
+/** Assert `value` is in no byte of the archive: not in the file as written, and
+ *  not in any entry once the zip layer and the gzip layer are taken off. */
+function expectNowhereInArchive(absolutePath: string, value: string): void {
+  const needle = Buffer.from(value, "utf8");
+  const archive = readFileSync(absolutePath);
+  expect(archive.includes(needle), "the archive file").toBe(false);
+  const entries = zipRead(archive);
+  expect(entries.size).toBeGreaterThan(0);
+  for (const [name, data] of entries) {
+    expect(data.includes(needle), `entry ${name}`).toBe(false);
+    if (name.endsWith(".gz")) {
+      expect(gunzipSync(data).includes(needle), `entry ${name}, decompressed`).toBe(false);
+    }
+  }
 }
 
 describe("ReplaySession", () => {
@@ -125,6 +143,78 @@ describe("ReplaySession", () => {
     const stringified = JSON.stringify(art.events);
     expect(stringified.includes(SECRET)).toBe(false);
     expect(stringified.includes("<PASSWORD>")).toBe(true);
+  });
+
+  it("keeps a register_secret value out of the archive when the value is then typed", async () => {
+    const secrets = new SecretRegistry();
+    const SECRET = "typed-after-register-hunter2";
+    const s = new ReplaySession(stubEntry({ secrets }));
+    await s.start({ tier: "actions" }, ws.workspace);
+    // The order the dispatch wrapper runs in: action/call is emitted first,
+    // then the handler registers the value, then the result is emitted.
+    s.noteCall("register_secret", { name: "PASSWORD", value: SECRET });
+    secrets.register({ name: "PASSWORD", value: SECRET });
+    s.noteResult("register_secret", { ok: true });
+    s.noteCall("fill", { ref: "e1", value: SECRET });
+    s.noteResult("fill", { ok: true, element: { value: SECRET } });
+    const end = await s.end(ws.workspace);
+
+    expectNowhereInArchive(end.absolutePath, SECRET);
+    const art = await readArtifact(ws.workspace.root, end.path);
+    expect(JSON.stringify(art.events)).not.toContain(SECRET);
+    const calls = art.events.filter((e) => e.type === "action/call").map((e) => e.payload);
+    expect(calls).toEqual([
+      {
+        tool: "register_secret",
+        args: { name: "PASSWORD", value: { redacted: true, reason: "secret" } },
+      },
+      { tool: "fill", args: { ref: "e1", value: "<PASSWORD>" } },
+    ]);
+  });
+
+  it("keeps the value of a refused register_secret out of the archive", async () => {
+    // The name is not a valid alias, so the handler registers nothing and no
+    // later mask pass can know the value.
+    const SECRET = "never-registered-hunter2";
+    const s = new ReplaySession(stubEntry());
+    await s.start({ tier: "actions" }, ws.workspace);
+    s.noteCall("register_secret", { name: "not valid", value: SECRET });
+    s.noteResult("register_secret", { ok: false, error: "register_secret: name must match" });
+    s.noteCall("batch", {
+      calls: [{ tool: "register_secret", args: { name: "PASSWORD", value: SECRET } }],
+    });
+    s.noteResult("batch", { ok: false });
+    const end = await s.end(ws.workspace);
+    expectNowhereInArchive(end.absolutePath, SECRET);
+  });
+
+  it("masks a value registered after the events that hold it", async () => {
+    const secrets = new SecretRegistry();
+    const SECRET = "shown-then-registered-hunter2";
+    const s = new ReplaySession(stubEntry({ secrets }));
+    await s.start({ tier: "actions" }, ws.workspace);
+    // A page shows a token. The agent reads it and only then registers it.
+    s.noteCall("eval_js", { expr: `document.title === "${SECRET}"` });
+    s.noteResult("eval_js", { ok: false, error: `page shows ${SECRET}` });
+    s.annotate({ label: "AC-2", note: `token on screen: ${SECRET}` });
+    s.noteCall("register_secret", { name: "TOKEN", value: SECRET });
+    secrets.register({ name: "TOKEN", value: SECRET });
+    s.noteResult("register_secret", { ok: true });
+    const end = await s.end(ws.workspace);
+
+    expectNowhereInArchive(end.absolutePath, SECRET);
+    // The digest in the manifest is of the masked log, so the archive opens.
+    const art = await readArtifact(ws.workspace.root, end.path);
+    expect(art.malformed).toEqual([]);
+    expect(art.events).toHaveLength(end.events);
+    const stringified = JSON.stringify(art.events);
+    expect(stringified).not.toContain(SECRET);
+    expect(art.events[0]?.payload).toEqual({
+      tool: "eval_js",
+      args: { expr: 'document.title === "<TOKEN>"' },
+    });
+    expect(art.events[1]?.payload).toMatchObject({ error: "page shows <TOKEN>" });
+    expect(art.events[2]?.payload).toMatchObject({ note: "token on screen: <TOKEN>" });
   });
 
   it("masks registered secrets deeper than the bounded applyMaskDeep cap", async () => {

@@ -69,6 +69,12 @@ export class Redactor {
     return this.secrets ? this.secrets.applyMaskDeep(value) : value;
   }
 
+  /** Whether the registry holds a value right now. Read at the end of a
+   *  recording, where an empty registry means there is nothing to mask again. */
+  get hasSecrets(): boolean {
+    return this.secrets !== null && this.secrets.size() > 0;
+  }
+
   headers(
     h: Readonly<Record<string, string>> | undefined,
   ): Record<string, MaybeRedacted<string>> | undefined {

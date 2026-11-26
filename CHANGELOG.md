@@ -8,6 +8,12 @@ surface" covers.
 
 ## Unreleased
 
+### Fixed
+
+- **Replay archives mask registered secrets in recorded call arguments.** The `value` of a `register_secret` call is never recorded, and neither are a `cookies_set` value or an inline storage state. `end_recording` masks the whole event log again with the secrets registered by then, so a value registered partway through a recording is masked in the events captured before it.
+- **Replay network events keep a fixed list of fields.** `net/request` and `net/response` no longer carry every field of the CDP event: raw header text, `response.requestHeaders` and the initiator stack are left out, URLs are recorded without query string, fragment or userinfo, redirect response headers follow the header rules, and the base64 request body parts are masked and recorded at the `reexecutable` tier only. The archive format version is unchanged; the offline player reads none of the removed fields.
+- **The in-process SDK transport masks tool errors.** A tool that throws still rejects the SDK call, now with registered secrets replaced by `<NAME>` in the message, as the stdio server and the socket daemon already did. The rejection is a plain `Error` carrying that message.
+
 ## [0.20.1] - 2026-11-24
 
 **Upgrading from 0.20.0.** Nothing to do. One iOS fix, one macOS-only doctor row, and docs and tooling for a signed macOS app that is not part of the npm package.
