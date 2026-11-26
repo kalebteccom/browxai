@@ -24,6 +24,8 @@ The typed SDK (`createBrowxai`) wraps the tools above. Every call resolves to th
 
 Errors are unchanged. The SDK throws for a gated tool (`BROWXAI_SDK_NOT_EXPOSED`), an unknown tool (`BROWXAI_SDK_UNKNOWN_TOOL`) and a closed client. A tool failure on the server is returned as the result, and `isError` is not surfaced.
 
+**Arguments are checked against the tool's input schema.** The in-process SDK, the socket daemon and `browxai call` check a call's arguments the way the MCP SDK checks them for an MCP client. A wrong-typed, missing or out-of-range argument resolves to `{ ok: false, error }`, where `error` starts with `<tool>: the arguments do not match the tool's input schema.` and names each argument; the tool does not run. Keys the schema does not name are dropped. A tool whose capability is off on the server returns its capability refusal whatever the arguments. Up to 0.20.2 these transports passed the arguments to the tool unchecked.
+
 `callTool<T>(name, args)` resolves the same way, and `T` states the shape you expect (default `unknown`). Plugin tools (`client.plugins.<namespace>.<tool>`) follow the same rule.
 
 **Changed in 0.18.0.** Before, every method resolved to `{ content, data }` with `data` the parsed tool result, so a script read `result.data.data.title`. There is no option to get the old shape back. To upgrade, drop one `.data` where you read a tool result, replace `result.content[0].text` with the result itself (a string for plain text, an object for JSON), and keep `content` only for images. See the [changelog](../CHANGELOG.md).
@@ -1869,6 +1871,8 @@ writes under `action`. No synthetic IDs; each entry is keyed by its
 - `storageState`: inline blob (as returned by `dump_storage_state`) OR a workspace-rooted JSON path.
 - `authState`: name of a slot from `auth_save`.
 
+`storageState` needs the `action` capability, as `inject_storage_state` does. On a server whose `BROWX_CAPABILITIES` leaves `action` out, `open_session` with `storageState` returns the standard refusal with `requiredCapability: "action"` before anything launches.
+
 Per-mode semantics:
 
 - **incognito**: Playwright-native primitive (`browser.newContext({storageState})`). Cheapest path; preferred for "open a fresh browser already logged in as X."
@@ -2123,6 +2127,8 @@ Returns `{ completed, failedAt, results }`:
 - `completed`: how many entries the loop produced (≤ `calls.length`).
 - `failedAt`: index of the first failed call, or `null` if all succeeded.
 - `results`: `Array<{ tool, ok, result?, error? }>`, one per executed call. `result` carries the parsed inner-response JSON.
+
+Each inner call's `args` are checked against that tool's input schema, as a top-level call's are. An inner call with a wrong-typed, missing or out-of-range argument fails with `{ ok: false, error }` naming the arguments, the tool does not run, and `stopOnError` applies. Keys the inner tool's schema does not name are dropped. `flake_check` and the `act_and_*` tools check their inner call the same way.
 
 Whitelist (allowed inner tools): `navigate`, `click`, `fill`, `fill_form`, `press`, `hover`, `select`, `choose_option`, `scroll`, `wait_for`, `go_back`, `go_forward`, `snapshot`, `find`, `text_search`, `screenshot`, `console_read`, `network_read`, `eval_js`, `list_named_refs`, `name_ref`, `find_feedback`, `approve_actions`, `list_approvals`, `get_config`, `list_sessions`. Excluded: `batch` (no nesting), `await_human` (would block the whole batch), recording-control tools.
 
@@ -2410,7 +2416,7 @@ Full-session reproducibility: capture every request the page made into a HAR (HT
 - `start_har({ path?, mode?, content?, urlFilter?, session? })`: begin HAR recording on a live session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is logged into an in-memory HAR. **`path`** is a workspace-rooted `.har` path (a path outside `$BROWX_WORKSPACE`, or a `.zip` path, is rejected); default is `<workspace>/har/<session-id>-<ISO>.har`. **`mode`** = `"full"` (default, full HAR with sizes/timing/cookies) or `"minimal"` (just enough for `routeFromHAR` to replay). **`content`** = `"omit"` (default: no bodies), `"embed"` (bodies inlined) or `"attach"` (sidecar files). `embed` and `attach` write request and response bodies to disk, so they also need the off-by-default `network-body` capability; without it the call is refused with `requiredCapability: "network-body"`. **`urlFilter`** narrows to matching requests. Returns `{ ok, session, path, mode, content, replacedPrior, finalizesOn:"close_session", hint, tokensEstimate }`. Re-calling `start_har` while a recorder is active transparently stops the prior one and swaps targets (`replacedPrior:true`). Capability `action`.
 - `stop_har({ session? })`: remove the HAR recording route so further requests aren't logged. Returns `{ ok, session, wasActive, path?, finalized:false, nativeRecord, har?, inlineBytes?, hint, tokensEstimate }`. If the file is already on disk _and_ under ~256 KB, it's also inlined on the result. Capability `action`.
 - `open_session({ har: { path?, mode?, content?, urlFilter? } })`: wire HAR at context creation via Playwright's native `recordHar` option (the blessed primitive when you know up-front you want a HAR for the whole session). `content` defaults to `"omit"` and needs `network-body` for `embed` / `attach`, as on `start_har`. Honoured on `persistent` + `incognito`; ignored on `attached` (consumer's Chrome is not-owned; a runtime `start_har` is the BYOB path). Once wired this way, `start_har` refuses, and `stop_har` reports the constraint and a no-op (the native primitive can't be toggled off mid-session). `stop_har` will return `nativeRecord:true` here.
-- `open_session({ hars: ["a.har", "b.har", …] })`: REPLAY one or more HAR files against the new session. Each file is wired with `context.routeFromHAR(file, {notFound:"fallback"})` immediately post-create: requests in the archive are served from it, anything missing falls through to live network. Workspace-rooted paths only; a missing file errors (no silent fallback on a typo). Compose multiple HARs to layer fixtures.
+- `open_session({ hars: ["a.har", "b.har", …] })`: REPLAY one or more HAR files against the new session. Each file is wired with `context.routeFromHAR(file, {notFound:"fallback"})` immediately post-create: requests in the archive are served from it, anything missing falls through to live network. Workspace-rooted paths only; a missing file errors (no silent fallback on a typo). Compose multiple HARs to layer fixtures. `hars` needs the `action` capability, as `route` does: without it `open_session` returns the standard refusal with `requiredCapability: "action"` before anything launches.
 
 **Finalize timing**: Playwright writes the .har file on `context.close()`. There is no public mid-session flush. The canonical flow is **`start_har`, then drive the page, then `stop_har` (optional), then `close_session`, then read the .har from disk**. Both `start_har` and `open_session({har})` honour this; every result carries `finalizesOn:"close_session"` so the constraint is visible to the agent.
 
@@ -3013,9 +3019,10 @@ dispatch; egress-side masking strips occurrences across every sink (see
 the `register_secret` matrix above).
 
 **Pairing rule.** `get_credential` ADDITIONALLY requires the `secrets`
-capability to be enabled. Without it, the lookup refuses with a clear
-error (returning a password in cleartext would leak it into the
-transcript on first reference). Enable both:
+capability to be enabled. Without it, the lookup returns the standard
+capability refusal with `requiredCapability: "secrets"` before the vault is
+asked, and `reason` explains why (returning a password in cleartext would
+leak it into the transcript on first reference). Enable both:
 `BROWX_CAPABILITIES=read,navigation,action,human,credentials,secrets`.
 
 **Per-provider notes:**
@@ -3078,7 +3085,12 @@ Load an unpacked extension (MV3 or MV2 directory containing
 - `path`: workspace-rooted directory. A `..` segment, absolute paths
   outside `$BROWX_WORKSPACE`, files (vs directories), and directories
   missing `manifest.json` all reject with a structured error. Packed
-  `.crx` archives must be unpacked first.
+  `.crx` archives must be unpacked first. A directory under one that
+  browxai tools write into is refused too: `.artifacts/`, `.auth-states/`,
+  `.downloads/`, `archives/`, `assets/`, `diagnostics/`, `dom-dumps/`,
+  `elements/`, `har/`, `heap-snapshots/`, `pdfs/`, `perf/`, `perf-traces/`,
+  `replays/`, `screenshots/` and `videos/` hold page content and files the
+  agent saved. Stage the extension in a directory of its own.
 
 **Returns:** `{ok, session, installed: {id, name, version, path}, loaded:
 [{id, name, version, path, enabled}], note, tokensEstimate}`. The `id`
@@ -3724,7 +3736,7 @@ browxai to daemon:
 
 ## Native app control (`ios-app`, `android-app`) _(gated)_
 
-**Requires the off-by-default `native-device` capability.** `open_session({ engine: "ios-app" })` and `open_session({ engine: "android-app" })` both refuse without it, so the gate sits at session creation and no native tool can be reached around it. See [`docs/threat-model.md`](./threat-model.md) for what the capability grants.
+**Requires the off-by-default `native-device` capability.** `open_session({ engine: "ios-app" })` and `open_session({ engine: "android-app" })` both refuse without it with the standard capability refusal (`requiredCapability: "native-device"`), so the gate sits at session creation and no native tool can be reached around it. See [`docs/threat-model.md`](./threat-model.md) for what the capability grants.
 
 browxai drives two native engines. `ios-app` drives a native application on the **iOS Simulator** through its XCUITest accessibility hierarchy. `android-app` drives an app on an **Android emulator** over `adb`, UiAutomator for the view hierarchy, the OS input pipeline for taps, swipes and keys, `screencap` for frames. Neither is a browser: there is no `Page`, no DOM, no URL and no `Locator`. What each has instead is a view hierarchy that composes into the **same `A11yNode` tree** `snapshot` already returns, with the same `[ref=eN]` refs, so an agent skill written for web transfers and one CI verifier reads every kind of session.
 
