@@ -29,6 +29,7 @@ import type { BrowserContext, CDPSession, Page } from "playwright-core";
 import { BROWX_PAGE_STUB, HUMAN_WORLD, browxHumanScript } from "./browx-page.js";
 import type { OperatorChannel, OperatorGrant, OperatorPrompt } from "./operator-channel.js";
 import { log } from "../util/logging.js";
+import { redactUrlForLog } from "../util/url-sanitizer.js";
 
 export { HUMAN_WORLD } from "./browx-page.js";
 
@@ -368,7 +369,10 @@ export class BrowxBridge {
   }
 
   private onSignal(sig: BrowxSignal): void {
-    log.info("browx-bridge: signal", { name: sig.name, url: sig.url });
+    log.info("browx-bridge: signal", {
+      name: sig.name,
+      url: sig.url === undefined ? undefined : redactUrlForLog(sig.url),
+    });
     // The first pending waiter this answers (FIFO). No match → dropped.
     for (let i = 0; i < this.waiters.length; i++) {
       const w = this.waiters[i]!;

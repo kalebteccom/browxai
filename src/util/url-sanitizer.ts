@@ -60,6 +60,33 @@ export function sanitizeUrl(raw: string): string {
   return `${base}${path}${q}${frag}`;
 }
 
+/**
+ * A URL as a log line prints it. A URL with a host, and a `file:`, `blob:` or
+ * `data:` URL, goes through `sanitizeUrl`, so the log shows it the way tool
+ * output does: no userinfo, `?…` for a query, `#…` for a fragment. Anything
+ * else (`about:blank`, a bare `host:port`, text that is no URL) has no
+ * structure to parse, so it is cut at its first `?` or `#` and whatever sits
+ * before an `@` in front of the path is dropped.
+ */
+export function redactUrlForLog(raw: string): string {
+  let u: URL | null = null;
+  try {
+    u = new URL(raw);
+  } catch {
+    u = null;
+  }
+  if (u && (u.host || u.protocol === "file:" || u.protocol === "blob:" || u.protocol === "data:")) {
+    return sanitizeUrl(raw);
+  }
+  const cut = raw.search(/[?#]/);
+  const head = cut === -1 ? raw : raw.slice(0, cut);
+  const mark = cut === -1 ? "" : `${raw[cut]}…`;
+  const slash = head.indexOf("/");
+  const authority = slash === -1 ? head : head.slice(0, slash);
+  const at = authority.lastIndexOf("@");
+  return `${at === -1 ? head : head.slice(at + 1)}${mark}`;
+}
+
 // http(s)/ws(s) URL occurrences inside free text (console messages, page-error
 // strings). Bounded charset stops at the first whitespace / quote / angle.
 const URL_IN_TEXT = /\b(?:https?|wss?):\/\/[^\s"'<>`)\]}]+/gi;

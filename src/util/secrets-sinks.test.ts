@@ -155,6 +155,30 @@ describe("sink: network_body (fetchResponseBody)", () => {
     expect(r.body).toBe('{"sessionToken":"<TOKEN>","kind":"jwt"}');
   });
 
+  it("masks a value the server wrote JSON-escaped or HTML-escaped", async () => {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "API_KEY", value: "ab/cd+ef==" });
+    secrets.register({ name: "NOTE", value: "tom&jerry" });
+    const bodyOf = async (body: string): Promise<string | undefined> => {
+      const cdp = { send: vi.fn(async () => ({ body, base64Encoded: false })) } as never;
+      return (await fetchResponseBody(cdp, "req-1", undefined, secrets)).body;
+    };
+    // A server that writes `/` as `\/` and `&` as `&` in JSON.
+    const json = await bodyOf('{"key":"ab\\/cd+ef==","note":"tom\\u0026jerry"}');
+    expect(json).toBe('{"key":"<API_KEY>","note":"<NOTE>"}');
+    expect(await bodyOf("<td>tom&amp;jerry</td>")).toBe("<td><NOTE></td>");
+    // The same raw body, unmasked by its sink, as one string of a tool result.
+    const raw = '{"key":"ab\\/cd+ef==","note":"tom\\u0026jerry"}';
+    const res = maskToolResponse(
+      { content: [{ type: "text", text: JSON.stringify({ ok: true, body: raw }, null, 2) }] },
+      [secrets],
+    );
+    expect(JSON.parse((res.content[0] as { text: string }).text)).toEqual({
+      ok: true,
+      body: '{"key":"<API_KEY>","note":"<NOTE>"}',
+    });
+  });
+
   it("passes base64 bodies through unchanged (documented caveat)", async () => {
     const cdp = {
       send: vi.fn(async () => ({ body: "aHVudGVyMg==", base64Encoded: true })),

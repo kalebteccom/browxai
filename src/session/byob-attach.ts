@@ -12,6 +12,7 @@
 import { randomUUID } from "node:crypto";
 import type { CDPSession, Page } from "playwright-core";
 import { log } from "../util/logging.js";
+import { redactUrlForLog } from "../util/url-sanitizer.js";
 import {
   AndroidCdpAdapter,
   PlaywrightChromiumAdapter,
@@ -251,7 +252,7 @@ export async function attachByobDesktop(
   try {
     profile = await profileAttachedBrowser(connection.browser);
     log.warn(profile.warning);
-    log.info("session.byob: attaching", { endpoint, ...profile.detail });
+    log.info("session.byob: attaching", { endpoint: redactUrlForLog(endpoint), ...profile.detail });
     const source = browserTargetSource(connection.browser, {
       canCreate: profile.canCreateTargets,
     });
@@ -265,7 +266,7 @@ export async function attachByobDesktop(
     throw err;
   }
   log.info("session.byob: leased target", {
-    endpoint: connection.endpoint,
+    endpoint: redactUrlForLog(connection.endpoint),
     sessionId,
     targetId: target.targetId,
     createdTarget: target.created,
