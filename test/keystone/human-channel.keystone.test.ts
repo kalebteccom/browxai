@@ -143,6 +143,20 @@ async function asHuman(page: Page, expression: string): Promise<void> {
   await cdp.detach();
 }
 
+/** Navigate an attached session as test setup. `navigate` is held on an attached
+ *  session, so it runs under a grant, and the grant is then cut to one second
+ *  and left to expire. The call the test makes next has no grant to use. */
+async function navigateAsSetup(
+  call: ReturnType<typeof caller>,
+  session: string,
+  url: string,
+): Promise<void> {
+  await call("approve_actions", { scopes: ["byob_action"], ttlSeconds: 600 });
+  await call("navigate", { session, url });
+  await call("approve_actions", { scopes: ["byob_action"], ttlSeconds: 1 });
+  await new Promise((r) => setTimeout(r, 1_200));
+}
+
 /** Settles-within check: resolves to "pending" if `p` has not settled after `ms`. */
 async function stillPending<T>(p: Promise<T>, ms: number): Promise<"pending" | T> {
   return Promise.race([p, new Promise<"pending">((r) => setTimeout(() => r("pending"), ms))]);
@@ -243,7 +257,7 @@ describeAttached("human channel — attached Chromium, confirm hook", () => {
 
   beforeAll(async () => {
     workspace = isolateEnv("browx-human-attached-");
-    process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach";
+    process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach,self-approval";
     profileDir = mkdtempSync(join(tmpdir(), "browx-human-attached-profile-"));
     const port = await freePort();
     endpoint = `http://127.0.0.1:${port}`;
@@ -306,7 +320,7 @@ describeAttached("human channel — attached Chromium, confirm hook", () => {
       const call = caller(server);
       const session = "human-attached";
       await call("open_session", { session, mode: "attached" });
-      await call("navigate", { session, url: `${base}/forge?ks=confirm` });
+      await navigateAsSetup(call, session, `${base}/forge?ks=confirm`);
       const page = await findPage("ks=confirm");
       // The page's own world sees only the display-only stub, and no binding.
       const seen = await page.evaluate(() => {
@@ -354,7 +368,7 @@ describeAttached("human channel — attached Chromium, confirm hook", () => {
       const call = caller(server);
       const session = "human-attached-decline";
       await call("open_session", { session, mode: "attached" });
-      await call("navigate", { session, url: `${base}/forge?ks=decline` });
+      await navigateAsSetup(call, session, `${base}/forge?ks=decline`);
       const page = await findPage("ks=decline");
       const seen = tickets.length;
       const clicked = call<{ ok: boolean; error?: string }>("click", {
@@ -377,8 +391,8 @@ describeAttached("human channel — attached Chromium, confirm hook", () => {
       const call = caller(server);
       const session = "human-attached-await";
       await call("open_session", { session, mode: "attached" });
-      await call("navigate", { session, url: `${base}/plain?ks=await1` });
-      await call("navigate", { session, url: `${base}/forge?ks=await2` });
+      await navigateAsSetup(call, session, `${base}/plain?ks=await1`);
+      await navigateAsSetup(call, session, `${base}/forge?ks=await2`);
       const page = await findPage("ks=await2");
       const seen = tickets.length;
       const waiting = call<{ timedOut: boolean; value: unknown }>("await_human", {
@@ -412,7 +426,7 @@ describeAttached("human channel — answers are tied to their prompt", () => {
 
   beforeAll(async () => {
     workspace = isolateEnv("browx-human-ticket-");
-    process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach";
+    process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach,self-approval";
     profileDir = mkdtempSync(join(tmpdir(), "browx-human-ticket-profile-"));
     const port = await freePort();
     endpoint = `http://127.0.0.1:${port}`;
@@ -463,7 +477,7 @@ describeAttached("human channel — answers are tied to their prompt", () => {
       const call = caller(server);
       const session = "human-ticket";
       await call("open_session", { session, mode: "attached" });
-      await call("navigate", { session, url: `${base}/plain?ks=ticket` });
+      await navigateAsSetup(call, session, `${base}/plain?ks=ticket`);
       let page: Page | undefined;
       for (let i = 0; i < 50 && !page; i++) {
         page = observer

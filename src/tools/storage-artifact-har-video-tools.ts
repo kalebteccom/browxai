@@ -1,5 +1,4 @@
 import { withDeadline } from "../util/deadline.js";
-import { confirmByobAction } from "../policy/confirm.js";
 import {
   startHar,
   stopHar,
@@ -37,18 +36,7 @@ export function registerStorageArtifactHarVideoTools(
     ActionHost &
     ServerServicesHost,
 ): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-    okText,
-    errText,
-    confirmCtxFor,
-    denyContent,
-    workspace,
-    cfgActionTimeout,
-  } = host;
+  const { z, register, gateCheck, entryFor, okText, errText, workspace, cfgActionTimeout } = host;
 
   // ---- per-session artifact KV ----------------------------------------------
   //
@@ -68,6 +56,8 @@ export function registerStorageArtifactHarVideoTools(
     "artifact_save",
     {
       capability: "action",
+      // Not held in an attached session: Writes a file in the workspace artifact store. Nothing in the browser changes.
+      byobConfirm: false,
       description:
         'Save a text or binary artifact to the session\'s key-value store at `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`. `name` is letters, digits and `._-` only (no separators, `..` or leading dot). `content` is text by default (`encoding:"utf8"`); pass `encoding:"base64"` for binary. Saving an existing name overwrites it. The store holds 200 entries or 50 MiB per session; past either cap the oldest-written entry is evicted. Artifacts are deleted on `close_session`. Read back with `artifact_get`, list with `artifact_list`. Returns `{ ok, name, size, mtime, path }`.',
       inputSchema: {
@@ -225,8 +215,6 @@ export function registerStorageArtifactHarVideoTools(
       }
       try {
         const e = await entryFor(session);
-        const c = await confirmByobAction("start_har", confirmCtxFor(e));
-        if (!c.ok) return denyContent("start_har", c);
         const r = await withDeadline(
           startHar(requirePage(e.session).context(), e.har, workspace.root, e.id, {
             path,
@@ -257,6 +245,8 @@ export function registerStorageArtifactHarVideoTools(
     "stop_har",
     {
       capability: "action",
+      // Not held in an attached session: Ends a capture and writes the file. `start_har` is the held half.
+      byobConfirm: false,
       batchable: true,
       description:
         "Stop HAR recording on the current session by removing the recording route, so later requests are not logged. The file is finalized only when the session closes (`close_session`). Returns the reserved path; an inline `har` field appears only when the file already exists and is under about 256 KB, which usually means the context was reopened on the same path, so read the file after `close_session`. To record again in the same session, call `start_har` with a fresh path.",
@@ -312,6 +302,8 @@ export function registerStorageArtifactHarVideoTools(
     "stop_video",
     {
       capability: "file-io",
+      // Not held in an attached session: Ends a recording. An attached session cannot record one.
+      byobConfirm: false,
       batchable: true,
       description:
         "Mark the session's video recording to be finalized. The .webm is written only when the session closes (`close_session`); Playwright has no mid-session flush, so this sets `pendingFinalize:true` and returns the reserved target path. After `close_session`, read the file with `get_video`. Returns a structured error if no recorder is active (`recordVideo` was not passed to `open_session`). Requires the `file-io` capability (off by default).",
@@ -363,6 +355,8 @@ export function registerStorageArtifactHarVideoTools(
     "get_video",
     {
       capability: "file-io",
+      // Not held in an attached session: Reads a recorded video file. An attached session cannot record one.
+      byobConfirm: false,
       batchable: true,
       description:
         'Read the session\'s recorded video. The .webm exists only after `close_session`; an earlier call returns a structured error saying so. `format:"path"` (default) returns the absolute path and size. `format:"bytes"` also inlines the file as base64 when it is under about 1 MiB; larger files return the path with `tooLargeToInline:true`, so read them from disk. Returns a structured error if the session had no `recordVideo`. Requires the `file-io` capability (off by default).',

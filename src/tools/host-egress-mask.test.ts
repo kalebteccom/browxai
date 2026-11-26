@@ -34,6 +34,7 @@ function hostWith(opts: { secretsOn: boolean; sessions: Array<{ secrets: SecretR
     registry: { list: () => opts.sessions, peek: () => undefined },
     config: { testAttributes: [] },
     caps: { enabled: new Set(opts.secretsOn ? ["read", "secrets"] : ["read"]) },
+    confirmHooks: new Set(),
     diagnostics: { enabled: false },
     pluginRecords: () => [],
   } as unknown as HostDeps);

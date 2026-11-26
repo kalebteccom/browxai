@@ -87,6 +87,8 @@ export function registerDeepPerfTools(host: ToolHost): void {
     "perf_start",
     {
       capability: "action",
+      // Not held in an attached session: Starts a trace, which observes the page.
+      byobConfirm: false,
       batchable: true,
       deep: true,
       description:
@@ -129,6 +131,8 @@ export function registerDeepPerfTools(host: ToolHost): void {
     "perf_stop",
     {
       capability: "action",
+      // Not held in an attached session: Ends a trace and writes it to the workspace.
+      byobConfirm: false,
       batchable: true,
       deep: true,
       description:
@@ -196,6 +200,8 @@ export function registerDeepPerfTools(host: ToolHost): void {
     "perf_insights",
     {
       capability: "action",
+      // Not held in an attached session: Reads a trace already recorded.
+      byobConfirm: false,
       batchable: true,
       deep: true,
       description:

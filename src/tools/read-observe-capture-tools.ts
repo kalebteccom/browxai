@@ -283,6 +283,8 @@ export function registerReadObserveCaptureTools(
     "screenshot_schedule",
     {
       capability: "file-io",
+      // Not held in an attached session: Captures screenshots on a timer. The page is unchanged.
+      byobConfirm: false,
       description:
         "Capture screenshots at a fixed interval into a workspace-rooted directory. Use `screenshot_on` to capture on page events instead. `everyMs` is the cadence (100-60000). Exactly one stop condition is required: `count` or `durationMs`; an unbounded schedule is refused. `intoDir` defaults to `screenshots/<sessionId>-<isoTs>/` under $BROWX_WORKSPACE. Files are named `<seq>-<offsetMs>.<png|jpg>`. At most 1000 captures per call (a warning is emitted if hit); a single failed capture becomes a warning and the schedule continues. Returns `{ intoDir, count, capturedAt:[ms…], paths:[…], warnings[] }`. Requires the `file-io` capability (off by default).",
       inputSchema: {
@@ -385,6 +387,8 @@ export function registerReadObserveCaptureTools(
     "screenshot_on",
     {
       capability: "file-io",
+      // Not held in an attached session: Captures screenshots when page events fire. The page is unchanged.
+      byobConfirm: false,
       description:
         "Capture a screenshot each time a page event fires inside a time window, into a workspace-rooted directory. Use `screenshot_schedule` to capture on a timer instead. `trigger` is one of `navigation` (main-frame navigation), `console-error` (console error or uncaught page error), `network-mutation` (a successful POST, PUT, PATCH or DELETE) or `dialog` (alert, confirm, prompt, beforeunload). Max 50 captures per window (a warning is emitted if hit); triggers that fire while a capture is in flight are dropped. `intoDir` defaults to `screenshots/<sessionId>-<isoTs>/`. Returns `{ intoDir, trigger, capturedAt:[ms…], paths:[…], warnings[] }`. Requires the `file-io` capability (off by default).",
       inputSchema: {

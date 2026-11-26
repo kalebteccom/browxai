@@ -11,6 +11,7 @@ import {
   isToolEnabled,
   resolveCapabilities,
   resolveConfirmHooks,
+  confirmHookWarnings,
 } from "./capabilities.js";
 
 describe("resolveCapabilities (BROWX_CAPABILITIES)", () => {
@@ -131,5 +132,59 @@ describe("capabilitiesWith / capabilitiesAssignment", () => {
     expect(capabilitiesAssignment("byob-attach")).toBe(
       "BROWX_CAPABILITIES=read,navigation,action,human,byob-attach",
     );
+  });
+});
+
+describe("confirmHookWarnings (BROWX_CONFIRM_REQUIRED overrides)", () => {
+  const warningsFor = (value?: string) =>
+    confirmHookWarnings(
+      resolveConfirmHooks(value === undefined ? {} : { BROWX_CONFIRM_REQUIRED: value }),
+    );
+
+  it("says nothing when the variable is unset or empty", () => {
+    expect(warningsFor()).toEqual([]);
+    expect(warningsFor("  ")).toEqual([]);
+  });
+
+  it("says nothing for the full default list, in either order", () => {
+    expect(warningsFor("navigate_off_allowlist,byob_action")).toEqual([]);
+    expect(warningsFor("byob_action, navigate_off_allowlist")).toEqual([]);
+  });
+
+  it("warns that byob_action is gone when only navigate_off_allowlist is listed", () => {
+    const w = warningsFor("navigate_off_allowlist");
+    expect(w).toHaveLength(1);
+    expect(w[0]).toContain('"byob_action" is not in the list');
+    expect(w[0]).toContain("attached sessions run without a hold");
+    expect(w[0]).toContain("BROWX_CONFIRM_REQUIRED=navigate_off_allowlist,byob_action");
+  });
+
+  it("warns that navigate_off_allowlist is gone when only byob_action is listed", () => {
+    const w = warningsFor("byob_action");
+    expect(w).toHaveLength(1);
+    expect(w[0]).toContain('"navigate_off_allowlist" is not in the list');
+    expect(w[0]).toContain("proceeds with a log line and no prompt");
+  });
+
+  it("warns for both reserved names and both missing defaults on the reserved pair", () => {
+    const w = warningsFor("file_download,file_upload");
+    expect(w).toHaveLength(4);
+    expect(w[0]).toContain('"file_download" is accepted and reserved');
+    expect(w[1]).toContain('"file_upload" is accepted and reserved');
+    expect(w[2]).toContain('"navigate_off_allowlist" is not in the list');
+    expect(w[3]).toContain('"byob_action" is not in the list');
+    expect(w[3]).toContain("BROWX_CONFIRM_REQUIRED=file_download,file_upload,byob_action");
+  });
+
+  it("warns only about the reserved name when the defaults are kept", () => {
+    const w = warningsFor("navigate_off_allowlist,byob_action,file_upload");
+    expect(w).toEqual([
+      'BROWX_CONFIRM_REQUIRED: "file_upload" is accepted and reserved. No tool consults it yet, so it holds nothing.',
+    ]);
+  });
+
+  it("leaves the resolved set as written: the list still replaces the defaults", () => {
+    const hooks = resolveConfirmHooks({ BROWX_CONFIRM_REQUIRED: "file_download" });
+    expect([...hooks]).toEqual(["file_download"]);
   });
 });

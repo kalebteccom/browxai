@@ -427,7 +427,7 @@ describeAttached("workers_list keystone — attached Chromium, a stopped service
 
   beforeAll(async () => {
     fileCapabilities = process.env.BROWX_CAPABILITIES;
-    process.env.BROWX_CAPABILITIES = "read,navigation,action,human,eval,byob-attach";
+    process.env.BROWX_CAPABILITIES = "read,navigation,action,human,eval,byob-attach,self-approval";
     profileDir = mkdtempSync(join(tmpdir(), "browx-workers-attached-profile-"));
     const port = await freePort();
     endpoint = `http://127.0.0.1:${port}`;
@@ -489,6 +489,8 @@ describeAttached("workers_list keystone — attached Chromium, a stopped service
     "a service worker seen live stays listed as stopped, and page-planted script URLs never list",
     async () => {
       const session = "ks-workers-sw-stopped";
+      // `navigate` and `eval_js` are held on an attached session.
+      await call("approve_actions", { scopes: ["byob_action"], ttlSeconds: 600 });
       const opened = await call<{ ok: boolean }>("open_session", { session, mode: "attached" });
       expect(opened.ok).toBe(true);
 

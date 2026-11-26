@@ -444,8 +444,9 @@ export function isToolEnabled(tool: string, caps: CapabilityConfig): boolean {
 }
 
 /**  confirm-required policy. Each name corresponds to a runtime hook (see
- *  src/policy/confirm.ts). Default: `navigate_off_allowlist,byob_action` when
- *  `BROWX_ALLOWED_ORIGINS` is set / `BROWX_ATTACH_CDP` is set respectively. */
+ *  src/policy/confirm.ts). Default: `navigate_off_allowlist,byob_action`. The
+ *  first acts when `BROWX_ALLOWED_ORIGINS` is set, the second in a session whose
+ *  mode is `attached`. */
 export type ConfirmHook =
   "navigate_off_allowlist" | "file_download" | "file_upload" | "byob_action";
 
@@ -457,6 +458,16 @@ const ALL_CONFIRM_HOOKS: readonly ConfirmHook[] = [
 ];
 
 const DEFAULT_CONFIRM_HOOKS: readonly ConfirmHook[] = ["navigate_off_allowlist", "byob_action"];
+
+/** Hooks the parser accepts that no tool consults yet. */
+const RESERVED_CONFIRM_HOOKS: readonly ConfirmHook[] = ["file_download", "file_upload"];
+
+/** What stops being held when a default hook is left out of the list. */
+const DEFAULT_HOOK_ABSENT: Record<string, string> = {
+  navigate_off_allowlist:
+    "a navigation off the allowed-origins list proceeds with a log line and no prompt",
+  byob_action: "attached sessions run without a hold",
+};
 
 export function resolveConfirmHooks(
   env: NodeJS.ProcessEnv = process.env,
@@ -475,4 +486,29 @@ export function resolveConfirmHooks(
     );
   }
   return new Set(list as ConfirmHook[]);
+}
+
+/**
+ * Warnings for a resolved confirm-hook set. `BROWX_CONFIRM_REQUIRED` replaces
+ * the default set, so a list written to add a hook also removes the defaults it
+ * leaves out, and a reserved name holds nothing. Both are legal and both are
+ * said out loud at startup. The default set gives no warning.
+ */
+export function confirmHookWarnings(hooks: ReadonlySet<ConfirmHook>): string[] {
+  const warnings: string[] = [];
+  for (const hook of RESERVED_CONFIRM_HOOKS) {
+    if (!hooks.has(hook)) continue;
+    warnings.push(
+      `BROWX_CONFIRM_REQUIRED: "${hook}" is accepted and reserved. No tool consults it yet, so it holds nothing.`,
+    );
+  }
+  for (const hook of DEFAULT_CONFIRM_HOOKS) {
+    if (hooks.has(hook)) continue;
+    const kept = [...hooks, hook].join(",");
+    warnings.push(
+      `BROWX_CONFIRM_REQUIRED replaces the default set, and "${hook}" is not in the list: ${DEFAULT_HOOK_ABSENT[hook]}. ` +
+        `To keep it, set BROWX_CONFIRM_REQUIRED=${kept}.`,
+    );
+  }
+  return warnings;
 }

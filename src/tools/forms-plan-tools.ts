@@ -1,7 +1,6 @@
 import { withDeadline } from "../util/deadline.js";
 import { plan as planAction, execute as executeAction, PLAN_VERBS } from "../page/plan.js";
 import { ACTION_OPTS, SESSION_ARG } from "./schemas.js";
-import { confirmByobAction } from "../policy/confirm.js";
 import type {
   RegisterHost,
   GateHost,
@@ -33,8 +32,6 @@ export function registerFormsPlanTools(
     register,
     gateCheck,
     entryFor,
-    confirmCtxFor,
-    denyContent,
     actionTimeout,
     ctxFor,
     hintFromTarget,
@@ -182,13 +179,8 @@ export function registerFormsPlanTools(
         if (vg) return vg;
       }
       const e = await entryFor(args.session);
-      // The descriptor's verb is also subject to the same confirm-hook
-      // policy as a direct call to that verb — a `byob_action` policy that
-      // blocks `click` also blocks an `execute` of a click descriptor.
-      if (verb) {
-        const c = await confirmByobAction(verb, confirmCtxFor(e));
-        if (!c.ok) return denyContent(`execute(${verb})`, c);
-      }
+      // The `register` wrapper already held this call as `execute` on an attached
+      // session, once, whatever the descriptor's verb.
       const td = actionTimeout(args);
       // Compute the recordingHint off the descriptor's bound ref (same
       // shape `click` / `fill` build it).
