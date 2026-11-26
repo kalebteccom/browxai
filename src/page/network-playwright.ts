@@ -19,6 +19,7 @@
 
 import type { BrowserContext, Page, Request, Response, WebSocket } from "playwright-core";
 import type { SecretRegistry } from "../util/secrets.js";
+import { capFramePayload, type CappedPayload } from "../util/frame-cap.js";
 import {
   type MutationDetail,
   type MutationEntry,
@@ -378,9 +379,9 @@ export class PlaywrightWsBuffer {
     this.secrets = secrets;
   }
 
-  private trunc(s: string): { payload: string; truncated?: boolean } {
-    if (s.length <= this.maxPayload) return { payload: s };
-    return { payload: s.slice(0, this.maxPayload), truncated: true };
+  private trunc(s: string): CappedPayload {
+    const secrets = this.secrets;
+    return capFramePayload(s, this.maxPayload, secrets ? (t) => secrets.applyMaskInText(t) : null);
   }
 
   private push(f: WsFrame): void {

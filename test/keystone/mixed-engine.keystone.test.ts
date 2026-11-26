@@ -123,7 +123,7 @@ describeMixed("mixed-engine keystone — one server, chromium + firefox sessions
           session,
           url: `${fixture.url}/`,
         });
-        expect(nav.ok, `${session} navigates`).toBe(true);
+        expect(nav.ok, `${session} navigates: ${JSON.stringify(nav)}`).toBe(true);
         const snap = await callText("snapshot", { session });
         // A real snapshot of the real fixture proves the session's engine actually
         // drove a page — the chromium one via its CDP substrate, the firefox one
