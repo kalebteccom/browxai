@@ -1,20 +1,16 @@
 import { ACTION_OPTS, SESSION_ARG, TIMEOUT_ARG } from "./schemas.js";
-import type {
-  RegisterHost,
-  GateHost,
-  SessionHost,
-  ActionHost,
-  ServerServicesHost,
-} from "./host.js";
+import type { RegisterHost, ServerServicesHost } from "./host.js";
+import { checkLanding, type NavigationGateHost } from "./navigation-gate.js";
 
 /**
  * History + viewport action verbs: go_back / go_forward / set_viewport. No
- * confirm hook, no target resolution — a shape distinct from the canonical action
- * pipeline, so they keep their own bodies. Split out of `action-tools` by cohesive
+ * target resolution — a shape distinct from the canonical action pipeline, so
+ * they keep their own bodies. A history move has no requested URL, so the two
+ * history verbs check the URL they land on: scheme first, then the origin rules. Split out of `action-tools` by cohesive
  * family (RFC 0004 P3 / D3 SRP); registered in the same source order.
  */
 export function registerActionHistoryTools(
-  host: RegisterHost & GateHost & SessionHost & ActionHost & ServerServicesHost,
+  host: RegisterHost & NavigationGateHost & ServerServicesHost,
 ): void {
   const { z } = host;
 
@@ -24,21 +20,22 @@ export function registerActionHistoryTools(
       capability: "navigation",
       batchable: true,
       description:
-        "Go back one entry in the session history. The origin rules apply to the page you land on. Use `navigate` for a new URL. Returns an ActionResult.",
+        "Go back one entry in the session history. The scheme rules of `navigate` and the origin rules (`BROWX_ALLOWED_ORIGINS`, `BROWX_BLOCKED_ORIGINS`) apply to the page you land on: a held origin asks the human or returns a deny and the page stays there, and a scheme `navigate` would not open returns the refusal and resets the page to `about:blank`. Use `navigate` for a new URL. Returns an ActionResult.",
       inputSchema: { ...ACTION_OPTS },
     },
     async (args) => {
       const g = host.gateCheck("go_back");
       if (g) return g;
+      const e = await host.entryFor(args.session);
       const td = host.actionTimeout(args);
-      return host.asActionResultText(
-        host.actionsFor(await host.entryFor(args.session)).goBack({
-          mode: args.mode,
-          maxResultTokens: args.maxResultTokens,
-          deadlineMs: td.ms,
-          deadlineWarning: td.warning,
-        }),
-      );
+      const result = await host.actionsFor(e).goBack({
+        mode: args.mode,
+        maxResultTokens: args.maxResultTokens,
+        deadlineMs: td.ms,
+        deadlineWarning: td.warning,
+      });
+      const held = await checkLanding(host, "go_back", e, "", result.navigation, td.ms);
+      return held ?? host.asActionResultText(Promise.resolve(result));
     },
   );
 
@@ -48,21 +45,22 @@ export function registerActionHistoryTools(
       capability: "navigation",
       batchable: true,
       description:
-        "Go forward one entry in the session history, after a `go_back`. The origin rules apply to the page you land on. Returns an ActionResult.",
+        "Go forward one entry in the session history, after a `go_back`. The scheme and origin rules apply to the page you land on, as for `go_back`. Returns an ActionResult.",
       inputSchema: { ...ACTION_OPTS },
     },
     async (args) => {
       const g = host.gateCheck("go_forward");
       if (g) return g;
+      const e = await host.entryFor(args.session);
       const td = host.actionTimeout(args);
-      return host.asActionResultText(
-        host.actionsFor(await host.entryFor(args.session)).goForward({
-          mode: args.mode,
-          maxResultTokens: args.maxResultTokens,
-          deadlineMs: td.ms,
-          deadlineWarning: td.warning,
-        }),
-      );
+      const result = await host.actionsFor(e).goForward({
+        mode: args.mode,
+        maxResultTokens: args.maxResultTokens,
+        deadlineMs: td.ms,
+        deadlineWarning: td.warning,
+      });
+      const held = await checkLanding(host, "go_forward", e, "", result.navigation, td.ms);
+      return held ?? host.asActionResultText(Promise.resolve(result));
     },
   );
 

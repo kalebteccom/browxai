@@ -137,6 +137,7 @@ not config.
 - `BROWX_CONFIRM_REQUIRED`, default `navigate_off_allowlist,byob_action`. Policy hooks that route through human confirmation. Two hooks fire: `navigate_off_allowlist` and `byob_action`. The names `file_download` and `file_upload` are accepted but reserved: no tool consults them yet.
 - `BROWX_ALLOWED_ORIGINS`, unset. Allow list for `navigate`, as full origins: `https://app.example.com`, `https://*.example.com` (subdomains, not the bare domain). No port means the scheme default only; a port matches that port. `navigate` checks the landed URL too.
 - `BROWX_BLOCKED_ORIGINS`, unset. Block list; overrides the allow list. Ports match as for the allow list.
+- `BROWX_NAVIGATE_EXTRA_SCHEMES`, unset. Extra URL schemes `navigate` opens, such as `chrome,view-source`. By default it opens `http:`, `https:`, `about:blank` and `data:`; `file:` needs `file-io` and a workspace path. Environment only, so `set_config` cannot change it.
 - `BROWX_CHANNEL`, unset. Playwright browser channel for chromium sessions. Unset uses the installed Chrome, else the bundled build.
 - `BROWX_FIREFOX_CHANNEL`, unset. The same knob for Firefox sessions.
 - `BROWX_AUTOMATION_SWITCH`, unset. `1` or `true` restores Playwright's `--enable-automation` switch on chromium launches.

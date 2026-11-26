@@ -84,6 +84,8 @@ export interface HostDeps {
   confirmHooks: ReadonlySet<ConfirmHook>;
   /** Origin allow/blocklist policy. */
   originPolicy: OriginPolicy;
+  /** Extra schemes the navigation tools open (`BROWX_NAVIGATE_EXTRA_SCHEMES`). */
+  navigateExtraSchemes: ReadonlySet<string>;
   /** Session-independent pre-approval store. */
   approvals: ApprovalStore;
   /** Whether this server attached to an existing browser (BYOB). */
@@ -134,6 +136,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     caps,
     confirmHooks,
     originPolicy,
+    navigateExtraSchemes,
     approvals,
     isByob,
     workspace,
@@ -562,6 +565,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     confirmCtxFor,
     ctxFor,
     workspace,
+    navigateExtraSchemes,
     denyContent,
     asActionResultText,
     okText,

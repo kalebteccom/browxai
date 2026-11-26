@@ -14,6 +14,7 @@
 //   canvas           canvas_capture, gesture_chain, canvas_world_to_screen,
 //                    canvas_screen_to_world, canvas_query
 //   file-io          the 13 tool-gated tools, plus the `screenshot({path})` branch
+//                    and `navigate` to a `file:` URL
 //   diagnostics      diagnostics_note
 // Not table-driven, because the gate is a behaviour branch and not a tool gate:
 //   clipboard        `shortcut` copy/cut/paste leaves the OS clipboard and the
@@ -264,6 +265,24 @@ describe("capability denials with the default capability set", () => {
         expect(denied.hint).toMatch(/BROWX_CAPABILITIES/);
         expect([...denied.activeCapabilities].sort()).toEqual([...DEFAULT_SET].sort());
         expect(existsSync(join(workspace, "ks-capability-denials"))).toBe(false);
+      },
+      KEYSTONE_TIMEOUT,
+    );
+
+    it(
+      "refuses navigate to a file: URL and leaves the page where it was",
+      async () => {
+        await call("navigate", { session, url: `${fixture.url}/` });
+        const denied = await call<Denied & { reason: string }>("navigate", {
+          session,
+          url: "file:///etc/hosts",
+        });
+        expect(denied.ok).toBe(false);
+        expect(denied.requiredCapability).toBe("file-io");
+        expect(denied.error).toContain('capability "file-io" is not enabled on this server');
+        expect(denied.reason).toMatch(/`file:` URL/);
+        expect([...denied.activeCapabilities].sort()).toEqual([...DEFAULT_SET].sort());
+        expect(await probeHas("Keystone Fixture")).toBe(true);
       },
       KEYSTONE_TIMEOUT,
     );

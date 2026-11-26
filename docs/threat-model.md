@@ -104,7 +104,7 @@ state. Defenses:
   while `navigate_off_allowlist` is in `BROWX_CONFIRM_REQUIRED` (the default), and proceeds with a
   logged warning when that hook is off. An entry without a port matches the scheme's default port
   only; an entry with a port matches that port. `navigate` checks the URL it landed on after a
-  redirect with the same policy.
+  redirect with the same policy, and `go_back` and `go_forward` check the page they land on.
 - Documented as **defense-in-depth, not a security boundary**. Page-initiated redirects
   may still go through, especially in BYOB mode where browxai isn't intercepting all
   navigation. `@playwright/mcp` makes the same qualification on its `--allowed-origins`.
@@ -663,7 +663,7 @@ the same gate refusal and hint.
 
 - `navigation`, default **on**. Tools: `navigate`, `go_back`, `go_forward`, `scroll`, `set_viewport`.
 
-  Viewport/history movement. Honoured by the origin allowlist when set.
+  Viewport and history movement. `navigate` opens `http:`, `https:`, `about:blank` and `data:` URLs. A `file:` URL needs `file-io` and a path inside the workspace, a `javascript:` URL needs `eval`, an extension page (`chrome-extension:`, `moz-extension:`) needs `extensions`, and every other scheme is refused unless the operator listed it in `BROWX_NAVIGATE_EXTRA_SCHEMES` (see [Navigation schemes](#navigation-schemes)). The origin allowlist, when set, applies to `navigate` and to the page `go_back` or `go_forward` lands on.
 
 - `action`, default **on**. Tools: `click`, `fill`, `press`, `hover`, `select`, `choose_option`, `drag`, `wait_for`, `route`, and the `set_*` emulation and policy tools other than `set_viewport`.
 
@@ -768,9 +768,9 @@ the same gate refusal and hint.
 
   Per-session clipboard model for `shortcut` copy, cut and paste chords. Each session keeps its own buffer. The shared OS clipboard is written only at the moment of a copy, cut or paste command (`pbcopy` on macOS, `clip` on Windows, `xclip` on Linux, fixed argv, content over stdin) and is never read back into a session, so one session cannot pick up what a person or another session put there. With the capability off, `shortcut` still reports what the page handled and leaves the OS clipboard alone.
 
-- `file-io`, default **off**. Tools: `upload_file`, `drop_files`, `download_get`, `downloads_capture`, `fs_picker_respond`, `screenshot_on`, `screenshot_schedule`, `page_archive`, `asset_export`, `dom_export`, `element_export`, `get_video`, `stop_video`, and the `path` argument of `screenshot`.
+- `file-io`, default **off**. Tools: `upload_file`, `drop_files`, `download_get`, `downloads_capture`, `fs_picker_respond`, `screenshot_on`, `screenshot_schedule`, `page_archive`, `asset_export`, `dom_export`, `element_export`, `get_video`, `stop_video`, the `path` argument of `screenshot`, and a `file:` URL passed to `navigate`.
 
-  Tools that read a file into the page or write page-derived bytes to disk. Every path goes through `resolveWorkspacePath` in `src/util/workspace.ts`, so a path that escapes `$BROWX_WORKSPACE` is rejected. The `file_upload` and `file_download` confirm hooks (see `BROWX_CONFIRM_REQUIRED`) are reserved names that no tool consults yet, so the `file-io` gate and the workspace path rules are what hold these tools. Downloaded and exported files carry real page content and are as sensitive as the session that produced them.
+  Tools that read a file into the page or write page-derived bytes to disk. Every path goes through `resolveWorkspacePath` in `src/util/workspace.ts`, so a path that escapes `$BROWX_WORKSPACE` is rejected. `navigate` to a `file:` URL follows the same rule as a file read: the path must sit inside the workspace after links are resolved, and outside the browser profile directories. The `file_upload` and `file_download` confirm hooks (see `BROWX_CONFIRM_REQUIRED`) are reserved names that no tool consults yet, so the `file-io` gate and the workspace path rules are what hold these tools. Downloaded and exported files carry real page content and are as sensitive as the session that produced them.
 
 - `canvas`, default **off**. Tools: `canvas_capture`, `gesture_chain`, `canvas_world_to_screen`, `canvas_screen_to_world`, `canvas_query` (`canvas_diff` is pure-byte math under `read`).
 
@@ -945,6 +945,44 @@ warning that names the matching `BROWX_BLOCKED_ORIGINS` entry, and the navigatio
 Documented as **defense-in-depth, not a security boundary**. Page-initiated redirects
 and JS-driven navigation may still escape; the allowlist is a blast-radius reducer + a
 confirmation hook point.
+
+### Navigation schemes
+
+`navigate` decides by URL scheme before it touches the page:
+
+| Scheme                                       | Opens when                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------- |
+| `http:`, `https:`, `about:blank`, `data:`    | always                                                                    |
+| `file:`                                      | `file-io` is on and the path is a readable path inside `$BROWX_WORKSPACE` |
+| `javascript:`                                | `eval` is on                                                              |
+| `chrome-extension:`, `moz-extension:`        | `extensions` is on                                                        |
+| anything else (`chrome:`, `view-source:`, …) | the operator listed the scheme in `BROWX_NAVIGATE_EXTRA_SCHEMES`          |
+
+```
+BROWX_NAVIGATE_EXTRA_SCHEMES=chrome,view-source
+```
+
+Unset by default. The list is read from the server's environment at start and is not a
+config key, so `set_config` and a saved `config.json` cannot add to it. Entries are scheme
+names, with or without the colon. A malformed entry stops the server at start, and so does
+`file`, `javascript` or an extension scheme, because a capability turns those on. For a
+scheme that wraps another URL (`view-source:`), the wrapped URL has to pass the same table:
+`view-source:file:///…` needs `view-source` in the list, `file-io`, and a workspace path.
+
+A capability refusal carries `requiredCapability` like any other gate refusal. Every other
+refusal is `{ ok:false, error:"navigation-scheme: …", scheme, hint }`.
+
+The same table runs on the URL the page landed on, for `navigate` (after redirects),
+`go_back` and `go_forward`. A landing on a URL the table refuses sends the page to
+`about:blank` and returns the refusal with the landed URL in it, so the page's content is
+not left open to the read tools. The browser's own error page is exempt.
+
+The table describes browser sessions. On the native-app engines (`ios-app`, `android-app`),
+which sit behind `native-device`, `navigate` opens a deep link and the OS routes its scheme.
+
+This covers the three navigation tools. A link click, `window.open`, a meta refresh or
+script on the page can still move the page to another scheme where the browser allows it;
+the scheme table is defense-in-depth, as the origin lists are.
 
 ## What ships under this model
 

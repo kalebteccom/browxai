@@ -8,6 +8,13 @@ surface" covers.
 
 ## Unreleased
 
+**Upgrading from 0.20.2.** `navigate` now refuses some URLs it used to load. If you open local HTML with `navigate`, including a packed replay player, add `file-io` to `BROWX_CAPABILITIES` and keep the file inside `$BROWX_WORKSPACE` (or point `BROWX_WORKSPACE` at its directory). If you navigate to `chrome:`, `view-source:` or another non-web scheme, list the scheme in `BROWX_NAVIGATE_EXTRA_SCHEMES` in the server's environment. `javascript:` URLs need `eval` and extension pages need `extensions`. `http:`, `https:`, `about:blank` and `data:` URLs are unchanged. With an origin allowlist or blocklist set, `go_back` and `go_forward` can now ask the human.
+
+### Changed
+
+- **`navigate` opens `http:`, `https:`, `about:blank` and `data:` URLs by default, and other schemes need an opt-in.** A `file:` URL needs the `file-io` capability and a path inside `$BROWX_WORKSPACE`, checked like any other file read: links are resolved, and the browser profile directories are excluded. A `javascript:` URL needs `eval`, and a `chrome-extension:` or `moz-extension:` URL needs `extensions`; all three return the standard gate refusal with `requiredCapability`. Any other scheme (`chrome:`, `view-source:`, `devtools:`, `about:` pages other than `about:blank`, `blob:`, `ftp:`) and a URL with no scheme return `{ ok:false, error:"navigation-scheme: …", scheme, hint }`, and nothing loads. The new `BROWX_NAVIGATE_EXTRA_SCHEMES` (e.g. `chrome,view-source`) opens those other schemes. It is read from the server's environment only, so `set_config` and a saved config layer cannot add a scheme, and a `view-source:` URL is also checked on the URL it wraps. The same rules run on the URL the page landed on: a landing `navigate` would have refused returns the refusal and resets the page to `about:blank`. Deep links on the `ios-app` and `android-app` engines are unchanged.
+- **`go_back` and `go_forward` apply the origin rules and the scheme rules to the page they land on.** Their descriptions already said the origin rules applied; the tools now run them. With `BROWX_ALLOWED_ORIGINS` or `BROWX_BLOCKED_ORIGINS` set and `navigate_off_allowlist` in `BROWX_CONFIRM_REQUIRED` (the default), a history move onto a held origin asks the human or returns a `policy:` deny, and the page stays there, as a redirect does for `navigate`. Without those lists nothing changes for web pages.
+
 ## [0.20.2] - 2026-11-26
 
 **Upgrading from 0.20.1.** Nothing to do. Registered secrets are masked in more places: escaped forms in text, the server log, replay archives and SDK errors.

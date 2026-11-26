@@ -154,7 +154,10 @@ beforeAll(async () => {
   }
   workspace = mkdtempSync(join(tmpdir(), "browx-replay-player-"));
   process.env.BROWX_WORKSPACE = workspace;
-  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach,eval,self-approval";
+  // `file-io`: the review half opens the packed player through `navigate` from
+  // a `file:` URL, which needs it. The player is written inside the workspace.
+  process.env.BROWX_CAPABILITIES =
+    "read,navigation,action,human,byob-attach,eval,self-approval,file-io";
 
   fixture = await startFixture();
   if (!chromePath || !existsSync(chromePath)) return;

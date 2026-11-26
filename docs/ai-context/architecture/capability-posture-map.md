@@ -9,7 +9,7 @@ These are enabled. Withholding them reduces browxai to a read-only crawler.
 | Capability   | Tools                                                                                        | Rationale                                                                                                                |
 | ------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `read`       | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot | Observation has no side effect on the page; safe to enable everywhere.                                                   |
-| `navigation` | navigate, go_back, go_forward, scroll, set_viewport                                          | URL changes are visible to the agent and to the user.                                                                    |
+| `navigation` | navigate, go_back, go_forward, scroll, set_viewport                                          | URL changes are visible to the agent and to the user. `navigate` opens web, `about:blank` and `data:` URLs only.         |
 | `action`     | click, fill, select, drag, hover, press, wait_for                                            | User-emulating actions; bounded by anti-wedge deadlines.                                                                 |
 | `human`      | confirmation hooks, await_human                                                              | Pause-for-human is a safety lever, not a posture broadener. The answer comes only from the `browxai` CDP isolated world. |
 
@@ -41,7 +41,7 @@ Each requires explicit opt-in via `BROWX_CAPABILITIES` (env) or `createBrowxai({
 
 ## Composition rules
 
-- A tool may require **multiple** capabilities. `get_credential` requires `credentials` and `secrets`; `screenshot({path})` adds `file-io` to its `read` gate. `poll_eval` is gated by `eval` alone. `canvas_query` requires `canvas` + the host adapter's declared capabilities.
+- A tool may require **multiple** capabilities. `get_credential` requires `credentials` and `secrets`; `screenshot({path})` adds `file-io` to its `read` gate. `navigate` adds `file-io` for a `file:` URL (workspace-rooted), `eval` for `javascript:` and `extensions` for an extension page; any other non-web scheme needs the env-only `BROWX_NAVIGATE_EXTRA_SCHEMES`, which no config layer can widen (`src/tools/navigation-gate.ts`, `src/policy/navigation-scheme.ts`). `poll_eval` is gated by `eval` alone. `canvas_query` requires `canvas` + the host adapter's declared capabilities.
 - Capability composition is multiplicative: missing any required capability returns `capability-denied`.
 - The gate is composed in `src/server.ts` at registration time. A handler MUST NOT inline its own capability check beyond calling the shared gate.
 
