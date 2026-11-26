@@ -336,7 +336,10 @@ describe("coverage and heap tools", () => {
   ] as Array<[string, Body, RegExp?]>)(
     "%s renders a thrown error with an estimate",
     async (tool, args, message) => {
-      const h = handlersOf(registerDeepCoverageTools, noBrowser);
+      // The tracker exists on every session; with no CDP connection the handler
+      // throws while building the call's argument.
+      const coverage = { start: async () => ({}), stop: async () => ({}) };
+      const h = handlersOf(registerDeepCoverageTools, { ...noBrowser, coverage });
       estimatedError(await h[tool]!(args), message ?? /\S/);
     },
   );
@@ -399,7 +402,8 @@ describe("perf tools", () => {
   ] as Array<[string, Body, RegExp?]>)(
     "%s renders a thrown error with an estimate",
     async (tool, args, message) => {
-      const h = handlersOf(registerDeepPerfTools, noBrowser);
+      const perf = { start: async () => ({}), stop: async () => ({}) };
+      const h = handlersOf(registerDeepPerfTools, { ...noBrowser, perf });
       estimatedError(await h[tool]!(args), message ?? /\S/);
     },
   );
