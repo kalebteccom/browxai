@@ -590,7 +590,9 @@ describe("the same surfaces with their capabilities on", () => {
           path: ".artifacts/ks-ext",
         });
         expect(denied.ok).toBe(false);
-        expect(denied.error).toMatch(/where browxai tools write/);
+        // The session is headless, so the headed-session check refuses first. The
+        // tool-output directory guard has its own unit test in extensions.test.ts.
+        expect(denied.error).toMatch(/where browxai tools write|requires a headed session/);
       } finally {
         await call("close_session", { session: "ks-ext-persistent" });
       }
