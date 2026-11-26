@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runInit } from "./init.js";
+import { runInit, sniffTestAttributes } from "./init.js";
 import type { ClientSystem } from "./init-clients.js";
 
 let dir: string;
@@ -502,6 +502,38 @@ describe("browxai init --write-user-config", () => {
   });
 });
 
+describe("test-attribute sniff", () => {
+  it("orders the attributes it finds in a planted tree by count", () => {
+    mkdirSync(join(dir, "src"));
+    writeFileSync(
+      join(dir, "src", "a.tsx"),
+      '<a data-cy="x" /><b data-cy="y" /><i data-testid="z" />',
+    );
+    writeFileSync(join(dir, "src", "b.ts"), 'const q = `data-cy="w"`;');
+    writeFileSync(join(dir, "src", "c.md"), 'data-qa="ignored"');
+    const { attrs, note } = sniffTestAttributes(join(dir, "ws"));
+    expect(attrs).toEqual(["data-cy", "data-testid"]);
+    expect(note).toMatch(/^\(sniffed \d+ source file\(s\); hits: data-testid×\d+, data-cy×\d+\)$/);
+  });
+
+  it("stops at 200 source files", () => {
+    for (const sub of ["a", "b"]) {
+      mkdirSync(join(dir, sub));
+      for (let i = 0; i < 150; i++) writeFileSync(join(dir, sub, `f${i}.ts`), 'data-cy="x"');
+    }
+    expect(sniffTestAttributes(join(dir, "ws")).note).toBe(
+      "(sniffed 200 source file(s); hits: data-cy×200)",
+    );
+  });
+
+  it("is replaceable through InitDeps when --test-attrs is absent", async () => {
+    const sniffAttrs = vi.fn(() => ({ attrs: ["data-qa"], note: "(stub)" }));
+    expect(await runInit([dir, "--no-write"], { sniffAttrs })).toBe(0);
+    expect(sniffAttrs).toHaveBeenCalledWith(dir);
+    expect(out).toContain("test-attributes order: data-qa");
+  });
+});
+
 describe("browxai init user-level config, on by default", () => {
   const BASE = ["--test-attrs", "data-testid", "--no-smoke"];
   const CURSOR = (home: string): string => join(home, ".cursor", "mcp.json");
@@ -615,9 +647,10 @@ describe("browxai init user-level config, on by default", () => {
 
     it("with no client may sit before another flag", async () => {
       installAll();
-      const code = await runInit([dir, "--write-user-config", "--no-smoke"], {
-        system: sys(),
-      });
+      const code = await runInit(
+        [dir, "--test-attrs", "data-testid", "--write-user-config", "--no-smoke"],
+        { system: sys() },
+      );
       expect(code).toBe(0);
       expect(existsSync(CURSOR(home))).toBe(true);
     });
