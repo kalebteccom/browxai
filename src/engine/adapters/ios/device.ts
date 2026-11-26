@@ -80,10 +80,7 @@ export class IosPhysicalDevice implements IosDeviceHost, NativeAppGuard {
     try {
       await this.devicectl(installAppArgs(this.deps.identifier, appPath));
     } catch (err) {
-      throw new IosDeviceError(
-        "ios-device-install-failed",
-        err instanceof Error ? err.message : String(err),
-      );
+      throw new IosDeviceError("ios-device-install-failed", installFailure(err));
     }
     log.info("ios-device: installed", { bundleId });
   }
@@ -217,6 +214,17 @@ export class IosPhysicalDevice implements IosDeviceHost, NativeAppGuard {
   private build(): string {
     return this.deps.wdaBuild ?? "build unknown";
   }
+}
+
+/** devicectl's own reason for a failed install: the first `ERROR:` line, or the
+ *  first line. Its `key = value` detail lines can carry the phone's name and
+ *  identifiers, so they are dropped. */
+export function installFailure(err: unknown): string {
+  const lines = (err instanceof Error ? err.message : String(err))
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !/^\S+\s*=\s/.test(l));
+  return (lines.find((l) => /ERROR:/.test(l)) ?? lines[0] ?? "devicectl failed").slice(0, 300);
 }
 
 /** The scheme of a URL, lowercased, without the colon. */

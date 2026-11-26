@@ -7,7 +7,7 @@ import { DEFAULT_DEVICE_LIMITS, DeviceRateLimiter, type DeviceLimits } from "./d
 import { PHONE_ID } from "./__fixtures__/devicectl-devices.js";
 import { APP_ID, WDA_URL, fakeDevicectl, fakeWda, phoneState } from "./__fixtures__/fake-phone.js";
 
-async function rig(limits: Partial<DeviceLimits> = {}) {
+async function rig(limits: Partial<DeviceLimits> = {}, keepFailing = false) {
   const state = phoneState();
   const wda = fakeWda(state);
   const client = new WdaClient(WDA_URL, wda.http);
@@ -27,7 +27,7 @@ async function rig(limits: Partial<DeviceLimits> = {}) {
     { apps: [APP_ID], limits: limiter },
     (ms) => {
       sleeps.push(ms);
-      state.unreachable = false;
+      if (!keepFailing) state.unreachable = false;
       return Promise.resolve();
     },
   );
@@ -124,5 +124,23 @@ describe("IosDeviceDriver: failures", () => {
     await expect(driver.tap({ x: 1, y: 1 })).rejects.toThrow(/wda-unreachable/);
     expect(sleeps).toEqual([]);
     expect(sent("/wda/tap/0")).toBe(0);
+  });
+});
+
+describe("IosDeviceDriver: the phone's address stays out of errors", () => {
+  it("neither a failed read nor a failed input names the WebDriverAgent address", async () => {
+    const { driver, state } = await rig();
+    const failures: string[] = [];
+    state.unreachable = true;
+    await driver.tap({ x: 1, y: 1 }).catch((e: unknown) => failures.push(String(e)));
+    const always = await rig({}, true);
+    always.state.unreachable = true;
+    await always.driver.hierarchy().catch((e: unknown) => failures.push(String(e)));
+    expect(failures).toHaveLength(2);
+    for (const f of failures) {
+      expect(f).toContain("wda-unreachable");
+      expect(f).toContain("BROWX_IOS_WDA_URL");
+      expect(f).not.toContain("192.0.2.10");
+    }
   });
 });

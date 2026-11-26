@@ -7,6 +7,7 @@ import {
   parseInstalledAppIds,
   parsePhysicalDevices,
   parseProcesses,
+  timeoutFor,
   versionArgs,
   withJsonOutput,
 } from "./devicectl.js";
@@ -153,5 +154,13 @@ describe("devicectl device commands", () => {
     };
     expect(parseProcesses(json)).toEqual([{ pid: 7 }, { pid: 8, bundleId: "a.b" }]);
     expect(parseProcesses(null)).toEqual([]);
+  });
+});
+
+describe("timeoutFor", () => {
+  it("gives an install ten minutes and every other call one", () => {
+    expect(timeoutFor(installAppArgs(PHONE_ID, "/w/A.app"))).toBe(600_000);
+    expect(timeoutFor(listDevicesArgs())).toBe(60_000);
+    expect(timeoutFor(listAppsArgs(PHONE_ID))).toBe(60_000);
   });
 });

@@ -2,7 +2,7 @@
 // and WebDriverAgent.
 
 import { describe, expect, it } from "vitest";
-import { IosPhysicalDevice, schemeOf } from "./device.js";
+import { IosPhysicalDevice, installFailure, schemeOf } from "./device.js";
 import { WdaClient } from "./wda-client.js";
 import { DEFAULT_DEVICE_LIMITS, DeviceRateLimiter, type DeviceLimits } from "./device-limits.js";
 import { PHONE_ID } from "./__fixtures__/devicectl-devices.js";
@@ -187,6 +187,18 @@ describe("IosPhysicalDevice: rate limits (G10)", () => {
   it("does not count the close path's terminate", async () => {
     const { host } = await rig(phoneState(), { launch: 0 });
     await expect(host.terminateOnClose(APP_ID)).resolves.toBeUndefined();
+  });
+});
+
+describe("installFailure", () => {
+  it("keeps devicectl's ERROR: line and drops key = value detail", () => {
+    const err = new Error(
+      "xcrun devicectl device install failed: \nERROR: The app could not be installed. (code 3002)\n" +
+        "    DeviceName = Ana's iPhone\n    UDID = 00008000-000A11CE0000001E\n",
+    );
+    const msg = installFailure(err);
+    expect(msg).toBe("ERROR: The app could not be installed. (code 3002)");
+    expect(installFailure(new Error("plain failure"))).toBe("plain failure");
   });
 });
 

@@ -101,7 +101,9 @@ export function fakeWda(state: FakePhoneState): { http: Http; calls: WdaCall[] }
     const route = url.slice(WDA_URL.length).replace(`/session/${SESSION}`, "").split("?")[0]!;
     calls.push({ method: init.method, route, ...(init.body ? { body: init.body } : {}) });
     if (state.unreachable) {
-      return Promise.reject(new WdaUnreachableError(url, "fetch failed", "device"));
+      return Promise.reject(
+        new WdaUnreachableError(url, "connect ECONNREFUSED 192.0.2.10:8100", "device"),
+      );
     }
     if (state.missingRoutes.includes(route))
       return Promise.resolve(wdaError("unknown command", 404));

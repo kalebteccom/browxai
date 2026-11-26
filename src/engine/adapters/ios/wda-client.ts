@@ -51,12 +51,35 @@ const DEVICE_FIX =
   "Security, Local Network on this Mac; and BROWX_IOS_WDA_URL is the phone's current address on " +
   "the local network. browxai never starts the runner.";
 
+const ADDRESS = /\[[0-9a-f:.]+\](:\d+)?|\b\d{1,3}(\.\d{1,3}){3}(:\d+)?\b/gi;
+
+/** A phone's address is personal data here (RFC 0014 §10), so a phone's error
+ *  names the variable and the route, and any address in the transport's own
+ *  message is masked. A simulator's loopback address is shown as it is. */
+function phoneSafe(url: string, detail: string): { at: string; detail: string } {
+  let at = "BROWX_IOS_WDA_URL";
+  let host = "";
+  try {
+    const u = new URL(url);
+    host = u.host;
+    if (u.pathname !== "/") at += ` ${u.pathname}`;
+  } catch {
+    /* an unparsable URL is shown as the variable alone */
+  }
+  const masked = (host ? detail.split(host).join("<phone address>") : detail).replace(
+    ADDRESS,
+    "<address>",
+  );
+  return { at, detail: masked };
+}
+
 /** Nothing is listening where WebDriverAgent should be. Structured — the fix is
  *  in the error, because this is the first-run failure on every fresh machine. */
 export class WdaUnreachableError extends Error {
   constructor(url: string, detail: string, target: WdaTarget = "simulator") {
+    const shown = target === "device" ? phoneSafe(url, detail) : { at: url, detail };
     super(
-      `wda-unreachable: no WebDriverAgent answered at ${url} (${detail}). ` +
+      `wda-unreachable: no WebDriverAgent answered at ${shown.at} (${shown.detail}). ` +
         (target === "device" ? DEVICE_FIX : SIMULATOR_FIX),
     );
     this.name = "WdaUnreachableError";

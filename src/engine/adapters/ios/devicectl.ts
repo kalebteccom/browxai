@@ -182,9 +182,16 @@ export function parseProcesses(json: unknown): DeviceProcess[] {
 
 // ─── IO seam: the default runner ──────────────────────────────────────────────
 
+/** An install copies the whole bundle to the phone, over Wi-Fi on a network
+ *  phone, so it gets ten minutes. Every other call gets one. */
+export function timeoutFor(args: readonly string[]): number {
+  return args[1] === "device" && args[2] === "install" ? 600_000 : 60_000;
+}
+
 function execXcrun(args: readonly string[]): Promise<void> {
+  const timeout = timeoutFor(args);
   return new Promise<void>((resolve, reject) => {
-    execFile("xcrun", [...args], { timeout: 60_000, maxBuffer: 4 * 1024 * 1024 }, (err, _o, e) => {
+    execFile("xcrun", [...args], { timeout, maxBuffer: 4 * 1024 * 1024 }, (err, _o, e) => {
       if (!err) return resolve();
       if ((err as NodeJS.ErrnoException).code === "ENOENT")
         return reject(new DevicectlNotFoundError());

@@ -300,5 +300,14 @@ describe("WdaClient phone routes", () => {
     expect(phone).toContain("provisioning profile");
     expect(phone).not.toContain("xcodebuild");
     expect(new WdaUnreachableError("u", "d").message).toContain("xcodebuild");
+    const masked = new WdaUnreachableError(
+      "http://iphone.example.local:8100/session/S1/source",
+      "connect ECONNREFUSED 192.0.2.10:8100 via iphone.example.local:8100 and [fe80::1]:8100",
+      "device",
+    ).message;
+    expect(masked).toContain("BROWX_IOS_WDA_URL /session/S1/source");
+    for (const leak of ["192.0.2.10", "iphone.example.local", "fe80::1"]) {
+      expect(masked).not.toContain(leak);
+    }
   });
 });
