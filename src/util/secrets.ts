@@ -126,6 +126,16 @@ export class SecretRegistry {
     return this.byName.size;
   }
 
+  /** The longest form the mask matches, less one; 0 when nothing is
+   *  registered. A value that starts before a cut at `n` ends before
+   *  `n + maskSlack()`, so a sink that masks `n + maskSlack()` characters
+   *  before cutting at `n` masks every value the cut crosses. The forms
+   *  themselves stay private. */
+  maskSlack(): number {
+    const longest = this.maskForms()[0];
+    return longest ? longest.form.length - 1 : 0;
+  }
+
   /** The normalised origins a secret is scoped to (`https://app.example.com`),
    *  or null when it is unscoped or unknown. Never exposes the value. */
   scopeOrigins(name: string): string[] | null {
