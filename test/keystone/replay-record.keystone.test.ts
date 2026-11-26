@@ -83,7 +83,7 @@ describe("replay end-to-end", () => {
         selector: '[data-testid="task-input"]',
         value: "hello",
       });
-      await callJson("text_search", { session, query: "Keystone Fixture" });
+      await callJson("text_search", { session, text: "Keystone Fixture" });
       await callJson("record_annotate", {
         session,
         copy: "search returned matches",

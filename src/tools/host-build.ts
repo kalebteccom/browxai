@@ -20,6 +20,7 @@ import { touchAttachLease } from "../session/attach-pool.js";
 import { clampTimeout, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
 import { jsonResultWithEstimate } from "./json-result.js";
 import { engineCapabilityRefusal } from "./engine-capability-gate.js";
+import { parseToolArgs } from "./tool-input.js";
 import { invariant } from "../util/invariant.js";
 import type { Workspace } from "../util/workspace.js";
 import { type DiagnosticsRecorder } from "../util/diagnostics.js";
@@ -481,10 +482,13 @@ export function buildHost(deps: HostDeps): ToolHost {
     });
     const tracked = isWedgeTracked(def.capability ?? "");
     const wrapped = async (rawArgs: unknown): Promise<ToolResponse> => {
-      // MCP-wire boundary: the SDK parses + validates the inbound payload against
-      // this tool's `inputSchema` before dispatch, so the dispatched value IS the
-      // handler's declared arg shape. This is the one place that boundary narrows.
-      const args = rawArgs as z.infer<z.ZodObject<S>>;
+      // Every caller reaches the handler through here: the MCP wire, `batch`, the
+      // composing tools and the SDK transports. Only the wire parses before
+      // dispatch, so the schema is applied again here for the rest. A tool whose
+      // capability is off answers with its gate refusal whatever the arguments.
+      const input = parseToolArgs(name, def.inputSchema, rawArgs);
+      if (!input.ok) return (def.capability ? gateCheck(name) : null) ?? input.response;
+      const args = input.args as z.infer<z.ZodObject<S>>;
       const startedAt = Date.now();
       // Emit action/call before the handler runs so a call that throws or
       // wedges still lands in the replay log. `noteReplayCall` is a no-op

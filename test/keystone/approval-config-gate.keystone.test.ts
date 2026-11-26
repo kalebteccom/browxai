@@ -171,7 +171,7 @@ describe("capabilities cannot be widened through config", () => {
       expect(cfg.config.capabilities).not.toContain("eval");
       expect(cfg.config.capabilities).not.toContain("self-approval");
       const ev = await call<{ ok: boolean; requiredCapability?: string }>("eval_js", {
-        expression: "1+1",
+        expr: "1+1",
       });
       expect(ev.ok).toBe(false);
       expect(ev.requiredCapability).toBe("eval");
