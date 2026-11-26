@@ -221,6 +221,23 @@ function staysInsideRealRoot(workspaceRoot: string, abs: string): boolean {
  *  snapshot is a profile. (`plugins/` is readable; it is code, not secrets.) */
 const READ_PROTECTED_DIRS = ["profile", "profiles", "profile-snapshots", "chrome-profile"];
 
+/** The first of `dirs` (workspace-relative) that `abs` is or sits in, compared
+ *  through real paths and case-insensitively where the filesystem folds case,
+ *  or null. */
+export function workspaceDirContaining(
+  workspaceRoot: string,
+  abs: string,
+  dirs: readonly string[],
+): string | null {
+  const root = foldCase(realish(resolve(workspaceRoot)));
+  const target = foldCase(realish(resolve(abs)));
+  for (const d of dirs) {
+    const dir = join(root, foldCase(d));
+    if (target === dir || target.startsWith(dir + sep)) return d;
+  }
+  return null;
+}
+
 /** What protected operator path `abs` is or sits in, or null. Compares
  *  case-insensitively, because the default macOS filesystem is. */
 function protectedHit(
