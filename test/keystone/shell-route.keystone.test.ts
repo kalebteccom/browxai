@@ -13,7 +13,7 @@
 //
 // Skipped on Windows: the daemon test relies on POSIX socket file semantics.
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,9 +23,12 @@ import { startServeForTests } from "../../src/cli/serve.js";
 import { runCall } from "../../src/cli/shell-call.js";
 import type { ShellIo } from "../../src/cli/shell-io.js";
 import { startFixture, type Fixture } from "./fixture.js";
+import { gatedDescribe, hostGate } from "./keystone-gate.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
-const skipIfWindows = process.platform === "win32" ? describe.skip : describe;
+const skipIfWindows = gatedDescribe(
+  hostGate(process.platform !== "win32", "the daemon socket is a Unix domain socket"),
+);
 
 let fixture: Fixture;
 let workspace: string;
@@ -82,8 +85,8 @@ async function call(tool: string, args: Record<string, unknown>, ...flags: strin
 }
 
 const SESSION = "shell-ks";
-/** The built bin. This lane runs after `pnpm build`, so it is normally there. */
-const DIST_CLI = join(__dirname, "..", "..", "dist", "cli.js");
+/** The bin's source entry, run through tsx: the keystone shards have no dist/. */
+const REPO = join(__dirname, "..", "..");
 
 skipIfWindows("browxai call drives a real browser through serve --socket", () => {
   it(
@@ -207,17 +210,23 @@ skipIfWindows("browxai call drives a real browser through serve --socket", () =>
     KEYSTONE_TIMEOUT,
   );
 
-  it.skipIf(!existsSync(DIST_CLI))(
+  it(
     "refuses eval_js with the same envelope the stdio bin returns to an MCP client",
     async () => {
       const refused = await call("eval_js", { session: SESSION, expr: "1 + 1" });
       expect(refused.code).toBe(4);
 
-      // The real bin over stdio, the server an MCP client such as Claude Code starts.
+      // The bin's entry over stdio, the server an MCP client such as Claude Code starts.
       const transport = new StdioClientTransport({
-        command: process.execPath,
-        args: [DIST_CLI],
-        env: { BROWX_WORKSPACE: workspace, BROWX_HEADLESS: "1" },
+        command: join(REPO, "node_modules/.bin/tsx"),
+        args: [join(REPO, "src/cli.ts")],
+        cwd: REPO,
+        env: {
+          PATH: process.env.PATH ?? "",
+          HOME: process.env.HOME ?? "",
+          BROWX_WORKSPACE: workspace,
+          BROWX_HEADLESS: "1",
+        },
         stderr: "ignore",
       });
       const client = new Client({ name: "shell-route-keystone", version: "0" });

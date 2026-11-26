@@ -13,27 +13,21 @@
 // exercise the effectiveEngine threading + per-session substrate/gate resolution.
 // Gated on the Firefox binary — skips cleanly (not fails) on a Chromium-only box.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { it, expect, beforeAll, afterAll } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { firefox as pwFirefox } from "playwright-core";
 import { createServer } from "../../src/server.js";
 import { startFixture, type Fixture } from "./fixture.js";
+import { engineGate, gatedDescribe } from "./keystone-gate.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
 const KEYSTONE_TIMEOUT = 120_000;
 
-const ffPath = (() => {
-  try {
-    return pwFirefox.executablePath();
-  } catch {
-    return "";
-  }
-})();
-const firefoxAvailable = !!ffPath && existsSync(ffPath);
-const describeMixed = firefoxAvailable ? describe : describe.skip;
+const firefoxGate = engineGate("firefox");
+const firefoxAvailable = firefoxGate.run;
+const describeMixed = gatedDescribe(firefoxGate);
 
 let fixture: Fixture;
 let server: Awaited<ReturnType<typeof createServer>>;

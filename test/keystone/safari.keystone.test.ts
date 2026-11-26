@@ -22,12 +22,13 @@
 // storage/history from the real profile). There is NO headless Safari — this
 // keystone opens REAL windows when it runs (mac only); it skips cleanly elsewhere.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
 import { startFixture, type Fixture } from "./fixture.js";
+import { gatedDescribe, hostGate } from "./keystone-gate.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
@@ -44,7 +45,9 @@ const safariAvailable = (() => {
     return false;
   }
 })();
-const describeSafari = safariAvailable ? describe : describe.skip;
+const describeSafari = gatedDescribe(
+  hostGate(safariAvailable, "needs macOS with /usr/bin/safaridriver"),
+);
 
 let fixture: Fixture;
 let server: Awaited<ReturnType<typeof createServer>>;

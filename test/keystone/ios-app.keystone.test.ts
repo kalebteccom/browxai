@@ -30,6 +30,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
 import { IosSimulator, listSimulators } from "../../src/engine/adapters/ios/simulator.js";
+import { gatedDescribe, hostGate } from "./keystone-gate.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
@@ -62,7 +63,9 @@ const simulator = (() => {
     return null;
   }
 })();
-const describeSim = simulator ? describe : describe.skip;
+const describeSim = gatedDescribe(
+  hostGate(simulator !== null, "no available iOS simulator (needs macOS with Xcode)"),
+);
 
 // ─── the fake WebDriverAgent ──────────────────────────────────────────────────
 

@@ -10,7 +10,7 @@
 //
 // Skipped on Windows: the daemon test relies on POSIX socket file semantics.
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,11 +21,14 @@ import { startServeForTests } from "../../src/cli/serve.js";
 import { connectSocketClient } from "../../src/sdk/transport-socket.js";
 import { createServer } from "../../src/server.js";
 import { startFixture, type Fixture } from "./fixture.js";
+import { gatedDescribe, hostGate } from "./keystone-gate.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
 const REPO = join(__dirname, "..", "..");
 const SESSION = "bridge-ks";
-const skipIfWindows = process.platform === "win32" ? describe.skip : describe;
+const skipIfWindows = gatedDescribe(
+  hostGate(process.platform !== "win32", "the daemon socket is a Unix domain socket"),
+);
 
 let fixture: Fixture;
 let workspace: string;
