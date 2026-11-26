@@ -1,5 +1,4 @@
 import { requireCdp } from "../engine/index.js";
-import { estimateTokens } from "../util/tokens.js";
 import { runLayoutThrashTrace } from "../page/layout-thrash.js";
 import { diffHeapSnapshots } from "../page/memory-diff.js";
 import {
@@ -10,6 +9,7 @@ import {
   queryRetainers,
 } from "../page/heap.js";
 import { SESSION_ARG } from "./schemas.js";
+import { jsonToolResult } from "./json-result.js";
 import type { ToolHost } from "./host.js";
 
 /**
@@ -39,7 +39,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("coverage_start", e);
       if (eg) return eg;
-      try {
+      return jsonToolResult(async () => {
         const r = await e.coverage.start(requireCdp(e.session));
         const body: Record<string, unknown> = {
           ok: true,
@@ -52,21 +52,8 @@ export function registerDeepCoverageTools(host: ToolHost): void {
           body.warning =
             "A prior coverage_start was still active. It was stopped and its results were discarded, and a fresh tracker started.";
         }
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      }
+        return body;
+      });
     },
   );
 
@@ -88,7 +75,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("coverage_stop", e);
       if (eg) return eg;
-      try {
+      return jsonToolResult(async () => {
         const r = await e.coverage.stop(requireCdp(e.session));
         if (r.notRunning) {
           const body = {
@@ -96,12 +83,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
             notRunning: true,
             hint: "No coverage was running on this session, so there was nothing to stop. Call coverage_start first to collect some.",
           };
-          const tokensEstimate = estimateTokens(JSON.stringify(body));
-          return {
-            content: [
-              { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-            ],
-          };
+          return body;
         }
         const body: Record<string, unknown> = {
           ok: true,
@@ -109,21 +91,8 @@ export function registerDeepCoverageTools(host: ToolHost): void {
           cssCoverage: r.cssCoverage,
           durationMs: r.durationMs,
         };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      }
+        return body;
+      });
     },
   );
 
@@ -152,7 +121,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("layout_thrash_trace", e);
       if (eg) return eg;
-      try {
+      return jsonToolResult(async () => {
         const r = await runLayoutThrashTrace(requireCdp(e.session), workspace.root, e.id, {
           durationMs,
         });
@@ -168,21 +137,8 @@ export function registerDeepCoverageTools(host: ToolHost): void {
           body.warning =
             "BYOB / attached Chrome: trace buffer on the human's Chrome has been released. The JSON file remains under $BROWX_WORKSPACE.";
         }
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      }
+        return body;
+      });
     },
   );
 
@@ -209,28 +165,15 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       if (g) return g;
       // Pure file read + parse — no session touch required. SESSION_ARG
       // honoured for surface consistency with the sibling `perf_insights`.
-      try {
+      return jsonToolResult(() => {
         const r = diffHeapSnapshots(workspace.root, beforePath, afterPath, "memory_diff");
         const body: Record<string, unknown> = {
           ok: true,
           retainerGrowth: r.retainerGrowth,
           summary: r.summary,
         };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      }
+        return body;
+      });
     },
   );
 
@@ -260,7 +203,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("heap_snapshot", e);
       if (eg) return eg;
-      try {
+      return jsonToolResult(async () => {
         const snapshotJson = await takeHeapSnapshot(requireCdp(e.session));
         const targetPath = path ?? defaultHeapSnapshotPath(workspace.root, e.id);
         const written = writeHeapSnapshotFile(
@@ -279,21 +222,8 @@ export function registerDeepCoverageTools(host: ToolHost): void {
           body.warning =
             "BYOB / attached Chrome: the snapshot was captured against the human's Chrome. The .heapsnapshot file remains under $BROWX_WORKSPACE.";
         }
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      }
+        return body;
+      });
     },
   );
 
@@ -339,7 +269,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       if (g) return g;
       // Pure file read + parse — no session touch needed. We still honour
       // SESSION_ARG for consistency with the sibling `perf_insights`.
-      try {
+      return jsonToolResult(() => {
         const { parsed, resolved } = readHeapSnapshotFile(
           workspace.root,
           snapshotPath,
@@ -351,21 +281,8 @@ export function registerDeepCoverageTools(host: ToolHost): void {
           snapshotPath: resolved,
           ...result,
         };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      }
+        return body;
+      });
     },
   );
 }
