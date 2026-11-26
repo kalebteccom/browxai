@@ -2,6 +2,7 @@ import { estimateTokens } from "../util/tokens.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./host.js";
 import { requirePage } from "../engine/index.js";
+import { jsonResult } from "./json-result.js";
 
 /**
  * Interactive WebSocket primitives: ws_send / ws_intercept / ws_unintercept — the
@@ -45,7 +46,7 @@ export function registerGestureWebsocketTools(
         const r = await e.wsInteractive.send(requirePage(e.session), { wsId, message });
         const body = { ...r, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
         const body = {
           ok: false,
@@ -53,7 +54,7 @@ export function registerGestureWebsocketTools(
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       }
     },
   );
@@ -95,7 +96,7 @@ export function registerGestureWebsocketTools(
         });
         const body = { ok: true, ...r, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
         const body = {
           ok: false,
@@ -103,7 +104,7 @@ export function registerGestureWebsocketTools(
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       }
     },
   );
@@ -135,7 +136,7 @@ export function registerGestureWebsocketTools(
         );
         const body = { ok: true, ...r, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
         const body = {
           ok: false,
@@ -143,7 +144,7 @@ export function registerGestureWebsocketTools(
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       }
     },
   );
