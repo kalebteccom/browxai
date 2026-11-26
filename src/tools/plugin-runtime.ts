@@ -15,6 +15,7 @@ import { log } from "../util/logging.js";
 import type { ToolHost, ToolResponse } from "./host.js";
 import { activeSecretRegistries, maskToolResponse } from "./host-egress-mask.js";
 import { docsUrl } from "../util/docs-links.js";
+import { jsonResult, type TextResponse } from "./json-result.js";
 
 /** The createServer-owned pieces the plugin runtime needs that the shared
  *  `ToolHost` doesn't surface: the raw MCP server (for plugin-tool
@@ -112,33 +113,20 @@ export async function wirePluginRuntime(
   // check pipeline. We can't reuse the core `gateCheck` directly — it
   // consults `TOOL_CAPABILITY` for the core surface only. The wrapper
   // injected on every plugin tool registration does the check inline.
-  const pluginGate = (
-    toolName: string,
-  ): { content: Array<{ type: "text"; text: string }> } | null => {
+  const pluginGate = (toolName: string): TextResponse | null => {
     const cap = pluginToolCapability.get(toolName);
     if (cap === undefined) return null; // no capability declared → allowed
     if (caps.enabled.has(cap)) return null;
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify(
-            {
-              ok: false,
-              error: `plugin tool "${toolName}" is disabled: its capability "${cap}" is not enabled on this server`,
-              requiredCapability: cap,
-              activeCapabilities: [...caps.enabled],
-              hint:
-                "Add the capability to `BROWX_CAPABILITIES` and restart the browxai server. The variable replaces the default set, so keep the defaults in it, e.g. " +
-                `\`BROWX_CAPABILITIES=${capabilitiesWith(cap)}\`. ` +
-                '`set_config` cannot enable it: capabilities are read once at server start, and a saved list can only narrow them. If it stays off after a restart, run `reset_config` to clear a saved list that omits it, then check `get_config({scope:"resolved"}).capabilities`.',
-            },
-            null,
-            2,
-          ),
-        },
-      ],
-    };
+    return jsonResult({
+      ok: false,
+      error: `plugin tool "${toolName}" is disabled: its capability "${cap}" is not enabled on this server`,
+      requiredCapability: cap,
+      activeCapabilities: [...caps.enabled],
+      hint:
+        "Add the capability to `BROWX_CAPABILITIES` and restart the browxai server. The variable replaces the default set, so keep the defaults in it, e.g. " +
+        `\`BROWX_CAPABILITIES=${capabilitiesWith(cap)}\`. ` +
+        '`set_config` cannot enable it: capabilities are read once at server start, and a saved list can only narrow them. If it stays off after a restart, run `reset_config` to clear a saved list that omits it, then check `get_config({scope:"resolved"}).capabilities`.',
+    });
   };
 
   const registerPluginTool = (
@@ -175,21 +163,10 @@ export async function wirePluginRuntime(
       try {
         inner = await handler(args);
       } catch (e) {
-        inner = {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error: `plugin tool "${name}" threw: ${e instanceof Error ? e.message : String(e)}`,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        inner = jsonResult({
+          ok: false,
+          error: `plugin tool "${name}" threw: ${e instanceof Error ? e.message : String(e)}`,
+        });
       }
       // PluginToolResponse content items match ToolResponse exactly — same
       // shape, kept as parallel types only to draw the API boundary. The text,
@@ -234,18 +211,7 @@ export async function wirePluginRuntime(
         dispatch: async (n, args) => {
           const fn = toolHandlers[n];
           if (!fn) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: JSON.stringify(
-                    { ok: false, error: `dispatch: unknown tool "${n}"` },
-                    null,
-                    2,
-                  ),
-                },
-              ],
-            };
+            return jsonResult({ ok: false, error: `dispatch: unknown tool "${n}"` });
           }
           const res = await fn(args);
           return { content: [...res.content] };
@@ -313,7 +279,7 @@ export async function wirePluginRuntime(
           transitiveDeps: p.transitiveDeps,
         })),
       };
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResult(body);
     },
   );
 
@@ -338,22 +304,11 @@ export async function wirePluginRuntime(
       if (g) return g;
       const p = pluginRecords.find((r) => r.manifest.name === name);
       if (!p) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error: `plugin "${name}" is not in the declared set`,
-                  declared: pluginRecords.map((r) => r.manifest.name),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          ok: false,
+          error: `plugin "${name}" is not in the declared set`,
+          declared: pluginRecords.map((r) => r.manifest.name),
+        });
       }
       const tools = p.tools.map((tName) => {
         const def = pluginToolDef.get(tName);
@@ -386,7 +341,7 @@ export async function wirePluginRuntime(
         browxaiVersion: p.manifest.browxai.browxaiVersion ?? null,
         tools,
       };
-      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      return jsonResult(body);
     },
   );
 
