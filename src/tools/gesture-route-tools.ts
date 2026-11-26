@@ -151,6 +151,8 @@ export function registerGestureRouteTools(
     "unroute",
     {
       capability: "action",
+      // Not held in an attached session: Removes a route this server installed. The page goes back to its real responses.
+      byobConfirm: false,
       description:
         "Remove a route added by `route` or `route_queue`, by `urlPattern` (and `method`). With no `urlPattern` it removes every route this session added.",
       inputSchema: {

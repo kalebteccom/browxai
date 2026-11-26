@@ -66,6 +66,12 @@ export interface ToolMeta {
   /** Needs the raw-CDP escape hatch — refused on engines that declare `deep:false`.
    *  Replaces `DEEP_TOOLS` membership. */
   deep?: boolean;
+  /** Whether a call waits for a human in an attached session while the
+   *  `byob_action` hook is set. Omit it and the capability decides (see
+   *  `BYOB_HOLD_CAPABILITIES`). `false` opts out a tool that changes nothing in
+   *  the browser; the registration says why in a comment, and the completeness
+   *  fitness test pins the name. `true` opts in a tool outside those capabilities. */
+  byobConfirm?: boolean;
 }
 
 /** One tool's accumulated registration record — its `ToolMeta` plus the
@@ -123,6 +129,9 @@ export interface RegisterHost {
       /** Whether the tool needs the raw-CDP escape hatch — derived into
        *  `DEEP_TOOLS`, refused on engines that declare `deep:false`. */
       deep?: boolean;
+      /** Whether the tool is held in an attached session. Defaults from the
+       *  capability; `false` opts out and needs a reason comment. */
+      byobConfirm?: boolean;
     },
     handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ) => void;

@@ -28,6 +28,8 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
     "asset_export",
     {
       capability: "file-io",
+      // Not held in an attached session: Reads the page and writes the export to the workspace.
+      byobConfirm: false,
       description:
         'Save the resources the session has loaded (responses in its network buffer) that match a filter into a workspace-rooted directory, for example every image or font a page used. Use `page_archive` for a self-contained copy of the page and `download_get` for files the page downloaded. `filter` is `{mime?: string[], urlPattern?: string, minBytes?: number, maxBytes?: number, status?: number[]}`, and every given field must match: `mime` is a case-insensitive substring of the `Content-Type` (any one wins, such as `["image/","video/"]`), `urlPattern` a case-insensitive RegExp source, `status` defaults to 2xx. File names come from the URL basename, sanitised and de-duplicated with a `-N` suffix; existing files are never overwritten. `intoDir` must resolve inside `$BROWX_WORKSPACE` (default `assets/<sessionId>-<ISO>/`). When the renderer has dropped a body the tool re-fetches the URL from the page, and cross-origin URLs without permissive CORS count in `droppedCount`. Returns `{ ok, intoDir, totalCount, matchedCount, persistedCount, droppedCount, manifest: [{url, mime?, status?, sizeBytes, savedAs}], warnings, tokensEstimate }`; the manifest is also written to `<intoDir>/_manifest.json`. Requires the `file-io` capability (off by default).',
       inputSchema: {
@@ -126,6 +128,8 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
     "pdf_save",
     {
       capability: "action",
+      // Not held in an attached session: Renders the page to a workspace PDF. The page is unchanged.
+      byobConfirm: false,
       deep: true,
       description:
         'Print the current page to a workspace-rooted PDF (`page.pdf()`, CDP `Page.printToPDF`), when you need text and layout as a document rather than an image. Defaults: `format:"A4"`, `scale:1`, `printBackground:false` (the browser-print default; turn it on when background colour or imagery matters). `path` must resolve inside `$BROWX_WORKSPACE` (default `pdfs/<sessionId>-<ts>.pdf`). Refused on `attached` sessions, because printing would change your own Chrome window: open a `persistent` or `incognito` session and run it there. Returns `{ ok, path, bytes, format, scale, printBackground }`.',
@@ -210,6 +214,8 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
     "page_archive",
     {
       capability: "file-io",
+      // Not held in an attached session: Reads the page and writes the archive to the workspace.
+      byobConfirm: false,
       description:
         'Save the current page as a self-contained archive, to keep or share a page. Use `dom_export` for the DOM only and `element_export` for one subtree. `format:"directory"` (default) writes `<path>/index.html` plus `<path>/assets/` with every linked resource (images, fonts, scripts, stylesheets, CSS background images), with HTML references rewritten to relative `assets/...` paths. `"single-file"` writes one HTML at `<path>` with resources inlined as `data:` URIs; browsers struggle past about 150 MB, so prefer `directory` for large pages. `path` must resolve inside `$BROWX_WORKSPACE` (default `archives/<sessionId>-<ISO>`, or `.html` for single-file). `maxSizeMb` caps the archive (default 200); resources past it count in `droppedCount`. Resources are fetched from inside the page, so its CSP `connect-src` applies and blocked ones are dropped and counted. Load and settle the page first; the tool does not wait. The output is not masked, so treat it as sensitive. Returns `{ ok, format, path, sizeBytes, resourceCount, droppedCount, warnings[] }`. Requires the `file-io` capability (off by default).',
       inputSchema: {

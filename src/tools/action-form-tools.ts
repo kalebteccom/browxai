@@ -70,6 +70,8 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
     "wait_for",
     {
       capability: "action",
+      // Not held in an attached session: Waits for a page condition and changes nothing.
+      byobConfirm: false,
       batchable: true,
       description:
         "Wait until an element is visible (`ref`, `selector`, `named` or `coords`), or until visible `text` appears anywhere on the page, for SPA readiness after a reload or navigation. Pass exactly one of a target or `text`. Use `verify_visible` or `verify_text` when a miss should fail the step, `act_and_wait_for_network` to wait on a response, and `poll_eval` for a JS condition. `timeoutMs` is both the max wait and the anti-wedge deadline (default 5000, hard cap 3600000). `ok:false` means the wait expired: on a healthy page the element or text never appeared. If snapshot or navigate also time out, the session is wedged: call `close_session`, then `open_session` a fresh one. Returns an ActionResult.",

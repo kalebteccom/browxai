@@ -206,6 +206,8 @@ export function registerExtensionsTools(
     "extensions_list",
     {
       capability: "extensions",
+      // Not held in an attached session: Lists the session's extensions and changes none.
+      byobConfirm: false,
       deep: true,
       description:
         "List the extensions loaded in this session: `[{id, name, version, path, enabled}]`, empty when none is loaded. Requires the `extensions` capability (off by default). Headed `persistent` sessions only.",

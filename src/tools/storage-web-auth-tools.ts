@@ -306,6 +306,8 @@ export function registerStorageWebAuthTools(
     "auth_delete",
     {
       capability: "action",
+      // Not held in an attached session: Deletes a slot file in the workspace. It takes no session and reaches no browser.
+      byobConfirm: false,
       description:
         "Remove a named auth-state slot from the workspace. Idempotent (`existed:false` if it wasn't there).",
       inputSchema: { name: z.string().describe("Slot name.") },

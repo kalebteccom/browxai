@@ -233,6 +233,8 @@ export function registerGestureWorkerTools(
     "sw_unintercept_fetch",
     {
       capability: "action",
+      // Not held in an attached session: Removes a service-worker fetch intercept this server installed.
+      byobConfirm: false,
       deep: true,
       description:
         "Remove a `sw_intercept_fetch` interceptor by exact `pattern`, or every one this session installed when `pattern` is omitted.",
