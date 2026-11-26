@@ -8,7 +8,7 @@ import type { ActionContext } from "../page/actionresult.js";
 import type { Workspace } from "../util/workspace.js";
 import type { BrowxConfig } from "../util/config.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
-import type { StartOptions } from "../server.js";
+import type { StartOptions } from "./start-options.js";
 import type { ConfirmContext, ApprovalStore } from "../policy/confirm.js";
 import type { CredentialProvider, CredentialsConfig } from "../util/credentials.js";
 import type { PluginRecord } from "../plugin/types.js";

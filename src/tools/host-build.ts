@@ -49,7 +49,7 @@ import type { PluginRecord } from "../plugin/types.js";
 import type { OriginPolicy } from "../policy/origin.js";
 import type { ApprovalStore } from "../policy/confirm.js";
 import type { CredentialProvider, CredentialsConfig } from "../util/credentials.js";
-import type { StartOptions } from "../server.js";
+import type { StartOptions } from "./start-options.js";
 import type { ToolHost, ToolRegistration, ToolResponse } from "./host.js";
 import { buildObservation } from "./host-observation.js";
 import { activeSecretRegistries, maskedToolError, maskToolResponse } from "./host-egress-mask.js";

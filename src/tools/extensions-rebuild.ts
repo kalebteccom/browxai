@@ -35,7 +35,7 @@ import { log } from "../util/logging.js";
 import type { CapabilityConfig } from "../util/capabilities.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
 import type { Workspace } from "../util/workspace.js";
-import type { StartOptions } from "../server.js";
+import type { StartOptions } from "./start-options.js";
 
 /** The per-server boundary deps the rebuild threads in (was the closure the
  *  in-module helper held over `buildHost`'s scope). Passed explicitly so a second
