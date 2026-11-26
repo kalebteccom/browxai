@@ -1,10 +1,10 @@
 import { confirmByobAction } from "../policy/confirm.js";
 import { withDeadline } from "../util/deadline.js";
-import { estimateTokens } from "../util/tokens.js";
 import { uploadFile } from "../page/upload.js";
 import { dropFiles, type DropFileInput } from "../page/drop-files.js";
 import { readCapturedBytes } from "../page/downloads.js";
 import { REF_OR_SELECTOR, SESSION_ARG } from "./schemas.js";
+import { jsonResult, jsonResultWithEstimate, errorResult, jsonToolResult } from "./json-result.js";
 import type { ToolHost } from "./host.js";
 import { requirePage } from "../engine/index.js";
 
@@ -65,22 +65,10 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
       try {
         const target = asTarget(args, "upload_file", e.refs);
         if ("coords" in target) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    ok: false,
-                    error:
-                      "upload_file: target must be a ref/selector for the file input, not coords",
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return jsonResult({
+            ok: false,
+            error: "upload_file: target must be a ref/selector for the file input, not coords",
+          });
         }
         const r = await withDeadline(
           uploadFile(requirePage(e.session), e.refs, workspace.root, {
@@ -93,20 +81,9 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
           cfgActionTimeout(),
           "upload_file",
         );
-        return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+        return jsonResult(r);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -162,7 +139,7 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       const c = await confirmByobAction("drop_files", confirmCtxFor(e));
       if (!c.ok) return denyContent("drop_files", c);
-      try {
+      return jsonToolResult(async () => {
         const target = asTarget(args, "drop_files", e.refs);
         const r = await withDeadline(
           dropFiles(requirePage(e.session), e.refs, workspace.root, {
@@ -172,30 +149,8 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
           cfgActionTimeout(),
           "drop_files",
         );
-        const json = JSON.stringify(r);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
+        return r;
+      });
     },
   );
 
@@ -261,28 +216,9 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
           storageDir: e.downloads.storageDir,
           captured,
         };
-        const json = JSON.stringify(body);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
+        return jsonResultWithEstimate(body);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -317,28 +253,9 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
         };
         if (r.mimeType !== undefined) body.mimeType = r.mimeType;
         if (r.base64 !== undefined) body.content = r.base64;
-        const json = JSON.stringify(body);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
+        return jsonResultWithEstimate(body);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );

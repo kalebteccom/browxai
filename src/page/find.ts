@@ -13,6 +13,7 @@ import { visibleRect, type VisibleRect } from "./bbox.js";
 import { findByRef } from "./snapshot.js";
 import { effectiveAriaRole } from "./aria-role.js";
 import type { FeedbackMemory } from "./learning.js";
+import type { Actionability, SelectorStability } from "../util/action-descriptor.js";
 
 export interface FindCandidate {
   ref: string;
@@ -20,7 +21,7 @@ export interface FindCandidate {
   name?: string;
   testId?: string;
   /** "high" = tier-1 testid, "medium" = role+name, "low" = tier 4-5 fallback. */
-  stability: "high" | "medium" | "low";
+  stability: SelectorStability;
   /** Concrete selector string a consumer can transcribe into a flow-file. Disambiguated
    *  with `:visible` / `:nth-match(..., 1)` when the bare hint matched multiple DOM
    *  nodes (). */
@@ -35,7 +36,7 @@ export interface FindCandidate {
    *  + enabled + on-screen. `"disabled"` / `"off-screen"` / `"covered"` describe *why*
    *  if not. Lets a calibration agent reject `<input disabled>`-shaped halts at
    *  write-time instead of at run-time. */
-  actionable: true | "disabled" | "off-screen" | "covered";
+  actionable: Actionability;
   /** Internal score — higher = better match for the query. */
   score: number;
   /** structural neighbourhood when this candidate sits inside a repeated

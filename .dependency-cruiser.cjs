@@ -9,6 +9,12 @@
 // phase that removes the last violation"). Relaxing a promoted rule is an
 // RFC-amendment diff with rationale — never an inline disable (the §7 meta-rule).
 //
+// The bottom of the graph has its own rules: `util-is-a-leaf` and
+// `helper-and-policy-stay-below-the-core` fix what the three lowest directories may
+// import, and `no-server-to-page`, `no-tools-to-composition-root` and
+// `no-page-to-replay-at-runtime` close three directions that used to hold by
+// convention. All five landed at `error` with their last violation removed.
+//
 // `no-circular` is `error` too, but FILTERED to runtime cycles: the ~93 cycles
 // the tree carries are TYPE-ONLY (`import type` shared across the P2 bootstrap +
 // P3 module splits), erased at compile and harmless to load order. The
@@ -156,6 +162,62 @@ module.exports = {
         ],
       },
       to: { path: "node_modules/playwright-core|^playwright-core$" },
+    },
+    {
+      name: "util-is-a-leaf",
+      comment:
+        "src/util is the bottom of the graph: config, capabilities, workspace paths, secrets, " +
+        "deadlines. It imports nothing else under src/, type-only or runtime, so every layer " +
+        "above can import it without a cycle and a util module can be read without knowing a " +
+        "layer above it. A util module that needs a shape owned by a higher layer takes the " +
+        "shape down with it: `ActionDescriptor` lives in `src/util/action-descriptor.ts` and " +
+        "`src/page/plan.ts` re-exports it.",
+      severity: "error",
+      from: { path: "^src/util/" },
+      to: { path: "^src/", pathNot: "^src/util/" },
+    },
+    {
+      name: "helper-and-policy-stay-below-the-core",
+      comment:
+        "src/helper (shared handler internals) and src/policy (origin lists, confirmation " +
+        "hooks) sit one level above src/util. They import util and each other, and nothing " +
+        "else under src/: a policy that reached into a session or a page handler would make " +
+        "the gate depend on the thing it gates.",
+      severity: "error",
+      from: { path: "^src/(helper|policy)/" },
+      to: { path: "^src/", pathNot: "^src/(util|helper|policy)/" },
+    },
+    {
+      name: "no-server-to-page",
+      comment:
+        "The composition root composes src/tools/* modules and holds no handler logic, so it " +
+        "has no reason to import a page handler. A src/page import in server.ts is a handler " +
+        "growing back into the root.",
+      severity: "error",
+      from: { path: "^src/server\\.ts$" },
+      to: { path: "^src/page/" },
+    },
+    {
+      name: "no-tools-to-composition-root",
+      comment:
+        "A tool module is composed BY src/server.ts and must not import it back, type-only " +
+        "included: the edge makes every tool module depend on the whole composition. " +
+        "`StartOptions` lives in `src/tools/start-options.ts`; server.ts re-exports it for " +
+        "the package entry.",
+      severity: "error",
+      from: { path: "^src/tools/" },
+      to: { path: "^src/server\\.ts$" },
+    },
+    {
+      name: "no-page-to-replay-at-runtime",
+      comment:
+        "src/replay records what the page layer does; the page layer does not load the " +
+        "recorder to do its work. A type-only import is allowed (a handler may name a replay " +
+        "shape), a runtime one is not. The header drop-list both layers share lives in " +
+        "`src/util/sensitive-headers.ts`.",
+      severity: "error",
+      from: { path: "^src/page/" },
+      to: { path: "^src/replay/", dependencyTypesNot: ["type-only"] },
     },
     {
       name: "no-circular",

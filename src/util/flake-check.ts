@@ -35,7 +35,7 @@ import {
   type BatchReport,
   type BatchEntry,
 } from "./batch.js";
-import type { ActionDescriptor, PlanEvidence } from "../page/plan.js";
+import type { ActionDescriptor, PlanEvidence } from "./action-descriptor.js";
 
 export interface FlakeCheckOptions extends BatchOptions {
   /** How many times to run the same call sequence. Bounded by the caller
