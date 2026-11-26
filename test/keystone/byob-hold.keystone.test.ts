@@ -166,10 +166,10 @@ describeHold("attached-session hold — real Chrome, operator answers no", () =>
   const HELD_CALLS: Array<[string, Record<string, unknown>]> = [
     ["navigate", { url: "about:blank" }],
     ["go_back", {}],
-    ["double_click", { selector: "body" }],
+    ["double_click", { target: { selector: "body" } }],
     ["drag", { from: { selector: "body" }, to: { selector: "body" } }],
     ["eval_js", { expr: "1 + 1" }],
-    ["route", { url: "**/api/*", status: 200, body: "{}" }],
+    ["route", { urlPattern: "**/api/*", status: 200, body: "{}" }],
     ["grant_permissions", { permissions: ["geolocation"] }],
     ["set_geolocation", { latitude: 1, longitude: 1 }],
     ["click", { selector: "body" }],
@@ -197,6 +197,18 @@ describeHold("attached-session hold — real Chrome, operator answers no", () =>
       };
       const held = listed.sessions.find((s) => s.id === "held");
       expect(held?.url ?? "about:blank").not.toContain(fixture.url);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "refuses a navigate the scheme rules refuse without asking",
+    async () => {
+      const before = asked.length;
+      const r = await call("navigate", { session: "held", url: "chrome://version" });
+      expect(r.ok).toBe(false);
+      expect(r.error, JSON.stringify(r)).toMatch(/^navigation-scheme: /);
+      expect(asked.length).toBe(before);
     },
     KEYSTONE_TIMEOUT,
   );

@@ -33,6 +33,9 @@ export function registerActionCoreTools(
         url: z.string().describe("Absolute URL with scheme, e.g. https://app.example.com/login."),
         ...ACTION_OPTS,
       },
+      // A URL the scheme rules refuse is refused before an attached session's
+      // hold asks a human to approve it.
+      byobPrecheck: ({ url }, e) => requestedUrlRefusal(host, "navigate", e, url),
     },
     async ({ url, mode, maxResultTokens, timeoutMs, session }) => {
       const g = host.gateCheck("navigate");

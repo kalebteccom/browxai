@@ -37,6 +37,7 @@ surface" covers.
 
 ### Fixed
 
+- **In an attached session, `navigate` to a URL the scheme rules refuse returns the `navigation-scheme` refusal without asking the human first.** The attached-session hold asked for approval, and an approved call was then refused. `go_back` and `go_forward` check the page they land on after the move, so they still ask first.
 - **An attached Chrome on Android is held by `byob_action`.** The hook was switched on by the server's `BROWX_ATTACH_CDP` setting, and an Android attach needs no endpoint, so its actions ran without asking. The hook now reads the session's own mode, and every `mode: "attached"` session is held: desktop Chrome, Chrome on Android and an Electron app.
 - **A socket message line between 10 and 32 MiB no longer fails outside the connection's error handling.** The socket transport documents a 32 MiB line limit, and its read buffer had a lower limit of its own at 10 MiB, so a line between the two raised an error inside the socket's data handler. The read buffer's limit now follows the line limit, so a line up to 32 MiB is delivered and a longer one closes that connection with an error that names the limit. Any error while reading closes only the connection it came from. A line that is not a valid message is dropped, and the lines after it in the same chunk are still delivered, where they waited for the next chunk before.
 

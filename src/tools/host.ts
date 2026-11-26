@@ -132,6 +132,10 @@ export interface RegisterHost {
       /** Whether the tool is held in an attached session. Defaults from the
        *  capability; `false` opts out and needs a reason comment. */
       byobConfirm?: boolean;
+      /** A refusal the handler would return from the arguments alone, run
+       *  before the attached-session hold asks a human. Must be cheap and must
+       *  not touch the page. */
+      byobPrecheck?: (args: z.infer<z.ZodObject<S>>, e: SessionEntry) => ToolResponse | null;
     },
     handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ) => void;

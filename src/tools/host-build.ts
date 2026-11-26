@@ -466,6 +466,7 @@ export function buildHost(deps: HostDeps): ToolHost {
       batchable?: boolean;
       deep?: boolean;
       byobConfirm?: boolean;
+      byobPrecheck?: (args: z.infer<z.ZodObject<S>>, e: SessionEntry) => ToolResponse | null;
     },
     handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ): void => {
@@ -520,7 +521,10 @@ export function buildHost(deps: HostDeps): ToolHost {
         try {
           const gated = def.capability !== undefined ? gateCheck(name) : null;
           if (gated) return gated;
-          const refused = held ? await holdAttached(name, args, hold) : null;
+          const precheck = def.byobPrecheck;
+          const refused = held
+            ? await holdAttached(name, args, hold, precheck && ((e) => precheck(args, e)))
+            : null;
           if (refused) return refused;
           return await handler(args);
         } catch (err) {

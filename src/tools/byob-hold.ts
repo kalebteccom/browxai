@@ -57,20 +57,22 @@ function sessionArg(args: unknown): string | undefined {
  * Run the hold for one call of a held tool. Returns the refusal to send back,
  * or null when the handler may run.
  *
- * The engine gate runs before the prompt, so a human is never asked to approve
- * a call the session's engine would refuse anyway. A session that is not
- * attached returns null without either check: its handler runs as it always did.
+ * The engine gate and the tool's own `precheck` run before the prompt, so a
+ * human is never asked to approve a call the session's engine or the tool's
+ * argument rules would refuse anyway. A session that is not attached returns
+ * null without any check: its handler runs as it always did.
  */
 export async function holdAttached(
   toolName: string,
   args: unknown,
   deps: ByobHoldDeps,
+  precheck?: (e: SessionEntry) => ToolResponse | null,
 ): Promise<ToolResponse | null> {
   if (!deps.armed) return null;
   const e = await deps.entryFor(sessionArg(args));
   const ctx = deps.confirmCtxFor(e);
   if (!ctx.isByob) return null;
-  const refused = deps.engineGate(toolName, e);
+  const refused = deps.engineGate(toolName, e) ?? precheck?.(e) ?? null;
   if (refused) return refused;
   const decision = await confirmByobAction(toolName, ctx);
   return decision.ok ? null : deps.denyContent(toolName, decision);
