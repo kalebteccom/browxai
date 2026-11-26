@@ -64,6 +64,7 @@ export function capMasked(
   if (!mask) return { payload: raw.slice(0, max), truncated: true };
   let end = Math.min(raw.length, max + slack);
   let masked = mask(raw.slice(0, end));
+  // bound: `end` grows by at least 1 on every pass and stops at `raw.length`.
   while (end < raw.length && masked.length - slack < max) {
     end = Math.min(raw.length, end + Math.max(slack, max - (masked.length - slack) + slack, 1));
     masked = mask(raw.slice(0, end));
