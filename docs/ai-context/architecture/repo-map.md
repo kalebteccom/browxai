@@ -22,6 +22,8 @@ The `browxai` bin. Subcommands: `serve` (socket mode), `tools` and `call` (the s
 
 The shell route is a client of a `serve --socket` daemon. It adds no capability and no listener, and it opens its connection through `connectSocketClient` in `src/sdk/transport-socket.ts`, so there is one socket client. The modules are `shell-args.ts` (parsing), `shell-input.ts` (JSON arguments from argv, standard input or a file), `shell-result.ts` (the output document and the exit codes), `shell-connect.ts`, `shell-out.ts` (`--out`), `shell-call.ts` and `shell-tools.ts`. The daemon's `tools/list` entries come from `serve-listing.ts`. A gated tool must refuse through the route exactly as over MCP, and `test/sdk/shell-route.test.ts` holds that check.
 
+`browxai bridge` (RFC 0013) is the same kind of client for an MCP client: stdio on one side, the daemon's socket on the other. `bridge.ts` is the command (arguments, the wait for the daemon, exit codes), `bridge-relay.ts` the relay over two MCP `Transport` objects (open-request tracking, the lost-connection errors, the reconnect and its repeated handshake), `bridge-queue.ts` one direction's send queue with backpressure, and `bridge-message.ts` the few fields the relay reads. The relay runs no MCP server or client and never reads a tool name or a result. Every socket client, the bridge included, opens its connection through `connectOwnSocket` in `src/transport/socket-guard.ts`, which checks the socket's type, owner and mode first. `test/sdk/bridge.test.ts` compares what a client behind the bridge sees with what a direct socket client sees.
+
 ### `src/page/`
 
 Per-tool handlers. One file per tool. Files of note:
