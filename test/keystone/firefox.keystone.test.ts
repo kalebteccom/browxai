@@ -230,7 +230,7 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
         session,
         url: `${fixture.url}/`,
       });
-      expect(nav.ok).toBe(true);
+      expect(nav.ok, JSON.stringify(nav)).toBe(true);
 
       // (1) snapshot — the page-side walker actually ran against a real Firefox
       // page and surfaced the DOM-walk testIds. [from-dom] is the substrate
@@ -328,7 +328,7 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
         session,
         url: `${fixture.url}/perf-audit-page`,
       });
-      expect(nav.ok).toBe(true);
+      expect(nav.ok, JSON.stringify(nav)).toBe(true);
 
       // network_read — the session-wide ring fed by the Playwright context
       // request/response events. The page's own document + the Script subresource
