@@ -8,17 +8,32 @@
 // `actionresult-types.ts`) — index signatures, so a field browxai gains later
 // rides through instead of being dropped. That is the reader-side
 // forward-compatibility rule applied at the writer.
+//
+// Two adapters are narrower. `net/request` and `net/response` are built from
+// the field lists in `net-fields.ts`, because a raw CDP network event carries
+// header and body copies the redaction rules do not reach. `action/call` leaves
+// out the argument fields `call-args.ts` names.
 
 import type {
   ActionCallPayload,
   ActionResultPayload,
   AnnotateSpanPayload,
   AssertResultPayload,
+  CaptureTier,
   MaybeRedacted,
   ReplayEvent,
   ReplayEventType,
 } from "./schema.js";
+import { recordableArgs } from "./call-args.js";
+import {
+  netRequestPayload,
+  netResponsePayload,
+  type NetRequestPayload,
+  type NetResponsePayload,
+} from "./net-fields.js";
 import { redactEvent, type Redactor } from "./redact.js";
+
+export type { NetRequestPayload, NetResponsePayload };
 
 /** Per-event-type payload version. Every type starts at 1; a type bumps its own
  *  when its payload shape changes, independent of the envelope version. */
@@ -39,6 +54,9 @@ export interface SourceContext {
   redact: Redactor;
   /** Set only on multi-target sessions, per the envelope contract. */
   targetId?: string;
+  /** The capture tier, when the caller knows it. The request body parts
+   *  (`postDataEntries`) are recorded at `reexecutable` only. */
+  tier?: CaptureTier;
 }
 
 type Extras = Record<string, unknown>;
@@ -70,33 +88,14 @@ export interface CdpRequestWillBeSent extends Extras {
   wallTime?: number;
 }
 
-export type NetRequestPayload = Omit<CdpRequestWillBeSent, "request"> & {
-  request: Omit<CdpRequest, "headers" | "postData"> & {
-    headers?: Record<string, MaybeRedacted<string>>;
-    postData?: MaybeRedacted<string>;
-  };
-};
-
+/** Built from the field lists in `net-fields.ts`: a CDP field that is not
+ *  listed there is not recorded. */
 export function netRequestEvent(
   ctx: SourceContext,
   raw: CdpRequestWillBeSent,
   wallMs?: number,
 ): ReplayEvent<NetRequestPayload> {
-  const { request, ...rest } = raw;
-  const { headers, postData, ...req } = request;
-  return event(
-    ctx,
-    "net/request",
-    {
-      ...rest,
-      request: {
-        ...req,
-        ...(headers ? { headers: ctx.redact.headers(headers) } : {}),
-        ...(postData !== undefined ? { postData: ctx.redact.payload(postData) } : {}),
-      },
-    },
-    wallMs,
-  );
+  return event(ctx, "net/request", netRequestPayload(raw, ctx.redact, ctx.tier), wallMs);
 }
 
 export interface CdpResponse extends Extras {
@@ -112,29 +111,12 @@ export interface CdpResponseReceived extends Extras {
   type?: string;
 }
 
-export type NetResponsePayload = Omit<CdpResponseReceived, "response"> & {
-  response: Omit<CdpResponse, "headers"> & { headers?: Record<string, MaybeRedacted<string>> };
-  /** Present only at the re-executable tier, where bodies are captured. */
-  body?: MaybeRedacted<string>;
-};
-
 export function netResponseEvent(
   ctx: SourceContext,
   raw: CdpResponseReceived,
   opts: { body?: string; wallMs?: number } = {},
 ): ReplayEvent<NetResponsePayload> {
-  const { response, ...rest } = raw;
-  const { headers, ...res } = response;
-  return event(
-    ctx,
-    "net/response",
-    {
-      ...rest,
-      response: { ...res, ...(headers ? { headers: ctx.redact.headers(headers) } : {}) },
-      ...(opts.body !== undefined ? { body: ctx.redact.payload(opts.body) } : {}),
-    },
-    opts.wallMs,
-  );
+  return event(ctx, "net/response", netResponsePayload(raw, ctx.redact, opts.body), opts.wallMs);
 }
 
 export interface CdpLoadingFailed extends Extras {
@@ -257,7 +239,8 @@ export function actionCallEvent(
   call: ActionCallSource,
   wallMs?: number,
 ): ReplayEvent<ActionCallPayload & Extras> {
-  return event(ctx, "action/call", { ...call, tool: call.tool, args: call.args }, wallMs);
+  const args = recordableArgs(call.tool, call.args);
+  return event(ctx, "action/call", { ...call, tool: call.tool, args }, wallMs);
 }
 
 /** What a tool handed back: an `ActionResult`, a `VerifyResult`, or a plugin
