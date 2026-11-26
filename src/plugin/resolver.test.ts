@@ -1,7 +1,7 @@
 // Manifest resolver — `plugins.json` parsing + per-plugin manifest
 // resolution from disk.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,9 +11,6 @@ import {
   resolveDeclaredPlugin,
   type PluginPaths,
 } from "./resolver.js";
-
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
 
 let workspaceRoot: string;
 

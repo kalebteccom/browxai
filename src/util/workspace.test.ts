@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   chmodSync,
   existsSync,
@@ -21,9 +21,6 @@ import {
   resolveWorkspaceReadPath,
   resolveWorkspaceWritePath,
 } from "./workspace.js";
-
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
 
 // Build steps (build, docs build, package audit, coverage) create these in the checkout
 // while the unit suite runs. A before/after listing of the repo root must not count them.

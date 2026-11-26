@@ -36,9 +36,6 @@ import {
   type StorageStateBlob,
 } from "./storage.js";
 
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
-
 // ---- fixture helpers -------------------------------------------------------
 
 let ws: string;

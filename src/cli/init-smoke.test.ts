@@ -2,11 +2,8 @@ import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { onInterrupt, removeDir, runSmoke, type SignalHost } from "./init-smoke.js";
-
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
 
 function fakeHost(): SignalHost & { emitter: EventEmitter; exits: number[] } {
   const emitter = new EventEmitter();

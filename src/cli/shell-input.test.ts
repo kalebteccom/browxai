@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type InputSources,
   MAX_ARGS_BYTES,
@@ -12,9 +12,6 @@ import {
   readStdinText,
   resolveArgs,
 } from "./shell-input.js";
-
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
 
 const sources = (stdin = "", files: Record<string, string> = {}): InputSources => ({
   readStdin: () => Promise.resolve(stdin),

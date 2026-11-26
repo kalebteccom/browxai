@@ -269,7 +269,7 @@ function writeUserConfigStep(
       process.stdout.write("  not written (--no-write)\n\n");
     } else {
       try {
-        (deps.applyConfig ?? applyUserConfig)(plan);
+        (deps.applyConfig ?? applyUserConfig)(plan, { sync: system.fsync });
       } catch (e) {
         process.stdout.write(
           `  ✗ could not write ${plan.path} (${(e as NodeJS.ErrnoException).code ?? "write failed"}): add the entry by hand with:\n${clientInstructions(id, entry, system)}\n\n`,

@@ -9,9 +9,6 @@ import { join } from "node:path";
 import { startPluginRuntime, PLUGIN_CALL_GRAPH_VIOLATION } from "./runtime.js";
 import type { PluginToolHandler } from "./types.js";
 
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
-
 interface MakePluginOpts {
   name: string;
   version?: string;
