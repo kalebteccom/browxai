@@ -40,6 +40,8 @@
 // result carries `warnings:["scan stopped at MAX_ELEMENTS_SCANNED…"]` so
 // the agent can re-run with `scope:"viewport"` for a narrower pass.
 
+import type { Mask } from "../util/frame-cap.js";
+
 export type OverflowType = "layout" | "clipped" | "text-ellipsis" | "viewport-horizontal";
 
 export type OverflowScope = "viewport" | "document";
@@ -65,6 +67,10 @@ export interface OverflowDetectArgs {
   /** Cap on findings returned. Default 50, max 500. Findings past the cap
    *  are dropped (oldest-discovered are kept) and `truncated:true` is set. */
   limit?: number;
+  /** Secrets mask. A `text-ellipsis` finding's `visibleText` is a prefix of
+   *  `fullText`; with a mask it is rebuilt from the masked `fullText` at the
+   *  same length, so a registered value across the cut leaves no head. */
+  mask?: Mask | null;
 }
 
 export interface OverflowBbox {

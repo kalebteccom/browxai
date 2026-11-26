@@ -7,6 +7,7 @@
 // can be reasoned about — and unit-tested — without spinning a NetworkBuffer.
 
 import { basename } from "node:path";
+import type { Mask } from "../util/frame-cap.js";
 
 /** Cap on the on-disk filename length, accounting for the `-N` collision
  *  suffix room and 255-byte filesystem name limits. */
@@ -46,7 +47,7 @@ export function sanitiseAssetFilename(raw: string): string {
  *  percent-encoding, drop a query string. Falls back to `"asset"` when the
  *  URL has no usable basename (e.g. `https://example.com/`). Exported for
  *  unit tests. */
-export function filenameFromUrl(url: string): string {
+export function filenameFromUrl(url: string, mask: Mask | null = null): string {
   let pathname: string;
   try {
     pathname = new URL(url).pathname;
@@ -61,7 +62,9 @@ export function filenameFromUrl(url: string): string {
   } catch {
     // malformed percent-encoding — keep the raw form, sanitisation handles it.
   }
-  return sanitiseAssetFilename(base);
+  // Masked before the rewrite and the cut, which would otherwise split or
+  // change a registered value so the result mask no longer matches it.
+  return sanitiseAssetFilename(mask ? mask(base) : base);
 }
 
 /** Resolve a collision by appending `-N` before the extension. Pure; uses

@@ -9,6 +9,7 @@ import {
   readCapturedBytes,
   sanitiseFilename,
 } from "./downloads.js";
+import { SecretRegistry } from "../util/secrets.js";
 
 describe("sanitiseFilename", () => {
   it("strips path separators (forward + back)", () => {
@@ -246,6 +247,32 @@ describe("attachDownloadCapture", () => {
       expect(all[0]!.path.startsWith(dir)).toBe(true);
       expect(existsSync(all[0]!.path)).toBe(true);
       expect(readFileSync(all[0]!.path, "utf8")).toBe("DATA");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("masks a registered value in the name before rewriting and cutting it, on disk too", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "brx-dl-"));
+    try {
+      const secrets = new SecretRegistry();
+      // A value with `/` and `..`: the rewrite would change it so the mask no
+      // longer matches, and the 200-character cut would split it.
+      const value = "tok/../" + "v".repeat(30);
+      secrets.register({ name: "TOKEN", value });
+      const reg = new DownloadsRegistry(dir);
+      reg.setSecrets(secrets);
+      reg.captureOn = true;
+      const f = fakeContextAndDownload("r".repeat(189) + value + ".csv");
+
+      attachDownloadCapture(f.context as any, reg);
+      f.listener()!(f.download);
+      await new Promise((r) => setTimeout(r, 10));
+      const [entry] = reg.list();
+      expect(entry!.suggestedFilename).toBe("r".repeat(189) + "<TOKEN>.csv");
+      expect(entry!.rawSuggestedFilename).toBeUndefined();
+      expect(entry!.path.endsWith("-" + "r".repeat(189) + "<TOKEN>.csv")).toBe(true);
+      expect(JSON.stringify(entry)).not.toContain("tok");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

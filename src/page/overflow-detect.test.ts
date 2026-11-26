@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { describe, it, expect } from "vitest";
+import { SecretRegistry } from "../util/secrets.js";
 import {
   detectOverflow,
   synthesiseSelector,
@@ -254,5 +255,35 @@ describe("detectOverflow — runner integration with fake page", () => {
     const ev = r.findings[0]!.evidence as { selectorTruncated?: true; originalLength?: number };
     expect(ev.selectorTruncated).toBe(true);
     expect(ev.originalLength).toBe(350);
+  });
+});
+
+describe("detectOverflow — text-ellipsis visibleText with a mask", () => {
+  const VALUE = "tok_0123456789abcdef";
+  const finding = (visibleText: string, fullText: string) => ({
+    selector: "span",
+    bbox: { x: 0, y: 0, w: 10, h: 10 },
+    type: "text-ellipsis" as const,
+    selectorTruncated: false,
+    selectorOriginalLength: 4,
+    evidence: { scrollWidth: 200, clientWidth: 100, visibleText, fullText },
+  });
+
+  it("cuts visibleText from the masked fullText, at the same length", async () => {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "TOKEN", value: VALUE });
+    const full = "label " + VALUE + " more text";
+    const page = fakePage({ findings: [finding(full.slice(0, 12), full)], scanCapped: false }, {});
+    const r = await detectOverflow(page, { mask: (s) => secrets.applyMaskInText(s) });
+    const ev = r.findings[0]!.evidence as { visibleText: string; fullText: string };
+    expect(ev.visibleText).toBe("label <TOKEN");
+    expect(ev.visibleText).not.toContain("tok_");
+  });
+
+  it("leaves evidence as it is with no mask", async () => {
+    const full = "label " + VALUE;
+    const page = fakePage({ findings: [finding(full.slice(0, 12), full)], scanCapped: false }, {});
+    const r = await detectOverflow(page, {});
+    expect((r.findings[0]!.evidence as { visibleText: string }).visibleText).toBe("label tok_01");
   });
 });

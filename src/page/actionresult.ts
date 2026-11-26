@@ -258,7 +258,7 @@ async function openActionWindow(ctx: ActionContext): Promise<OpenWindow> {
   // is engine-blind. (`ctx.secrets` was wired into the substrate at session
   // creation; the tap inherits it.)
   const net = ctx.network ? ctx.network.openActionTap() : null;
-  const challenge = watchForChallenge(ctx.page);
+  const challenge = watchForChallenge(ctx.page, textCutFor(ctx.secrets).mask);
   return {
     urlBefore,
     tabsBefore,

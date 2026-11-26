@@ -15,6 +15,7 @@ import {
   sanitiseAssetFilename,
 } from "./asset-export.js";
 import { NetworkBuffer, type NetworkEntry } from "./network.js";
+import { SecretRegistry } from "../util/secrets.js";
 
 describe("sanitiseAssetFilename", () => {
   it("strips path separators (forward + back)", () => {
@@ -35,6 +36,19 @@ describe("sanitiseAssetFilename", () => {
     expect(sanitiseAssetFilename("")).toBe("asset");
     expect(sanitiseAssetFilename("/")).toBe("asset");
     expect(sanitiseAssetFilename("...")).toBe("asset");
+  });
+});
+
+describe("filenameFromUrl with a secrets mask", () => {
+  it("masks a registered value in the URL's last segment before it is rewritten and cut", () => {
+    const secrets = new SecretRegistry();
+    const value = "tok_0123456789abcdef";
+    secrets.register({ name: "TOKEN", value });
+    const url = `https://x.test/files/${"a".repeat(190)}${value}.bin`;
+    expect(filenameFromUrl(url)).toBe("a".repeat(190) + "tok_012345");
+    expect(filenameFromUrl(url, (s) => secrets.applyMaskInText(s))).toBe(
+      "a".repeat(190) + "<TOKEN>.bi",
+    );
   });
 });
 

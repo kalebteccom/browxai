@@ -36,6 +36,7 @@ export {
   sanitiseAssetFilename,
   timestampForDir,
 } from "./asset-export-naming.js";
+import type { Mask } from "../util/frame-cap.js";
 
 // ---------- caps & defaults --------------------------------------------------
 
@@ -262,10 +263,13 @@ export interface AssetExportDeps {
   buffer: SessionNetworkRing;
   workspaceRoot: string;
   sessionId: string;
+  /** Secrets mask for file names taken from URLs. */
+  mask?: Mask | null;
 }
 
 /** The mutable export accumulator threaded through the per-entry loop. */
 interface ExportState {
+  mask: Mask | null;
   workspaceRoot: string;
   intoDir: string;
   maxCount: number;
@@ -292,7 +296,7 @@ function writeAssetFile(
   url: string,
   bytes: Buffer,
 ): { ok: true; name: string; path: string } | { ok: false; warning: string } {
-  const base = filenameFromUrl(url);
+  const base = filenameFromUrl(url, st.mask);
   for (let attempt = 0; attempt < MAX_NAME_ATTEMPTS; attempt++) {
     const name = resolveCollision(base, st.used);
     st.used.add(name);
@@ -408,6 +412,7 @@ export async function assetExport(
   const all = deps.buffer.iter();
   const totalCount = all.length;
   const st: ExportState = {
+    mask: deps.mask ?? null,
     workspaceRoot: deps.workspaceRoot,
     intoDir,
     maxCount: Math.min(

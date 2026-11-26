@@ -69,6 +69,7 @@ export type {
   PageRawFinding,
   PageRawResult,
 } from "./overflow-detect-types.js";
+import { clipMasked, type Mask } from "../util/frame-cap.js";
 
 /** Thin Page-shaped adapter so the unit tests can stub the page surface.
  *  Mirrors the patterns in `dom_export` / `element_export`. `evaluate`
@@ -76,6 +77,17 @@ export type {
  *  passing a stringified arrow returns the function uncalled. */
 export interface OverflowDetectPage {
   evaluate<T, Arg>(fn: (arg: Arg) => T | Promise<T>, args?: Arg): Promise<T>;
+}
+
+/** A `text-ellipsis` evidence block with `visibleText` cut from the masked
+ *  `fullText` at its old length. Other evidence comes back as it is. */
+function maskVisibleText(
+  evidence: OverflowFinding["evidence"],
+  mask: Mask | null,
+): OverflowFinding["evidence"] {
+  if (!mask || !("visibleText" in evidence) || !("fullText" in evidence)) return evidence;
+  const visibleText = clipMasked(evidence.fullText, evidence.visibleText.length, mask);
+  return { ...evidence, visibleText };
 }
 
 export async function detectOverflow(
@@ -118,7 +130,7 @@ export async function detectOverflow(
         selector: rf.selector,
         bbox: rf.bbox,
         type: rf.type,
-        evidence: rf.evidence,
+        evidence: maskVisibleText(rf.evidence, args.mask ?? null),
       });
     }
   }

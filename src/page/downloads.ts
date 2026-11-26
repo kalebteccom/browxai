@@ -24,6 +24,8 @@ import { join, resolve, sep } from "node:path";
 import type { BrowserContext, Download } from "playwright-core";
 import { log } from "../util/logging.js";
 import { assertWriteStaysInside } from "../util/workspace.js";
+import type { Mask } from "../util/frame-cap.js";
+import type { SecretRegistry } from "../util/secrets.js";
 
 /** What lands on `ActionResult.downloads[]` and `download_get`. Workspace-rooted
  *  paths only; never absolute outside `$BROWX_WORKSPACE`. */
@@ -64,6 +66,20 @@ export class DownloadsRegistry {
   private static MAX_ENTRIES = 100;
   /** How long a capture waits in `pendingSince` for an action window to claim it. */
   static readonly PENDING_TTL_MS = 60_000;
+  /** Secrets mask for a download's name. Applied to the raw name before it is
+   *  rewritten and cut, so the reported and on-disk names hold `<NAME>`. */
+  private nameMask: Mask | null = null;
+
+  /** Mask download names with the session's secrets registry. */
+  setSecrets(secrets: SecretRegistry): void {
+    this.nameMask = (s) => secrets.applyMaskInText(s);
+  }
+
+  /** A page-supplied name, masked, then made safe for disk. */
+  safeName(raw: string): { name: string; masked: string } {
+    const masked = this.nameMask ? this.nameMask(raw) : raw;
+    return { name: sanitiseFilename(masked), masked };
+  }
 
   constructor(
     /** Per-session storage dir: `$BROWX_WORKSPACE/.downloads/<sessionId>/`. */
@@ -224,8 +240,10 @@ async function handleDownload(download: Download, registry: DownloadsRegistry): 
     await download.cancel().catch(() => undefined);
     return;
   }
-  const raw = download.suggestedFilename() ?? "download";
-  const safe = sanitiseFilename(raw);
+  // The name is masked before the rewrite and the cut: the rewrite changes a
+  // value holding `/` or `..` so it no longer matches, and the cut can split
+  // one. `raw` from here on is the masked name.
+  const { name: safe, masked: raw } = registry.safeName(download.suggestedFilename() ?? "download");
   // Ensure storage dir exists (created lazily; sessions that never opt in
   // never create it). The dir is workspace-rooted (BROWX_WORKSPACE/.downloads
   // via the SessionEntry factory in server.ts — never cwd).
