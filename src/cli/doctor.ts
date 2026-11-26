@@ -23,7 +23,7 @@ import { capabilitiesRow } from "./doctor-capabilities.js";
 import { toolListRow } from "./doctor-tool-list.js";
 import { toolProfileRow } from "./doctor-tool-profile.js";
 import { chromiumSandboxRow } from "./doctor-chromium-sandbox.js";
-import { macosAppRow } from "./doctor-macos-app.js";
+import { macosAppCheck } from "./doctor-macos-daemon.js";
 import {
   chromeCheck,
   chromiumCheck,
@@ -105,8 +105,9 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
   }
 
   // 1b. macOS only: does browxai run from the signed Browxai app, and what does its
-  // signature say? No row elsewhere. Informational: it warns, it never fails doctor.
-  const macosApp = macosAppRow();
+  // signature say, and does the app's daemon answer on its socket? No row elsewhere.
+  // Informational: it warns, it never fails doctor.
+  const macosApp = await macosAppCheck();
   if (macosApp) checks.push(macosApp);
 
   // 2. $BROWX_WORKSPACE writable?
