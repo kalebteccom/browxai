@@ -25,6 +25,7 @@ import {
 } from "./util/capabilities.js";
 import type { PluginRecord } from "./plugin/types.js";
 import { resolveOriginPolicy, describePolicy } from "./policy/origin.js";
+import { resolveNavigateExtraSchemes } from "./policy/navigation-scheme.js";
 import { ApprovalStore } from "./policy/confirm.js";
 import { openOperatorChannel } from "./helper/operator-channel.js";
 import { log } from "./util/logging.js";
@@ -144,11 +145,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const operator = openOperatorChannel(caps);
   const confirmHooks = resolveConfirmHooks(cfgEnv);
   const originPolicy = resolveOriginPolicy(cfgEnv);
+  // From the process environment, never the config store: no saved layer adds a scheme.
+  const navigateExtraSchemes = resolveNavigateExtraSchemes(process.env);
   const isByob = !!opts.attachCdp;
   log.info("policy", {
     capabilities: [...caps.enabled],
     confirmHooks: [...confirmHooks],
     origins: describePolicy(originPolicy),
+    navigateExtraSchemes: [...navigateExtraSchemes],
   });
   for (const w of caps.warnings) log.warn(w);
   for (const w of confirmHookWarnings(confirmHooks)) log.warn(w);
@@ -304,6 +308,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     caps,
     confirmHooks,
     originPolicy,
+    navigateExtraSchemes,
     approvals,
     workspace,
     diagnostics,

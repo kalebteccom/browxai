@@ -190,9 +190,11 @@ export interface BridgeArgs {
   readonly socket: string | undefined;
   /** How long to keep trying the socket at start. 0 tries once. */
   readonly connectTimeoutMs: number;
+  /** Ask the Browxai app's launcher to start its login agent when no daemon answers. */
+  readonly start: boolean;
 }
 
-const BRIDGE_FLAGS: FlagSpec = { values: ["--socket", "--connect-timeout"], bools: [] };
+const BRIDGE_FLAGS: FlagSpec = { values: ["--socket", "--connect-timeout"], bools: ["--start"] };
 
 /** Parse the arguments after `bridge`. */
 export function parseBridgeArgs(
@@ -201,7 +203,7 @@ export function parseBridgeArgs(
 ): Parsed<BridgeArgs> {
   const split = splitArgs(args, BRIDGE_FLAGS);
   if (!split.ok) return split;
-  const { values, positionals } = split.value;
+  const { values, bools, positionals } = split.value;
   // The text is not echoed: a client that put its input here would print it.
   if (positionals.length > 0) return { ok: false, message: "bridge takes flags only" };
   const raw = values.get("--connect-timeout");
@@ -214,6 +216,7 @@ export function parseBridgeArgs(
       socket: clean(values.get("--socket")) ?? clean(env[SOCKET_ENV]),
       connectTimeoutMs:
         raw === undefined ? DEFAULT_CONNECT_TIMEOUT_MS : Math.min(Number(raw), MAX_TIMEOUT_MS),
+      start: bools.has("--start"),
     },
   };
 }

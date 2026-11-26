@@ -86,6 +86,8 @@ export interface HostDeps {
   confirmHooks: ReadonlySet<ConfirmHook>;
   /** Origin allow/blocklist policy. */
   originPolicy: OriginPolicy;
+  /** Extra schemes the navigation tools open (`BROWX_NAVIGATE_EXTRA_SCHEMES`). */
+  navigateExtraSchemes: ReadonlySet<string>;
   /** Session-independent pre-approval store. */
   approvals: ApprovalStore;
   /** Resolved workspace (root dir for file-io-bound captures and archives). */
@@ -134,6 +136,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     caps,
     confirmHooks,
     originPolicy,
+    navigateExtraSchemes,
     approvals,
     workspace,
     diagnostics,
@@ -584,6 +587,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     confirmCtxFor,
     ctxFor,
     workspace,
+    navigateExtraSchemes,
     denyContent,
     asActionResultText,
     okText,

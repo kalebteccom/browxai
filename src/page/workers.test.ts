@@ -447,6 +447,90 @@ describe("WorkersRegistry fetch intercepts", () => {
   });
 });
 
+// --- which paused requests an interceptor answers -----------------------------
+
+/** Fire the registered `Fetch.requestPaused` listener and return the one CDP
+ *  call it made in reply (`Fetch.fulfillRequest` or `Fetch.continueRequest`). */
+async function pause(
+  c: ReturnType<typeof fakeCdp>,
+  url: string,
+  resourceType: string | undefined,
+): Promise<string> {
+  const call = c.on.mock.calls.find((args) => args[0] === "Fetch.requestPaused");
+  const listener = call![1] as (e: unknown) => void;
+  const before = c.sends.length;
+  listener({ requestId: "r1", request: { url, method: "GET" }, resourceType });
+  await new Promise((r) => setImmediate(r));
+  const replies = c.sends.slice(before).map((s) => s.method);
+  expect(replies).toHaveLength(1);
+  return replies[0]!;
+}
+
+describe("WorkersRegistry fetch intercepts and resource types", () => {
+  const URL = "https://app.example/x";
+
+  it.each(["XHR", "Fetch", "EventSource", "Image", "Media", "Font", "Stylesheet", "TextTrack"])(
+    "answers a %s request",
+    async (type) => {
+      const reg = new WorkersRegistry();
+      const c = fakeCdp();
+      const added = await reg.addFetchIntercept(c.cdp, { pattern: URL, response: { body: "{}" } });
+      expect(added.fulfils).toBe("data");
+      expect(await pause(c, URL, type)).toBe("Fetch.fulfillRequest");
+    },
+  );
+
+  it.each(["Document", "Script", "Other", "Ping", undefined])(
+    "continues a %s request to the network and counts it",
+    async (type) => {
+      const reg = new WorkersRegistry();
+      const c = fakeCdp();
+      await reg.addFetchIntercept(c.cdp, { pattern: URL, response: { body: "x" } });
+      expect(await pause(c, URL, type)).toBe("Fetch.continueRequest");
+      const removed = await reg.removeFetchIntercept(c.cdp, { pattern: URL });
+      expect(removed.skippedExecutable).toBe(1);
+    },
+  );
+
+  it.each(["Document", "Script", "Other"])(
+    "answers a %s request when the spec allows it",
+    async (type) => {
+      const reg = new WorkersRegistry();
+      const c = fakeCdp();
+      const added = await reg.addFetchIntercept(c.cdp, {
+        pattern: URL,
+        response: { body: "x" },
+        allowExecutable: true,
+      });
+      expect(added.fulfils).toBe("all");
+      expect(await pause(c, URL, type)).toBe("Fetch.fulfillRequest");
+      const removed = await reg.removeFetchIntercept(c.cdp, {});
+      expect(removed.skippedExecutable).toBeUndefined();
+    },
+  );
+
+  it("reports the replaced interceptor's count on re-add, then starts from zero", async () => {
+    const reg = new WorkersRegistry();
+    const c = fakeCdp();
+    await reg.addFetchIntercept(c.cdp, { pattern: URL, response: {} });
+    await pause(c, URL, "Script");
+    await pause(c, URL, "Document");
+    const again = await reg.addFetchIntercept(c.cdp, { pattern: URL, response: {} });
+    expect(again.skippedExecutable).toBe(2);
+    const removed = await reg.removeFetchIntercept(c.cdp, {});
+    expect(removed.skippedExecutable).toBeUndefined();
+  });
+
+  it("continues a request no pattern matches without counting it", async () => {
+    const reg = new WorkersRegistry();
+    const c = fakeCdp();
+    await reg.addFetchIntercept(c.cdp, { pattern: URL, response: {} });
+    expect(await pause(c, "https://other.example/y", "Script")).toBe("Fetch.continueRequest");
+    const removed = await reg.removeFetchIntercept(c.cdp, {});
+    expect(removed.skippedExecutable).toBeUndefined();
+  });
+});
+
 // --- origin policy ------------------------------------------------------------
 
 describe("service workers and the origin policy", () => {

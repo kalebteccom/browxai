@@ -1,4 +1,5 @@
 import { docsUrl } from "../util/docs-links.js";
+import type { FulfilScope } from "./fulfil-policy.js";
 // The request-interception vocabulary the NetworkSubstrate port declares.
 //
 // Split out of `routes.ts` for the reason `actions-types.ts` was split out of
@@ -19,12 +20,19 @@ export interface RouteResponse {
 export interface RouteSpec extends RouteResponse {
   urlPattern: string;
   method?: string;
+  /** Answer document, script and worker requests too. Unset, the route answers
+   *  the data and static resource types only (`fulfil-policy.ts`) and every
+   *  other match goes to the real network. The tool layer sets it when the
+   *  server has the `eval` capability. */
+  allowExecutable?: boolean;
 }
 
 export interface RouteQueueSpec {
   urlPattern: string;
   method?: string;
   responses: RouteResponse[];
+  /** As on `RouteSpec`. A match that is not answered consumes no entry. */
+  allowExecutable?: boolean;
 }
 
 /** What `unroute` selects. No `urlPattern` means every route this session
@@ -42,6 +50,12 @@ export interface RouteInstalled {
   kind: "installed";
   key: string;
   queued?: number;
+  /** Which requests this route answers: `"data"` for the data and static
+   *  resource types only, `"all"` when the spec carried `allowExecutable`. */
+  fulfils: FulfilScope;
+  /** Present when this install replaced a route on the same key that had left
+   *  document, script or worker requests to the real network: how many. */
+  skippedExecutable?: number;
   active: string[];
 }
 
@@ -49,6 +63,9 @@ export interface RouteInstalled {
 export interface RouteRemoved {
   kind: "removed";
   removed: string[];
+  /** Present when the removed routes had left document, script or worker
+   *  requests to the real network: how many, summed over `removed`. */
+  skippedExecutable?: number;
   active: string[];
 }
 
