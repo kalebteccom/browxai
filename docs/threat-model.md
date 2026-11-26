@@ -123,7 +123,8 @@ Defenses:
 - **Confirmation hooks.** The `confirmRequired` config key (`BROWX_CONFIRM_REQUIRED`) names
   actions that block on `await_human` first: BYOB-mode actions and navigation off the
   allowlist. The names `file_download` and `file_upload` are accepted but reserved: no tool
-  consults them yet.
+  consults them yet. A list that leaves out a default hook or names a reserved one is
+  accepted, with a startup warning and a `browxai doctor` warning row.
 - **Loud one-time warnings.** Anything that crosses a known-dangerous threshold
   (`BROWX_ATTACH_CDP` set, `--insecure` chrome, `eval_js` enabled) prints a stderr warning
   naming what's exposed before the first tool call goes out.
@@ -916,6 +917,12 @@ BROWX_CONFIRM_REQUIRED=navigate_off_allowlist,byob_action
 That is the default. `navigate_off_allowlist` acts only when an allowlist is set, and
 `byob_action` only in an attached session. `file_download` and `file_upload` are accepted
 and reserved: no tool consults them yet.
+
+A value for `BROWX_CONFIRM_REQUIRED` replaces the default set, so a list written to add a
+hook also drops every default it leaves out. The server logs a warning at start for each
+default hook missing from the list, naming what is no longer held and the value that keeps
+it, and one for each reserved name in the list. `browxai doctor` shows the same warnings
+as `confirm-hooks` rows. The warnings change nothing about which hooks are in force.
 
 `byob_action` reads the mode of the session the call runs in. An attached desktop Chrome,
 an attached Chrome on Android and an attached Electron app are all `mode: "attached"` and

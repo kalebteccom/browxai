@@ -19,6 +19,7 @@ import { ConfigStore, resolvedToEnv } from "./util/config-store.js";
 import {
   resolveCapabilities,
   resolveConfirmHooks,
+  confirmHookWarnings,
   CAPABILITY_WARNINGS,
   capabilitiesAssignment,
 } from "./util/capabilities.js";
@@ -150,6 +151,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     origins: describePolicy(originPolicy),
   });
   for (const w of caps.warnings) log.warn(w);
+  for (const w of confirmHookWarnings(confirmHooks)) log.warn(w);
   if (toolListMode === "enabled")
     log.info(
       "toolList is enabled (default): tools/list omits tools whose capability is off. Set toolList to all to list them. Calling one by name still returns its refusal and hint.",
