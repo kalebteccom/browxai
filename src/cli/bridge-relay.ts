@@ -325,7 +325,11 @@ export class BridgeRelay {
     this._state = "down";
     const why = this._lostReason === undefined ? "" : ` (${this._lostReason})`;
     this._log("daemon connection lost", { openRequests: this._open.size });
-    this._failOpen(`${LOST}${why}. The call may or may not have run.`);
+    // A request held for the handshake never reached this connection.
+    this._failOpen(
+      `${LOST}${why}. The call may or may not have run.`,
+      `${LOST}${why}. The call was not sent.`,
+    );
     // A client that never got an `initialize` result has nothing to repeat: it sends
     // its own again.
     if (this._initResult === undefined) this._initRequest = undefined;
@@ -333,9 +337,13 @@ export class BridgeRelay {
     if (!this._draining) void this._reconnect();
   }
 
-  /** Answer every open request with an error, and drop what was held for the daemon. */
-  private _failOpen(text: string): void {
-    for (const id of this._open) this._toClient.push(lostResponse(id, text));
+  /** Answer every open request with an error, and drop what was held for the daemon.
+   *  A held request gets `heldText`. */
+  private _failOpen(text: string, heldText = text): void {
+    const held = new Set(this._held.map((m) => requestIdOf(m)));
+    for (const id of this._open) {
+      this._toClient.push(lostResponse(id, held.has(id) ? heldText : text));
+    }
     this._open.clear();
     this._held = [];
     this._whenIdle?.();

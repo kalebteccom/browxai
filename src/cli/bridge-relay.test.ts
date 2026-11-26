@@ -372,6 +372,23 @@ describe("bridge relay: a lost daemon connection", () => {
     expect(r.toClient).toEqual([result(11)]);
   });
 
+  it("tells a call held for the handshake it was not sent when the new connection drops", async () => {
+    const r = await initialized();
+    await r.daemons[0]!.drop();
+    await r.wake();
+    await r.fromClient(request(12));
+    expect(r.daemons[1]!.received).toEqual([INIT]);
+    await r.daemons[1]!.drop();
+    await settle();
+    expect(r.toClient.map((m) => m.id)).toEqual([12]);
+    const error = r.toClient[0]!.error as { code: number; message: string };
+    expect(error.code).toBe(-32000);
+    expect(error.message).toContain("connection to the daemon was lost");
+    expect(error.message).toContain("The call was not sent.");
+    expect(error.message).not.toContain("may or may not have run");
+    expect(r.relay.openRequests).toBe(0);
+  });
+
   it("carries on, and logs it, when only the daemon's version changed", async () => {
     const r = await initialized();
     await r.daemons[0]!.drop();
