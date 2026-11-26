@@ -9,6 +9,7 @@ import {
   type StorageStateBlob,
 } from "../session/storage.js";
 import { SESSION_ARG } from "./schemas.js";
+import { fileWriteGate } from "./file-write-gate.js";
 import type {
   RegisterHost,
   GateHost,
@@ -50,19 +51,29 @@ export function registerStorageStateCookiesTools(
     cfgActionTimeout,
   } = host;
 
+  /** `path` writes the state to a file, which needs `file-io`. */
+  const dumpPathRefusal = (path: string | undefined) =>
+    path === undefined
+      ? null
+      : fileWriteGate(gateCheck, "dump_storage_state", "the storage state as a file");
+
   // ---- layer 1 ----------------------------------------------------------------
   register(
     "dump_storage_state",
     {
       capability: "read",
+      // Held in an attached session: Returns every cookie value and the localStorage of the attached browser.
+      byobConfirm: true,
+      // A `path` the server cannot write is refused before the hold asks a human.
+      byobPrecheck: ({ path }) => dumpPathRefusal(path),
       description:
-        "Capture the session's storage state (cookies and per-origin localStorage) in the shape of Playwright's `storageState()`. Always returns the blob; with `path` it also writes JSON to a workspace-rooted file. Use it to checkpoint a login for `inject_storage_state`; use `auth_save` to keep it under a name and `cookies_list` for cookies only. sessionStorage is not included. Cookie values may carry credentials, so treat the blob and the file as sensitive: with the `secrets` capability on, registered values are masked in the returned blob, but a file written with `path` keeps the values as the browser holds them.",
+        "Capture the session's storage state (cookies and per-origin localStorage) in the shape of Playwright's `storageState()`. Always returns the blob; with `path` it also writes JSON to a workspace-rooted file. Use it to checkpoint a login for `inject_storage_state`; use `auth_save` to keep it under a name and `cookies_list` for cookies only. sessionStorage is not included. Cookie values may carry credentials, so treat the blob and the file as sensitive: with the `secrets` capability on, registered values are masked in the returned blob, but a file written with `path` keeps the values as the browser holds them. `path` requires the `file-io` capability (off by default). In an attached session the call waits for the `byob_action` approval.",
       inputSchema: {
         path: z
           .string()
           .optional()
           .describe(
-            "Workspace-rooted JSON file to write the state to, as well as returning it inline. A path that leaves $BROWX_WORKSPACE, including through a symlink, is rejected.",
+            "Workspace-rooted JSON file to write the state to, as well as returning it inline. A path that leaves $BROWX_WORKSPACE, including through a symlink, is rejected. Requires the `file-io` capability (off by default).",
           ),
         ...SESSION_ARG,
       },
@@ -70,6 +81,8 @@ export function registerStorageStateCookiesTools(
     async ({ path, session }) => {
       const g = gateCheck("dump_storage_state");
       if (g) return g;
+      const fg = dumpPathRefusal(path);
+      if (fg) return fg;
       try {
         const e = await entryFor(session);
         const r = await withDeadline(
@@ -145,8 +158,10 @@ export function registerStorageStateCookiesTools(
     "cookies_get",
     {
       capability: "read",
+      // Held in an attached session: Returns a cookie value from the attached browser's jar.
+      byobConfirm: true,
       description:
-        "Read one cookie by name from the session's jar and return the full Playwright cookie object, or `null`. `url` narrows the jar to cookies that would be sent to that URL. Use `cookies_list` for several cookies and `dump_storage_state` for cookies plus localStorage.",
+        "Read one cookie by name from the session's jar and return the full Playwright cookie object, or `null`. `url` narrows the jar to cookies that would be sent to that URL. Use `cookies_list` for several cookies and `dump_storage_state` for cookies plus localStorage. In an attached session the call waits for the `byob_action` approval.",
       inputSchema: {
         name: z.string().describe("Cookie name."),
         url: z
@@ -179,8 +194,10 @@ export function registerStorageStateCookiesTools(
     "cookies_list",
     {
       capability: "read",
+      // Held in an attached session: Returns the cookie values in the attached browser's jar.
+      byobConfirm: true,
       description:
-        "List the cookies in the session's jar as full Playwright cookie objects. `urls` keeps only cookies that would be sent to those URLs. Use `cookies_get` for one cookie by name and `dump_storage_state` for cookies plus localStorage.",
+        "List the cookies in the session's jar as full Playwright cookie objects. `urls` keeps only cookies that would be sent to those URLs. Use `cookies_get` for one cookie by name and `dump_storage_state` for cookies plus localStorage. In an attached session the call waits for the `byob_action` approval.",
       inputSchema: {
         urls: z
           .array(z.string())

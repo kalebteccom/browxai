@@ -265,7 +265,7 @@ export function registerSessionLifecycleTools(
           })
           .optional()
           .describe(
-            "Record a HAR for the lifetime of this session through Playwright's `recordHar`. The file is written when the session closes (there is no mid-session flush); use `start_har` and `stop_har` for runtime control. On close it is rewritten with `Cookie`, `Set-Cookie` and `Authorization` values emptied and registered secrets masked; without the `network-body` capability request bodies are emptied too. Honoured on `persistent` and `incognito`; ignored on `attached`.",
+            "Record a HAR for the lifetime of this session through Playwright's `recordHar`. The file is written when the session closes (there is no mid-session flush); use `start_har` and `stop_har` for runtime control. On close it is rewritten with `Cookie`, `Set-Cookie` and `Authorization` values emptied and registered secrets masked; without the `network-body` capability request bodies are emptied too. Needs the `file-io` capability (off by default). Honoured on `persistent` and `incognito`; ignored on `attached`.",
           ),
         hars: z
           .array(z.string())
@@ -290,7 +290,7 @@ export function registerSessionLifecycleTools(
           })
           .optional()
           .describe(
-            "Record session video for the lifetime of this session through Playwright's `recordVideo`. The .webm is written when the session closes; `stop_video` reserves the path and `get_video` reads the file after `close_session` (both need the `file-io` capability, off by default). Honoured on `persistent` and `incognito`; refused on `attached`.",
+            "Record session video for the lifetime of this session through Playwright's `recordVideo`. The .webm is written when the session closes; `stop_video` reserves the path and `get_video` reads the file after `close_session` (both need the `file-io` capability, off by default, and so does `recordVideo`). Honoured on `persistent` and `incognito`; refused on `attached`.",
           ),
       },
     },
@@ -328,6 +328,7 @@ export function registerSessionLifecycleTools(
           fsPickerPolicy,
           harContent: har?.content,
           seeds: { storageState: storageState !== undefined, hars: (hars?.length ?? 0) > 0 },
+          records: { har: har !== undefined, video: recordVideo !== undefined },
         },
       );
       if (!resolved.ok) return resolved.response;

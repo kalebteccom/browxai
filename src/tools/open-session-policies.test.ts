@@ -75,3 +75,42 @@ describe("resolveOpenSessionPolicies — state seeding", () => {
     expect(asked.flat()).not.toContain("action");
   });
 });
+
+// A HAR or a video recorded for the session's lifetime is a file in the
+// workspace, so either needs `file-io`.
+describe("resolveOpenSessionPolicies — recordings", () => {
+  const body = (r: ReturnType<typeof resolveOpenSessionPolicies>) =>
+    r.ok ? undefined : JSON.parse((r.response.content[0] as { text: string }).text);
+
+  it.each([
+    ["har", { har: true, video: false }],
+    ["recordVideo", { har: false, video: true }],
+  ] as const)("refuses %s without file-io", (_name, records) => {
+    const { gateCheck } = gate(["read", "navigation", "action", "human"]);
+    const r = resolveOpenSessionPolicies(gateCheck, "s", undefined, { records });
+    expect(r.ok).toBe(false);
+    expect(body(r).requiredCapability).toBe("file-io");
+  });
+
+  it("allows both with file-io", () => {
+    const { gateCheck } = gate(["read", "action", "file-io"]);
+    const records = { har: true, video: true };
+    expect(resolveOpenSessionPolicies(gateCheck, "s", undefined, { records }).ok).toBe(true);
+  });
+
+  it("names network-body first for a HAR with bodies on a server with neither", () => {
+    const { gateCheck } = gate(["read", "action"]);
+    const r = resolveOpenSessionPolicies(gateCheck, "s", undefined, {
+      harContent: "embed",
+      records: { har: true, video: false },
+    });
+    expect(body(r).requiredCapability).toBe("network-body");
+  });
+
+  it("asks nothing when the call records nothing", () => {
+    const { gateCheck, asked } = gate(["read"]);
+    const records = { har: false, video: false };
+    expect(resolveOpenSessionPolicies(gateCheck, "s", undefined, { records }).ok).toBe(true);
+    expect(asked.flat()).not.toContain("file-io");
+  });
+});

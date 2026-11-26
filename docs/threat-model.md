@@ -699,7 +699,7 @@ the same gate refusal and hint.
 
 - `read`, default **on**. Tools: `snapshot`, `find`, `text_search`, `inspect`, `screenshot`, `console_read`, `network_read`, `ws_read`, `list_named_refs`, `profile_status`.
 
-  Read-only; can't change page state. Always safe to enable.
+  Read-only; can't change page state. Always safe to enable. `cookies_get`, `cookies_list` and `dump_storage_state` return cookie values, which can carry credentials, so in an attached session they wait for the `byob_action` approval (see "What `byob_action` holds").
 
   `profile_status` is the one workspace-introspection member: it enumerates the managed profile directories under `$BROWX_WORKSPACE/profiles`, reporting each one's name, workspace-rooted path, size, file count, and last-modified time, plus the ids of any live session open on it. It launches nothing and contacts no page. Disclosure is bounded to two origin-ish surfaces, both strictly narrower than what `cookies_list` already returns under this same capability: cookie **domains** (never names, never values) of a context that is **already open**, and the domains/origins recorded in a same-named `auth_save` slot. It does NOT decrypt a closed profile's cookie store and does not claim authentication state. See `docs/tool-reference.md` for the per-field provenance table. Profile names are workspace-rooted through `resolveWorkspacePath`, so a name that escapes the profiles directory is refused; symlinks inside a profile directory are skipped, never followed out of the workspace; and the directory walk carries an entry budget so a pathological workspace cannot stall the agent loop.
 
@@ -816,7 +816,7 @@ the same gate refusal and hint.
 
   Per-session clipboard model for `shortcut` copy, cut and paste chords. Each session keeps its own buffer. The shared OS clipboard is written only at the moment of a copy, cut or paste command (`pbcopy` on macOS, `clip` on Windows, `xclip` on Linux, fixed argv, content over stdin) and is never read back into a session, so one session cannot pick up what a person or another session put there. With the capability off, `shortcut` still reports what the page handled and leaves the OS clipboard alone.
 
-- `file-io`, default **off**. Tools: `upload_file`, `drop_files`, `download_get`, `downloads_capture`, `fs_picker_respond`, `screenshot_on`, `screenshot_schedule`, `page_archive`, `asset_export`, `dom_export`, `element_export`, `get_video`, `stop_video`, the `path` argument of `screenshot`, and a `file:` URL passed to `navigate`.
+- `file-io`, default **off**. Tools: `upload_file`, `drop_files`, `download_get`, `downloads_capture`, `fs_picker_respond`, `screenshot_on`, `screenshot_schedule`, `page_archive`, `asset_export`, `dom_export`, `element_export`, `get_video`, `stop_video`, the `path` argument of `screenshot`, and a `file:` URL passed to `navigate`. Also the tools under `action` or `read` that write a workspace file: `pdf_save`, `heap_snapshot`, `perf_start` and `perf_stop`, `start_har`, `artifact_save`, `open_session` with `har` or `recordVideo`, and the `path` argument of `dump_storage_state` and `export_playwright_script`. Each keeps its own capability and adds `file-io` for the write.
 
   Tools that read a file into the page or write page-derived bytes to disk. Every path goes through `resolveWorkspacePath` in `src/util/workspace.ts`, so a path that escapes `$BROWX_WORKSPACE` is rejected. `navigate` to a `file:` URL follows the same rule as a file read: the path must sit inside the workspace after links are resolved, and outside the browser profile directories. The `file_upload` and `file_download` confirm hooks (see `BROWX_CONFIRM_REQUIRED`) are reserved names that no tool consults yet, so the `file-io` gate and the workspace path rules are what hold these tools. Downloaded and exported files carry real page content and are as sensitive as the session that produced them.
 
@@ -996,7 +996,10 @@ Tools under those capabilities that change nothing in the browser are not held:
 `wait_for`, `unroute`, `ws_unintercept`, `sw_unintercept_fetch`, `stop_har`, `perf_start`, `perf_stop`, `perf_insights`, `coverage_start`, `heap_snapshot`, `heap_retainers`, `artifact_save`, `auth_delete`, `pdf_save`, `flake_check`, `downloads_capture`, `download_get`, `get_video`, `stop_video`, `asset_export`, `dom_export`, `element_export`, `page_archive`, `screenshot_on`, `screenshot_schedule` and `extensions_list`. Each one says why at its registration, and
 `test/architecture/byob-hold-completeness.test.ts` pins the list, so adding one is a
 visible change. `read` tools, `await_human`, `approve_actions` and the session and config
-tools are never held.
+tools are not held, with three exceptions: `cookies_get`, `cookies_list` and
+`dump_storage_state` return the attached browser's cookie values, so each opts in with
+`byobConfirm: true` and is held like a tool that changes the browser. The same test pins
+those three.
 
 A refused call returns `error: "policy: …"`. The ways through are the operator's: answer
 the prompt, remove `byob_action` from `BROWX_CONFIRM_REQUIRED`, or enable `self-approval`

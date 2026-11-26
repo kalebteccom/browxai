@@ -3,10 +3,11 @@
 // A tool under a capability that changes the browser waits for a human in an
 // attached session while `byob_action` is set. The `register` wrapper runs that
 // hold from the capability each tool declares, so a new tool is held with no code
-// in its handler. A tool opts out with `byobConfirm: false` at its registration.
+// in its handler. A tool opts out with `byobConfirm: false` at its registration,
+// and a tool under another capability opts in with `byobConfirm: true`.
 //
-// The opt-outs are written out here with the reason for each. A new one edits
-// this file in the same commit, where a reviewer sees it.
+// The opt-outs and the opt-ins are written out here with the reason for each. A
+// new one edits this file in the same commit, where a reviewer sees it.
 
 import { describe, it, expect } from "vitest";
 import "../../src/tools/tool-metadata.js";
@@ -43,8 +44,14 @@ const PINNED_NOT_HELD: Record<string, string> = {
   ws_unintercept: "removes a WebSocket intercept this server installed",
 };
 
-/** Tools outside the held capabilities that opt in with `byobConfirm: true`. */
-const PINNED_OPTED_IN: string[] = [];
+/** Tools outside the held capabilities that opt in with `byobConfirm: true`, and
+ *  why. Each is a `read` tool whose result carries the attached browser's cookie
+ *  values, so the person is asked before they leave it. */
+const PINNED_OPTED_IN: Record<string, string> = {
+  cookies_get: "returns a cookie value from the attached browser's jar",
+  cookies_list: "returns the cookie values in the attached browser's jar",
+  dump_storage_state: "returns every cookie value and the localStorage of the attached browser",
+};
 
 /** A sample of tools that must be held, written out so a change to the
  *  capability set or to one of these registrations fails by name. */
@@ -77,6 +84,9 @@ const MUST_HOLD = [
   "fs_picker_respond",
   "extensions_install",
   "emulate_usb",
+  "cookies_get",
+  "cookies_list",
+  "dump_storage_state",
 ];
 
 /** Tools that must never be held: the ones that lift or answer the hold, and
@@ -136,10 +146,24 @@ describe("attached-session hold: every registration is held or pinned", () => {
       .filter(([, reg]) => reg.byobConfirm === true)
       .map(([name]) => name)
       .sort();
-    expect(optedIn).toEqual([...PINNED_OPTED_IN].sort());
+    expect(optedIn).toEqual(Object.keys(PINNED_OPTED_IN).sort());
   });
 
-  it("holds the named action, navigation, eval, file and device tools", async () => {
+  it("every opted-in tool is outside the held capabilities and has a reason", async () => {
+    const table = await toolRegistrations();
+    for (const [name, reason] of Object.entries(PINNED_OPTED_IN)) {
+      const reg = table.get(name);
+      expect(reg, `${name} is pinned but not registered`).toBeDefined();
+      const cap = reg!.capability;
+      expect(cap !== undefined && BYOB_HOLD_CAPABILITIES.has(cap), `${name} needs no opt-in`).toBe(
+        false,
+      );
+      expect(shouldHold(cap, reg!), `${name} is held`).toBe(true);
+      expect(reason.length, `${name} needs a reason`).toBeGreaterThan(10);
+    }
+  });
+
+  it("holds the named action, navigation, eval, file, device and cookie-read tools", async () => {
     const table = await toolRegistrations();
     const notHeld = MUST_HOLD.filter((name) => {
       const reg = table.get(name);
