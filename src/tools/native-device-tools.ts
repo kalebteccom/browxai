@@ -39,6 +39,8 @@
 import { SESSION_ARG } from "./schemas.js";
 import { AndroidEmulatorAdapter } from "../engine/adapters/android-app/emulator.js";
 import { listSimulators } from "../engine/adapters/ios/simulator.js";
+import { listIosDevices } from "../engine/adapters/ios/device-discovery.js";
+import { errorResult as failure, jsonResult as json } from "./json-result.js";
 import { requireNative } from "../engine/session-native.js";
 import { resolveWorkspaceReadPath } from "../util/workspace.js";
 import type {
@@ -48,18 +50,7 @@ import type {
   ServerServicesHost,
   SessionHost,
   TargetHost,
-  ToolResponse,
 } from "./host.js";
-
-/** The one renderer. A success body and a refusal body are both JSON text, and
- *  a refusal always carries `error` so a caller classifies it by shape. */
-function json(body: object): ToolResponse {
-  return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
-}
-
-function failure(err: unknown): ToolResponse {
-  return json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-}
 
 /**
  * The absolute path of the bundle `app_install` hands to adb / simctl. It must
@@ -100,7 +91,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        'List what there is to drive on this machine: every Android device and emulator `adb` sees, the AVDs defined here, and every iOS simulator `simctl` knows. Each Android device reports serial, state, model and API level; an `unauthorized` or `offline` device is listed with that state, since the state is what you need to act on. Each simulator reports udid, name, runtime and state. A platform that is absent (no Android SDK, no Xcode) gives an empty list and never fails the call. Takes no session: call it before `open_session({engine:"android-app"})` or `open_session({engine:"ios-app"})`. Requires the `native-device` capability (off by default).',
+        'List what there is to drive on this machine: every Android device and emulator `adb` sees, the AVDs defined here, and every iOS simulator `simctl` knows. Each Android device reports serial, state, model and API level; an `unauthorized` or `offline` device is listed with that state, since the state is what you need to act on. Each simulator reports udid, name, runtime and state. When the server runs with BROWX_IOS_TARGET=device, `iosDevices` lists the iPhones and iPads `devicectl` reports that are on BROWX_IOS_DEVICE_ALLOWLIST (identifier, model, iOS version, pairing, tunnel, transport, Developer Mode), and `iosDevicesNotAllowed` counts the others without naming them; otherwise both are empty and `devicectl` does not run. A platform that is absent (no Android SDK, no Xcode) gives an empty list and never fails the call. Takes no session: call it before `open_session({engine:"android-app"})` or `open_session({engine:"ios-app"})`. Requires the `native-device` capability (off by default).',
       inputSchema: {},
     },
     async () => {
@@ -108,7 +99,7 @@ export function registerNativeDeviceTools(
       if (g) return g;
       try {
         const adapter = emulator();
-        const [devices, avds, simulators] = await Promise.all([
+        const [devices, avds, simulators, ios] = await Promise.all([
           adapter.devices(),
           // A missing `emulator` binary is not a failure of `device_list`: a
           // machine with a physical phone attached and no emulator installed
@@ -118,6 +109,9 @@ export function registerNativeDeviceTools(
           // `simctl`, and an absent toolchain is an empty list for THAT platform
           // rather than a failure of the whole question.
           listSimulators().catch(() => []),
+          // A mistyped BROWX_IOS_TARGET rejects here and fails the call; an
+          // absent or failing devicectl is an empty list, like simctl above.
+          listIosDevices(process.env),
         ]);
         return json({
           ok: true,
@@ -126,6 +120,8 @@ export function registerNativeDeviceTools(
           simulators,
           ready: devices.filter((d) => d.state === "device").length,
           simulatorsBooted: simulators.filter((d) => d.state === "booted").length,
+          iosDevices: ios.iosDevices,
+          iosDevicesNotAllowed: ios.iosDevicesNotAllowed,
         });
       } catch (err) {
         return failure(err);

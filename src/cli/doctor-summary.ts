@@ -17,6 +17,7 @@ const AREAS: ReadonlyArray<readonly [label: string, rows: readonly string[]]> = 
   ["settings", ["test-attrs", "confirm-hooks", "origins", "tool-list", "tool-profile"]],
   ["plugins", ["plugins"]],
   ["engine", ["engine", "firefox", "webkit", "android", "safari", "electron"]],
+  ["ios-device", ["ios-device"]],
 ];
 
 type State = "fail" | "warn" | "ok";

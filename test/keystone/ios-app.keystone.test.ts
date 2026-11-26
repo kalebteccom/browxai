@@ -242,6 +242,32 @@ describe("ios-app keystone — the native-device capability gate", () => {
     },
     KEYSTONE_TIMEOUT,
   );
+
+  it(
+    "refuses a device-target session with no allowlist, before simctl runs",
+    async () => {
+      clearBrowxEnv();
+      const ws = mkdtempSync(join(tmpdir(), "browx-ios-device-"));
+      process.env.BROWX_WORKSPACE = ws;
+      process.env.BROWX_CAPABILITIES = "read,navigation,action,human,native-device";
+      process.env.BROWX_IOS_TARGET = "device";
+      process.env.BROWX_IOS_APP_ID = SYSTEM_APP;
+      const server = await createServer({ browserType: "ios-app" });
+      try {
+        const opened = await server.handlers
+          .open_session({ session: "ios-device" })
+          .then((r) => JSON.parse((r.content[0] as { text: string }).text) as { ok?: boolean })
+          .catch((err: unknown) => ({ ok: false, error: String(err) }));
+        expect(opened.ok, JSON.stringify(opened)).not.toBe(true);
+        expect(JSON.stringify(opened)).toMatch(/ios-device-not-allowlisted/);
+      } finally {
+        await server.shutdown().catch(() => undefined);
+        rmSync(ws, { recursive: true, force: true });
+        restoreEnv();
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
 });
 
 // ─── the simulator lifecycle: real simctl ─────────────────────────────────────
