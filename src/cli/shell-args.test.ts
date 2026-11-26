@@ -161,11 +161,11 @@ describe("parseBridgeArgs", () => {
     expect(DEFAULT_CONNECT_TIMEOUT_MS).toBe(15_000);
     expect(parseBridgeArgs(["--socket", "/tmp/b.sock"], {})).toEqual({
       ok: true,
-      value: { socket: "/tmp/b.sock", connectTimeoutMs: 15_000 },
+      value: { socket: "/tmp/b.sock", connectTimeoutMs: 15_000, start: false },
     });
     expect(parseBridgeArgs(["--socket=/tmp/b.sock", "--connect-timeout", "0"], {})).toEqual({
       ok: true,
-      value: { socket: "/tmp/b.sock", connectTimeoutMs: 0 },
+      value: { socket: "/tmp/b.sock", connectTimeoutMs: 0, start: false },
     });
   });
 
@@ -179,16 +179,24 @@ describe("parseBridgeArgs", () => {
   });
 
   it("rejects an unknown flag, a flag with no value and a timeout that is not a number", () => {
-    expect(parseBridgeArgs(["--start"], {})).toEqual({
+    expect(parseBridgeArgs(["--bogus"], {})).toEqual({
       ok: false,
-      message: 'unknown argument "--start"',
+      message: 'unknown argument "--bogus"',
     });
+    expect(parseBridgeArgs(["--start=yes"], {}).ok).toBe(false);
     expect(parseBridgeArgs(["--socket"], {})).toEqual({
       ok: false,
       message: "--socket needs a value",
     });
     expect(parseBridgeArgs(["--connect-timeout", "soon"], {}).ok).toBe(false);
     expect(parseBridgeArgs(["--connect-timeout", "-5"], {}).ok).toBe(false);
+  });
+
+  it("takes --start as a switch", () => {
+    expect(parseBridgeArgs(["--start"], {})).toMatchObject({ ok: true, value: { start: true } });
+    expect(parseBridgeArgs(["--socket", "/tmp/b.sock", "--start"], {})).toMatchObject({
+      value: { socket: "/tmp/b.sock", start: true },
+    });
   });
 
   it("takes no positional argument and never echoes one", () => {

@@ -134,7 +134,7 @@ export function clientInstructions(id: ClientId, entry: ServerEntry, sys: Client
         .map(([k, v]) => `--env ${shellWord(`${k}=${v}`)}`)
         .join(" ");
       const cmd = [entry.command, ...entry.args].map(shellWord).join(" ");
-      return `${label}:\n  codex mcp add browxai ${envFlags} -- ${cmd}`;
+      return `${label}:\n  codex mcp add browxai ${envFlags ? `${envFlags} ` : ""}-- ${cmd}`;
     }
     case "cursor":
     case "claude-desktop": {

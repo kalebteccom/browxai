@@ -6,45 +6,26 @@
 // not verify, has no team id or lacks the hardened runtime, and an informational
 // line otherwise (shown only by `--verbose`).
 
-import { spawnSync } from "node:child_process";
 import type { Check } from "./doctor.js";
+import {
+  appLauncherOf,
+  runCommand,
+  runningAppBundle,
+  type AppLocationOptions,
+  type CommandRunner,
+} from "./macos-app.js";
 
-/** The bundle identifier of the Browxai app. Part of every macOS permission grant, so it never changes. */
-export const MACOS_APP_BUNDLE_ID = "com.kalebtec.browxai";
+export {
+  appBundleOf,
+  MACOS_APP_BUNDLE_ID,
+  runCommand,
+  type CommandResult,
+  type CommandRunner,
+} from "./macos-app.js";
 
 const CODESIGN = "/usr/bin/codesign";
-const PLUTIL = "/usr/bin/plutil";
 
-/** How long one command may run. The login item lookup starts the launcher, so it gets a bound. */
-const RUN_TIMEOUT_MS = 10_000;
-
-export interface CommandResult {
-  /** The exit status, or null when the command did not run or was stopped. */
-  status: number | null;
-  stdout: string;
-  stderr: string;
-}
-
-/** Runs one program with an argument list, never through a shell. Tests pass a fake. */
-export type CommandRunner = (file: string, args: readonly string[]) => CommandResult;
-
-export const runCommand: CommandRunner = (file, args) => {
-  const r = spawnSync(file, [...args], {
-    encoding: "utf8",
-    timeout: RUN_TIMEOUT_MS,
-    killSignal: "SIGKILL",
-    maxBuffer: 1024 * 1024,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
-};
-
-export interface MacosAppOptions {
-  platform?: NodeJS.Platform;
-  /** The running node binary. Inside the app it is `<app>/Contents/Resources/node/bin/node`. */
-  execPath?: string;
-  run?: CommandRunner;
-}
+export type MacosAppOptions = AppLocationOptions;
 
 /** What `codesign -dv --verbose=4` says about a bundle. */
 export interface SignatureFacts {
@@ -57,11 +38,6 @@ export interface SignatureFacts {
 
 const NOT_IN_APP =
   "not running from the signed Browxai app. Permission grants then attach to the launching terminal or MCP client.";
-
-/** The `.app` directory that holds `execPath`, or undefined when it is not inside one. */
-export function appBundleOf(execPath: string): string | undefined {
-  return /^(.*?\.app)\/Contents\//.exec(execPath)?.[1];
-}
 
 /** Reads the fields doctor shows out of `codesign -dv --verbose=4` output. */
 export function parseSignature(text: string): SignatureFacts {
@@ -77,13 +53,6 @@ export function parseSignature(text: string): SignatureFacts {
     adhoc,
     runtime: flagNames.includes("runtime"),
   };
-}
-
-/** A string out of the app's Info.plist, or undefined when plutil cannot read it. */
-function plistString(run: CommandRunner, app: string, key: string): string | undefined {
-  const r = run(PLUTIL, ["-extract", key, "raw", "-o", "-", `${app}/Contents/Info.plist`]);
-  if (r.status !== 0) return undefined;
-  return r.stdout.trim() || undefined;
 }
 
 function firstLine(text: string): string {
@@ -109,9 +78,9 @@ function verify(run: CommandRunner, app: string): Verification {
 /** Whether the login agent is registered, asked of the launcher's `login-item status`.
  *  Undefined when the launcher does not answer, so an app without the command shows nothing. */
 function loginAgent(run: CommandRunner, app: string): string | undefined {
-  const exe = plistString(run, app, "CFBundleExecutable");
-  if (!exe || exe.includes("/") || exe.includes("..")) return undefined;
-  const r = run(`${app}/Contents/MacOS/${exe}`, ["login-item", "status"]);
+  const launcher = appLauncherOf(run, app);
+  if (!launcher) return undefined;
+  const r = run(launcher, ["login-item", "status"]);
   if (r.status !== 0) return undefined;
   const status = firstLine(r.stdout).toLowerCase();
   if (/not\s*registered/.test(status)) return "login agent not registered";
@@ -129,20 +98,28 @@ function row(detail: string, fix?: string): Check {
     : { name: "macos-app", ok: true, info: true, detail };
 }
 
+/** The row, and the app browxai runs from when it runs from one. */
+export interface MacosAppFacts {
+  row: Check;
+  app?: string;
+}
+
 /**
  * The `macos-app` row, or undefined when the host is not macOS (no row, so Linux and
  * Windows output does not change). Never throws and never fails doctor.
  */
 export function macosAppRow(opts: MacosAppOptions = {}): Check | undefined {
+  return macosAppFacts(opts)?.row;
+}
+
+/** {@link macosAppRow} with the app's path, for the caller that adds to the row. */
+export function macosAppFacts(opts: MacosAppOptions = {}): MacosAppFacts | undefined {
   const platform = opts.platform ?? process.platform;
   if (platform !== "darwin") return undefined;
-  const execPath = opts.execPath ?? process.execPath;
   const run = opts.run ?? runCommand;
 
-  const app = appBundleOf(execPath);
-  if (!app || plistString(run, app, "CFBundleIdentifier") !== MACOS_APP_BUNDLE_ID) {
-    return row(NOT_IN_APP);
-  }
+  const app = runningAppBundle({ ...opts, platform, run });
+  if (!app) return { row: row(NOT_IN_APP) };
   const where = `inside the app at ${app}`;
 
   const dv = run(CODESIGN, ["-dv", "--verbose=4", app]);
@@ -150,12 +127,18 @@ export function macosAppRow(opts: MacosAppOptions = {}): Check | undefined {
   const text = `${dv.stderr}\n${dv.stdout}`;
   if (dv.status !== 0) {
     if (/not signed at all/i.test(text)) {
-      return row(
-        `${where}: not signed`,
-        "install the release build of the app. An unsigned app has no stable identity, so macOS asks for permissions again after an update.",
-      );
+      return {
+        app,
+        row: row(
+          `${where}: not signed`,
+          "install the release build of the app. An unsigned app has no stable identity, so macOS asks for permissions again after an update.",
+        ),
+      };
     }
-    return row(`${where}: could not read the signature (codesign is missing or failed)`);
+    return {
+      app,
+      row: row(`${where}: could not read the signature (codesign is missing or failed)`),
+    };
   }
 
   const sig = parseSignature(text);
@@ -190,5 +173,5 @@ export function macosAppRow(opts: MacosAppOptions = {}): Check | undefined {
       "the release build has the hardened runtime on, and Apple's notarization requires it. Install the release build.",
     );
   }
-  return row(detail, fixes.length > 0 ? fixes.join(" ") : undefined);
+  return { app, row: row(detail, fixes.length > 0 ? fixes.join(" ") : undefined) };
 }

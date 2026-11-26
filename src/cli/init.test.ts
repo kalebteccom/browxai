@@ -103,6 +103,80 @@ describe("browxai init", () => {
     }
   });
 
+  describe("run from the Browxai app", () => {
+    const APP = "/Applications/Browxai.app";
+    const WRAPPER = `${APP}/Contents/Resources/bin/browxai`;
+    const appBundle = () => APP;
+
+    it("writes the bridge as the user-level entry, with no env", async () => {
+      const home = mkdtempSync(join(tmpdir(), "browxai-home-"));
+      const system = homeSystem(home);
+      try {
+        const code = await runInit(
+          [dir, "--test-attrs", "data-testid", "--no-smoke", "--write-user-config", "cursor"],
+          { system, appBundle },
+        );
+        expect(code).toBe(0);
+        const written = JSON.parse(readFileSync(join(home, ".cursor", "mcp.json"), "utf8"))
+          .mcpServers.browxai;
+        expect(written).toEqual({ command: WRAPPER, args: ["bridge"], env: {} });
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
+
+    it("keeps the two stdio entries in the workspace .mcp.json", async () => {
+      expect(
+        await runInit(
+          [dir, "--test-attrs", "data-testid", "--no-smoke", "--no-write-user-config"],
+          {
+            appBundle,
+          },
+        ),
+      ).toBe(0);
+      const servers = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf8")).mcpServers;
+      expect(Object.keys(servers)).toEqual(["browxai", "browxai-attached"]);
+      for (const entry of Object.values<{ command: string; args: string[]; env: object }>(
+        servers,
+      )) {
+        expect(entry.command).toBe("node");
+        expect(entry.args).not.toContain("bridge");
+        expect(entry.env).toMatchObject({ BROWX_WORKSPACE: join(dir, ".browxai") });
+      }
+    });
+
+    it("says which entries use the app's daemon and that the project file does not", async () => {
+      expect(await runInit([dir, ...ARGS], { appBundle })).toBe(0);
+      expect(out).toContain("the user-level entries below use `browxai bridge`");
+      expect(out).toContain("its workspace, capabilities and settings apply");
+      expect(out).toContain("runs its own browxai server with the settings in that file");
+      expect(out).toContain("It does not use the app's daemon.");
+    });
+
+    it("prints the bridge command for Claude Code and Codex", async () => {
+      const home = mkdtempSync(join(tmpdir(), "browxai-home-"));
+      mkdirSync(join(home, "bin"));
+      writeFileSync(join(home, "bin", "claude"), "");
+      writeFileSync(join(home, "bin", "codex"), "");
+      const system = homeSystem(home, { env: { PATH: join(home, "bin") } });
+      try {
+        expect(await runInit([dir, ...ARGS], { system, appBundle })).toBe(0);
+        expect(out).toContain(`codex mcp add browxai -- ${WRAPPER} bridge`);
+        const line = out.split("\n").find((l) => l.includes("claude mcp add-json browxai"))!;
+        expect(line).toContain(`"command":"${WRAPPER}","args":["bridge"],"env":{}`);
+        expect(line).not.toContain("BROWX_WORKSPACE");
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("writes the stdio entry and prints no daemon line outside the app", async () => {
+    expect(await runInit([dir, ...ARGS], { appBundle: () => undefined })).toBe(0);
+    expect(out).not.toContain("browxai bridge");
+    expect(out).not.toContain("the app's daemon");
+  });
+
   it("shows the diff and writes nothing under --no-write", async () => {
     const home = mkdtempSync(join(tmpdir(), "browxai-home-"));
     const system: ClientSystem = {

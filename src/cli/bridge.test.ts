@@ -18,6 +18,8 @@ import {
   type BridgeIo,
 } from "./bridge.js";
 import type { DaemonLink } from "./bridge-relay.js";
+import type { LauncherRunner } from "./bridge-start.js";
+import type { CommandResult } from "./macos-app.js";
 import { createClientServer, type ClientHandlers } from "./serve-client.js";
 import { listenPrivate } from "./serve-socket.js";
 
@@ -73,7 +75,7 @@ const refused = (code: string): Error => Object.assign(new Error(code), { code }
 
 describe("browxai bridge: arguments and the socket path", () => {
   it("exits 2 with the usage for an unknown flag or a positional argument", async () => {
-    for (const args of [["--start"], ["extra"], ["--socket"]]) {
+    for (const args of [["--bogus"], ["extra"], ["--socket"]]) {
       const p = fakeProcess();
       expect(await runBridge(args, p.io), args.join(" ")).toBe(2);
       expect(p.err()).toContain("usage: browxai bridge");
@@ -186,6 +188,87 @@ describe("browxai bridge: waiting for the daemon", () => {
   });
 });
 
+const LAUNCHER = "/Applications/Browxai.app/Contents/MacOS/browxai-launcher";
+
+/** A launcher that records what it was asked and answers as the real one does. */
+function fakeLauncher(result: Partial<CommandResult> = {}) {
+  const calls: string[] = [];
+  const runLauncher: LauncherRunner = (launcher, args) => {
+    calls.push([launcher, ...args].join(" "));
+    return Promise.resolve({
+      status: 0,
+      stdout: "started: launchd was asked to start com.kalebtec.browxai.agent\n",
+      stderr: "",
+      ...result,
+    });
+  };
+  return { calls, runLauncher, appLauncher: () => LAUNCHER };
+}
+
+describe("browxai bridge --start", () => {
+  it("exits 2 outside the app, before it looks for a socket, and runs nothing", async () => {
+    const launcher = fakeLauncher();
+    let attempts = 0;
+    const p = fakeProcess({
+      ...launcher,
+      appLauncher: () => undefined,
+      connect: () => {
+        attempts++;
+        return Promise.reject(refused("ENOENT"));
+      },
+    });
+    expect(await runBridge(["--start"], p.io)).toBe(2);
+    expect(await runBridge(["--socket", "/tmp/b.sock", "--start"], p.io)).toBe(2);
+    expect(p.err()).toContain("--start works only when browxai runs from the Browxai app");
+    expect(p.err()).toContain("usage: browxai bridge");
+    expect(launcher.calls).toEqual([]);
+    expect(attempts).toBe(0);
+  });
+
+  it("asks the launcher once while it waits, and still exits 3 when no daemon comes", async () => {
+    const launcher = fakeLauncher();
+    let attempts = 0;
+    const p = fakeProcess({
+      ...launcher,
+      connect: () => {
+        attempts++;
+        return Promise.reject(refused("ENOENT"));
+      },
+    });
+    const code = await runBridge(
+      ["--socket", "/tmp/b.sock", "--connect-timeout", "1000", "--start"],
+      p.io,
+    );
+    expect(code).toBe(3);
+    expect(attempts).toBe(5);
+    expect(launcher.calls).toEqual([`${LAUNCHER} login-item start`]);
+    expect(p.err()).toContain("asked the app's login agent to start (started: launchd was asked");
+    expect(p.err()).toContain("no daemon answered on /tmp/b.sock within 1000 ms");
+  });
+
+  it("passes on what the launcher says when the agent is not registered", async () => {
+    const launcher = fakeLauncher({
+      status: 2,
+      stdout:
+        "nothing was started. The login agent is not registered: run `browxai-launcher login-item register`\n",
+    });
+    const p = fakeProcess({ ...launcher, connect: () => Promise.reject(refused("ENOENT")) });
+    expect(
+      await runBridge(["--socket", "/tmp/b.sock", "--connect-timeout", "0", "--start"], p.io),
+    ).toBe(3);
+    expect(p.err()).toContain("the app's launcher did not start the login agent");
+    expect(p.err()).toContain("The login agent is not registered");
+    expect(launcher.calls).toHaveLength(1);
+  });
+
+  it("never runs the launcher without the flag", async () => {
+    const launcher = fakeLauncher();
+    const p = fakeProcess({ ...launcher, connect: () => Promise.reject(refused("ENOENT")) });
+    expect(await runBridge(["--socket", "/tmp/b.sock", "--connect-timeout", "500"], p.io)).toBe(3);
+    expect(launcher.calls).toEqual([]);
+  });
+});
+
 describe.skipIf(process.platform === "win32")("browxai bridge against a daemon", () => {
   let dir: string;
   let socketPath: string;
@@ -275,6 +358,61 @@ describe.skipIf(process.platform === "win32")("browxai bridge against a daemon",
     p.send(initialize);
     await until(() => p.messages().length === 1, "the initialize result");
     expect(attempts).toBe(3);
+    p.stop();
+    expect(await exit).toBe(0);
+  });
+
+  it("with --start, leaves the launcher alone when the daemon answers", async () => {
+    const launcher = fakeLauncher();
+    const p = fakeProcess({ ...launcher });
+    const exit = runBridge(["--socket", socketPath, "--start"], p.io);
+    p.send(initialize);
+    await until(() => p.messages().length === 1, "the initialize result");
+    p.stop();
+    expect(await exit).toBe(0);
+    expect(launcher.calls).toEqual([]);
+  });
+
+  it("with --start, asks the launcher once for each time the daemon is lost", async () => {
+    const launcher = fakeLauncher();
+    let failing = 0;
+    let opened = 0;
+    const p = fakeProcess({
+      ...launcher,
+      connect: async (path): Promise<DaemonLink> => {
+        if (failing > 0) {
+          failing--;
+          throw refused("ECONNREFUSED");
+        }
+        const link = await openDaemonLink(path);
+        opened++;
+        return link;
+      },
+    });
+    const exit = runBridge(["--socket", socketPath, "--start"], p.io);
+    p.send(initialize);
+    await until(() => p.messages().length === 1, "the initialize result");
+    p.send({ jsonrpc: "2.0", method: "notifications/initialized" });
+    expect(launcher.calls).toEqual([]);
+
+    // Each round drops the daemon's side, fails some attempts, then lets one through. A
+    // listing that comes back proves the new connection carries calls.
+    const rounds = [
+      { fail: 2, id: 2 },
+      { fail: 1, id: 3 },
+    ];
+    for (const [index, round] of rounds.entries()) {
+      failing = round.fail;
+      for (const s of [...sockets]) s.destroy();
+      await until(() => opened === index + 2, `connection ${index + 2}`);
+      p.send({ jsonrpc: "2.0", id: round.id, method: "tools/list" });
+      await until(() => p.messages().some((m) => m.id === round.id), `listing ${round.id}`);
+      const answer = p.messages().find((m) => m.id === round.id)!;
+      expect(answer.error, `listing ${round.id}`).toBeUndefined();
+      expect(launcher.calls).toHaveLength(index + 1);
+    }
+    expect(new Set(launcher.calls)).toEqual(new Set([`${LAUNCHER} login-item start`]));
+
     p.stop();
     expect(await exit).toBe(0);
   });

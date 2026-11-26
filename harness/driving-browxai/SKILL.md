@@ -151,6 +151,25 @@ gates and refusals apply.
   file. A result over 40,000 characters is cut and marked `truncated`: narrow
   the call (`scope`, `maxNodes`) before you raise `--max-chars`.
 
+## One daemon, several clients
+
+Your server may be `browxai bridge`, a relay to a daemon that other MCP clients
+and shell commands also use. You cannot tell from the tool list, so assume it
+when the operator says clients share a daemon.
+
+- **Name your sessions.** Sessions are one namespace across every client. A call
+  with no `session` uses `default`, and so does every other client that leaves it
+  out. Open a session with an id of your own and pass it on every call.
+- `list_sessions` shows other clients' sessions, and `close_session` closes
+  them. Close only the ones you opened, and close them when you finish: they
+  stay open after your client exits.
+- `set_config` changes the daemon's config for every client. Capabilities are
+  the daemon's, so a refusal needs the operator to restart the daemon.
+- A JSON-RPC error with code `-32000` that says the daemon connection was lost
+  means the call may or may not have run. Check the page state before you
+  repeat an action. If the daemon restarted, your sessions and refs are gone:
+  open the session again, navigate and take a snapshot.
+
 ## Extending browxai (add-only)
 
 If your task adds a tool, an engine, or a substrate adapter rather than driving an
