@@ -25,9 +25,10 @@
 //   network-body     `open_session({har:{content:"embed"}})`, and the body of a
 //                    `caches_get` entry, which is left out with `bodyOmitted`
 //   action           `open_session` `storageState` / `hars` on a server without it
-//   file-io          `pdf_save`, `heap_snapshot`, `perf_start`, `perf_stop` on an
-//                    open session (the engine check runs first, so they read the
-//                    session), and `open_session` with `har` or `recordVideo`
+//   file-io          `pdf_save`, `heap_snapshot`, `perf_start`, `perf_stop`,
+//                    `perf_audit`, `layout_thrash_trace` on an open session (the
+//                    engine check runs first, so they read the session), and
+//                    `open_session` with `har` or `recordVideo`
 //   secrets          `get_credential` on a server with `credentials` alone
 //   extensions       `extensions_install` from a directory tools write into
 // Not table-driven, because the gate is a behaviour branch and not a tool gate:
@@ -342,6 +343,8 @@ describe("capability denials with the default capability set", () => {
       ["heap_snapshot", "heap-snapshots"],
       ["perf_start", "perf-traces"],
       ["perf_stop", "perf-traces"],
+      ["perf_audit", "perf"],
+      ["layout_thrash_trace", "perf"],
     ])(
       "refuses %s on an open session and writes nothing",
       async (tool, dir) => {
@@ -618,6 +621,20 @@ describe("the same surfaces with their capabilities on", () => {
       expect(pdf.requiredCapability).toBeUndefined();
       expect(pdf.ok).toBe(true);
       expect(pdf.bytes).toBeGreaterThan(0);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "file-io: layout_thrash_trace writes its trace file",
+    async () => {
+      const r = await call<{ ok: boolean; tracePath: string; requiredCapability?: string }>(
+        "layout_thrash_trace",
+        { session, durationMs: 200 },
+      );
+      expect(r.requiredCapability).toBeUndefined();
+      expect(r.ok).toBe(true);
+      expect(existsSync(r.tracePath)).toBe(true);
     },
     KEYSTONE_TIMEOUT,
   );
