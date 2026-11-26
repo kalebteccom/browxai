@@ -4,6 +4,7 @@ import { sampleMetric, ELEMENT_METRICS } from "../page/sample.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 import { requirePage } from "../engine/index.js";
+import { errorResult, jsonResult } from "./json-result.js";
 
 /**
  * Capture + report — region capture & marks composition. `screenshot_region`
@@ -62,18 +63,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
           ],
         };
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -138,18 +128,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
         ];
         return { content };
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -170,14 +149,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       const g = gateCheck("name_region");
       if (g) return g;
       const e = await entryFor(session);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ ok: true, ...e.regions.set(name, box) }, null, 2),
-          },
-        ],
-      };
+      return jsonResult({ ok: true, ...e.regions.set(name, box) });
     },
   );
 
@@ -194,24 +166,15 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       if (g) return g;
       const e = await entryFor(session);
       const r = e.regions.get(name);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              r
-                ? { ok: true, ...r }
-                : {
-                    ok: false,
-                    error: `no region named "${name}". Call name_region first, or pick one of the names in \`known\`.`,
-                    known: e.regions.list().map((x) => x.name),
-                  },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      return jsonResult(
+        r
+          ? { ok: true, ...r }
+          : {
+              ok: false,
+              error: `no region named "${name}". Call name_region first, or pick one of the names in \`known\`.`,
+              known: e.regions.list().map((x) => x.name),
+            },
+      );
     },
   );
 
@@ -264,21 +227,10 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       if (g) return g;
       const innerTool = args.action.tool;
       if (!BATCH_ALLOWED_TOOLS.has(innerTool) || innerTool === "cross_session_sample") {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error: `cross_session_sample: inner tool "${innerTool}" not allowed (batch, await_human and recording tools cannot be inner tools, nor can the tool itself)`,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          ok: false,
+          error: `cross_session_sample: inner tool "${innerTool}" not allowed (batch, await_human and recording tools cannot be inner tools, nor can the tool itself)`,
+        });
       }
       const ig = gateCheck(innerTool);
       if (ig) return ig;
@@ -314,9 +266,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
               ok: false,
               error: aRes.reason instanceof Error ? aRes.reason.message : String(aRes.reason),
             };
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify({ action, sample }, null, 2) }],
-      };
+      return jsonResult({ action, sample });
     },
   );
 }
