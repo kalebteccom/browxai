@@ -15,6 +15,12 @@ import { connectOwnSocket, SocketGuardError } from "../transport/socket-guard.js
 import { MAX_SOCKET_MESSAGE_BYTES, SocketTransport } from "../transport/socket-transport.js";
 import { log } from "../util/logging.js";
 import { BridgeRelay, RelayFatalError, type DaemonLink } from "./bridge-relay.js";
+import {
+  agentStarter,
+  runningAppLauncher,
+  type AgentStarter,
+  type LauncherRunner,
+} from "./bridge-start.js";
 import { parseBridgeArgs, SOCKET_ENV } from "./shell-args.js";
 import { NO_SOCKET, socketPathOf } from "./shell-connect.js";
 import { EXIT } from "./shell-result.js";
@@ -22,7 +28,7 @@ import { EXIT } from "./shell-result.js";
 /** Printed for `browxai bridge --help` (exit 0, from `cli.ts`) and to standard error
  *  when the arguments are wrong (exit 2). */
 export const BRIDGE_USAGE =
-  "usage: browxai bridge [--socket PATH] [--connect-timeout MS]\n" +
+  "usage: browxai bridge [--socket PATH] [--connect-timeout MS] [--start]\n" +
   "  An MCP server on standard input and output that relays every message to a\n" +
   "  running `browxai serve --socket` daemon. Use it as the command of an MCP\n" +
   "  client's server entry, so the client drives the daemon's sessions and\n" +
@@ -35,6 +41,11 @@ export const BRIDGE_USAGE =
   "                        by you and closed to other users.\n" +
   "  --connect-timeout MS  how long to wait at start for the daemon to answer\n" +
   "                        (default 15000, 0 tries once)\n" +
+  "  --start               from the Browxai app only: when no daemon answers,\n" +
+  "                        ask the app's launcher once to start its login\n" +
+  "                        agent. It starts an agent that is registered and\n" +
+  "                        allowed to run, and registers nothing. Anywhere\n" +
+  "                        else it is a usage error.\n" +
   "\n" +
   "  If the daemon stops, open calls get an error and the bridge connects again\n" +
   "  when it is back. Sessions of a restarted daemon are gone.\n" +
@@ -67,6 +78,10 @@ export interface BridgeIo {
   readonly connect?: (path: string) => Promise<DaemonLink>;
   readonly sleep?: (ms: number) => Promise<void>;
   readonly now?: () => number;
+  /** The launcher of the Browxai app this process runs from, or undefined outside it. */
+  readonly appLauncher?: () => string | undefined;
+  /** Run the launcher. Used by `--start` only. */
+  readonly runLauncher?: LauncherRunner;
 }
 
 function processBridgeIo(): BridgeIo {
@@ -112,6 +127,7 @@ async function waitForDaemon(
   timeoutMs: number,
   io: BridgeIo,
   stopped: () => boolean,
+  starter: AgentStarter | undefined,
 ): Promise<FirstLink> {
   const connect = io.connect ?? openDaemonLink;
   const sleep = io.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
@@ -129,6 +145,7 @@ async function waitForDaemon(
       last = errnoOf(err) === "ENOENT" ? "nothing is there" : (errnoOf(err) ?? "it did not open");
     }
     if (stopped()) return { code: EXIT.ok };
+    await starter?.ask();
     if (now() + CONNECT_RETRY_MS > deadline) break;
     await sleep(CONNECT_RETRY_MS);
     if (stopped()) return { code: EXIT.ok };
@@ -141,6 +158,10 @@ async function waitForDaemon(
       `With an npm install, start one with \`browxai serve --socket ${path}\`.\n`,
   };
 }
+
+const START_OUTSIDE_APP =
+  "--start works only when browxai runs from the Browxai app, which has a login agent to start. " +
+  "Start a daemon yourself with `browxai serve --socket PATH`.";
 
 const TTY_HINT =
   "browxai bridge: this is an MCP server on stdio. It waits for an MCP client to connect, so there is nothing to type here.\n" +
@@ -158,7 +179,12 @@ function announce(io: BridgeIo): void {
 }
 
 /** Relay between the client on stdio and the daemon until one side ends it. */
-async function relay(path: string, first: DaemonLink, io: BridgeIo): Promise<number> {
+async function relay(
+  path: string,
+  first: DaemonLink,
+  io: BridgeIo,
+  starter: AgentStarter | undefined,
+): Promise<number> {
   const connect = io.connect ?? openDaemonLink;
   const bridge = new BridgeRelay({
     client: new StdioServerTransport(io.stdin, io.stdout, {
@@ -166,14 +192,19 @@ async function relay(path: string, first: DaemonLink, io: BridgeIo): Promise<num
     }),
     clientFlow: { pause: () => void io.stdin.pause(), resume: () => void io.stdin.resume() },
     openDaemon: async () => {
+      let link: DaemonLink;
       try {
-        return await connect(path);
+        link = await connect(path);
       } catch (err) {
         if (err instanceof SocketGuardError) {
           throw new RelayFatalError(`browxai bridge: ${err.message}`);
         }
+        // The daemon is not back. With `--start` the launcher is asked once per loss.
+        await starter?.ask();
         throw err;
       }
+      starter?.reset();
+      return link;
     },
     log: (message, fields) => log.info(`bridge: ${message}`, fields),
     sleep: io.sleep,
@@ -199,6 +230,15 @@ export async function runBridge(rest: string[], io: BridgeIo = processBridgeIo()
     io.stderr(`browxai bridge: ${parsed.message}\n${BRIDGE_USAGE}`);
     return EXIT.usage;
   }
+  let starter: AgentStarter | undefined;
+  if (parsed.value.start) {
+    const launcher = (io.appLauncher ?? runningAppLauncher)();
+    if (launcher === undefined) {
+      io.stderr(`browxai bridge: ${START_OUTSIDE_APP}\n${BRIDGE_USAGE}`);
+      return EXIT.usage;
+    }
+    starter = agentStarter(launcher, io.stderr, io.runLauncher);
+  }
   if (parsed.value.socket === undefined) {
     io.stderr(`browxai bridge: ${NO_SOCKET}\n`);
     return EXIT.unreachable;
@@ -213,11 +253,18 @@ export async function runBridge(rest: string[], io: BridgeIo = processBridgeIo()
   announce(io);
   let stopped = false;
   io.onStop(() => (stopped = true));
-  const first = await waitForDaemon(path, parsed.value.connectTimeoutMs, io, () => stopped);
+  const first = await waitForDaemon(
+    path,
+    parsed.value.connectTimeoutMs,
+    io,
+    () => stopped,
+    starter,
+  );
   if (!("link" in first)) {
     if (first.message !== undefined) io.stderr(first.message);
     return first.code;
   }
+  starter?.reset();
   log.info("bridge: connected to the daemon", { socket: path });
-  return relay(path, first.link, io);
+  return relay(path, first.link, io, starter);
 }

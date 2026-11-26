@@ -8,7 +8,7 @@
 //   browxai-launcher run [--socket PATH] [SERVE ARGS...]
 //   browxai-launcher cli ARGS...
 //   browxai-launcher helper ARGS...
-//   browxai-launcher login-item status|register|unregister
+//   browxai-launcher login-item status|register|unregister|start
 //   browxai-launcher version
 //
 // Build (done by scripts/macos/build-app.sh, never by hand in the repository):
@@ -63,8 +63,9 @@ let usageText = """
           Run the bundled browxai CLI with ARGS. This is what the browxai command on PATH does.
       helper ARGS...
           Run the bundled cloud helper, when this app has one.
-      login-item status|register|unregister
-          Show, add or remove the login agent that runs `run` at login.
+      login-item status|register|unregister|start
+          Show, add or remove the login agent that runs `run` at login. `start` asks
+          launchd to start an agent that is registered and stopped. It registers nothing.
       version
           Print the launcher and app versions.
 
@@ -387,12 +388,45 @@ func describe(_ status: SMAppService.Status) -> String {
     }
 }
 
+/// Ask launchd to start the agent with this label in the user's gui domain. Without
+/// `-k`, kickstart leaves an agent that is already running alone. It starts only a
+/// job launchd already knows, so it cannot register one.
+func kickstartAgent(label: String) -> Never {
+    let target = "gui/\(getuid())/\(label)"
+    let launchctl = Process()
+    launchctl.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+    launchctl.arguments = ["kickstart", target]
+    let errors = Pipe()
+    launchctl.standardOutput = FileHandle.nullDevice
+    launchctl.standardError = errors
+    do {
+        try launchctl.run()
+    } catch {
+        fail("cannot run /bin/launchctl: \(error.localizedDescription)")
+    }
+    let said = errors.fileHandleForReading.readDataToEndOfFile()
+    launchctl.waitUntilExit()
+    if launchctl.terminationStatus == 0 {
+        print("started: launchd was asked to start \(label)")
+        exit(0)
+    }
+    let detail = (String(data: said, encoding: .utf8) ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    note(
+        "nothing was started: launchctl kickstart \(target) exited \(launchctl.terminationStatus)"
+            + (detail.isEmpty ? "" : " (\(detail))"))
+    exit(1)
+}
+
 func loginItem(_ layout: Layout, action: String) -> Never {
     let bundleID = infoValue(layout, "CFBundleIdentifier") ?? defaultBundleID
     let label = bundleID + ".agent"
     let plistName = label + ".plist"
 
     guard #available(macOS 13.0, *) else {
+        // Without SMAppService the agent, when there is one, is the plain launchd agent
+        // of the fallback below, under the same label.
+        if action == "start" { kickstartAgent(label: label) }
         let version = ProcessInfo.processInfo.operatingSystemVersionString
         note("the login item API (SMAppService) needs macOS 13 or later, and this Mac runs \(version).")
         printLaunchctlFallback(
@@ -427,6 +461,13 @@ func loginItem(_ layout: Layout, action: String) -> Never {
         }
         print(describe(service.status))
         exit(0)
+    case "start":
+        let status = service.status
+        guard status == .enabled else {
+            print("nothing was started. The login agent is \(describe(status))")
+            exit(2)
+        }
+        kickstartAgent(label: label)
     default:
         usage(2)
     }

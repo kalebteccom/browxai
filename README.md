@@ -48,6 +48,7 @@ That is the whole of the host reach: three capabilities and adb. browxai has no 
 - **Drive the desktop app you already have open.** Start VS Code or Slack with `--remote-debugging-port`, point `BROWX_ATTACH_CDP` at it, grant `byob-attach`, and `snapshot` / `find` / `click` read and drive the app's own UI. browxai names the engine `electron` off `Browser.getVersion` without being told, so an agent is never told it is driving a plain Chromium tab.
 - **Run in CI without wedging.** Stand the server up headless in a pipeline; every call has a hard anti-wedge deadline, so a stuck page never hangs the run. See [Run browxai in a container and in CI](https://browxai.com/guides/containers-and-ci/).
 - **Share one browser across agents.** Run `browxai serve --socket` and attach multiple SDK clients to one long-running server (one Chromium), say a parent agent plus a helper script.
+- **Point several MCP clients at one server.** `browxai bridge` is an MCP server on stdio that relays to a `browxai serve --socket` daemon, so Claude Code, Codex, Cursor and Claude Desktop share one session registry and one set of browsers. See [Connect MCP clients to one daemon](https://browxai.com/guides/bridge/).
 - **Drive it from a shell.** An agent with a shell tool and no MCP client runs `browxai call <tool> '<json>'` against a `browxai serve --socket` daemon and reads one JSON document back, with exit codes to branch on. `browxai tools` lists the tools. See [Drive browxai from a shell](https://browxai.com/guides/shell-route/).
 
 ## Why browxai

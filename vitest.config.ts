@@ -4,6 +4,11 @@ import { defineConfig, configDefaults } from "vitest/config";
 // The headless-CI keystone lives under test/keystone/ and is excluded here so
 // `pnpm test` never downloads or launches a browser; it runs via its own
 // config (`pnpm test:keystone`, vitest.keystone.config.ts) in a separate CI job.
+// CI sets VITEST_MAX_WORKERS to cap the workers of one run, so two unit steps and
+// the other gate commands do not oversubscribe the cores. Unset or not a positive
+// integer: vitest keeps its own default (one worker per core).
+const maxWorkers = Number.parseInt(process.env.VITEST_MAX_WORKERS ?? "", 10);
+
 export default defineConfig({
   test: {
     // One timeout policy for the unit lane. A CI box runs several gate steps on
@@ -11,6 +16,7 @@ export default defineConfig({
     // run past the 5 s default there. Local runs keep 5 s, so a slow test still
     // shows up on a quiet machine. A test that needs longer sets its own timeout.
     testTimeout: process.env.CI ? 15_000 : 5_000,
+    ...(maxWorkers > 0 ? { maxWorkers } : {}),
     exclude: [
       ...configDefaults.exclude,
       "**/dist/**",

@@ -25,6 +25,7 @@ import {
   type ServerEntry,
 } from "./init-clients.js";
 import { runSmoke, type SmokeOptions, type SmokeResult } from "./init-smoke.js";
+import { appWrapperOf, runningAppBundle } from "./macos-app.js";
 import {
   applyUserConfig,
   lineDiff,
@@ -51,6 +52,8 @@ export interface InitDeps {
   readConfig?: (path: string) => string | undefined;
   /** Writes a planned user-level config file. */
   applyConfig?: typeof applyUserConfig;
+  /** The Browxai app this process runs from, or undefined outside it. */
+  appBundle?: () => string | undefined;
 }
 
 /** Printed to stdout for `--help` (exit 0, from `cli.ts`) and to stderr when
@@ -164,17 +167,26 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
     );
   }
   const ws = shellWord(browxDir);
+  // Run from the Browxai app, the user-level entries name the bridge, so those
+  // clients share the app's daemon. Only where init runs from decides: an npm
+  // install never looks for an installed app.
+  const app = (deps.appBundle ?? runningAppBundle)();
+  if (app !== undefined) process.stdout.write(WORKSPACE_FILE_NOTE);
   // The entry a user-level client config gets. Same server as the project file,
   // minus the attach entry, and never a path inside the npx cache. The command is
   // the absolute path of this node: a client started from the desktop (Claude
   // Desktop under launchd) does not get the shell's PATH, so a bare `node` fails.
   const inNpxCache = /[\\/]_npx[\\/]/.test(distCli);
-  const userEntry: ServerEntry = {
-    ...(inNpxCache
-      ? { command: "npx", args: ["-y", "browxai"] }
-      : { command: process.execPath, args: [distCli] }),
-    env: { BROWX_WORKSPACE: browxDir, BROWX_TEST_ATTRIBUTES: testAttrs },
-  };
+  const userEntry: ServerEntry =
+    app !== undefined
+      ? bridgeEntry(app)
+      : {
+          ...(inNpxCache
+            ? { command: "npx", args: ["-y", "browxai"] }
+            : { command: process.execPath, args: [distCli] }),
+          env: { BROWX_WORKSPACE: browxDir, BROWX_TEST_ATTRIBUTES: testAttrs },
+        };
+  if (app !== undefined) process.stdout.write(BRIDGE_ENTRY_NOTE);
   const system = deps.system ?? realSystem();
   const found = detectClients(system);
   const reportMode =
@@ -199,6 +211,24 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   }
   return userConfigOk && smokeOk ? 0 : 1;
 }
+
+/**
+ * The user-level entry when init runs from the Browxai app: the app's `browxai`
+ * wrapper by absolute path, because a client started from the desktop does not get
+ * the shell's PATH, and the `bridge` subcommand. The wrapper supplies the socket, and
+ * a bridge reads no other setting, so `env` is empty.
+ */
+export function bridgeEntry(app: string): ServerEntry {
+  return { command: appWrapperOf(app), args: ["bridge"], env: {} };
+}
+
+const BRIDGE_ENTRY_NOTE =
+  "browxai runs from the Browxai app, so the user-level entries below use `browxai bridge`: " +
+  "they reach the app's daemon, and its workspace, capabilities and settings apply.\n\n";
+
+const WORKSPACE_FILE_NOTE =
+  "A project opened with the .mcp.json above runs its own browxai server with the settings in that file. " +
+  "It does not use the app's daemon.\n\n";
 
 /**
  * The user-level write. A named client (`--write-user-config <client>`) is the
