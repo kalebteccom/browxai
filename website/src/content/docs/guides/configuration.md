@@ -134,7 +134,7 @@ not config.
 - `BROWX_HEADLESS`, default `0`. Managed mode only. `1` or `true` launches headless.
 - `BROWX_TEST_ATTRIBUTES`, default `data-testid,data-test,data-cy,data-qa`. Selector-anchor attributes, order-sensitive.
 - `BROWX_CAPABILITIES`, default `read,navigation,action,human`. The full capability set at server start. It replaces the default set, so list the defaults too.
-- `BROWX_CONFIRM_REQUIRED`, default `navigate_off_allowlist,byob_action`. Policy hooks that route through human confirmation. Two hooks fire: `navigate_off_allowlist` and `byob_action`. The names `file_download` and `file_upload` are accepted but reserved: no tool consults them yet.
+- `BROWX_CONFIRM_REQUIRED`, default `navigate_off_allowlist,byob_action,native_device_app`. Policy hooks that route through human confirmation. Three hooks fire: `navigate_off_allowlist`, `byob_action` and `native_device_app` (an `ios-app` session on a real iPhone only). The names `file_download` and `file_upload` are accepted but reserved: no tool consults them yet.
 - `BROWX_ALLOWED_ORIGINS`, unset. Allow list for `navigate`, as full origins: `https://app.example.com`, `https://*.example.com` (subdomains, not the bare domain). No port means the scheme default only; a port matches that port. `navigate` checks the landed URL too.
 - `BROWX_BLOCKED_ORIGINS`, unset. Block list; overrides the allow list. Ports match as for the allow list.
 - `BROWX_NAVIGATE_EXTRA_SCHEMES`, unset. Extra URL schemes `navigate` opens, such as `chrome,view-source`. By default it opens `http:`, `https:`, `about:blank` and `data:`; `file:` needs `file-io` and a workspace path. Environment only, so `set_config` cannot change it.
