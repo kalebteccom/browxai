@@ -4,11 +4,11 @@ import { watchWindow } from "../page/watch.js";
 import { pointProbe } from "../page/point_probe.js";
 import { sampleMetric, ELEMENT_METRICS } from "../page/sample.js";
 import { withDeadline } from "../util/deadline.js";
-import { estimateTokens } from "../util/tokens.js";
 import { REF_OR_SELECTOR, SESSION_ARG, TIMEOUT_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 import { requirePage } from "../engine/index.js";
 import type { TargetSubstrate } from "../page/target-substrate.js";
+import { jsonResult, jsonResultWithEstimate } from "./json-result.js";
 
 type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
 
@@ -73,7 +73,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       if (g) return g;
       const e = await entryFor(session);
       const rows = e.console.recent(limit ?? 50);
-      return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
+      return jsonResult(rows);
     },
   );
 
@@ -122,21 +122,10 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       const hasTarget = !!(args.ref || args.selector || args.named || args.coords);
       const target = hasTarget ? asTarget(args, "sample", e.refs) : undefined;
       if (target && "coords" in target) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  error:
-                    "sample: coords targets are not supported. Use a ref, selector or named element, or omit target to sample the window.",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          error:
+            "sample: coords targets are not supported. Use a ref, selector or named element, or omit target to sample the window.",
+        });
       }
       try {
         const result = await sampleMetric(requirePage(e.session), e.refs, {
@@ -147,20 +136,9 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
           intervalMs: args.intervalMs,
           summary: args.summary,
         });
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return jsonResult(result);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                { error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({ error: err instanceof Error ? err.message : String(err) });
       }
     },
   );
@@ -203,7 +181,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       // through the injected egress chokepoint (RFC 0004 P3 / D4) — byte-identical
       // to the prior `caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(...) : ...`.
       const masked = egressFor(e).maskDeep(result);
-      return { content: [{ type: "text", text: JSON.stringify(masked, null, 2) }] };
+      return jsonResult(masked);
     },
   );
 
@@ -231,22 +209,11 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       const target = asTarget(args, "inspect", e.refs);
       if ("coords" in target) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  found: false,
-                  error:
-                    "inspect requires a ref, selector or named ref. For a point on the page, use point_probe.",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          found: false,
+          error:
+            "inspect requires a ref, selector or named ref. For a point on the page, use point_probe.",
+        });
       }
       const { locatorFor } = await import("../page/locator.js");
       const loc = locatorFor(requirePage(e.session), e.refs, target);
@@ -258,25 +225,17 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
           "inspect",
         );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { found: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          found: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
       // Egress sink — `styles.content` / `background-image: url(...)` can echo
       // a registered real-value rendered into the computed-style stream.
       // Low-risk channel (the reviewer flagged as NIT) but the masking layer
       // is cheap; pin the invariant per-sink.
       const maskedInspect = egressFor(e).maskDeep(result);
-      return { content: [{ type: "text", text: JSON.stringify(maskedInspect, null, 2) }] };
+      return jsonResult(maskedInspect);
     },
   );
 
@@ -303,12 +262,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       // and `inspect`'s stringly outputs — mask through the per-session
       // registry on egress (the injected chokepoint — RFC 0004 P3 / D4).
       const masked = egressFor(e).maskDeep(result);
-      const tokensEstimate = estimateTokens(JSON.stringify(masked));
-      return {
-        content: [
-          { type: "text" as const, text: JSON.stringify({ ...masked, tokensEstimate }, null, 2) },
-        ],
-      };
+      return jsonResultWithEstimate(masked);
     },
   );
 
@@ -342,29 +296,18 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
         // Same exposure class as snapshot/find name fields; mask through the
         // session registry before serialising.
         const maskedProbe = egressFor(e).maskDeep(result);
-        return { content: [{ type: "text" as const, text: JSON.stringify(maskedProbe, null, 2) }] };
+        return jsonResult(maskedProbe);
       } catch (err) {
         // structured failure — coordinate + target URL for triage.
         const url = await targetFor(e)
           .url()
           .catch(() => "");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  point: coords,
-                  url,
-                  error: err instanceof Error ? err.message : String(err),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          ok: false,
+          point: coords,
+          url,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     },
   );
@@ -411,50 +354,17 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
         if (returnType === "void") {
           await withDeadline(scriptFor(e).evaluate(expr), td.ms, "eval_js").catch(() => undefined);
           await recordEval(e, targetFor(e), expr);
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(
-                  { ok: true, returnType: "void", ...(warn ? { warning: warn } : {}) },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return jsonResult({ ok: true, returnType: "void", ...(warn ? { warning: warn } : {}) });
         }
         const value = await withDeadline(scriptFor(e).evaluate(expr), td.ms, "eval_js");
         await recordEval(e, targetFor(e), expr);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                { ok: true, value, ...(warn ? { warning: warn } : {}) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({ ok: true, value, ...(warn ? { warning: warn } : {}) });
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error: err instanceof Error ? err.message : String(err),
-                  ...(warn ? { warning: warn } : {}),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+          ...(warn ? { warning: warn } : {}),
+        });
       }
     },
   );

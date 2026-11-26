@@ -15,6 +15,7 @@ import type {
 } from "./host.js";
 import type { CaptureResult } from "../page/capture-substrate.js";
 import type { SecretRegistry } from "../util/secrets.js";
+import { errorResultWithEstimate, jsonResult } from "./json-result.js";
 
 type CapturePage = ReturnType<typeof requirePage>;
 type CaptureCdp = ReturnType<typeof requireCdp>;
@@ -97,14 +98,7 @@ function buildScreenshotOnSource(page: CapturePage, cdp: CaptureCdp) {
 /** Wrap a JSON payload + its token estimate as a tool text response. */
 function jsonContentWithTokens(body: Record<string, unknown>): ToolResponse {
   const json = JSON.stringify(body);
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2),
-      },
-    ],
-  };
+  return jsonResult({ ...body, tokensEstimate: estimateTokens(json) });
 }
 
 /** Render the screenshot capture result: structured envelope for
@@ -117,7 +111,7 @@ async function formatScreenshotResult(
   if (cap.kind === "refusal") {
     const body: Record<string, unknown> = { ok: false, error: cap.error };
     if (cap.hint) body.hint = cap.hint;
-    return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    return jsonResult(body);
   }
   if (cap.kind === "save-error") {
     return jsonContentWithTokens({ ok: false, error: cap.error });
@@ -357,28 +351,9 @@ export function registerReadObserveCaptureTools(
         );
         const body: Record<string, unknown> = { ok: true, ...result };
         const json = JSON.stringify(body);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
+        return jsonResult({ ...body, tokensEstimate: estimateTokens(json) });
       } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResultWithEstimate(err);
       }
     },
   );
@@ -448,28 +423,9 @@ export function registerReadObserveCaptureTools(
         );
         const body: Record<string, unknown> = { ok: true, ...result };
         const json = JSON.stringify(body);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
+        return jsonResult({ ...body, tokensEstimate: estimateTokens(json) });
       } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResultWithEstimate(err);
       }
     },
   );
