@@ -76,7 +76,7 @@ steps:
         "pnpm licenses:check"
         "node scripts/lockfile-lint.mjs"
   # static-2: copy rules on user-visible docs text (no filler words, no "rather than" or "not just" closers), example commands and config blocks in the README and docs (BROWX_* names, CLI subcommands and flags, MCP config JSON; this step has no dist/, so the CLI probes are skipped, package-contents repeats the check after the build and runs them), every `npx playwright-core@X.Y.Z` pin in the docs against the version pnpm-lock.yaml resolves, design rules on the docs site (no em or en dashes in copy, no monospace or tracked uppercase outside real code), then the docs site build (sync-docs, astro build with the links validator, then check-h1: one exposed h1 per page), the same command Netlify and release.sh run.
-  # ORDER: docs:build is last on purpose, and it runs in a private copy of the workspace (scripts/gate-private-tree.sh): its sync-docs step writes website/src/content/docs and astro writes website/dist, which no other step sees.
+  # ORDER: docs:build is last on purpose, and it runs in a private copy of the workspace (scripts/gate-private-tree.sh, with GATE_TREE_COPY_MODULES=1 so astro sees node_modules inside the tree): its sync-docs step writes website/src/content/docs and astro writes website/dist, which no other step sees.
   - <<: *step
     name: static-2
     # WORKAROUND: Astro needs Node 22.23.4 or newer and the node:22 image is older, so this bundle runs on Node 26 like the keystone steps (the Node 22 install serves it, see SHAPE above). Node 25 and later stopped bundling corepack.
@@ -92,7 +92,7 @@ steps:
         "node scripts/check-examples.mjs"
         "node scripts/check-playwright-pin.mjs"
         "node scripts/check-design-rules.mjs"
-        "bash scripts/gate-private-tree.sh pnpm docs:build"
+        "GATE_TREE_COPY_MODULES=1 bash scripts/gate-private-tree.sh pnpm docs:build"
   - <<: *step
     name: package-contents
     image: node:26-bookworm
