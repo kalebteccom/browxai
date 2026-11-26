@@ -5,7 +5,7 @@
 # The repo is public, so Woodpecker never runs pull_request events; a branch is gated by the pipeline of its push. GATE vs MAIN: every gate step runs on pushes to any branch except main, once, before the merge. A push to main runs only `main-check`: the squash merge landed a tree that was gated at the same head, so nothing is rebuilt.
 when:
   - event: push
-# SHAPE: `install` runs once and every other step depends only on it, so lint, format, the two static bundles (typecheck, static and supply-chain checks, docs checks and the docs build) and the package build run side by side on the shared workspace (the slot pool caps how many heavy commands run at once). Steps merge the `install` step (`<<: *step`) and override name, depends_on, commands.
+# SHAPE: `install` runs once and every other step depends only on it, so lint, format, the two static bundles (typecheck, static and supply-chain checks, docs checks and the docs build) and the package build run side by side (the slot pool caps how many heavy commands run at once). The two steps that write files (the docs build in static-2 and package-contents) run in a private copy of the workspace through scripts/gate-private-tree.sh, so the other steps read the checked-out tree only. Steps merge the `install` step (`<<: *step`) and override name, depends_on, commands.
 # No installed dependency is bound to the Node ABI: install scripts are off (.npmrc) and the only native code, sharp, ships Node-API prebuilds as per-platform packages; so one install under Node 22 serves the Node 26 steps.
 # Node 22 is the declared floor in `engines` (the Safari BiDi client uses Node's global WebSocket); 26 is what development runs on. The unit suite runs on both, in its own workflow (tests.yml), with its own checkout, so it does not share one with the `pnpm build` of package-contents. It is not sharded: it takes 0.4 to 0.7 min, so shards would only add slot churn.
 # WORKAROUND: the trackxai-ci images carry pnpm 9.15.9 but package.json pins pnpm@9.0.0, so plain node images plus corepack honour `packageManager`. The store location comes from an env var, so no step runs `pnpm config set`.
@@ -76,7 +76,7 @@ steps:
         "pnpm licenses:check"
         "node scripts/lockfile-lint.mjs"
   # static-2: copy rules on user-visible docs text (no filler words, no "rather than" or "not just" closers), example commands and config blocks in the README and docs (BROWX_* names, CLI subcommands and flags, MCP config JSON; this step has no dist/, so the CLI probes are skipped, package-contents repeats the check after the build and runs them), every `npx playwright-core@X.Y.Z` pin in the docs against the version pnpm-lock.yaml resolves, design rules on the docs site (no em or en dashes in copy, no monospace or tracked uppercase outside real code), then the docs site build (sync-docs, astro build with the links validator, then check-h1: one exposed h1 per page), the same command Netlify and release.sh run.
-  # ORDER: docs:build is last on purpose. Its sync-docs step writes website/src/content/docs, which the four checks before it read; as separate steps they raced it, here they see the checked-out tree.
+  # ORDER: docs:build is last on purpose, and it runs in a private copy of the workspace (scripts/gate-private-tree.sh): its sync-docs step writes website/src/content/docs and astro writes website/dist, which no other step sees.
   - <<: *step
     name: static-2
     # WORKAROUND: Astro needs Node 22.23.4 or newer and the node:22 image is older, so this bundle runs on Node 26 like the keystone steps (the Node 22 install serves it, see SHAPE above). Node 25 and later stopped bundling corepack.
@@ -92,7 +92,7 @@ steps:
         "node scripts/check-examples.mjs"
         "node scripts/check-playwright-pin.mjs"
         "node scripts/check-design-rules.mjs"
-        "pnpm docs:build"
+        "bash scripts/gate-private-tree.sh pnpm docs:build"
   - <<: *step
     name: package-contents
     image: node:26-bookworm
@@ -100,9 +100,10 @@ steps:
     commands:
       - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
-      - bash scripts/gate-slot.sh pnpm build
-      - bash scripts/gate-slot.sh node scripts/audit-package-contents.mjs
-      - bash scripts/gate-slot.sh node scripts/check-examples.mjs
+      # The build, the package audit and the examples check run in one private copy of the workspace (scripts/gate-private-tree.sh), so dist/ and packages/plugins/*/dist never appear in the checkout the other steps read.
+      - >-
+        bash scripts/gate-slot.sh bash scripts/gate-private-tree.sh bash -c
+        "pnpm build && node scripts/audit-package-contents.mjs && node scripts/check-examples.mjs"
 
   # Push to main: the head commit must be the squash merge of a gated PR.
   - name: main-check
