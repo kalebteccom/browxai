@@ -1,5 +1,6 @@
 import { SESSION_ARG } from "./schemas.js";
 import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./host.js";
+import { jsonResult } from "./json-result.js";
 
 /**
  * Named-ref + learned-find-ranking tools: `name_ref` / `list_named_refs` /
@@ -31,9 +32,7 @@ export function registerFormsRefsTools(
       const g = gateCheck("name_ref");
       if (g) return g;
       (await entryFor(session)).refs.nameRef(name, ref);
-      return {
-        content: [{ type: "text", text: JSON.stringify({ ok: true, name, ref }, null, 2) }],
-      };
+      return jsonResult({ ok: true, name, ref });
     },
   );
 
@@ -48,14 +47,7 @@ export function registerFormsRefsTools(
     async ({ session }) => {
       const g = gateCheck("list_named_refs");
       if (g) return g;
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify((await entryFor(session)).refs.listNames(), null, 2),
-          },
-        ],
-      };
+      return jsonResult((await entryFor(session)).refs.listNames());
     },
   );
 
@@ -84,21 +76,10 @@ export function registerFormsRefsTools(
       const e = await entryFor(session);
       const inputs = e.refs.locatorOf(ref);
       if (!inputs) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error: `unknown ref "${ref}". Refs reset when the page changes: call snapshot() or find() for fresh ones.`,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          ok: false,
+          error: `unknown ref "${ref}". Refs reset when the page changes: call snapshot() or find() for fresh ones.`,
+        });
       }
       e.feedback.record(query, {
         testId: inputs.testId,
@@ -106,18 +87,11 @@ export function registerFormsRefsTools(
         role: inputs.role,
         name: inputs.name,
       });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              { ok: true, recorded: { query, identity: inputs }, memorySize: e.feedback.size() },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      return jsonResult({
+        ok: true,
+        recorded: { query, identity: inputs },
+        memorySize: e.feedback.size(),
+      });
     },
   );
 }
