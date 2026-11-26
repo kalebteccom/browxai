@@ -10,9 +10,9 @@
 // local connection only. The server is expected to have been launched
 // out-of-band by the operator (e.g. `browxai serve --socket /tmp/foo.sock`).
 
-import { createConnection, type Socket } from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { NAME, VERSION } from "../server.js";
+import { connectOwnSocket } from "../transport/socket-guard.js";
 import { SocketTransport } from "../transport/socket-transport.js";
 import { unwrapResult, type SdkTransport } from "./transport.js";
 import { registerTransport } from "./transport-registry.js";
@@ -59,15 +59,17 @@ export interface ConnectOptions {
  * the MCP handshake. The SDK transport below and `browxai call` / `browxai tools`
  * both open their connection here, so there is one client. The caller owns the
  * returned client and closes it.
+ *
+ * A Unix socket is checked before the connection opens: it must be a socket, not a
+ * symbolic link, owned by the current user and closed to group and others, which is
+ * how `browxai serve --socket` creates it. Anything else rejects with
+ * `SocketGuardError` and nothing is sent. A Windows pipe is not checked.
  */
 export async function connectSocketClient(
   path: string,
   opts: ConnectOptions = {},
 ): Promise<Client> {
-  const socket: Socket = await new Promise((resolve, reject) => {
-    const s = createConnection({ path }, () => resolve(s));
-    s.once("error", (err) => reject(err));
-  });
+  const socket = await connectOwnSocket(path);
   const transport = new SocketTransport(socket);
   const client = new Client(
     { name: opts.clientName ?? `${NAME}-sdk`, version: VERSION },

@@ -5,6 +5,7 @@
 
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { connectSocketClient, resolveEndpointPath } from "../sdk/transport-socket.js";
+import { SocketGuardError } from "../transport/socket-guard.js";
 
 /** The daemon could not be reached. The message is meant to be printed as is. */
 export class DaemonUnreachableError extends Error {}
@@ -18,7 +19,8 @@ export function socketPathOf(value: string): string {
   return /^(unix|pipe):\/\//.test(value) ? resolveEndpointPath(value) : value;
 }
 
-const NO_SOCKET =
+/** What a command prints when it was given no socket path. */
+export const NO_SOCKET =
   "no socket path. Pass --socket PATH or set BROWX_SOCKET to the path the daemon listens on. " +
   "browxai never looks for one: start the daemon with `browxai serve --socket PATH`.";
 
@@ -37,6 +39,7 @@ export async function connectDaemon(socket: string | undefined): Promise<Client>
       handshakeTimeoutMs: HANDSHAKE_TIMEOUT_MS,
     });
   } catch (err) {
+    if (err instanceof SocketGuardError) throw new DaemonUnreachableError(err.message);
     const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;
     if (code === "ENOENT") {
       throw new DaemonUnreachableError(

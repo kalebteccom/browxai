@@ -84,6 +84,12 @@ const PROBES = {
     stream: "stderr",
     match: /usage: browxai call/,
   },
+  bridge: {
+    args: ["bridge", "--bogus"],
+    exit: [2],
+    stream: "stderr",
+    match: /usage: browxai bridge/,
+  },
   plugin: {
     args: ["plugin", "--help"],
     exit: [0],
