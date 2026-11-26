@@ -4,28 +4,24 @@
 // `contexts()[0].pages()[0]`, so one agent's fill landed on the other's form with
 // no error. Mocks cannot prove this: the target identity only exists over CDP.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer as createSocket } from "node:net";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { createServer } from "../../src/server.js";
 import { attachByobDesktop } from "../../src/session/byob-attach.js";
 import { startFixture, type Fixture } from "./fixture.js";
+import { engineGate, gatedDescribe } from "./keystone-gate.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
 const TASK_INPUT = '[data-testid="task-input"]';
 
-const chromePath = (() => {
-  try {
-    return chromium.executablePath();
-  } catch {
-    return "";
-  }
-})();
-const describePool = chromePath && existsSync(chromePath) ? describe : describe.skip;
+const chromeGate = engineGate("chromium");
+const chromePath = chromeGate.path;
+const describePool = gatedDescribe(chromeGate);
 
 let fixture: Fixture;
 let chrome: ChildProcess;
@@ -93,7 +89,7 @@ beforeAll(async () => {
   process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach,self-approval";
 
   fixture = await startFixture();
-  if (!chromePath || !existsSync(chromePath)) return;
+  if (!chromeGate.run) return;
 
   profileDir = mkdtempSync(join(tmpdir(), "browx-attach-pool-profile-"));
   const port = await freePort();

@@ -23,11 +23,11 @@
 //     correlate the log, resolve against the playhead, and render a redacted
 //     field as the marker instead of as a blank or the raw object.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer as createSocket } from "node:net";
 import { createServer as createHttp, type Server } from "node:http";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -57,6 +57,7 @@ import {
 import { DEFAULT_DROPPED_HEADERS, Redactor, ROOT_PATH } from "../../src/replay/redact.js";
 import { SecretRegistry } from "../../src/util/secrets.js";
 import { buildPlayerHtml, packPlayerHtml } from "../../scripts/build-replay-player.js";
+import { engineGate, gatedDescribe } from "./keystone-gate.js";
 
 const KEYSTONE_TIMEOUT = 180_000;
 
@@ -129,14 +130,9 @@ async function waitForCdp(url: string, proc: ChildProcess, stderr: () => string)
   }
 }
 
-const chromePath = (() => {
-  try {
-    return chromium.executablePath();
-  } catch {
-    return "";
-  }
-})();
-const describePlayer = chromePath && existsSync(chromePath) ? describe : describe.skip;
+const chromeGate = engineGate("chromium");
+const chromePath = chromeGate.path;
+const describePlayer = gatedDescribe(chromeGate);
 
 let fixture: Fixture;
 let chrome: ChildProcess;
@@ -160,7 +156,7 @@ beforeAll(async () => {
     "read,navigation,action,human,byob-attach,eval,self-approval,file-io";
 
   fixture = await startFixture();
-  if (!chromePath || !existsSync(chromePath)) return;
+  if (!chromeGate.run) return;
 
   profileDir = mkdtempSync(join(tmpdir(), "browx-replay-player-profile-"));
   const port = await freePort();
@@ -435,7 +431,7 @@ describePlayer("replay player keystone — capture with browxai, review with bro
   let playerUrl: string;
 
   beforeAll(async () => {
-    if (!chromePath || !existsSync(chromePath)) return;
+    if (!chromeGate.run) return;
     captured = await captureSession();
     playerUrl = await packPlayer(captured.artifactPath, "session-replay.html");
   }, KEYSTONE_TIMEOUT);

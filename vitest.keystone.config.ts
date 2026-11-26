@@ -11,5 +11,8 @@ export default defineConfig({
     hookTimeout: 120_000,
     pool: "forks",
     maxWorkers: 1,
+    // The skip reporter prints `keystone: N run, M skipped` and each skipped
+    // file's reason after the default output.
+    reporters: ["default", "./test/keystone/skip-reporter.ts"],
   },
 });

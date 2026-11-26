@@ -38,18 +38,24 @@
 // per-case session would hit the refusal in case 3 and prove nothing about the
 // others.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
+import { gatedDescribe, hostGate } from "./keystone-gate.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
 const KEYSTONE_TIMEOUT = 120_000;
 
 const ELECTRON_CDP = process.env.BROWX_ELECTRON_CDP?.trim();
-const describeElectron = ELECTRON_CDP ? describe : describe.skip;
+const describeElectron = gatedDescribe(
+  hostGate(
+    !!ELECTRON_CDP,
+    "BROWX_ELECTRON_CDP is not set to a running Electron app's CDP endpoint",
+  ),
+);
 
 let server: Awaited<ReturnType<typeof createServer>>;
 let handlers: Handlers;
