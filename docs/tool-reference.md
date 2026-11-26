@@ -1162,6 +1162,8 @@ Drain buffered messages FROM workers since the last read. Returns `[{ workerId, 
 
 Register a fetch interceptor for Service-Worker-handled requests. `pattern` is a glob matched against the intercepted request URL (same shape as `route` / `ws_intercept`: `*` = single path segment, `**` = any). `response` is `{ status?, body?, contentType?, headers? }` (defaults 200, empty body, `application/json`). Fires only when the SW's `fetch` handler runs, i.e. when the SW chose to intercept the request, which cleanly separates SW-mediated traffic from page-direct traffic. Re-add of the same pattern replaces. `sw_unintercept_fetch({ pattern?, session? })` removes one entry or all of them. Capability: `action`.
 
+Like `route`, it answers data and static requests only (`xhr`, `fetch`, `eventsource`, `image`, `media`, `font`, `stylesheet`, `texttrack`, `manifest`). A matching document, script or worker request continues to the network unless the server has the `eval` capability, and a `contentType` or `content-type` header naming HTML, XHTML, SVG or a JavaScript type is refused without `eval` (`requiredCapability: "eval"`). Returns `{ ok, key, fulfils, skippedExecutable?, active, tokensEstimate }`, where `fulfils` is `"data"` or `"all"`. `sw_unintercept_fetch` returns `{ ok, removed, skippedExecutable?, active, tokensEstimate }`. `skippedExecutable` is the number of matches the removed (or replaced) interceptors left to the network, present when it is above zero.
+
 **Example (family).**
 
 ```jsonc
@@ -2322,6 +2324,12 @@ Drive Playwright request interception for race-condition QA, per-session (discar
 - `route({ urlPattern, method?, status?, body?, contentType?, delayMs?, session? })`: fulfil **every** request matching `urlPattern` (Playwright glob) with one canned response; non-matching `method` falls through to the real network.
 - `route_queue({ urlPattern, method?, responses:[{status?,body?,contentType?,delayMs?}], session? })`: fulfil **successive** matches from `responses[]` (one per request, in order); once exhausted, matches hit the real network. Each response has its own `delayMs`: give response #1 a long delay and #2 a short one to make backend responses **arrive out of request order** (the exact "response order ≠ request order" failure class).
 - `unroute({ urlPattern?, method?, session? })`: remove one route, or (no `urlPattern`) every route this session registered.
+
+**Which requests a route answers.** With the default capabilities a route answers data and static requests: the resource types `xhr`, `fetch`, `eventsource`, `image`, `media`, `font`, `stylesheet`, `texttrack` and `manifest`. A matching request of any other type (a page or iframe document, a `<script>`, a worker script) goes to the real network, and in `route_queue` it consumes no entry. The type is the one the browser gives the request, so a `contentType` of `application/json` on a route that matches a script URL does not change the outcome. A `contentType` naming HTML, XHTML, SVG or a JavaScript type is refused at install with `requiredCapability: "eval"`.
+
+To mock a page, a script bundle or a worker, enable the `eval` capability: a route then answers every matching request.
+
+**Returns.** `route` and `route_queue` return `{ ok, key, queued?, fulfils, skippedExecutable?, active }`. `fulfils` is `"data"` (data and static requests only) or `"all"` (the server has `eval`). `unroute` returns `{ ok, removed, skippedExecutable?, active }`. `skippedExecutable` is the number of matching requests the removed routes left to the network because of their resource type. It is present when above zero, on `unroute` and on an install that replaces a route with the same `urlPattern` and `method`. A mock that did not apply after a reload shows up there.
 
 **Example.**
 

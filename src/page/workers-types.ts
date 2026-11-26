@@ -55,4 +55,9 @@ export interface SwFetchInterceptSpec {
     contentType?: string;
     headers?: Record<string, string>;
   };
+  /** Answer document, script and worker requests too. Unset, the interceptor
+   *  answers the data and static resource types only (`fulfil-policy.ts`) and
+   *  every other match continues to the network. The tool layer sets it when
+   *  the server has the `eval` capability. */
+  allowExecutable?: boolean;
 }
