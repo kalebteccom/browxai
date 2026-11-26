@@ -1,5 +1,4 @@
 import { withDeadline } from "../util/deadline.js";
-import { confirmByobAction } from "../policy/confirm.js";
 import {
   injectStorageState,
   authSave,
@@ -46,8 +45,6 @@ export function registerStorageWebAuthTools(
     entryFor,
     okText,
     errText,
-    confirmCtxFor,
-    denyContent,
     storageFor,
     workspace,
     cfgActionTimeout,
@@ -142,8 +139,6 @@ export function registerStorageWebAuthTools(
           const e = await entryFor(session);
           const sg = subInterfaceGate(`${prefix}_set`, "storage", e);
           if (sg) return sg;
-          const c = await confirmByobAction(`${prefix}_set`, confirmCtxFor(e));
-          if (!c.ok) return denyContent(`${prefix}_set`, c);
           const r = await withDeadline(
             storageFor(e).webStorageSet(kind, { key, value }, `${prefix}_set`),
             cfgActionTimeout(),
@@ -170,8 +165,6 @@ export function registerStorageWebAuthTools(
           const e = await entryFor(session);
           const sg = subInterfaceGate(`${prefix}_delete`, "storage", e);
           if (sg) return sg;
-          const c = await confirmByobAction(`${prefix}_delete`, confirmCtxFor(e));
-          if (!c.ok) return denyContent(`${prefix}_delete`, c);
           const r = await withDeadline(
             storageFor(e).webStorageDelete(kind, { key }, `${prefix}_delete`),
             cfgActionTimeout(),
@@ -198,8 +191,6 @@ export function registerStorageWebAuthTools(
           const e = await entryFor(session);
           const sg = subInterfaceGate(`${prefix}_clear`, "storage", e);
           if (sg) return sg;
-          const c = await confirmByobAction(`${prefix}_clear`, confirmCtxFor(e));
-          if (!c.ok) return denyContent(`${prefix}_clear`, c);
           const r = await withDeadline(
             storageFor(e).webStorageClear(kind, `${prefix}_clear`),
             cfgActionTimeout(),
@@ -235,8 +226,6 @@ export function registerStorageWebAuthTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
-        const c = await confirmByobAction("auth_save", confirmCtxFor(e));
-        if (!c.ok) return denyContent("auth_save", c);
         const r = await withDeadline(
           authSave(requirePage(e.session).context(), workspace.root, name),
           cfgActionTimeout(),
@@ -265,8 +254,6 @@ export function registerStorageWebAuthTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
-        const c = await confirmByobAction("auth_load", confirmCtxFor(e));
-        if (!c.ok) return denyContent("auth_load", c);
         const blob = authLoad(workspace.root, name);
         const r = await withDeadline(
           injectStorageState(requirePage(e.session).context(), requirePage(e.session), blob, {

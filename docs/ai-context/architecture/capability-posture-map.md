@@ -43,7 +43,8 @@ Each requires explicit opt-in via `BROWX_CAPABILITIES` (env) or `createBrowxai({
 
 - A tool may require **multiple** capabilities. `get_credential` requires `credentials` and `secrets`; `screenshot({path})` adds `file-io` to its `read` gate. `poll_eval` is gated by `eval` alone. `canvas_query` requires `canvas` + the host adapter's declared capabilities.
 - Capability composition is multiplicative: missing any required capability returns `capability-denied`.
-- The gate is composed in `src/server.ts` at registration time. A handler MUST NOT inline its own capability check beyond calling the shared gate.
+- The `register` wrapper in `src/tools/host-build.ts` runs the tool's declared capability through the shared gate before the handler, so a handler that calls no gate is still refused. A handler calls `gateCheck` itself only for an argument-conditional second capability. A handler MUST NOT inline its own capability check beyond calling the shared gate.
+- The same wrapper runs the attached-session hold (`byob_action`) for tools under the capabilities in `BYOB_HOLD_CAPABILITIES` (`src/tools/byob-hold.ts`).
 
 ## Adding a new capability
 

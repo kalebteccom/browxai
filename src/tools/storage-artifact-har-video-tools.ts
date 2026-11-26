@@ -1,5 +1,4 @@
 import { withDeadline } from "../util/deadline.js";
-import { confirmByobAction } from "../policy/confirm.js";
 import {
   startHar,
   stopHar,
@@ -37,18 +36,7 @@ export function registerStorageArtifactHarVideoTools(
     ActionHost &
     ServerServicesHost,
 ): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-    okText,
-    errText,
-    confirmCtxFor,
-    denyContent,
-    workspace,
-    cfgActionTimeout,
-  } = host;
+  const { z, register, gateCheck, entryFor, okText, errText, workspace, cfgActionTimeout } = host;
 
   // ---- per-session artifact KV ----------------------------------------------
   //
@@ -227,8 +215,6 @@ export function registerStorageArtifactHarVideoTools(
       }
       try {
         const e = await entryFor(session);
-        const c = await confirmByobAction("start_har", confirmCtxFor(e));
-        if (!c.ok) return denyContent("start_har", c);
         const r = await withDeadline(
           startHar(requirePage(e.session).context(), e.har, workspace.root, e.id, {
             path,

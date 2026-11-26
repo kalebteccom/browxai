@@ -1,4 +1,3 @@
-import { confirmByobAction } from "../policy/confirm.js";
 import { withDeadline } from "../util/deadline.js";
 import { uploadFile } from "../page/upload.js";
 import { dropFiles, type DropFileInput } from "../page/drop-files.js";
@@ -15,17 +14,7 @@ import { requirePage } from "../engine/index.js";
  * the shared `ToolHost` seam.
  */
 export function registerCaptureReportUploadTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-    confirmCtxFor,
-    denyContent,
-    asTarget,
-    cfgActionTimeout,
-    workspace,
-  } = host;
+  const { z, register, gateCheck, entryFor, asTarget, cfgActionTimeout, workspace } = host;
 
   register(
     "upload_file",
@@ -60,8 +49,6 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
       const g = gateCheck("upload_file");
       if (g) return g;
       const e = await entryFor(args.session);
-      const c = await confirmByobAction("upload_file", confirmCtxFor(e));
-      if (!c.ok) return denyContent("upload_file", c);
       try {
         const target = asTarget(args, "upload_file", e.refs);
         if ("coords" in target) {
@@ -137,8 +124,6 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
       const g = gateCheck("drop_files");
       if (g) return g;
       const e = await entryFor(args.session);
-      const c = await confirmByobAction("drop_files", confirmCtxFor(e));
-      if (!c.ok) return denyContent("drop_files", c);
       return jsonToolResult(async () => {
         const target = asTarget(args, "drop_files", e.refs);
         const r = await withDeadline(

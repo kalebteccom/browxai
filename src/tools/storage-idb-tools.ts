@@ -1,5 +1,4 @@
 import { withDeadline } from "../util/deadline.js";
-import { confirmByobAction } from "../policy/confirm.js";
 import { SESSION_ARG } from "./schemas.js";
 import type {
   RegisterHost,
@@ -41,8 +40,6 @@ export function registerStorageIdbTools(
     entryFor,
     okText,
     errText,
-    confirmCtxFor,
-    denyContent,
     storageFor,
     cfgActionTimeout,
   } = host;
@@ -165,8 +162,6 @@ export function registerStorageIdbTools(
         const e = await entryFor(session);
         const sg = subInterfaceGate("idb_put", "storage", e);
         if (sg) return sg;
-        const c = await confirmByobAction("idb_put", confirmCtxFor(e));
-        if (!c.ok) return denyContent("idb_put", c);
         // Defensive: if `value` reaches the handler as a JSON-shaped string
         // (some MCP clients double-encode complex args), the page-side path
         // faithfully stores a string — adopter wrote an object, IDB holds
@@ -225,8 +220,6 @@ export function registerStorageIdbTools(
         const e = await entryFor(session);
         const sg = subInterfaceGate("idb_delete", "storage", e);
         if (sg) return sg;
-        const c = await confirmByobAction("idb_delete", confirmCtxFor(e));
-        if (!c.ok) return denyContent("idb_delete", c);
         const r = await withDeadline(
           storageFor(e).idbDelete({ dbName, storeName, key }, "idb_delete"),
           cfgActionTimeout(),
@@ -258,8 +251,6 @@ export function registerStorageIdbTools(
         const e = await entryFor(session);
         const sg = subInterfaceGate("idb_clear", "storage", e);
         if (sg) return sg;
-        const c = await confirmByobAction("idb_clear", confirmCtxFor(e));
-        if (!c.ok) return denyContent("idb_clear", c);
         const r = await withDeadline(
           storageFor(e).idbClear({ dbName, storeName }, "idb_clear"),
           cfgActionTimeout(),

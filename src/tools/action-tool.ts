@@ -4,7 +4,7 @@
 //
 //   1. gateCheck(name)                      — capability gate
 //   2. entryFor(args.session)               — resolve the session entry
-//   3. confirmByobAction(name, …)           — byob confirm hook
+//   3. (the attached-session hold runs earlier, in the `register` wrapper)
 //   4. asTarget(args, name, e.refs)         — resolve the wire target
 //   5. actionTimeout(args)                  — anti-wedge deadline
 //   6. actionsFor(e).<verb>({ … })          — the engine-agnostic dispatch
@@ -23,7 +23,6 @@
 // press / shortcut / drag / scroll / wait_for / choose_option / …) keeps its own
 // hand-written body; the wrapper is applied ONLY where it is byte-identical.
 
-import { confirmByobAction } from "../policy/confirm.js";
 import type { SessionEntry } from "../session/registry.js";
 import type {
   ResolvedTarget,
@@ -65,7 +64,7 @@ export interface ActionToolOpts {
 
 /**
  * Register a confirm-gated, target-resolving action tool. The wrapper runs the
- * fixed pipeline (gate → entry → [engineGate] → confirm → target → timeout →
+ * fixed pipeline (gate → entry → [engineGate] → target → timeout →
  * envelope) and the `dispatch` body returns the substrate verb promise (step 6).
  *
  * Byte-identical to the hand-written canonical handler: the only thing the body
@@ -99,8 +98,6 @@ export function actionTool<S extends z.ZodRawShape>(
         const eg = host.engineGate(name, e);
         if (eg) return eg;
       }
-      const c = await confirmByobAction(name, host.confirmCtxFor(e));
-      if (!c.ok) return host.denyContent(name, c);
       const target = host.asTarget(args, name, e.refs);
       const td = host.actionTimeout(args);
       const recordingHint = host.hintFromTarget(e, target);

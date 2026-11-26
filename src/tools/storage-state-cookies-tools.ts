@@ -1,5 +1,4 @@
 import { withDeadline } from "../util/deadline.js";
-import { confirmByobAction } from "../policy/confirm.js";
 import {
   dumpStorageState,
   injectStorageState,
@@ -46,8 +45,6 @@ export function registerStorageStateCookiesTools(
     entryFor,
     okText,
     errText,
-    confirmCtxFor,
-    denyContent,
     storageFor,
     workspace,
     cfgActionTimeout,
@@ -125,8 +122,6 @@ export function registerStorageStateCookiesTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
-        const c = await confirmByobAction("inject_storage_state", confirmCtxFor(e));
-        if (!c.ok) return denyContent("inject_storage_state", c);
         const blob: StorageStateBlob =
           typeof state === "string"
             ? readStorageStateFile(workspace.root, state, "inject_storage_state")
@@ -252,8 +247,6 @@ export function registerStorageStateCookiesTools(
         const e = await entryFor(session);
         const sg = subInterfaceGate("cookies_set", "storage", e);
         if (sg) return sg;
-        const c = await confirmByobAction("cookies_set", confirmCtxFor(e));
-        if (!c.ok) return denyContent("cookies_set", c);
         const r = await withDeadline(
           storageFor(e).cookiesSet({
             name,
@@ -298,8 +291,6 @@ export function registerStorageStateCookiesTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
-        const c = await confirmByobAction("cookies_delete", confirmCtxFor(e));
-        if (!c.ok) return denyContent("cookies_delete", c);
         const r = await withDeadline(
           cookiesDelete(requirePage(e.session).context(), { name, url, domain, path }),
           cfgActionTimeout(),
@@ -325,8 +316,6 @@ export function registerStorageStateCookiesTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
-        const c = await confirmByobAction("cookies_clear", confirmCtxFor(e));
-        if (!c.ok) return denyContent("cookies_clear", c);
         const r = await withDeadline(
           cookiesClear(requirePage(e.session).context()),
           cfgActionTimeout(),

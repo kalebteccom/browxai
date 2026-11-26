@@ -1,4 +1,3 @@
-import { confirmByobAction } from "../policy/confirm.js";
 import { REF_OR_SELECTOR, ACTION_OPTS } from "./schemas.js";
 import { actionTool, type ActionToolHost } from "./action-tool.js";
 import type { ServerServicesHost } from "./host.js";
@@ -156,8 +155,6 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
       const g = host.gateCheck("scroll");
       if (g) return g;
       const e = await host.entryFor(args.session);
-      const c = await confirmByobAction("scroll", host.confirmCtxFor(e));
-      if (!c.ok) return host.denyContent("scroll", c);
       const hasTarget = !!(args.ref || args.selector || args.named || args.coords);
       const target = hasTarget ? host.asTarget(args, "scroll", e.refs) : undefined;
       const td = host.actionTimeout(args);
@@ -200,8 +197,6 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
       const g = host.gateCheck("choose_option");
       if (g) return g;
       const e = await host.entryFor(args.session);
-      const c = await confirmByobAction("choose_option", host.confirmCtxFor(e));
-      if (!c.ok) return host.denyContent("choose_option", c);
       const target = host.asTarget(args, "choose_option", e.refs);
       if ("coords" in target) {
         return {

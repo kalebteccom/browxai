@@ -1,4 +1,4 @@
-import { confirmNavigation, confirmLanding, confirmByobAction } from "../policy/confirm.js";
+import { confirmNavigation, confirmLanding } from "../policy/confirm.js";
 import { withDeadline } from "../util/deadline.js";
 import { runShortcut } from "../page/shortcut.js";
 import { ACTION_OPTS, REF_OR_SELECTOR, SESSION_ARG, TIMEOUT_ARG } from "./schemas.js";
@@ -162,8 +162,6 @@ export function registerActionCoreTools(
       const g = host.gateCheck("press");
       if (g) return g;
       const e = await host.entryFor(args.session);
-      const conf = await confirmByobAction("press", host.confirmCtxFor(e));
-      if (!conf.ok) return host.denyContent("press", conf);
       const hasTarget = !!(args.ref || args.selector || args.named);
       const target = hasTarget ? host.asTarget(args, "press", e.refs) : undefined;
       const td = host.actionTimeout(args);
@@ -199,8 +197,6 @@ export function registerActionCoreTools(
       const g = host.gateCheck("shortcut");
       if (g) return g;
       const e = await host.entryFor(args.session);
-      const conf = await confirmByobAction("shortcut", host.confirmCtxFor(e));
-      if (!conf.ok) return host.denyContent("shortcut", conf);
       const hasTarget = !!(args.ref || args.selector || args.named);
       const target = hasTarget ? host.asTarget(args, "shortcut", e.refs) : undefined;
       const td = host.actionTimeout(args);
