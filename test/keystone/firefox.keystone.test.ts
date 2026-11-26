@@ -40,29 +40,23 @@
 // The per-engine expectation matrix lives in
 // docs/ai-context/architecture/engine-adapters.md (the capability matrix table).
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { it, expect, beforeAll, afterAll } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { firefox as pwFirefox } from "playwright-core";
 import { createServer } from "../../src/server.js";
 import { startFixture, type Fixture } from "./fixture.js";
+import { engineGate, gatedDescribe } from "./keystone-gate.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
 const KEYSTONE_TIMEOUT = 120_000;
 
-// Firefox is the opt-in second engine — skip cleanly (not fail) when its binary
-// isn't installed, so the lane is green on a machine that only has Chromium.
-const ffPath = (() => {
-  try {
-    return pwFirefox.executablePath();
-  } catch {
-    return "";
-  }
-})();
-const firefoxAvailable = !!ffPath && existsSync(ffPath);
-const describeFf = firefoxAvailable ? describe : describe.skip;
+// Firefox is an opt-in engine: a machine without its binary skips this file, and
+// BROWX_REQUIRE_BROWSER=1 (the CI browser shards) turns that skip into a failure.
+const firefoxGate = engineGate("firefox");
+const firefoxAvailable = firefoxGate.run;
+const describeFf = gatedDescribe(firefoxGate);
 
 let fixture: Fixture;
 let server: Awaited<ReturnType<typeof createServer>>;

@@ -36,29 +36,23 @@
 // The per-engine expectation matrix lives in
 // docs/ai-context/architecture/engine-adapters.md (the capability matrix table).
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { it, expect, beforeAll, afterAll } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { webkit as pwWebKit } from "playwright-core";
 import { createServer } from "../../src/server.js";
 import { startFixture, type Fixture } from "./fixture.js";
+import { engineGate, gatedDescribe } from "./keystone-gate.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
 const KEYSTONE_TIMEOUT = 120_000;
 
-// WebKit is the opt-in third engine — skip cleanly (not fail) when its binary
-// isn't installed, so the lane is green on a machine that only has Chromium.
-const wkPath = (() => {
-  try {
-    return pwWebKit.executablePath();
-  } catch {
-    return "";
-  }
-})();
-const webkitAvailable = !!wkPath && existsSync(wkPath);
-const describeWk = webkitAvailable ? describe : describe.skip;
+// WebKit is an opt-in engine: a machine without its binary skips this file, and
+// BROWX_REQUIRE_BROWSER=1 (the CI browser shards) turns that skip into a failure.
+const webkitGate = engineGate("webkit");
+const webkitAvailable = webkitGate.run;
+const describeWk = gatedDescribe(webkitGate);
 
 let fixture: Fixture;
 let server: Awaited<ReturnType<typeof createServer>>;

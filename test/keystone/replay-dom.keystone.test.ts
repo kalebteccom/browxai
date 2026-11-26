@@ -14,13 +14,13 @@
 // Deliberately drives the module directly rather than an MCP tool: no tool
 // surface is wired to it yet, and the injection seam is the thing under test.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { it, expect, beforeAll, afterAll } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { existsSync } from "node:fs";
 import { chromium, type Browser, type BrowserContext } from "playwright-core";
 import { attachDomCapture, type DomCaptureHandle } from "../../src/replay/dom-capture.js";
 import type { ReplayEvent } from "../../src/replay/schema.js";
+import { engineGate, gatedDescribe } from "./keystone-gate.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
 
@@ -101,14 +101,8 @@ async function startFixture(): Promise<Fixture> {
   };
 }
 
-const chromePath = (() => {
-  try {
-    return chromium.executablePath();
-  } catch {
-    return "";
-  }
-})();
-const describeDom = chromePath && existsSync(chromePath) ? describe : describe.skip;
+const chromeGate = engineGate("chromium");
+const describeDom = gatedDescribe(chromeGate);
 
 let fixture: Fixture;
 let browser: Browser;

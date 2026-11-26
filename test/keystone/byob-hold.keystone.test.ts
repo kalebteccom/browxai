@@ -11,13 +11,12 @@
 //   3. A managed session on the same server is not held.
 //   4. After `approve_actions`, the held tools run and the daemon is not asked.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer as createSocket } from "node:net";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chromium } from "playwright-core";
 import { createServer } from "../../src/server.js";
 import {
   startFakeDaemon,
@@ -25,17 +24,13 @@ import {
   type Frame,
 } from "../../src/helper/__fixtures__/operator-daemon.js";
 import { startFixture, type Fixture } from "./fixture.js";
+import { engineGate, gatedDescribe } from "./keystone-gate.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
 
-const chromePath = (() => {
-  try {
-    return chromium.executablePath();
-  } catch {
-    return "";
-  }
-})();
-const describeHold = chromePath && existsSync(chromePath) ? describe : describe.skip;
+const chromeGate = engineGate("chromium");
+const chromePath = chromeGate.path;
+const describeHold = gatedDescribe(chromeGate);
 
 type Server_ = Awaited<ReturnType<typeof createServer>>;
 type Result = { ok?: boolean; error?: string; value?: unknown };
@@ -77,7 +72,7 @@ async function waitFor(cond: () => boolean, ms = 10_000): Promise<void> {
 }
 
 beforeAll(async () => {
-  if (!chromePath || !existsSync(chromePath)) return;
+  if (!chromeGate.run) return;
   for (const k of Object.keys(process.env)) {
     if (k.startsWith("BROWX_")) {
       savedEnv[k] = process.env[k];

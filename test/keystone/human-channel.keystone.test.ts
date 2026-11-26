@@ -21,12 +21,13 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer as createHttp, type Server } from "node:http";
 import { createServer as createSocket, type AddressInfo } from "node:net";
-import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chromium, firefox, webkit, type Browser, type Page } from "playwright-core";
+import { chromium, type Browser, type Page } from "playwright-core";
 import { createServer } from "../../src/server.js";
 import { BrowxBridge } from "../../src/helper/bridge.js";
+import { engineGate, gatedDescribe } from "./keystone-gate.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
 const WORLD_PREFIX = "browxai-";
@@ -227,14 +228,9 @@ describe("human channel — managed Chromium", () => {
 //    the isolated-world path.
 // ---------------------------------------------------------------------------
 
-const chromePath = (() => {
-  try {
-    return chromium.executablePath();
-  } catch {
-    return "";
-  }
-})();
-const describeAttached = chromePath && existsSync(chromePath) ? describe : describe.skip;
+const chromeGate = engineGate("chromium");
+const chromePath = chromeGate.path;
+const describeAttached = gatedDescribe(chromeGate);
 
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -619,18 +615,8 @@ describe("human channel — an extension cannot pose as the human world", () => 
 // 3. Engines without CDP refuse.
 // ---------------------------------------------------------------------------
 
-for (const [engine, bt] of [
-  ["firefox", firefox],
-  ["webkit", webkit],
-] as const) {
-  const available = (() => {
-    try {
-      return existsSync(bt.executablePath());
-    } catch {
-      return false;
-    }
-  })();
-  (available ? describe : describe.skip)(`human channel — ${engine} refuses`, () => {
+for (const engine of ["firefox", "webkit"] as const) {
+  gatedDescribe(engineGate(engine))(`human channel — ${engine} refuses`, () => {
     let server: Server_;
     let workspace: string;
 

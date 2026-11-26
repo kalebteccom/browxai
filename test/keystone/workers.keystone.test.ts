@@ -26,13 +26,14 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer as createSocket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { createServer } from "../../src/server.js";
 import { startFixture, type Fixture } from "./fixture.js";
+import { engineGate, gatedDescribe } from "./keystone-gate.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
@@ -394,14 +395,9 @@ describe("workers_list / worker_message_send / worker_messages_read keystone", (
   );
 });
 
-const chromePath = (() => {
-  try {
-    return chromium.executablePath();
-  } catch {
-    return "";
-  }
-})();
-const describeAttached = chromePath && existsSync(chromePath) ? describe : describe.skip;
+const chromeGate = engineGate("chromium");
+const chromePath = chromeGate.path;
+const describeAttached = gatedDescribe(chromeGate);
 
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
