@@ -41,6 +41,7 @@ import {
 import { locatorFor, type ActionTarget } from "./locator.js";
 import { fillChecked, materialiseValue, maskProbe, preProbe, probe } from "./actions.js";
 import type { BoundReceiver } from "./actions-secrets.js";
+import { textCutFor } from "../util/frame-cap.js";
 
 const DEFAULT_TIMEOUT_MS = 5_000;
 
@@ -361,9 +362,9 @@ export async function fillForm(ctx: ActionContext, args: FillFormArgs): Promise<
       const m = materialised[i]!;
       const target = args.fields[i]!.target;
       try {
-        const pre = await preProbe(loc);
+        const pre = await preProbe(loc, textCutFor(ctx.secrets));
         await fillChecked(loc, m, args.deadlineMs ?? DEFAULT_TIMEOUT_MS);
-        const probed = await probe(loc, target, m.descriptorValue, pre);
+        const probed = await probe(loc, target, m.descriptorValue, pre, textCutFor(ctx.secrets));
         const masked = maskProbe(probed, ctx) as ElementProbe;
         perField.push(masked);
         finalProbe = masked;
@@ -383,9 +384,15 @@ export async function fillForm(ctx: ActionContext, args: FillFormArgs): Promise<
     }
 
     if (resolution.submitLocator) {
-      const pre = await preProbe(resolution.submitLocator);
+      const pre = await preProbe(resolution.submitLocator, textCutFor(ctx.secrets));
       await resolution.submitLocator.click({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
-      finalProbe = await probe(resolution.submitLocator, args.submit!, undefined, pre);
+      finalProbe = await probe(
+        resolution.submitLocator,
+        args.submit!,
+        undefined,
+        pre,
+        textCutFor(ctx.secrets),
+      );
     }
 
     return finalProbe;

@@ -114,6 +114,7 @@ export async function elementScrollGeometry(loc: Locator): Promise<ScrollGeometr
 // re-exported here so existing importers are unchanged.
 export type { ScrollEdge, ScrollArgs, ScrollMode } from "./actions-types.js";
 import type { ScrollArgs, ScrollEdge, ScrollMode } from "./actions-types.js";
+import { textCutFor } from "../util/frame-cap.js";
 
 /**
  * Resolve which of the four scroll behaviours a `ScrollArgs` selects, or throw
@@ -155,7 +156,7 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
     if (mode.kind === "into-view") {
       const loc = locatorFor(ctx.page, ctx.refs, args.target!);
       await loc.scrollIntoViewIfNeeded({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
-      const p = await probe(loc, args.target!);
+      const p = await probe(loc, args.target!, undefined, undefined, textCutFor(ctx.secrets));
       p.scroll = await windowScrollGeometry(ctx.page);
       return p;
     }
@@ -171,7 +172,7 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
         },
         { to: args.to, by: args.by },
       );
-      const p = await probe(loc, args.target!);
+      const p = await probe(loc, args.target!, undefined, undefined, textCutFor(ctx.secrets));
       p.scroll = await elementScrollGeometry(loc);
       return p;
     }

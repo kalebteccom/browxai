@@ -28,6 +28,7 @@ import { cssSelectorForTarget, targetDescriptor, type ActionTarget } from "./loc
 import type { RefRegistry } from "./refs.js";
 import { refFrameOf } from "./ref-frames.js";
 import { probe, captureHit } from "./actions-probe.js";
+import { PLAIN_CUT, type TextCut } from "../util/frame-cap.js";
 
 /** How `click` reaches the element. `actionability` (the default) is Playwright's
  *  locator path with the automatic `force: true` recovery; `direct` skips the
@@ -219,6 +220,8 @@ export async function directClick(
     target: ActionTarget;
     refs: RefRegistry;
     button?: MouseButton;
+    /** Secrets mask for the probe's page text. */
+    cut?: TextCut;
   },
 ): Promise<ElementProbe> {
   const sel = directSelector(args.refs, args.target);
@@ -226,10 +229,11 @@ export async function directClick(
   const rect = await page.evaluate(MEASURE_TARGET_FN, sel);
   if (!rect) throw noRenderedBox(sel);
   const point = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-  const hitBefore = await captureHit(page, point.x, point.y);
+  const cut = args.cut ?? PLAIN_CUT;
+  const hitBefore = await captureHit(page, point.x, point.y, cut);
   await dispatchPointerSequence(cdp, point, args.button ?? "left");
-  const probed = await probe(loc, args.target);
-  probed.hit = { before: hitBefore, after: await captureHit(page, point.x, point.y) };
+  const probed = await probe(loc, args.target, undefined, undefined, cut);
+  probed.hit = { before: hitBefore, after: await captureHit(page, point.x, point.y, cut) };
   probed.warnings = [directDispatchWarning(point, hitBefore)];
   return probed;
 }

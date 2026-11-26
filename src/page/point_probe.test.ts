@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { pointProbe } from "./point_probe.js";
+import { textCutFor } from "../util/frame-cap.js";
+import { SecretRegistry } from "../util/secrets.js";
 
 const cannedStack = {
   stack: [
@@ -83,5 +85,58 @@ describe("pointProbe", () => {
     expect(r.ok).toBe(true);
     expect(r.cropBase64).toBeUndefined();
     expect(r.stack).toHaveLength(2);
+  });
+});
+
+describe("pointProbe text over the cap", () => {
+  const VALUE = "tok_" + "0123456789".repeat(10); // 104 characters
+  const element = (name: string, nameFromText: boolean) => ({
+    tag: "span",
+    name,
+    nameFromText,
+    classes: "c".repeat(300).slice(0, 121),
+    pointerEvents: "auto",
+    visibility: "visible",
+    display: "inline",
+    zIndex: "auto",
+    cursor: "auto",
+    bbox: null,
+  });
+
+  it("masks a text-content name read past the 40-character cap", async () => {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "TOKEN", value: VALUE });
+    const cut = textCutFor(secrets);
+    let script = "";
+    const page = {
+      evaluate: vi.fn(async (s: string) => {
+        script = s;
+        const read = Number(/NAME_READ = (\d+)/.exec(s)![1]);
+        return {
+          stack: [element((VALUE + " label").slice(0, read), true)],
+          scrollContainer: null,
+          clickableAncestor: element("a".repeat(60), false),
+        };
+      }),
+    };
+    const r = await pointProbe(page as never, { x: 1, y: 1 }, { cut });
+    expect(script).toContain(`NAME_READ = ${41 + cut.slack}`);
+    expect(r.stack[0]!.name).toBe("<TOKEN> label");
+    expect(r.stack[0]).not.toHaveProperty("nameFromText");
+    // An aria-label name was read whole; it is left as it is.
+    expect(r.clickableAncestor!.name).toBe("a".repeat(60));
+    expect(r.stack[0]!.classes).toBe("c".repeat(120));
+  });
+
+  it("cuts a text-content name to 40 characters with no secret registered", async () => {
+    const page = {
+      evaluate: vi.fn(async () => ({
+        stack: [element("n".repeat(41), true)],
+        scrollContainer: null,
+        clickableAncestor: null,
+      })),
+    };
+    const r = await pointProbe(page as never, { x: 1, y: 1 });
+    expect(r.stack[0]!.name).toBe("n".repeat(40));
   });
 });

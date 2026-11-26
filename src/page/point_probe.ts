@@ -9,8 +9,25 @@
 // container and clickable ancestor. No agent JS (fixed server script).
 
 import type { Page } from "playwright-core";
+import { clipPageText, pageReadLength, PLAIN_CUT, type TextCut } from "../util/frame-cap.js";
 
 const MAX_STACK = 8;
+/** Longest `name` read from text content, and `classes`, in characters. */
+const NAME_MAX = 40;
+const CLASS_MAX = 120;
+
+/** Mask a probed element's text fields, then cut them to their caps the way
+ *  the page used to. An `aria-label` name was read whole and is left to the
+ *  tool's mask. */
+function clipProbedText(
+  el: ProbedElement & { nameFromText?: boolean },
+  cut: TextCut,
+): ProbedElement {
+  const { nameFromText, ...out } = el;
+  if (nameFromText && out.name !== undefined) out.name = clipPageText(out.name, NAME_MAX, cut);
+  if (out.classes !== undefined) out.classes = clipPageText(out.classes, CLASS_MAX, cut);
+  return out;
+}
 
 export interface ProbedElement {
   tag: string;
@@ -48,22 +65,26 @@ export interface PointProbeResult {
 // `page.evaluate(string)` treats the string as an *expression* — a
 // `function(arg){…}` string is never called and args are ignored. So this is
 // an arg-less IIFE with the (numeric, zod-validated) coords interpolated in.
-function buildProbeScript(x: number, y: number, max: number): string {
+function buildProbeScript(x: number, y: number, max: number, slack: number): string {
   return `(() => {
   var x = ${x}, y = ${y}, MAX = ${max};
+  // Text fields are read one character past their cap plus the mask slack;
+  // the server masks, then cuts. nameFromText marks a name read that way.
+  var NAME_READ = ${pageReadLength(NAME_MAX, slack)}, CLASS_READ = ${pageReadLength(CLASS_MAX, slack)};
   function summ(el) {
     if (!el || !el.tagName) return null;
     var cs = (el.ownerDocument && el.ownerDocument.defaultView)
       ? el.ownerDocument.defaultView.getComputedStyle(el) : null;
     var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-    var cls = (typeof el.className === 'string' && el.className) ? el.className.slice(0, 120) : undefined;
+    var cls = (typeof el.className === 'string' && el.className) ? el.className.slice(0, CLASS_READ) : undefined;
+    var aria = el.getAttribute && el.getAttribute('aria-label');
     return {
       tag: el.tagName.toLowerCase(),
       id: el.id || undefined,
       testId: el.getAttribute ? (el.getAttribute('data-testid') || undefined) : undefined,
       role: el.getAttribute ? (el.getAttribute('role') || undefined) : undefined,
-      name: (el.getAttribute && el.getAttribute('aria-label')) ||
-            (el.textContent ? el.textContent.trim().slice(0, 40) : undefined) || undefined,
+      name: aria || (el.textContent ? el.textContent.trim().slice(0, NAME_READ) : undefined) || undefined,
+      nameFromText: !aria,
       classes: cls,
       pointerEvents: cs ? cs.pointerEvents : '',
       visibility: cs ? cs.visibility : '',
@@ -109,18 +130,21 @@ function buildProbeScript(x: number, y: number, max: number): string {
 export async function pointProbe(
   page: Page,
   point: { x: number; y: number },
-  opts: { crop?: boolean } = {},
+  opts: { crop?: boolean; cut?: TextCut } = {},
 ): Promise<PointProbeResult> {
+  const cut = opts.cut ?? PLAIN_CUT;
   const probed = await page.evaluate<
     Pick<PointProbeResult, "stack" | "scrollContainer" | "clickableAncestor">
-  >(buildProbeScript(point.x, point.y, MAX_STACK));
+  >(buildProbeScript(point.x, point.y, MAX_STACK, cut.slack));
 
+  const finish = (el: ProbedElement | null): ProbedElement | null =>
+    el ? clipProbedText(el, cut) : null;
   const result: PointProbeResult = {
     ok: true,
     point,
-    stack: probed.stack ?? [],
-    scrollContainer: probed.scrollContainer ?? null,
-    clickableAncestor: probed.clickableAncestor ?? null,
+    stack: (probed.stack ?? []).map((el) => finish(el)!),
+    scrollContainer: finish(probed.scrollContainer ?? null),
+    clickableAncestor: finish(probed.clickableAncestor ?? null),
   };
 
   if (opts.crop) {

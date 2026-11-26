@@ -287,7 +287,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       const e = await entryFor(session);
       try {
         const result = await withDeadline(
-          pointProbe(requirePage(e.session), coords, { crop }),
+          pointProbe(requirePage(e.session), coords, { crop, cut: egressFor(e).textCut() }),
           cfgActionTimeout(),
           "point_probe",
         );

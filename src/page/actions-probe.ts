@@ -13,6 +13,7 @@
 import type { Locator, Page } from "playwright-core";
 import type { ElementProbe, HitPoint } from "./actionresult.js";
 import type { ActionTarget } from "./locator.js";
+import { clipPageText, pageReadLength, PLAIN_CUT, type TextCut } from "../util/frame-cap.js";
 
 /** Minimal structural view of `document` as used by the in-page scripts. */
 interface DocumentLike {
@@ -81,7 +82,7 @@ const checkedScript = (el: {
  *  `input.value` (chip selects, combobox displays, badge pickers). Walks up to 4
  *  ancestors for a labelled node (role attr or `data-testid|test|cy|qa`); falls
  *  back to the immediate parent's innerText. Capped at 200 chars. */
-const displayTextScript = (el: unknown): string | null => {
+const displayTextScript = (el: unknown, read: number): string | null => {
   const DOC_BODY_TAG = "BODY";
   type ElLike = {
     parentElement: unknown;
@@ -98,7 +99,7 @@ const displayTextScript = (el: unknown): string | null => {
   };
   const cappedText = (e: ElLike): string | null => {
     const t = (e.innerText || "").trim();
-    return t ? t.slice(0, 200) : null;
+    return t ? t.slice(0, read) : null;
   };
   let cur: ElLike | null = isElement(el) ? el : null;
   for (let i = 0; i < 4 && cur; i++) {
@@ -116,16 +117,43 @@ const displayTextScript = (el: unknown): string | null => {
  * container, so the post-action probe can emit `changed` flags without the
  * caller re-snapshotting. Exported for unit tests; runs at the DOM level.
  */
-export async function preProbe(loc: Locator): Promise<PreProbeData> {
+export async function preProbe(loc: Locator, cut: TextCut = PLAIN_CUT): Promise<PreProbeData> {
   // Same 1.5s bound as `probe` — see PROBE_EVAL_MS rationale.
   try {
     const count = await loc.count();
     if (count === 0) return {};
-    return await loc.evaluate(probeAncestorsScript, undefined, { timeout: 1500 }).catch(() => ({}));
+    return await readAncestors(loc, cut, 1500);
   } catch {
     return {};
   }
 }
+
+/** Run `probeAncestorsScript`, which reads each text field `cut.slack + 1`
+ *  characters past its cap, then mask and cut the fields on the server. */
+async function readAncestors(loc: Locator, cut: TextCut, timeout: number): Promise<PreProbeData> {
+  const raw = await loc
+    .evaluate(probeAncestorsScript, cut.slack, { timeout })
+    .catch((): PreProbeData => ({}));
+  const out: PreProbeData = { ...raw };
+  if (raw.ownerText !== undefined) {
+    out.ownerText = clipPageText(raw.ownerText, TEXT_MAX, cut, { marker: "…" });
+  }
+  if (raw.container) {
+    const c = { ...raw.container };
+    if (c.rowKey !== undefined)
+      c.rowKey = clipPageText(c.rowKey, ROW_KEY_MAX, cut, { marker: "…" });
+    if (c.rowText !== undefined)
+      c.rowText = clipPageText(c.rowText, TEXT_MAX, cut, { marker: "…" });
+    out.container = c;
+  }
+  return out;
+}
+
+/** Longest probe text field (`displayText`, owner text, row text) and row
+ *  key, in characters. The page reads `cap + slack + 1` characters of each;
+ *  the server masks, then cuts. */
+const TEXT_MAX = 200;
+const ROW_KEY_MAX = 80;
 
 /** Read the post-action value (input.value / contenteditable text / null). */
 async function readProbeValue(loc: Locator): Promise<string | null> {
@@ -179,6 +207,7 @@ export async function probe(
   target: ActionTarget,
   valueRequested?: string,
   pre?: PreProbeData,
+  cut: TextCut = PLAIN_CUT,
 ): Promise<ElementProbe> {
   const ref = target.ref;
   try {
@@ -196,9 +225,12 @@ export async function probe(
     const checked = await loc
       .evaluate(checkedScript, undefined, { timeout: PROBE_EVAL_MS })
       .catch(() => undefined);
-    const displayText = await loc
-      .evaluate(displayTextScript, undefined, { timeout: PROBE_EVAL_MS })
+    const displayRaw = await loc
+      .evaluate(displayTextScript, pageReadLength(TEXT_MAX, cut.slack), {
+        timeout: PROBE_EVAL_MS,
+      })
       .catch(() => null);
+    const displayText = displayRaw === null ? null : clipPageText(displayRaw, TEXT_MAX, cut);
     const out: ElementProbe = { ref, stillAttached: true, focused, value: value ?? null };
     if (checked !== undefined) out.checked = checked;
     if (valueRequested !== undefined) out.valueRequested = valueRequested;
@@ -206,9 +238,7 @@ export async function probe(
 
     // post-action owner/container state. Always read; compose deltas against
     // `pre` when supplied. Same in-page script as preProbe, so directly comparable.
-    const post: PreProbeData = await loc
-      .evaluate(probeAncestorsScript, undefined, { timeout: PROBE_EVAL_MS })
-      .catch((): PreProbeData => ({}));
+    const post = await readAncestors(loc, cut, PROBE_EVAL_MS);
     applyAncestorState(out, pre, post);
     return out;
   } catch {
@@ -233,8 +263,12 @@ const ROW_TAGS = new Set(["tr", "li"]);
  * narrowing sound. The per-concern matchers are nested so the whole thing stays
  * one self-contained serializable literal.
  */
-const probeAncestorsScript = function probeAncestors(el: unknown): PreProbeData {
+const probeAncestorsScript = function probeAncestors(el: unknown, slack: number): PreProbeData {
   if (!el || typeof el !== "object") return {};
+  // Each field is read one character past its cap plus the mask slack; the
+  // server masks it, then cuts it to the cap with "…".
+  const TEXT_READ = 200 + slack + 1;
+  const KEY_READ = 80 + slack + 1;
 
   function attr(cur: AncestorEl, name: string): string | null {
     return cur.getAttribute ? cur.getAttribute(name) : null;
@@ -251,7 +285,7 @@ const probeAncestorsScript = function probeAncestors(el: unknown): PreProbeData 
     if (!isFieldOwner(cur, role, ariaLabel)) return null;
     const txt = (cur.innerText || "").trim();
     const res: { ownerText?: string; ownerLabel?: string } = {};
-    if (txt) res.ownerText = txt.length > 200 ? txt.slice(0, 199) + "…" : txt;
+    if (txt) res.ownerText = txt.slice(0, TEXT_READ);
     if (ariaLabel) res.ownerLabel = ariaLabel;
     return res;
   }
@@ -262,7 +296,7 @@ const probeAncestorsScript = function probeAncestors(el: unknown): PreProbeData 
     if (!((role && ROW_ROLES.has(role)) || ROW_TAGS.has(tag))) return null;
     const kind = role && ROW_ROLES.has(role) ? role : tag;
     const rowText = (cur.innerText || "").trim().replace(/\s+/g, " ");
-    const capped = rowText.length > 200 ? rowText.slice(0, 199) + "…" : rowText;
+    const capped = rowText.slice(0, TEXT_READ);
     const firstText = (cur.innerText || "")
       .trim()
       .split("\n")
@@ -270,7 +304,7 @@ const probeAncestorsScript = function probeAncestors(el: unknown): PreProbeData 
     const out: { kind: string; rowKey?: string; rowText?: string } = { kind };
     if (firstText) {
       const t = firstText.trim();
-      out.rowKey = t.length > 80 ? t.slice(0, 79) + "…" : t;
+      out.rowKey = t.slice(0, KEY_READ);
     }
     if (capped) out.rowText = capped;
     return out;
@@ -298,10 +332,15 @@ const probeAncestorsScript = function probeAncestors(el: unknown): PreProbeData 
 
 /** Coordinate-action evidence helper: read `document.elementFromPoint` at (x,y)
  *  with role/text/ancestor context. Returns null when nothing's there. */
-export async function captureHit(page: Page, x: number, y: number): Promise<HitPoint | null> {
-  return page
+export async function captureHit(
+  page: Page,
+  x: number,
+  y: number,
+  cut: TextCut = PLAIN_CUT,
+): Promise<HitPoint | null> {
+  const hit = await page
     .evaluate(
-      ({ x, y }: { x: number; y: number }): HitPoint | null => {
+      ({ x, y, slack }: { x: number; y: number; slack: number }): HitPoint | null => {
         const g: unknown = globalThis;
         const doc = (g as WindowLike).document;
         if (!doc) return null;
@@ -311,10 +350,18 @@ export async function captureHit(page: Page, x: number, y: number): Promise<HitP
         const role: string | undefined = el.getAttribute
           ? el.getAttribute("role") || undefined
           : undefined;
-        const text = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 120);
+        // Read one character past each cap plus the mask slack; the server
+        // masks, then cuts.
+        const text = (el.textContent || "")
+          .trim()
+          .replace(/\s+/g, " ")
+          .slice(0, 120 + slack + 1);
         const parent = el.parentElement;
         const ancestorText = parent
-          ? (parent.innerText || "").trim().replace(/\s+/g, " ").slice(0, 200)
+          ? (parent.innerText || "")
+              .trim()
+              .replace(/\s+/g, " ")
+              .slice(0, 200 + slack + 1)
           : undefined;
         const out: HitPoint = { tag };
         if (role) out.role = role;
@@ -322,10 +369,19 @@ export async function captureHit(page: Page, x: number, y: number): Promise<HitP
         if (ancestorText) out.ancestorText = ancestorText;
         return out;
       },
-      { x, y },
+      { x, y, slack: cut.slack },
     )
     .catch(() => null);
+  if (!hit) return hit;
+  if (hit.text !== undefined) hit.text = clipPageText(hit.text, HIT_TEXT_MAX, cut);
+  if (hit.ancestorText !== undefined) {
+    hit.ancestorText = clipPageText(hit.ancestorText, TEXT_MAX, cut);
+  }
+  return hit;
 }
+
+/** Longest hit `text`, in characters. */
+const HIT_TEXT_MAX = 120;
 
 /** Best-effort identity for the active element so we can report whether focus
  *  shifted during a coord action. Returns a stable-ish key (tag + id + role +

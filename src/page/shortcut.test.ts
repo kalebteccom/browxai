@@ -8,6 +8,8 @@ vi.mock("./clipboard.js", async (orig) => {
 
 import { classifyChord, runShortcut } from "./shortcut.js";
 import { ClipboardBuffer, osClipboardWrite } from "./clipboard.js";
+import { textCutFor } from "../util/frame-cap.js";
+import { SecretRegistry } from "../util/secrets.js";
 
 describe("classifyChord", () => {
   it.each([
@@ -145,5 +147,51 @@ describe("runShortcut — per-session clipboard (capability on)", () => {
     );
     expect(osClipboardWrite).not.toHaveBeenCalled();
     expect(r.clipboard).toBeUndefined();
+  });
+});
+
+describe("runShortcut element names over the cap", () => {
+  it("masks a text-content name read past the 40-character cap", async () => {
+    const secrets = new SecretRegistry();
+    const VALUE = "tok_" + "0123456789".repeat(10);
+    secrets.register({ name: "TOKEN", value: VALUE });
+    const cut = textCutFor(secrets);
+    const page = {
+      keyboard: { press: vi.fn(async () => undefined) },
+      evaluate: vi.fn(async (script: string) => {
+        if (script.includes("return { events: s.events")) {
+          return {
+            events: [
+              {
+                type: "keydown",
+                key: "a",
+                defaultPrevented: false,
+                target: {
+                  tag: "div",
+                  name: (VALUE + " x").slice(0, 41 + cut.slack),
+                  nameFromText: true,
+                },
+              },
+            ],
+            active: { tag: "div", name: "Editor", nameFromText: false },
+          };
+        }
+        return undefined;
+      }),
+    };
+    const r = await runShortcut(
+      page as never,
+      refs,
+      { keys: "a" },
+      {
+        clipboardEnabled: false,
+        clipboard: new ClipboardBuffer(),
+        cut,
+      },
+    );
+    expect(r.events[0]!.target).toEqual({ tag: "div", name: "<TOKEN> x" });
+    expect(r.activeElement).toEqual({ tag: "div", name: "Editor" });
+    const install = page.evaluate.mock.calls.find(([s]) => s.includes("__browx_kbt ="))?.[0];
+    expect(install).toContain(`slice(0, ${41 + cut.slack})`);
   });
 });
