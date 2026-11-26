@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+## [0.20.2] - 2026-11-26
+
+**Upgrading from 0.20.1.** Nothing to do. Registered secrets are masked in more places: escaped forms in text, the server log, replay archives and SDK errors.
+
 ### Fixed
 
 - **Registered secrets are masked when they appear JSON-escaped or HTML-escaped inside text.** A value of 6 characters or more that holds a quote, backslash, slash, `< > & '` or a non-ASCII character is now also matched as a JSON encoder writes it (`\"`, `\/`, `\uXXXX` in lowercase or uppercase hex) and as an HTML encoder writes it (`&amp; &lt; &gt; &quot;`, four spellings of the apostrophe, and decimal or hex numeric references), so it becomes `<NAME>` inside a string that itself holds JSON or markup, such as a `network_body` response. A value these encoders leave alone gets no extra form, a value under 6 characters is still masked only as typed, and one value has at most 24 forms.
