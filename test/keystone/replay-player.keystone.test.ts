@@ -742,8 +742,10 @@ describePlayer("replay player keystone — capture with browxai, review with bro
         // The registered secret was never stored, so a filter cannot find it.
         await setFilter("#network-filter", SECRET);
         expect(await read(ids)).toEqual([]);
+        // Archived URLs drop their query string, so the alias is no longer in r1's
+        // URL. It is still in r1's masked request headers (checked below).
         await setFilter("#network-filter", SECRET_ALIAS);
-        expect(await read(ids)).toEqual(["r1"]);
+        expect(await read(ids)).toEqual([]);
         await setFilter("#network-filter", "");
         expect(await read(ids)).toEqual(["r1", "r2", "r3"]);
 
