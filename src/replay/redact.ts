@@ -14,9 +14,10 @@
 //     "something was taken out".
 
 import type { SecretRegistry } from "../util/secrets.js";
+import { DEFAULT_DROPPED_HEADERS } from "../util/sensitive-headers.js";
 import type { MaybeRedacted, Redacted, ReplayEvent } from "./schema.js";
 
-export const DEFAULT_DROPPED_HEADERS: readonly string[] = ["authorization", "cookie", "set-cookie"];
+export { DEFAULT_DROPPED_HEADERS };
 
 /** Body-path token that matches the body itself — `bodyPaths: ["$"]` drops
  *  every body and frame payload wholesale. */
@@ -67,6 +68,12 @@ export class Redactor {
    *  RangeError. See `src/util/secrets.ts` for the full rationale. */
   mask<T>(value: T): T {
     return this.secrets ? this.secrets.applyMaskDeep(value) : value;
+  }
+
+  /** Whether the registry holds a value right now. Read at the end of a
+   *  recording, where an empty registry means there is nothing to mask again. */
+  get hasSecrets(): boolean {
+    return this.secrets !== null && this.secrets.size() > 0;
   }
 
   headers(

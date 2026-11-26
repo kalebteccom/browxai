@@ -30,6 +30,7 @@ import { log } from "./util/logging.js";
 import { PACKAGE_VERSION } from "./util/version.js";
 import type { ToolRegistration, ToolResponse } from "./tools/host.js";
 import { buildHost } from "./tools/host-build.js";
+import { installLogMask } from "./tools/host-egress-mask.js";
 import { registerActionTools } from "./tools/action-tools.js";
 import { registerReadObserveDomTools } from "./tools/read-observe-dom-tools.js";
 import { registerReadObserveExtractTools } from "./tools/read-observe-extract-tools.js";
@@ -60,6 +61,7 @@ import { registerExtensionsBatchTools } from "./tools/extensions-batch-tools.js"
 import { registerNativeDeviceTools } from "./tools/native-device-tools.js";
 import { wirePluginRuntime } from "./tools/plugin-runtime.js";
 import { buildSessionRegistry } from "./tools/session-registry.js";
+import type { StartOptions } from "./tools/start-options.js";
 // RFC 0004 P2 / D1 (SECURITY-CRITICAL): importing the tool-metadata bootstrap is a
 // side effect that EAGERLY populates the derived `TOOL_CAPABILITY` / `DEEP_TOOLS`
 // maps. `createServer` calls `resolveCapabilities` BEFORE its own tool
@@ -82,20 +84,7 @@ export const NAME = "browxai";
 // Derived from package.json — see src/util/version.ts. Never hand-bump.
 export const VERSION = PACKAGE_VERSION;
 
-export interface StartOptions {
-  attachCdp?: string;
-  headless?: boolean;
-  /** Browser engine for sessions this server launches. Defaults to
-   *  `"chromium"`. All eight kinds are wired today (see src/engine/); a
-   *  future-declared engine without an adapter is rejected at the launch path
-   *  with a clear `engine-not-yet-supported` error.
-   *
-   *  `electron` is the one you rarely pass: the desktop CDP-attach lane resolves
-   *  it from the protocol, so `attachCdp` pointed at a running Electron app
-   *  yields an electron session whether or not this says so. Passing it changes
-   *  the DEFAULT session mode to `attached` (electron is attach-only). */
-  browserType?: EngineKind;
-}
+export type { StartOptions };
 
 // Re-exported (imported at the top with the other tool modules) to preserve the
 // existing public surface — the definitions now live in `tools/schemas`.
@@ -281,6 +270,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     operator,
     approvals,
   });
+  const removeLogMask = installLogMask(caps.enabled.has("secrets"), registry);
 
   const server = new McpServer({ name: NAME, version: VERSION }, { capabilities: { tools: {} } });
 
@@ -390,6 +380,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await registry.closeAll();
       operator?.close();
       await server.close().catch(() => undefined);
+      removeLogMask();
     },
     isToolListed: listing.isListed,
     registrations: host.registrations,

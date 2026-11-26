@@ -110,7 +110,7 @@ This item had no number because it needed a decision before it needed work. The 
 - **Decisions.** No self-hosted CI agent and no daemon. The owner runs the lane by hand on one Mac and copies the result into the engine evidence table with a date, using the format in RFC 0008 section 10.7.
 - **Risk.** High on upkeep, low on posture: it sits behind `native-device`. A device target also needs a code change (device discovery, lifecycle and screenshot that do not assume `simctl`), which is its own PR with a threat-model row.
 - **Done.** The Simulator run passes against a real WebDriverAgent with the Xcode and runtime versions recorded, the phone run does the same once the device code lands, and the README says so. Until then the wording stays "unproven".
-- **First PR.** The plan and the script, in this docs change. The pinch route fix and the real-device probe evidence followed. The next PR is the device launch path (selection, install, launch and screenshot that do not use `simctl`), then the Simulator run's evidence row.
+- **First PR.** The plan and the script, in this docs change. The pinch route fix and the real-device probe evidence followed. The next PR is the device launch path (selection, install, launch and screenshot that do not use `simctl`), then the Simulator run's evidence row. [RFC 0014](../docs/rfcs/0014-ios-real-device-engine.md) is the spec for that path, including the guard rails for a physical phone. It is proposed and waits for reviewer sign-off, so no device code is built yet.
 
 ### 8. A reference deployment for containers and CI (M, built as a guide)
 

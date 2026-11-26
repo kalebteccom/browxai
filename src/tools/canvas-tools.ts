@@ -1,5 +1,4 @@
 import { withDeadline } from "../util/deadline.js";
-import { estimateTokens } from "../util/tokens.js";
 import {
   canvasCapture,
   canvasDiff,
@@ -9,6 +8,7 @@ import {
   runGestureChain,
 } from "../page/canvas.js";
 import { SESSION_ARG } from "./schemas.js";
+import { jsonResultWithEstimate, jsonToolResult } from "./json-result.js";
 import type { ToolHost } from "./host.js";
 import { requirePage } from "../engine/index.js";
 import { docsUrl } from "../util/docs-links.js";
@@ -83,8 +83,8 @@ export function registerCanvasTools(host: ToolHost): void {
       const g = gateCheck("canvas_capture");
       if (g) return g;
       const e = await entryFor(args.session);
-      try {
-        const r = await withDeadline(
+      return jsonToolResult(() =>
+        withDeadline(
           canvasCapture(requirePage(e.session), {
             ref: args.ref,
             selector: args.selector,
@@ -92,31 +92,8 @@ export function registerCanvasTools(host: ToolHost): void {
           }),
           cfgActionTimeout(),
           "canvas_capture",
-        );
-        const json = JSON.stringify(r);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
+        ),
+      );
     },
   );
 
@@ -164,39 +141,16 @@ export function registerCanvasTools(host: ToolHost): void {
     async (args) => {
       const g = gateCheck("canvas_diff");
       if (g) return g;
-      try {
-        const r = canvasDiff({
+      return jsonToolResult(() =>
+        canvasDiff({
           beforeBase64: args.beforeBase64,
           afterBase64: args.afterBase64,
           ...(args.width !== undefined ? { width: args.width } : {}),
           ...(args.height !== undefined ? { height: args.height } : {}),
           ...(args.region ? { region: args.region } : {}),
           ...(args.inputFormat ? { inputFormat: args.inputFormat } : {}),
-        });
-        const json = JSON.stringify(r);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
+        }),
+      );
     },
   );
 
@@ -227,36 +181,13 @@ export function registerCanvasTools(host: ToolHost): void {
       const g = gateCheck("gesture_chain");
       if (g) return g;
       const e = await entryFor(args.session);
-      try {
-        const r = await withDeadline(
+      return jsonToolResult(() =>
+        withDeadline(
           runGestureChain(requirePage(e.session), { steps: args.steps }),
           cfgActionTimeout(),
           "gesture_chain",
-        );
-        const json = JSON.stringify(r);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
+        ),
+      );
     },
   );
 
@@ -296,8 +227,8 @@ export function registerCanvasTools(host: ToolHost): void {
       const g = gateCheck("canvas_world_to_screen");
       if (g) return g;
       const e = await entryFor(args.session);
-      try {
-        const r = await withDeadline(
+      return jsonToolResult(() =>
+        withDeadline(
           canvasWorldToScreen(requirePage(e.session), {
             worldX: args.worldX,
             worldY: args.worldY,
@@ -307,31 +238,8 @@ export function registerCanvasTools(host: ToolHost): void {
           }),
           cfgActionTimeout(),
           "canvas_world_to_screen",
-        );
-        const json = JSON.stringify(r);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
+        ),
+      );
     },
   );
 
@@ -366,8 +274,8 @@ export function registerCanvasTools(host: ToolHost): void {
       const g = gateCheck("canvas_screen_to_world");
       if (g) return g;
       const e = await entryFor(args.session);
-      try {
-        const r = await withDeadline(
+      return jsonToolResult(() =>
+        withDeadline(
           canvasScreenToWorld(requirePage(e.session), {
             screenX: args.screenX,
             screenY: args.screenY,
@@ -377,31 +285,8 @@ export function registerCanvasTools(host: ToolHost): void {
           }),
           cfgActionTimeout(),
           "canvas_screen_to_world",
-        );
-        const json = JSON.stringify(r);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
+        ),
+      );
     },
   );
 
@@ -434,15 +319,7 @@ export function registerCanvasTools(host: ToolHost): void {
       const fn = toolHandlers[targetName];
       if (!fn) {
         const body = noAdapterError(args.adapter, args.op);
-        const json = JSON.stringify(body);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
+        return jsonResultWithEstimate(body);
       }
       // Forward through the live (wrapped) handler — this routes through
       // the plugin runtime's capability gate + metrics + diagnostics

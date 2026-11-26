@@ -18,6 +18,7 @@ import {
 import type { PolicyShape } from "../policy/ask-human-guard.js";
 import { askHumanPolicyGate } from "./ask-human-gate.js";
 import { SESSION_ARG } from "./schemas.js";
+import { jsonResult, errorResult } from "./json-result.js";
 import type {
   RegisterHost,
   GateHost,
@@ -81,31 +82,9 @@ export function registerSessionDialogPermissionTools(
         }
         const resolved = e.dialog.set(next);
         const tokensEstimate = estimateTokens(JSON.stringify(resolved));
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: true, session: e.id, policy: resolved, tokensEstimate },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({ ok: true, session: e.id, policy: resolved, tokensEstimate });
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -168,20 +147,9 @@ export function registerSessionDialogPermissionTools(
           tokensEstimate,
         };
         if (warnings.length) body.warnings = warnings;
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -228,31 +196,9 @@ export function registerSessionDialogPermissionTools(
         if (refused) return refused;
         const resolved = e.fsPicker.set(next);
         const tokensEstimate = estimateTokens(JSON.stringify(resolved));
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: true, session: e.id, policy: resolved, tokensEstimate },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({ ok: true, session: e.id, policy: resolved, tokensEstimate });
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -357,20 +303,9 @@ export function registerSessionDialogPermissionTools(
           queued: { api, fileCount: prepared.length },
           tokensEstimate: estimateTokens(JSON.stringify({ api, fileCount: prepared.length })),
         };
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );

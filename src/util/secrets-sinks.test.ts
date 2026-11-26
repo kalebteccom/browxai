@@ -3,7 +3,7 @@
 // "every output path goes through the masker" baseline, applied at browxai's
 // URL-sanitiser boundary.
 
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { SecretRegistry } from "./secrets.js";
 import { EgressSanitiser } from "./egress-sanitiser.js";
 import { ConsoleBuffer } from "../page/console.js";
@@ -153,6 +153,30 @@ describe("sink: network_body (fetchResponseBody)", () => {
     const r = await fetchResponseBody(cdp, "req-1", undefined, secrets);
     expect(r.ok).toBe(true);
     expect(r.body).toBe('{"sessionToken":"<TOKEN>","kind":"jwt"}');
+  });
+
+  it("masks a value the server wrote JSON-escaped or HTML-escaped", async () => {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "API_KEY", value: "ab/cd+ef==" });
+    secrets.register({ name: "NOTE", value: "tom&jerry" });
+    const bodyOf = async (body: string): Promise<string | undefined> => {
+      const cdp = { send: vi.fn(async () => ({ body, base64Encoded: false })) } as never;
+      return (await fetchResponseBody(cdp, "req-1", undefined, secrets)).body;
+    };
+    // A server that writes `/` as `\/` and `&` as `&` in JSON.
+    const json = await bodyOf('{"key":"ab\\/cd+ef==","note":"tom\\u0026jerry"}');
+    expect(json).toBe('{"key":"<API_KEY>","note":"<NOTE>"}');
+    expect(await bodyOf("<td>tom&amp;jerry</td>")).toBe("<td><NOTE></td>");
+    // The same raw body, unmasked by its sink, as one string of a tool result.
+    const raw = '{"key":"ab\\/cd+ef==","note":"tom\\u0026jerry"}';
+    const res = maskToolResponse(
+      { content: [{ type: "text", text: JSON.stringify({ ok: true, body: raw }, null, 2) }] },
+      [secrets],
+    );
+    expect(JSON.parse((res.content[0] as { text: string }).text)).toEqual({
+      ok: true,
+      body: '{"key":"<API_KEY>","note":"<NOTE>"}',
+    });
   });
 
   it("passes base64 bodies through unchanged (documented caveat)", async () => {
@@ -695,30 +719,37 @@ describe("literal-protection: <SECRET_NAME> as plain text", () => {
   });
 });
 
-describe("sink: a thrown error through the socket daemon's handler map", () => {
-  type Handler = (args: unknown) => Promise<ToolResponse>;
-  /** A host with one registered secret and a tool that throws a message carrying it. */
-  function throwingHost() {
-    const secrets = new SecretRegistry();
-    secrets.register({ name: "PASSWORD", value: "hunter2" });
-    const toolHandlers: Record<string, Handler> = {};
-    const wireHandlers: Record<string, Handler> = {};
-    const host = buildHost({
-      server: { registerTool: () => undefined },
-      toolHandlers,
-      wireHandlers,
-      registry: { list: () => [{ secrets }], peek: () => undefined },
-      config: { testAttributes: [] },
-      caps: { enabled: new Set(["read", "secrets"]) },
-      diagnostics: { enabled: false },
-      pluginRecords: () => [],
-    } as unknown as HostDeps);
-    host.register("probe_throws", { description: "throws" }, () =>
-      Promise.reject(new Error("could not log in with hunter2")),
-    );
-    return { toolHandlers, wireHandlers };
-  }
+type Handler = (args: unknown) => Promise<ToolResponse>;
 
+/** A host with one registered secret, a tool that throws a message carrying it
+ *  and a tool that returns it. */
+function throwingHost() {
+  const secrets = new SecretRegistry();
+  secrets.register({ name: "PASSWORD", value: "hunter2" });
+  const toolHandlers: Record<string, Handler> = {};
+  const wireHandlers: Record<string, Handler> = {};
+  const host = buildHost({
+    server: { registerTool: () => undefined },
+    toolHandlers,
+    wireHandlers,
+    registry: { list: () => [{ secrets }], peek: () => undefined },
+    config: { testAttributes: [] },
+    caps: { enabled: new Set(["read", "secrets"]) },
+    diagnostics: { enabled: false },
+    pluginRecords: () => [],
+  } as unknown as HostDeps);
+  host.register("probe_throws", { description: "throws" }, () =>
+    Promise.reject(new Error("could not log in with hunter2")),
+  );
+  host.register("probe_returns", { description: "returns" }, () =>
+    Promise.resolve({
+      content: [{ type: "text" as const, text: JSON.stringify({ ok: true, seen: "hunter2" }) }],
+    }),
+  );
+  return { toolHandlers, wireHandlers };
+}
+
+describe("sink: a thrown error through the socket daemon's handler map", () => {
   it("comes back as a masked error result from wireHandlers", async () => {
     const { wireHandlers } = throwingHost();
     const res = (await wireHandlers.probe_throws!({})) as ToolResponse & { isError?: boolean };
@@ -731,5 +762,69 @@ describe("sink: a thrown error through the socket daemon's handler map", () => {
   it("still throws from toolHandlers, which batch catches for itself", async () => {
     const { toolHandlers } = throwingHost();
     await expect(toolHandlers.probe_throws!({})).rejects.toThrow("hunter2");
+  });
+});
+
+describe("sink: a thrown error through the in-process SDK transport", () => {
+  /** The in-process transport over `throwingHost`, with `createServer` stood in
+   *  for by the two handler maps it would expose. `plugin_tool` is in `handlers`
+   *  only, as a plugin tool is. */
+  async function inProcessTransport() {
+    const { toolHandlers, wireHandlers } = throwingHost();
+    const handlers: Record<string, Handler> = {
+      ...toolHandlers,
+      plugin_tool: () => Promise.resolve({ content: [{ type: "text", text: '{"ok":true}' }] }),
+    };
+    let shutdowns = 0;
+    vi.doMock("../server.js", () => ({
+      createServer: () =>
+        Promise.resolve({
+          handlers,
+          wireHandlers,
+          shutdown: () => {
+            shutdowns++;
+            return Promise.resolve();
+          },
+        }),
+    }));
+    const { openInProcessTransport } = await import("../sdk/transport-in-process.js");
+    const transport = await openInProcessTransport();
+    return { transport, shutdowns: () => shutdowns };
+  }
+
+  afterEach(() => {
+    vi.doUnmock("../server.js");
+    vi.resetModules();
+  });
+
+  it("rejects with the masked message", async () => {
+    const { transport } = await inProcessTransport();
+    const err: unknown = await transport.dispatch("probe_throws", {}).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).not.toContain("hunter2");
+    expect((err as Error).message).toBe("could not log in with <PASSWORD>");
+  });
+
+  it("still resolves a returned result, masked, and a tool with no wire entry", async () => {
+    const { transport } = await inProcessTransport();
+    await expect(transport.dispatch("probe_returns", {})).resolves.toEqual({
+      ok: true,
+      seen: "<PASSWORD>",
+    });
+    await expect(transport.dispatch("plugin_tool", {})).resolves.toEqual({ ok: true });
+  });
+
+  it("still rejects an unknown tool and a call after close", async () => {
+    const { transport, shutdowns } = await inProcessTransport();
+    await expect(transport.dispatch("no_such_tool", {})).rejects.toThrow(/unknown tool/);
+    // A name found only on the object prototype is not a tool.
+    await expect(transport.dispatch("constructor", {})).rejects.toThrow(/unknown tool/);
+    await transport.close();
+    await transport.close();
+    expect(shutdowns()).toBe(1);
+    await expect(transport.dispatch("probe_returns", {})).rejects.toThrow(/transport is closed/);
   });
 });

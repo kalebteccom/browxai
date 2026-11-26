@@ -18,7 +18,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
-import { DEFAULT_DROPPED_HEADERS } from "../replay/redact.js";
+import { DEFAULT_DROPPED_HEADERS } from "../util/sensitive-headers.js";
 import { resolveWorkspaceWritePath } from "../session/storage.js";
 import type { SecretRegistry } from "../util/secrets.js";
 

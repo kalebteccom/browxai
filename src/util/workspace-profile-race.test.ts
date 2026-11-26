@@ -6,9 +6,6 @@ import * as realFs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
-
 const plan: { target?: string; linkTo?: string } = {};
 
 vi.mock("node:fs", async (importOriginal) => {

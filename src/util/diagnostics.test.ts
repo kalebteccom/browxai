@@ -7,7 +7,7 @@
 //   5. retention sweep removes ancient session dirs, keeps fresh ones
 //   6. workspace-escape rejection: sessionId of `../escape` is refused
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   mkdtempSync,
   rmSync,
@@ -30,9 +30,6 @@ import {
   buildReportSummary,
 } from "./diagnostics.js";
 import { SecretRegistry } from "./secrets.js";
-
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
 
 let workspace: string;
 

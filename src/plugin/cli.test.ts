@@ -11,9 +11,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectPackageManager, pmArgs, runPlugin } from "./cli.js";
 
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
-
 let workspaceRoot: string;
 let originalEnv: string | undefined;
 let stdoutLog: string[];

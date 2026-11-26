@@ -1,4 +1,4 @@
-import { estimateTokens } from "../util/tokens.js";
+import { errorResultWithEstimate, jsonResultWithEstimate } from "./json-result.js";
 import type { GestureResult } from "../page/action-substrate.js";
 import type { ToolResponse } from "./host.js";
 
@@ -29,35 +29,12 @@ import type { ToolResponse } from "./host.js";
 export function gestureResponse(r: GestureResult): ToolResponse {
   const body =
     r.kind === "refusal" ? { ok: false, error: r.error, engine: r.engine, hint: r.hint } : r.report;
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-          null,
-          2,
-        ),
-      },
-    ],
-  };
+  return jsonResultWithEstimate(body);
 }
 
 /** The `{ok:false, error, tokensEstimate}` envelope the five gesture handlers
  *  render from their own `catch`. Shared for the same reason as the success
  *  path: five copies of it is five places for the shape to drift. */
 export function gestureErrorResponse(err: unknown): ToolResponse {
-  const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-          null,
-          2,
-        ),
-      },
-    ],
-  };
+  return errorResultWithEstimate(err);
 }

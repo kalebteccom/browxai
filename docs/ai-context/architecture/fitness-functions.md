@@ -32,6 +32,7 @@ runs in `pnpm test:keystone`.
 | `server-isolation`             | Two `createServer()` instances in one process do not cross-wire (per-server caps / workspace / origin policy stay bound to their own server).                                                                                   | `server-isolation.test.ts`             | L4/DIP   |
 | `plugin-info-gate`             | The plugin-info surface is gated and does not leak un-namespaced plugin tools.                                                                                                                                                  | `plugin-info-gate.test.ts`             | L1/L9    |
 | `page-bypass-budget`           | The Playwright-`Page` bypass count outside the handle-owner allowlist stays at or under the RFC 0009 phase budget, and `requirePage` is the only door to the optional `page()` member.                                          | `page-bypass-budget.test.ts`           | L1/L5    |
+| `stable-surface`               | The default capability set and every registered tool name equal literals written in the test. A rename, a dropped tool, a tool moved onto the default surface or a wider default fails here.                                    | `stable-surface.test.ts`               | L2/L9    |
 | **`assertion-density`**        | Every load-bearing module carries at least the invariant-density floor (`invariant()` calls on the contracts it depends on); the helper exports `invariant` + `InvariantError`.                                                 | `assertion-density.test.ts`            | **L8**   |
 | **`bounded-resource`**         | The perf-audit token budget terminates and stays ≤ 2.5× `SUMMARY_TOKEN_BUDGET` on adversarial input; the a11y walk is depth-capped (`MAX_WALK_DEPTH`); the network ring is capped (positive cap, never exceeds it).             | `bounded-resource.test.ts`             | **L7**   |
 
@@ -57,15 +58,20 @@ runs in `pnpm test:keystone`.
 
 ## The map: dependency layering (`.dependency-cruiser.cjs`, run via `pnpm depcruise`)
 
-| Rule                                                    | What it proves                                                   | Enforces |
-| ------------------------------------------------------- | ---------------------------------------------------------------- | -------- |
-| `no-server-or-tools-to-sdk-or-cli`                      | `server.ts` / `tools/*` do not import `sdk/*` or `cli/*`.        | L4/L10   |
-| `no-page-handler-to-engine-adapter-or-transport`        | `page/*` does not import a concrete engine adapter or transport. | L4       |
-| `no-sdk-to-handler-internals`                           | `sdk/*` does not import handler internals.                       | L4       |
-| `core-imports-inward-only` / `only-the-bin-imports-cli` | The core depends inward; only the bin imports `cli/*`.           | L4/DIP   |
-| `ports-name-no-vendor-type`                             | A capability port module does not import `playwright-core`.      | L1/L5    |
-| `no-tools-or-replay-to-playwright-core` (`warn`)        | `tools/*` / `replay/*` do not name a Playwright type.            | L1       |
-| `no-circular`                                           | No import cycles.                                                | L4       |
+| Rule                                                    | What it proves                                                       | Enforces |
+| ------------------------------------------------------- | -------------------------------------------------------------------- | -------- |
+| `no-server-or-tools-to-sdk-or-cli`                      | `server.ts` / `tools/*` do not import `sdk/*` or `cli/*`.            | L4/L10   |
+| `no-page-handler-to-engine-adapter-or-transport`        | `page/*` does not import a concrete engine adapter or transport.     | L4       |
+| `no-sdk-to-handler-internals`                           | `sdk/*` does not import handler internals.                           | L4       |
+| `core-imports-inward-only` / `only-the-bin-imports-cli` | The core depends inward; only the bin imports `cli/*`.               | L4/DIP   |
+| `ports-name-no-vendor-type`                             | A capability port module does not import `playwright-core`.          | L1/L5    |
+| `no-tools-or-replay-to-playwright-core` (`warn`)        | `tools/*` / `replay/*` do not name a Playwright type.                | L1       |
+| `util-is-a-leaf`                                        | `util/*` imports nothing else under `src/`, type-only included.      | L4       |
+| `helper-and-policy-stay-below-the-core`                 | `helper/*` and `policy/*` import only `util/*` and each other.       | L4       |
+| `no-server-to-page`                                     | `server.ts` does not import `page/*`.                                | L4/L10   |
+| `no-tools-to-composition-root`                          | `tools/*` does not import `server.ts`, type-only included.           | L4/L10   |
+| `no-page-to-replay-at-runtime`                          | `page/*` has no runtime import of `replay/*` (type-only is allowed). | L4       |
+| `no-circular`                                           | No import cycles.                                                    | L4       |
 
 `ports-name-no-vendor-type` is the rule RFC 0009 P1 was written to make
 expressible: it can only hold once every port lives in a module separate from its

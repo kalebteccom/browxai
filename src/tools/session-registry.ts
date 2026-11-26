@@ -67,7 +67,7 @@ import {
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
 import { assertValidProfileName } from "../util/profile-name.js";
 import type { Workspace } from "../util/workspace.js";
-import type { StartOptions } from "../server.js";
+import type { StartOptions } from "./start-options.js";
 import { docsUrl } from "../util/docs-links.js";
 
 /** The createServer-owned locals the SessionRegistry factory + teardown close

@@ -18,6 +18,7 @@ import "./cli/register-commands.js";
 import { commandFor, registeredCommands, usageFor } from "./cli/command-registry.js";
 import { helpTarget, wantsHelp } from "./cli/help.js";
 import { log } from "./util/logging.js";
+import { redactUrlForLog } from "./util/url-sanitizer.js";
 import { resolveConfig } from "./util/config.js";
 import { isHeadlessEnv } from "./util/config-store.js";
 import { resolveWorkspace } from "./util/workspace.js";
@@ -197,7 +198,7 @@ async function main(): Promise<void> {
   log.info("starting", {
     workspace: workspace.root,
     mode: attachCdp ? "byob" : "managed",
-    attachCdp,
+    attachCdp: attachCdp ? redactUrlForLog(attachCdp) : undefined,
     headless,
     engine: browserType ?? "chromium",
     testAttributes: config.testAttributes,

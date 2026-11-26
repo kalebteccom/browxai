@@ -4,14 +4,11 @@
 // exercise the save/get/list/clear surface, the capacity caps, the encoding
 // round-trips, and the workspace-escape rejection.
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ArtifactsRegistry, ARTIFACT_MAX_ENTRIES, ARTIFACT_MAX_BYTES } from "./artifacts.js";
-
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
 
 let storage: string;
 

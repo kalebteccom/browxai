@@ -21,6 +21,18 @@ surface" covers.
 
 - **A socket message line between 10 and 32 MiB no longer fails outside the connection's error handling.** The socket transport documents a 32 MiB line limit, and its read buffer had a lower limit of its own at 10 MiB, so a line between the two raised an error inside the socket's data handler. The read buffer's limit now follows the line limit, so a line up to 32 MiB is delivered and a longer one closes that connection with an error that names the limit. Any error while reading closes only the connection it came from. A line that is not a valid message is dropped, and the lines after it in the same chunk are still delivered, where they waited for the next chunk before.
 
+## [0.20.2] - 2026-11-26
+
+**Upgrading from 0.20.1.** Nothing to do. Registered secrets are masked in more places: escaped forms in text, the server log, replay archives and SDK errors.
+
+### Fixed
+
+- **Registered secrets are masked when they appear JSON-escaped or HTML-escaped inside text.** A value of 6 characters or more that holds a quote, backslash, slash, `< > & '` or a non-ASCII character is now also matched as a JSON encoder writes it (`\"`, `\/`, `\uXXXX` in lowercase or uppercase hex) and as an HTML encoder writes it (`&amp; &lt; &gt; &quot;`, four spellings of the apostrophe, and decimal or hex numeric references), so it becomes `<NAME>` inside a string that itself holds JSON or markup, such as a `network_body` response. A value these encoders leave alone gets no extra form, a value under 6 characters is still masked only as typed, and one value has at most 24 forms.
+- **The stderr and file log mask registered secrets and redact URL credentials and query values.** Every log entry has the registered values of every open session replaced with `<NAME>` before it is written, when `secrets` is on. The navigate, confirm-hook, bridge-signal and attach-endpoint log lines print a URL without userinfo, with `?…` for a query and `#…` for a fragment, and with identifier-shaped path segments as `:id`, the same way `browxai doctor` prints `BROWX_ATTACH_CDP`.
+- **Replay archives mask registered secrets in recorded call arguments.** The `value` of a `register_secret` call is never recorded, and neither are a `cookies_set` value or an inline storage state. `end_recording` masks the whole event log again with the secrets registered by then, so a value registered partway through a recording is masked in the events captured before it.
+- **Replay network events keep a fixed list of fields.** `net/request` and `net/response` no longer carry every field of the CDP event: raw header text, `response.requestHeaders` and the initiator stack are left out, URLs are recorded without query string, fragment or userinfo, redirect response headers follow the header rules, and the base64 request body parts are masked and recorded at the `reexecutable` tier only. The archive format version is unchanged; the offline player reads none of the removed fields.
+- **The in-process SDK transport masks tool errors.** A tool that throws still rejects the SDK call, now with registered secrets replaced by `<NAME>` in the message, as the stdio server and the socket daemon already did. The rejection is a plain `Error` carrying that message.
+
 ## [0.20.1] - 2026-11-24
 
 **Upgrading from 0.20.0.** Nothing to do. One iOS fix, one macOS-only doctor row, and docs and tooling for a signed macOS app that is not part of the npm package.

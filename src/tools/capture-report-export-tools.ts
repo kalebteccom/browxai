@@ -1,10 +1,10 @@
 import { requireCdp, requirePage } from "../engine/index.js";
 import { withDeadline } from "../util/deadline.js";
-import { estimateTokens } from "../util/tokens.js";
 import { assetExport } from "../page/asset-export.js";
 import { assertPdfSupported } from "../page/pdf.js";
 import { pageArchive } from "../page/archive.js";
 import { SESSION_ARG } from "./schemas.js";
+import { jsonResult, jsonResultWithEstimate, errorResult, jsonToolResult } from "./json-result.js";
 import type { ToolHost } from "./host.js";
 
 /**
@@ -92,8 +92,8 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
       const g = gateCheck("asset_export");
       if (g) return g;
       const e = await entryFor(args.session);
-      try {
-        const result = await withDeadline(
+      return jsonToolResult(() =>
+        withDeadline(
           assetExport(
             {
               cdp: requireCdp(e.session),
@@ -111,31 +111,8 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
           ),
           cfgActionTimeout(),
           "asset_export",
-        );
-        const json = JSON.stringify(result);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...result, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
+        ),
+      );
     },
   );
 
@@ -190,18 +167,7 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
         const refused = assertPdfSupported({ mode: e.mode });
         if (refused) {
           const body = { ok: false, error: refused.error, hint: refused.hint };
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return jsonResultWithEstimate(body);
         }
         // Through the capture port. This handler held a `requirePage` purely to
         // hand the `Page` to `pdfSave` while `captureFor(e)` sat unused beside it
@@ -224,20 +190,9 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
           r.kind === "saved"
             ? r.result
             : { ok: false, error: r.error, ...(r.hint ? { hint: r.hint } : {}) };
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -285,8 +240,8 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
       const g = gateCheck("page_archive");
       if (g) return g;
       const e = await entryFor(args.session);
-      try {
-        const r = await withDeadline(
+      return jsonToolResult(() =>
+        withDeadline(
           pageArchive(requirePage(e.session), workspace.root, e.id, {
             path: args.path,
             format: args.format,
@@ -294,31 +249,8 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
           }),
           cfgActionTimeout(),
           "page_archive",
-        );
-        const json = JSON.stringify(r);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
+        ),
+      );
     },
   );
 }
