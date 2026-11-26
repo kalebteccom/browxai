@@ -2,34 +2,43 @@
 // corrupts the protocol. Importing `console.log` in src/ is a bug.
 //
 // stderr is also what the macOS app writes to its log file, so a line is
-// passed through the log mask before it is written. The mask is a hook: this
-// module knows nothing about secrets, and the server installs a function that
-// masks registered values (`buildHost`). Until one is installed the mask
-// returns its input, so a process with no server logs exactly what it is given.
+// passed through the log masks before it is written. A mask is a hook: this
+// module knows nothing about secrets, and each server adds a function that
+// masks its registered values (`installLogMask`). With no mask added an entry
+// is written exactly as given.
 
 export type LogLevel = "info" | "warn" | "error";
 
 /** Rewrites the text of one log entry (message plus serialised fields). */
 export type LogMask = (text: string) => string;
 
-const identity: LogMask = (text) => text;
+const masks = new Set<LogMask>();
 
-let mask: LogMask = identity;
-
-/** Install the function every log entry goes through, or pass null to go back
- *  to writing entries as given. One slot per process: the last caller wins, so
- *  a process that builds two servers masks with the second one's function. */
-export function setLogMask(fn: LogMask | null): void {
-  mask = fn ?? identity;
+/** Add a function every log entry goes through, and get back the call that
+ *  removes it. Masks compose: an entry passes through all of them, in the
+ *  order they were added, so two servers in one process each keep their own
+ *  and neither replaces the other's. A server removes its mask at shutdown. */
+export function addLogMask(fn: LogMask): () => void {
+  masks.add(fn);
+  return () => {
+    masks.delete(fn);
+  };
 }
 
-/** What is written in place of an entry whose mask threw. The entry itself is
+/** Remove every mask. For tests that need the logger back in its first state. */
+export function clearLogMasks(): void {
+  masks.clear();
+}
+
+/** What is written in place of an entry when one of its masks threw. The entry itself is
  *  dropped, because writing it unmasked is what the mask is there to stop. */
 export const LOG_MASK_FAILED = "(log entry withheld: the log mask failed)";
 
 function masked(text: string): string {
   try {
-    return mask(text);
+    let out = text;
+    for (const mask of masks) out = mask(out);
+    return out;
   } catch {
     return LOG_MASK_FAILED;
   }

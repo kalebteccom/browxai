@@ -8,7 +8,7 @@ import {
 } from "./confirm.js";
 import { resolveOriginPolicy, type OriginPolicy } from "./origin.js";
 import { BrowxBridge } from "../helper/bridge.js";
-import { log, setLogMask } from "../util/logging.js";
+import { addLogMask, clearLogMasks, log } from "../util/logging.js";
 import { SecretRegistry } from "../util/secrets.js";
 
 const NO_POLICY: OriginPolicy = { allowed: [], blocked: [] };
@@ -405,7 +405,7 @@ describe("confirm log lines: URL redaction and the log mask", () => {
     const quiet = vi.spyOn(log, "warn").mockImplementation(() => undefined);
     secrets.register({ name: "TOKEN", value: TOKEN });
     quiet.mockRestore();
-    setLogMask((text) => secrets.applyMaskInText(text));
+    addLogMask((text) => secrets.applyMaskInText(text));
     written = [];
     vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
       written.push(String(chunk));
@@ -414,7 +414,7 @@ describe("confirm log lines: URL redaction and the log mask", () => {
   });
 
   afterEach(() => {
-    setLogMask(null);
+    clearLogMasks();
     vi.restoreAllMocks();
   });
 
@@ -472,7 +472,7 @@ describe("confirm log lines: URL redaction and the log mask", () => {
   });
 
   it("with no mask installed the same line still has no query value", async () => {
-    setLogMask(null);
+    clearLogMasks();
     await confirmNavigation(
       "https://off.example/reset?token=abc123",
       ctx({ hooks: new Set(), isByob: false, policy: offAllowlist }),

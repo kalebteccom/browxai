@@ -13,6 +13,7 @@
 // warning covers them. Result shapes are unchanged: an item is replaced only
 // when its text changed.
 
+import { addLogMask } from "../util/logging.js";
 import type { SecretRegistry } from "../util/secrets.js";
 import type { ToolResponse } from "./host.js";
 
@@ -55,6 +56,19 @@ export function maskLogText(text: string, registries: readonly SecretRegistry[])
   let out = text;
   for (const r of registries) out = r.applyMaskInText(out);
   return out;
+}
+
+/** Make the stderr log mask with one server's registries: the same ones its
+ *  tool results are masked with, read per entry, so a session opened later is
+ *  covered. Returns the call that removes the mask, for the server's shutdown.
+ *  Each server adds its own, so two servers in one process both stay masked. */
+export function installLogMask(
+  secretsEnabled: boolean,
+  sessions: { list(): Iterable<{ secrets: SecretRegistry }> },
+): () => void {
+  return addLogMask((text) =>
+    maskLogText(text, activeSecretRegistries(secretsEnabled, sessions.list())),
+  );
 }
 
 /** The result the MCP SDK builds for a handler that throws: the error message

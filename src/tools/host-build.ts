@@ -52,16 +52,10 @@ import type { CredentialProvider, CredentialsConfig } from "../util/credentials.
 import type { StartOptions } from "../server.js";
 import type { ToolHost, ToolRegistration, ToolResponse } from "./host.js";
 import { buildObservation } from "./host-observation.js";
-import {
-  activeSecretRegistries,
-  maskedToolError,
-  maskLogText,
-  maskToolResponse,
-} from "./host-egress-mask.js";
+import { activeSecretRegistries, maskedToolError, maskToolResponse } from "./host-egress-mask.js";
 import { askHumanProfileRefusal } from "./ask-human-gate.js";
 import { byobAttachRefusal } from "./byob-attach-gate.js";
 import { docsUrl } from "../util/docs-links.js";
-import { setLogMask } from "../util/logging.js";
 
 /** The createServer locals the host's closures close over. Each field is the
  *  exact local `createServer` built before the host literal; the closures move
@@ -452,8 +446,6 @@ export function buildHost(deps: HostDeps): ToolHost {
   const registrations = new Map<string, ToolRegistration>();
   // The registries a tool result is masked with, read per call.
   const liveRegistries = () => activeSecretRegistries(caps.enabled.has("secrets"), registry.list());
-  // The stderr log masks with the same registries, read per entry.
-  setLogMask((text) => maskLogText(text, liveRegistries()));
 
   const register = <S extends z.ZodRawShape = Record<string, never>>(
     name: string,
