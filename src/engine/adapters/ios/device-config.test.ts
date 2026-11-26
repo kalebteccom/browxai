@@ -6,7 +6,6 @@ import {
   isAllowlisted,
   namedDeviceEntry,
   parseIdList,
-  refuseDeviceSession,
 } from "./device-config.js";
 
 describe("iosTargetFrom", () => {
@@ -78,19 +77,5 @@ describe("namedDeviceEntry", () => {
     expect(namedDeviceEntry({ BROWX_IOS_DEVICE_ALLOWLIST: "a" })).toBe("a");
     expect(namedDeviceEntry({ BROWX_IOS_DEVICE_ALLOWLIST: "a,b" })).toBe(undefined);
     expect(namedDeviceEntry({})).toBe(undefined);
-  });
-});
-
-describe("refuseDeviceSession", () => {
-  it("names the empty allowlist first", () => {
-    expect(() => refuseDeviceSession({ BROWX_IOS_TARGET: "device" })).toThrow(
-      /^ios-device-not-allowlisted:/,
-    );
-  });
-
-  it("refuses an allowlisted phone too, since this build cannot drive one", () => {
-    expect(() =>
-      refuseDeviceSession({ BROWX_IOS_TARGET: "device", BROWX_IOS_DEVICE_ALLOWLIST: "a" }),
-    ).toThrow(/^ios-device-not-supported:/);
   });
 });

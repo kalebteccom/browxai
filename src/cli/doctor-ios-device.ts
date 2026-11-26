@@ -22,7 +22,7 @@ import {
   parsePhysicalDevices,
   partitionByAllowlist,
   type DevicectlRunner,
-  type IosPhysicalDevice,
+  type DevicectlDevice,
   type WdaHttp,
 } from "../engine/index.js";
 
@@ -138,8 +138,8 @@ async function phoneRows(
   env: NodeJS.ProcessEnv,
   devicectl: DevicectlRunner,
   rows: Check[],
-): Promise<IosPhysicalDevice | undefined> {
-  let devices: IosPhysicalDevice[];
+): Promise<DevicectlDevice | undefined> {
+  let devices: DevicectlDevice[];
   try {
     devices = parsePhysicalDevices(await devicectl(devicectlListDevicesArgs()));
   } catch (err) {
@@ -164,7 +164,7 @@ async function phoneRows(
   return phone;
 }
 
-function stateRows(phone: IosPhysicalDevice): Check[] {
+function stateRows(phone: DevicectlDevice): Check[] {
   const trust =
     phone.pairingState === "paired"
       ? pass("trust: paired")
@@ -237,7 +237,7 @@ function wdaBase(env: NodeJS.ProcessEnv): string | Check {
   return raw.replace(/\/+$/, "");
 }
 
-function unreachableFix(phone: IosPhysicalDevice | undefined): string {
+function unreachableFix(phone: DevicectlDevice | undefined): string {
   const runner = "check that the runner is running on the phone and its screen is not locked";
   const localNetwork =
     "allow the program that started browxai in System Settings, Privacy & Security, Local Network";
@@ -249,7 +249,7 @@ function unreachableFix(phone: IosPhysicalDevice | undefined): string {
 async function wdaRows(
   env: NodeJS.ProcessEnv,
   http: WdaHttp,
-  phone: IosPhysicalDevice | undefined,
+  phone: DevicectlDevice | undefined,
 ): Promise<Check[]> {
   const base = wdaBase(env);
   if (typeof base !== "string") return [base];
@@ -264,7 +264,7 @@ async function wdaRows(
   return [pass("WebDriverAgent: ready"), buildRow(status.value, phone), await lockRow(http, base)];
 }
 
-function buildRow(value: unknown, phone: IosPhysicalDevice | undefined): Check {
+function buildRow(value: unknown, phone: DevicectlDevice | undefined): Check {
   const v = (value ?? {}) as { os?: { version?: unknown }; ios?: { simulatorVersion?: unknown } };
   if (v.ios?.simulatorVersion !== undefined) {
     return warn(

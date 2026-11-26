@@ -8,6 +8,7 @@ const cfg = (over: Partial<ResolvedConfig>): ResolvedConfig => ({ ...BUILTIN_DEF
 describe("clampPolicy", () => {
   it("confirmRequired keeps every ceiling hook and accepts added ones", () => {
     const c = ceil({});
+    // native_device_app is left out by the layer, which only makes a phone stricter.
     expect(clampPolicy(cfg({ confirmRequired: [] }), c).confirmRequired).toEqual([
       "navigate_off_allowlist",
       "byob_action",
@@ -17,6 +18,25 @@ describe("clampPolicy", () => {
       "byob_action",
       "file_upload",
     ]);
+  });
+
+  it("native_device_app can be removed by a saved layer and never added past the env", () => {
+    const withHook = ceil({});
+    expect(
+      clampPolicy(cfg({ confirmRequired: ["navigate_off_allowlist", "byob_action"] }), withHook)
+        .confirmRequired,
+    ).toEqual(["navigate_off_allowlist", "byob_action"]);
+    const without = ceil({ BROWX_CONFIRM_REQUIRED: "byob_action" });
+    expect(
+      clampPolicy(cfg({ confirmRequired: ["byob_action", "native_device_app"] }), without)
+        .confirmRequired,
+    ).toEqual(["byob_action"]);
+    expect(
+      policyWidening({ confirmRequired: ["byob_action", "native_device_app"] }, without),
+    ).toEqual({ confirmRequired: ["native_device_app"] });
+    expect(
+      policyWidening({ confirmRequired: ["navigate_off_allowlist", "byob_action"] }, withHook),
+    ).toEqual({});
   });
 
   it("allowedOrigins narrows a set env list; empty or disjoint falls back to it", () => {
@@ -124,7 +144,12 @@ describe("policyWidening", () => {
     expect(
       policyWidening(
         {
-          confirmRequired: ["navigate_off_allowlist", "byob_action", "file_upload"],
+          confirmRequired: [
+            "navigate_off_allowlist",
+            "byob_action",
+            "native_device_app",
+            "file_upload",
+          ],
           allowedOrigins: ["https://a.example"],
           blockedOrigins: ["https://t.example", "https://u.example"],
           disableWebSecurity: false,

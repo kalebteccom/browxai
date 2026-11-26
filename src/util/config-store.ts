@@ -113,7 +113,7 @@ export type ConfigScope = "defaults" | "env" | PersistentScope | "session";
 export const BUILTIN_DEFAULTS: ResolvedConfig = {
   testAttributes: ["data-testid", "data-test", "data-cy", "data-qa"],
   capabilities: ["read", "navigation", "action", "human"],
-  confirmRequired: ["navigate_off_allowlist", "byob_action"],
+  confirmRequired: ["navigate_off_allowlist", "byob_action", "native_device_app"],
   allowedOrigins: [],
   blockedOrigins: [],
   headless: false,

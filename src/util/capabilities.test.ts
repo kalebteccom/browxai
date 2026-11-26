@@ -95,10 +95,11 @@ describe("isToolEnabled", () => {
 });
 
 describe("resolveConfirmHooks (BROWX_CONFIRM_REQUIRED)", () => {
-  it("defaults to navigate_off_allowlist + byob_action", () => {
+  it("defaults to navigate_off_allowlist + byob_action + native_device_app", () => {
     const h = resolveConfirmHooks({});
     expect(h.has("navigate_off_allowlist")).toBe(true);
     expect(h.has("byob_action")).toBe(true);
+    expect(h.has("native_device_app")).toBe(true);
     expect(h.has("file_download")).toBe(false);
   });
 
@@ -148,6 +149,9 @@ describe("confirmHookWarnings (BROWX_CONFIRM_REQUIRED overrides)", () => {
 
   it("says nothing for the full default list, in either order", () => {
     expect(warningsFor("navigate_off_allowlist,byob_action")).toEqual([]);
+    // Leaving native_device_app out makes a phone stricter (refuse, never ask),
+    // so it earns no warning.
+    expect(warningsFor("navigate_off_allowlist,byob_action,native_device_app")).toEqual([]);
     expect(warningsFor("byob_action, navigate_off_allowlist")).toEqual([]);
   });
 

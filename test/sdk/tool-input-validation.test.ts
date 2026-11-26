@@ -60,6 +60,15 @@ describe("in-process SDK: arguments outside the schema are refused", () => {
     expect(r.error).toContain("scopes");
   });
 
+  it("refuses native_device_app: a person approves each app on a phone", async () => {
+    const r = await client.callTool<Refused>("approve_actions", {
+      scopes: ["native_device_app"],
+      ttlSeconds: 60,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/^approve_actions: the arguments do not match/);
+  });
+
   it("runs a call inside the schema", async () => {
     const r = await client.callTool<{ ok: boolean }>("approve_actions", {
       scopes: ["byob_action"],

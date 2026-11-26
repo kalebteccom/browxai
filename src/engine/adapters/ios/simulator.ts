@@ -19,6 +19,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NativeAppInfo, NativeDeviceInfo } from "../../native-types.js";
+import type { IosDeviceHost } from "./device-host.js";
 import {
   bootArgs,
   bootStatusArgs,
@@ -57,7 +58,7 @@ export async function resolveSimulator(
  *  idempotent without a state read that would race the boot itself. */
 const ALREADY_BOOTED = /current state: Booted/i;
 
-export class IosSimulator {
+export class IosSimulator implements IosDeviceHost {
   constructor(
     readonly udid: string,
     private readonly run: SimctlRunner = defaultSimctlRunner,

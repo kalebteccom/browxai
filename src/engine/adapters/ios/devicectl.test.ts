@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { listDevicesArgs, parsePhysicalDevices, versionArgs, withJsonOutput } from "./devicectl.js";
+import {
+  installAppArgs,
+  listAppsArgs,
+  listDevicesArgs,
+  listProcessesArgs,
+  parseInstalledAppIds,
+  parsePhysicalDevices,
+  parseProcesses,
+  timeoutFor,
+  versionArgs,
+  withJsonOutput,
+} from "./devicectl.js";
 import {
   DEVICECTL_LIST,
   DEVICE_NAMES,
@@ -107,5 +118,52 @@ describe("parsePhysicalDevices", () => {
     ]) {
       expect(parsePhysicalDevices(bad)).toEqual([]);
     }
+  });
+});
+
+describe("devicectl device commands", () => {
+  it("passes the identifier and the bundle path as their own argv elements", () => {
+    expect(installAppArgs(PHONE_ID, "/w/My App.app")).toEqual([
+      "devicectl",
+      "device",
+      "install",
+      "app",
+      "--device",
+      PHONE_ID,
+      "/w/My App.app",
+    ]);
+    expect(listAppsArgs(PHONE_ID).slice(-2)).toEqual(["--device", PHONE_ID]);
+    expect(listProcessesArgs(PHONE_ID)).toContain("processes");
+  });
+
+  it("parses installed bundle ids and drops rows without one", () => {
+    const json = { result: { apps: [{ bundleIdentifier: "a.b" }, { name: "x" }, null] } };
+    expect(parseInstalledAppIds(json)).toEqual(["a.b"]);
+    expect(parseInstalledAppIds({})).toEqual([]);
+  });
+
+  it("parses processes, keeping a bundle id only when one is reported", () => {
+    const json = {
+      result: {
+        runningProcesses: [
+          { processIdentifier: 7, executable: "file:///x/App.app/App" },
+          { processIdentifier: 8, bundleIdentifier: "a.b" },
+          { processIdentifier: "9" },
+        ],
+      },
+    };
+    expect(parseProcesses(json)).toEqual([
+      { pid: 7, executable: "file:///x/App.app/App" },
+      { pid: 8, bundleId: "a.b" },
+    ]);
+    expect(parseProcesses(null)).toEqual([]);
+  });
+});
+
+describe("timeoutFor", () => {
+  it("gives an install ten minutes and every other call one", () => {
+    expect(timeoutFor(installAppArgs(PHONE_ID, "/w/A.app"))).toBe(600_000);
+    expect(timeoutFor(listDevicesArgs())).toBe(60_000);
+    expect(timeoutFor(listAppsArgs(PHONE_ID))).toBe(60_000);
   });
 });

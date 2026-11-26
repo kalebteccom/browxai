@@ -31,18 +31,56 @@ export type Http = (
 /** The default `BROWX_IOS_WDA_URL`. WebDriverAgent's own default listen port. */
 export const DEFAULT_WDA_URL = "http://127.0.0.1:8100";
 
+/** Which kind of iOS device the WebDriverAgent runs against. Picks the fix text. */
+export type WdaTarget = "simulator" | "device";
+
+const SIMULATOR_FIX =
+  "The ios-app engine reads the XCUITest element hierarchy through WebDriverAgent, which " +
+  "browxai does not bundle, build or install. It is operator-supplied, like Xcode itself. Build " +
+  "and run it against your booted simulator (`xcodebuild -project WebDriverAgent.xcodeproj " +
+  "-scheme WebDriverAgentRunner -destination 'id=<udid>' test`), then point BROWX_IOS_WDA_URL at " +
+  "its port. Simulator and application lifecycle (boot / install / launch / terminate / " +
+  "screenshot) run through `xcrun simctl` and need no WebDriverAgent.";
+
+/** The phone variant (RFC 0014 §3, §8). It names the causes a phone adds and does
+ *  not print the simulator's build line. */
+const DEVICE_FIX =
+  "On a phone, check in this order: the phone is unlocked and its screen is on; the " +
+  "WebDriverAgent runner is still running on it (an expired provisioning profile stops it from " +
+  "starting); the program that started browxai is allowed in System Settings, Privacy & " +
+  "Security, Local Network on this Mac; and BROWX_IOS_WDA_URL is the phone's current address on " +
+  "the local network. browxai never starts the runner.";
+
+const ADDRESS = /\[[0-9a-f:.]+\](:\d+)?|\b\d{1,3}(\.\d{1,3}){3}(:\d+)?\b/gi;
+
+/** A phone's address is personal data here (RFC 0014 §10), so a phone's error
+ *  names the variable and the route, and any address in the transport's own
+ *  message is masked. A simulator's loopback address is shown as it is. */
+function phoneSafe(url: string, detail: string): { at: string; detail: string } {
+  let at = "BROWX_IOS_WDA_URL";
+  let host = "";
+  try {
+    const u = new URL(url);
+    host = u.host;
+    if (u.pathname !== "/") at += ` ${u.pathname}`;
+  } catch {
+    /* an unparsable URL is shown as the variable alone */
+  }
+  const masked = (host ? detail.split(host).join("<phone address>") : detail).replace(
+    ADDRESS,
+    "<address>",
+  );
+  return { at, detail: masked };
+}
+
 /** Nothing is listening where WebDriverAgent should be. Structured — the fix is
  *  in the error, because this is the first-run failure on every fresh machine. */
 export class WdaUnreachableError extends Error {
-  constructor(url: string, detail: string) {
+  constructor(url: string, detail: string, target: WdaTarget = "simulator") {
+    const shown = target === "device" ? phoneSafe(url, detail) : { at: url, detail };
     super(
-      `wda-unreachable: no WebDriverAgent answered at ${url} (${detail}). The ios-app engine reads ` +
-        "the XCUITest element hierarchy through WebDriverAgent, which browxai does not bundle, " +
-        "build or install. It is operator-supplied, like Xcode itself. Build and run it against " +
-        "your booted simulator (`xcodebuild -project WebDriverAgent.xcodeproj -scheme " +
-        "WebDriverAgentRunner -destination 'id=<udid>' test`), then point BROWX_IOS_WDA_URL at its " +
-        "port. Simulator and application lifecycle (boot / install / launch / terminate / " +
-        "screenshot) run through `xcrun simctl` and need no WebDriverAgent.",
+      `wda-unreachable: no WebDriverAgent answered at ${shown.at} (${shown.detail}). ` +
+        (target === "device" ? DEVICE_FIX : SIMULATOR_FIX),
     );
     this.name = "WdaUnreachableError";
   }
@@ -86,7 +124,7 @@ function unwrap(text: string, status: number): unknown {
 /** The default `Http` — `fetch` with a bounded timeout. A transport-level failure
  *  becomes `WdaUnreachableError`; an HTTP-level refusal is handed on so `unwrap`
  *  can read WebDriverAgent's own error code out of the body. */
-export function defaultHttp(timeoutMs = 30_000): Http {
+export function defaultHttp(timeoutMs = 30_000, target: WdaTarget = "simulator"): Http {
   return async (url, init) => {
     let res: Response;
     try {
@@ -98,7 +136,7 @@ export function defaultHttp(timeoutMs = 30_000): Http {
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (err) {
-      throw new WdaUnreachableError(url, err instanceof Error ? err.message : String(err));
+      throw new WdaUnreachableError(url, err instanceof Error ? err.message : String(err), target);
     }
     return { ok: res.ok, status: res.status, text: await res.text() };
   };
@@ -230,6 +268,25 @@ export class WdaClient {
       value: "XCUIElementTypeApplication",
     }).catch(() => null)) as Record<string, string> | null;
     return value ? (Object.values(value)[0] ?? null) : null;
+  }
+
+  /** Bring an installed app to the front, launching it when it is not running. */
+  async launchApp(bundleId: string): Promise<void> {
+    await this.post(`${this.scoped()}/wda/apps/launch`, { bundleId });
+  }
+
+  async terminateApp(bundleId: string): Promise<void> {
+    await this.post(`${this.scoped()}/wda/apps/terminate`, { bundleId });
+  }
+
+  /** Open a URL the way another app would, so the running app keeps its state. */
+  async openUrl(url: string): Promise<void> {
+    await this.post(`${this.scoped()}/url`, { url });
+  }
+
+  /** Whether the screen is locked. Needs no session. */
+  async locked(): Promise<boolean> {
+    return (await this.get("/wda/locked")) === true;
   }
 
   /** A hardware or software button: `home`, `volumeUp`, `volumeDown`. */

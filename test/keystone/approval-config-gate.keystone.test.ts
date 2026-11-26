@@ -228,7 +228,14 @@ describe("other policy keys cannot be loosened through config", () => {
       // Tightening still works.
       const ok = await call<{ ok: boolean }>("set_config", {
         scope: "user",
-        patch: { confirmRequired: ["navigate_off_allowlist", "byob_action", "file_upload"] },
+        patch: {
+          confirmRequired: [
+            "navigate_off_allowlist",
+            "byob_action",
+            "native_device_app",
+            "file_upload",
+          ],
+        },
       });
       expect(ok.ok).toBe(true);
     },
@@ -305,7 +312,14 @@ describe("operator files cannot be overwritten by write tools", () => {
       const call = caller(await start());
       const saved = await call<{ ok: boolean }>("set_config", {
         scope: "user",
-        patch: { confirmRequired: ["navigate_off_allowlist", "byob_action", "file_upload"] },
+        patch: {
+          confirmRequired: [
+            "navigate_off_allowlist",
+            "byob_action",
+            "native_device_app",
+            "file_upload",
+          ],
+        },
       });
       expect(saved.ok).toBe(true);
       const before = readFileSync(join(workspace, "config.json"), "utf8");

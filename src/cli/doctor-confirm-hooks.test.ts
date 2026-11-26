@@ -5,7 +5,11 @@ describe("confirmHookRows", () => {
   it("reports the default hooks in one row with no warning", () => {
     const rows = confirmHookRows({});
     expect(rows).toEqual([
-      { name: "confirm-hooks", ok: true, detail: "[navigate_off_allowlist, byob_action]" },
+      {
+        name: "confirm-hooks",
+        ok: true,
+        detail: "[navigate_off_allowlist, byob_action, native_device_app]",
+      },
     ]);
   });
 

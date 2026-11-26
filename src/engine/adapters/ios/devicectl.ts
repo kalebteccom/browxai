@@ -38,7 +38,7 @@ export class DevicectlNotFoundError extends Error {
 }
 
 /** One physical iPhone or iPad as devicectl reports it, with the device name dropped. */
-export interface IosPhysicalDevice {
+export interface DevicectlDevice {
   /** The CoreDevice identifier. The id the engine passes to `--device`. */
   identifier: string;
   /** The hardware UDID. Matched against the allowlist and never rendered. */
@@ -70,6 +70,22 @@ export function versionArgs(): readonly string[] {
   return ["devicectl", "--version"];
 }
 
+/** `devicectl device install app`. The bundle path is its own argv element, and
+ *  the caller passes an absolute path, so it never reads as a flag. */
+export function installAppArgs(identifier: string, appPath: string): readonly string[] {
+  return ["devicectl", "device", "install", "app", "--device", identifier, appPath];
+}
+
+/** `devicectl device info apps`, the installed apps on one phone. */
+export function listAppsArgs(identifier: string): readonly string[] {
+  return ["devicectl", "device", "info", "apps", "--device", identifier];
+}
+
+/** `devicectl device info processes`, the running processes on one phone. */
+export function listProcessesArgs(identifier: string): readonly string[] {
+  return ["devicectl", "device", "info", "processes", "--device", identifier];
+}
+
 /** The argv with devicectl's JSON output flag. The path is its own element. */
 export function withJsonOutput(args: readonly string[], file: string): readonly string[] {
   return [...args, "--json-output", file];
@@ -99,7 +115,7 @@ function isIosPhone(hw: Obj): boolean {
   return platform === "ios" && type !== undefined && IOS_DEVICE_TYPES.has(type);
 }
 
-function parseOne(entry: unknown): IosPhysicalDevice | undefined {
+function parseOne(entry: unknown): DevicectlDevice | undefined {
   const row = obj(entry);
   const identifier = str(row.identifier);
   const hw = obj(row.hardwareProperties);
@@ -127,17 +143,62 @@ function parseOne(entry: unknown): IosPhysicalDevice | undefined {
 
 /** Parse the JSON `devicectl list devices --json-output` writes into iPhone and
  *  iPad rows. A shape it does not recognise yields no rows. */
-export function parsePhysicalDevices(json: unknown): IosPhysicalDevice[] {
+export function parsePhysicalDevices(json: unknown): DevicectlDevice[] {
   const devices = obj(obj(json).result).devices;
   if (!Array.isArray(devices)) return [];
-  return devices.map(parseOne).filter((d): d is IosPhysicalDevice => d !== undefined);
+  return devices.map(parseOne).filter((d): d is DevicectlDevice => d !== undefined);
+}
+
+/** The bundle ids `devicectl device info apps` reports. The shape is from Xcode
+ *  15 and 16 (`result.apps[].bundleIdentifier`) and unverified on 26.5. */
+export function parseInstalledAppIds(json: unknown): string[] {
+  const apps = obj(obj(json).result).apps;
+  if (!Array.isArray(apps)) return [];
+  return apps.map((a) => str(obj(a).bundleIdentifier)).filter((id): id is string => !!id);
+}
+
+/** One running process on a phone. */
+export interface DeviceProcess {
+  pid: number;
+  /** Present only when devicectl reports one per process. */
+  bundleId?: string;
+  /** The executable's path or file URL, when devicectl reports it. */
+  executable?: string;
+}
+
+/** The processes `devicectl device info processes` reports. The shape is from
+ *  Xcode 15 and 16 (`result.runningProcesses[].processIdentifier`) and unverified
+ *  on 26.5. A row with no numeric pid is dropped. */
+export function parseProcesses(json: unknown): DeviceProcess[] {
+  const rows = obj(obj(json).result).runningProcesses;
+  if (!Array.isArray(rows)) return [];
+  const out: DeviceProcess[] = [];
+  for (const row of rows) {
+    const r = obj(row);
+    if (typeof r.processIdentifier !== "number") continue;
+    const bundleId = str(r.bundleIdentifier);
+    const executable = str(r.executable);
+    out.push({
+      pid: r.processIdentifier,
+      ...(bundleId ? { bundleId } : {}),
+      ...(executable ? { executable } : {}),
+    });
+  }
+  return out;
 }
 
 // ─── IO seam: the default runner ──────────────────────────────────────────────
 
+/** An install copies the whole bundle to the phone, over Wi-Fi on a network
+ *  phone, so it gets ten minutes. Every other call gets one. */
+export function timeoutFor(args: readonly string[]): number {
+  return args[1] === "device" && args[2] === "install" ? 600_000 : 60_000;
+}
+
 function execXcrun(args: readonly string[]): Promise<void> {
+  const timeout = timeoutFor(args);
   return new Promise<void>((resolve, reject) => {
-    execFile("xcrun", [...args], { timeout: 60_000, maxBuffer: 4 * 1024 * 1024 }, (err, _o, e) => {
+    execFile("xcrun", [...args], { timeout, maxBuffer: 4 * 1024 * 1024 }, (err, _o, e) => {
       if (!err) return resolve();
       if ((err as NodeJS.ErrnoException).code === "ENOENT")
         return reject(new DevicectlNotFoundError());

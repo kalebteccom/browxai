@@ -272,3 +272,42 @@ describe("source JSON → NativeNode", () => {
     expect(empty).toMatchObject({ type: "Other", enabled: false, visible: false, children: [] });
   });
 });
+
+describe("WdaClient phone routes", () => {
+  it("posts launch, terminate and url under the session, and reads /wda/locked without one", async () => {
+    const { http, calls } = fakeHttp({ "/session": { sessionId: "S1" }, "/wda/locked": true });
+    const c = new WdaClient(DEFAULT_WDA_URL, http);
+    expect(await c.locked()).toBe(true);
+    await c.newSession("com.acme.app");
+    await c.launchApp("com.acme.app");
+    await c.terminateApp("com.acme.app");
+    await c.openUrl("acme://x");
+    expect(calls.map((x) => x.url.replace(DEFAULT_WDA_URL, ""))).toEqual([
+      "/wda/locked",
+      "/session",
+      "/session/S1/wda/apps/launch",
+      "/session/S1/wda/apps/terminate",
+      "/session/S1/url",
+    ]);
+    expect(calls[4]!.body).toBe(JSON.stringify({ url: "acme://x" }));
+  });
+
+  it("the phone variant of wda-unreachable names the phone's causes, not the simulator build line", () => {
+    const phone = new WdaUnreachableError("http://192.0.2.1:8100", "timeout", "device").message;
+    expect(phone).toMatch(/^wda-unreachable:/);
+    expect(phone).toContain("Local Network");
+    expect(phone).toContain("unlocked");
+    expect(phone).toContain("provisioning profile");
+    expect(phone).not.toContain("xcodebuild");
+    expect(new WdaUnreachableError("u", "d").message).toContain("xcodebuild");
+    const masked = new WdaUnreachableError(
+      "http://iphone.example.local:8100/session/S1/source",
+      "connect ECONNREFUSED 192.0.2.10:8100 via iphone.example.local:8100 and [fe80::1]:8100",
+      "device",
+    ).message;
+    expect(masked).toContain("BROWX_IOS_WDA_URL /session/S1/source");
+    for (const leak of ["192.0.2.10", "iphone.example.local", "fe80::1"]) {
+      expect(masked).not.toContain(leak);
+    }
+  });
+});

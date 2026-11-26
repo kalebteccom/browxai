@@ -139,9 +139,11 @@ boundaries are.
 ## Confirmation hooks
 
 Sensitive actions can route through a human confirmation before they dispatch.
-The `confirmRequired` set selects which policy hooks ask first. Two hooks fire:
-`navigate_off_allowlist` and `byob_action`, and both are on by default. The
-names `file_download` and `file_upload` are accepted but reserved: no tool
+The `confirmRequired` set selects which policy hooks ask first. Three hooks
+fire, all on by default: `navigate_off_allowlist`, `byob_action`, and
+`native_device_app`, which acts only when an `ios-app` session drives a real
+iPhone and asks before each launch or install of an app off the phone's app
+list. The names `file_download` and `file_upload` are accepted but reserved: no tool
 consults them yet. A hook that fires routes through
 the `await_human` mechanism, which is human-paced and hard-capped so it can
 never wait forever. The human answers from DevTools in the console context the

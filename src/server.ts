@@ -3,7 +3,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { type EngineKind } from "./engine/index.js";
+import { type EngineKind, warnIosDeviceTarget } from "./engine/index.js";
 import { engineIsAttachOnly } from "./engine/registry.js";
 import { type SessionMode } from "./session/registry.js";
 import { resolveCredentialsProvider } from "./util/credentials.js";
@@ -11,9 +11,8 @@ import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
 import {
   DiagnosticsRecorder,
-  ensureDiagnosticsRoot,
+  prepareDiagnosticsRoot,
   resolveRetentionDays,
-  sweepRetention,
 } from "./util/diagnostics.js";
 import { ConfigStore, resolvedToEnv } from "./util/config-store.js";
 import {
@@ -211,21 +210,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           })
         : message;
     log.warn(text);
+    if (capability === "native-device") warnIosDeviceTarget();
   }
-  if (diagnosticsEnabled) {
-    // Create the diagnostics root + run the retention sweep up-front so a
-    // long-idle workspace doesn't keep months of stale JSONL.
-    try {
-      ensureDiagnosticsRoot(workspace.root);
-    } catch {
-      /* best-effort */
-    }
-    try {
-      sweepRetention(workspace.root, diagRetentionDays);
-    } catch {
-      /* best-effort */
-    }
-  }
+  if (diagnosticsEnabled) prepareDiagnosticsRoot(workspace.root, diagRetentionDays);
   const diagnostics = new DiagnosticsRecorder({
     enabled: diagnosticsEnabled,
     workspaceRoot: workspace.root,

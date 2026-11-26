@@ -91,18 +91,18 @@ Per harness:
 
 ### Env vars and CLI args
 
-| Setting             | How                                                   | Default                              | State                                               |
-| ------------------- | ----------------------------------------------------- | ------------------------------------ | --------------------------------------------------- |
-| Workspace root      | `BROWX_WORKSPACE=<path>`                              | `~/.browxai`                         | Exists, `src/util/workspace.ts`                     |
-| Capabilities        | `BROWX_CAPABILITIES=read,navigation,action,human,...` | the four defaults                    | Exists, `src/util/capabilities.ts`                  |
-| Headless            | `BROWX_HEADLESS=1`                                    | headed                               | Exists, `src/cli.ts`                                |
-| Engine              | `--engine <kind>` or `BROWX_ENGINE`                   | `chromium`                           | Exists, `src/engine/select.ts`                      |
-| Origin policy       | `BROWX_ALLOWED_ORIGINS`, `BROWX_BLOCKED_ORIGINS`      | unset                                | Exists, `src/policy/origin.ts`                      |
-| Confirm hooks       | `BROWX_CONFIRM_REQUIRED`                              | `navigate_off_allowlist,byob_action` | Exists, `src/policy/confirm.ts`                     |
-| Credentials backend | `BROWX_CREDENTIALS_PROVIDER`                          | `oathtool`                           | Exists, `src/util/credentials.ts`                   |
-| Default profile dir | `BROWX_DEFAULT_PROFILE=<absolute dir>`                | `<ws>/profile`                       | Exists, `src/util/workspace.ts`                     |
-| Read-only config    | `BROWX_CONFIG_READONLY=1`                             | unset                                | Exists, `src/util/config-store.ts`                  |
-| Operator channel    | `BROWX_OPERATOR_SOCKET`, `BROWX_OPERATOR_TOKEN`       | unset                                | Exists, `src/helper/operator-channel.ts`, section 3 |
+| Setting             | How                                                   | Default                                                | State                                               |
+| ------------------- | ----------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------- |
+| Workspace root      | `BROWX_WORKSPACE=<path>`                              | `~/.browxai`                                           | Exists, `src/util/workspace.ts`                     |
+| Capabilities        | `BROWX_CAPABILITIES=read,navigation,action,human,...` | the four defaults                                      | Exists, `src/util/capabilities.ts`                  |
+| Headless            | `BROWX_HEADLESS=1`                                    | headed                                                 | Exists, `src/cli.ts`                                |
+| Engine              | `--engine <kind>` or `BROWX_ENGINE`                   | `chromium`                                             | Exists, `src/engine/select.ts`                      |
+| Origin policy       | `BROWX_ALLOWED_ORIGINS`, `BROWX_BLOCKED_ORIGINS`      | unset                                                  | Exists, `src/policy/origin.ts`                      |
+| Confirm hooks       | `BROWX_CONFIRM_REQUIRED`                              | `navigate_off_allowlist,byob_action,native_device_app` | Exists, `src/policy/confirm.ts`                     |
+| Credentials backend | `BROWX_CREDENTIALS_PROVIDER`                          | `oathtool`                                             | Exists, `src/util/credentials.ts`                   |
+| Default profile dir | `BROWX_DEFAULT_PROFILE=<absolute dir>`                | `<ws>/profile`                                         | Exists, `src/util/workspace.ts`                     |
+| Read-only config    | `BROWX_CONFIG_READONLY=1`                             | unset                                                  | Exists, `src/util/config-store.ts`                  |
+| Operator channel    | `BROWX_OPERATOR_SOCKET`, `BROWX_OPERATOR_TOKEN`       | unset                                                  | Exists, `src/helper/operator-channel.ts`, section 3 |
 
 Leave `BROWX_ATTACH_CDP` unset. It switches sessions to attach mode, which
 drives the operator's own Chrome, needs `byob-attach`, and shares one cookie

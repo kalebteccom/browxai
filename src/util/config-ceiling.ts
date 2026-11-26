@@ -5,7 +5,10 @@
 // layer can tighten each key and never loosen it:
 //
 //   capabilities        subset of the ceiling
-//   confirmRequired     superset of the ceiling (hooks can be added, not removed)
+//   confirmRequired     superset of the ceiling (hooks can be added, not removed),
+//                       except a hook whose absence is stricter
+//                       (`STRICTER_WHEN_ABSENT`): that one can be removed and
+//                       never added past the ceiling
 //   allowedOrigins      subset of a non-empty ceiling; an empty or disjoint list
 //                       falls back to the ceiling (empty would mean "anywhere")
 //   blockedOrigins      superset of the ceiling
@@ -19,7 +22,21 @@
 // narrow an env `https://*.example.com`; list the narrower origin in the env.
 
 import { sandboxBelow, type ChromiumSandboxMode } from "./chromium-sandbox.js";
+
+const union = (a: readonly string[], b: readonly string[]): string[] => [...new Set([...a, ...b])];
 import type { ConfigLayer, ResolvedConfig } from "./config-store.js";
+import { STRICTER_WHEN_ABSENT } from "./capabilities.js";
+
+const stricterWhenAbsent = (hook: string): boolean =>
+  (STRICTER_WHEN_ABSENT as readonly string[]).includes(hook);
+
+/** Hooks are added freely and never removed, except a stricter-when-absent
+ *  hook, which survives only when both the ceiling and the config hold it. */
+function clampHooks(ceiling: readonly string[], wanted: readonly string[]): string[] {
+  return union(ceiling, wanted).filter(
+    (h) => !stricterWhenAbsent(h) || (ceiling.includes(h) && wanted.includes(h)),
+  );
+}
 
 export interface PolicyCeiling {
   capabilities: readonly string[];
@@ -44,8 +61,6 @@ export function policyCeiling(env: ConfigLayer, defaults: ResolvedConfig): Polic
   };
 }
 
-const union = (a: readonly string[], b: readonly string[]): string[] => [...new Set([...a, ...b])];
-
 /** Bound a merged config by the ceiling. */
 export function clampPolicy(c: ResolvedConfig, ceil: PolicyCeiling): ResolvedConfig {
   const capCeiling = new Set(ceil.capabilities);
@@ -59,7 +74,7 @@ export function clampPolicy(c: ResolvedConfig, ceil: PolicyCeiling): ResolvedCon
   const out: ResolvedConfig = {
     ...c,
     capabilities: c.capabilities.filter((x) => capCeiling.has(x)),
-    confirmRequired: union(ceil.confirmRequired, c.confirmRequired),
+    confirmRequired: clampHooks(ceil.confirmRequired, c.confirmRequired),
     allowedOrigins,
     blockedOrigins: union(ceil.blockedOrigins, c.blockedOrigins),
     plugins: c.plugins.filter((p) => plugins.has(p)),
@@ -80,8 +95,11 @@ export function policyWidening(patch: ConfigLayer, ceil: PolicyCeiling): Record<
   const missing = (need: readonly string[], have: readonly string[]) =>
     need.filter((x) => !have.includes(x));
   if (patch.confirmRequired) {
-    const removed = missing(ceil.confirmRequired, patch.confirmRequired);
-    if (removed.length) out.confirmRequired = removed;
+    const removed = missing(ceil.confirmRequired, patch.confirmRequired).filter(
+      (h) => !stricterWhenAbsent(h),
+    );
+    const added = missing(patch.confirmRequired, ceil.confirmRequired).filter(stricterWhenAbsent);
+    if (removed.length || added.length) out.confirmRequired = [...removed, ...added];
   }
   if (patch.allowedOrigins && ceil.allowedOrigins.length > 0) {
     if (patch.allowedOrigins.length === 0) out.allowedOrigins = ["(empty list: any origin)"];

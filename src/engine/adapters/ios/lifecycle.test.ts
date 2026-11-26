@@ -13,7 +13,10 @@ import { NativeUnsupportedError } from "../../native-types.js";
 import type { NativeAppInfo, NativeDriver } from "../../native-types.js";
 import type { IosSimulator } from "./simulator.js";
 
-function rig(): { lifecycle: IosLifecycle; calls: string[] } {
+function rig(target: "simulator" | "device" = "simulator"): {
+  lifecycle: IosLifecycle;
+  calls: string[];
+} {
   const calls: string[] = [];
   const sim = {
     listApps: async (): Promise<NativeAppInfo[]> => [
@@ -34,7 +37,7 @@ function rig(): { lifecycle: IosLifecycle; calls: string[] } {
   const driver = {
     foregroundApp: async (): Promise<NativeAppInfo> => ({ bundleId: "com.acme.checkout" }),
   } as unknown as NativeDriver;
-  return { lifecycle: new IosLifecycle(sim, driver), calls };
+  return { lifecycle: new IosLifecycle(sim, driver, target), calls };
 }
 
 describe("IosLifecycle — the app_* family on ios-app", () => {
@@ -87,5 +90,16 @@ describe("IosLifecycle — the app_* family on ios-app", () => {
     expect((err as NativeUnsupportedError).verb).toBe("app_reset");
     expect((err as Error).message).toContain("simctl erase");
     expect((err as Error).message).toContain("every app");
+  });
+
+  it("REFUSES both on a phone with a phone sentence, never a simctl one", async () => {
+    for (const verb of ["uninstall", "reset"] as const) {
+      const err = await rig("device")
+        .lifecycle[verb]("com.acme.checkout")
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(NativeUnsupportedError);
+      expect((err as Error).message).toContain("phone");
+      expect((err as Error).message).not.toContain("simctl");
+    }
   });
 });

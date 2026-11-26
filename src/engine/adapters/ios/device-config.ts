@@ -3,8 +3,8 @@
 // operator allowed. All of it is read from the server's environment. None of it is
 // a config-store key, so `set_config` and a saved config layer cannot widen it.
 //
-// A device session refuses in this build. `refuseDeviceSession` is the one place
-// that says so, and it runs before anything calls simctl or devicectl.
+// `device-settings.ts` turns these into the checked settings a device session
+// opens with.
 
 /** Which kind of iOS device the process drives. One per server process. */
 export type IosTarget = "simulator" | "device";
@@ -67,18 +67,10 @@ export function namedDeviceEntry(env: NodeJS.ProcessEnv): string | undefined {
   return allowlist.length === 1 ? allowlist[0] : undefined;
 }
 
-/** Throw the refusal a device session gets in this build. Always throws. */
-export function refuseDeviceSession(env: NodeJS.ProcessEnv): never {
-  if (deviceAllowlistFrom(env).length === 0) {
-    throw new Error(
-      "ios-device-not-allowlisted: BROWX_IOS_TARGET is `device` and BROWX_IOS_DEVICE_ALLOWLIST " +
-        "is empty. List the phone's CoreDevice identifier or hardware UDID there. A device " +
-        "name never matches.",
-    );
-  }
-  throw new Error(
-    "ios-device-not-supported: BROWX_IOS_TARGET is `device`. This build lists an allowlisted " +
-      "phone in `device_list` and checks it in `browxai doctor`, and cannot open a session on " +
-      "it yet. Unset BROWX_IOS_TARGET to drive a simulator.",
+/** `BROWX_IOS_DEVICE_URL_SCHEMES`: the deep link schemes `navigate` may open on a
+ *  phone, lowercased, without the colon. Unset means none (RFC 0014 G7). */
+export function deviceUrlSchemesFrom(env: NodeJS.ProcessEnv): string[] {
+  return parseIdList(env.BROWX_IOS_DEVICE_URL_SCHEMES?.toLowerCase()).map((s) =>
+    s.replace(/:+$/, ""),
   );
 }

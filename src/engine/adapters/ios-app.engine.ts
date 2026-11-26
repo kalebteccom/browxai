@@ -3,7 +3,7 @@
 // capability row, the launch function, the substrate bundle and the post-wire
 // step, in a module nothing else edits.
 //
-// WHAT A LAUNCH DOES, in order: resolve a simulator, boot it and wait for the
+// WHAT A LAUNCH DOES on the simulator target, in order: resolve a simulator, boot it and wait for the
 // boot to finish, install the `.app` when one was named, launch the app, then
 // attach an XCUITest session through WebDriverAgent. The first four are `simctl`
 // and need nothing beyond Xcode; the fifth needs a WebDriverAgent the operator
@@ -16,6 +16,10 @@
 // question the session cannot answer, which is the failure mode that whole gate
 // exists to catch. So the failure lands at session creation, once, naming the
 // fix, rather than as a degraded read per tool call.
+//
+// With BROWX_IOS_TARGET=device the launch is `launchIosDeviceSession` instead
+// (RFC 0014): an allowlisted phone, reached through devicectl and a WebDriverAgent
+// the operator runs on it, with the phone's guard rails.
 //
 // The device and the app are read from the environment, mirroring the android
 // engine's `BROWX_ANDROID_APP_SERIAL`. RFC 0008 §2 proposes them as an
@@ -33,7 +37,10 @@ import { IosSimulator, resolveSimulator } from "./ios/simulator.js";
 import { IosXcuiDriver } from "./ios/xcui-driver.js";
 import { IosLifecycle } from "./ios/lifecycle.js";
 import { DEFAULT_WDA_URL, WdaClient } from "./ios/wda-client.js";
-import { iosTargetFrom, refuseDeviceSession } from "./ios/device-config.js";
+import { iosTargetFrom } from "./ios/device-config.js";
+import { launchIosDeviceSession } from "./ios/device-session.js";
+import type { DevicectlRunner } from "./ios/devicectl.js";
+import type { PlutilRunner } from "./ios/bundle-id.js";
 
 /** The environment the operator configures an ios-app session with. */
 export interface IosLaunchEnv {
@@ -62,14 +69,26 @@ export function iosEnvFrom(env: NodeJS.ProcessEnv): IosLaunchEnv {
 export interface IosAdapterDeps {
   env?: NodeJS.ProcessEnv;
   makeClient?: (baseUrl: string) => WdaClient;
+  /** The session a phone lease is held for. */
+  sessionId?: string;
+  devicectl?: DevicectlRunner;
+  plutil?: PlutilRunner;
 }
 
 /** Boot, install, launch, attach — and hand back the native session handle. */
 export async function launchIosSession(deps: IosAdapterDeps = {}): Promise<IosNativeHandle> {
   const rawEnv = deps.env ?? process.env;
   // The target decides everything after it, so it is read first. A device target
-  // refuses here, before simctl or devicectl runs (RFC 0014 §1).
-  if (iosTargetFrom(rawEnv) === "device") refuseDeviceSession(rawEnv);
+  // never reaches simctl (RFC 0014 §1).
+  if (iosTargetFrom(rawEnv) === "device") {
+    return launchIosDeviceSession({
+      env: rawEnv,
+      sessionId: deps.sessionId ?? "default",
+      ...(deps.makeClient ? { makeClient: deps.makeClient } : {}),
+      ...(deps.devicectl ? { devicectl: deps.devicectl } : {}),
+      ...(deps.plutil ? { plutil: deps.plutil } : {}),
+    });
+  }
   const env = iosEnvFrom(rawEnv);
   if (!env.appId) {
     throw new Error(
@@ -133,7 +152,9 @@ async function makeIosAdapter(opts: SessionOptions): Promise<BrowserSession> {
         "user is already driving by hand. Open a managed session.",
     );
   }
-  return buildIosSession(await launchIosSession());
+  return buildIosSession(
+    await launchIosSession(opts.sessionId !== undefined ? { sessionId: opts.sessionId } : {}),
+  );
 }
 
 registerEngine({
