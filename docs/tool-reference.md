@@ -3755,7 +3755,7 @@ Both share the contract that matters: **the tier-1 selector is the accessibility
 
 ### The `ios-app` engine (iOS Simulator)
 
-A session on a real iPhone is not built yet. With `BROWX_IOS_TARGET=device` the server lists an allowlisted phone in `device_list` and checks it in `browxai doctor`, and `open_session` refuses: `ios-device-not-allowlisted` when `BROWX_IOS_DEVICE_ALLOWLIST` is empty, `ios-device-not-supported` otherwise. Nothing on that path runs `simctl`. The design is [RFC 0014](./rfcs/0014-ios-real-device-engine.md).
+A session on a real iPhone is not built yet. With `BROWX_IOS_TARGET=device` the server lists an allowlisted phone in `device_list` and checks it in `browxai doctor`, and `open_session` refuses: `ios-device-not-allowlisted` when `BROWX_IOS_DEVICE_ALLOWLIST` is empty, `ios-device-not-supported` otherwise. Nothing on that path runs `simctl`. The design is RFC 0014.
 
 **Two operator-supplied pieces, neither bundled nor auto-installed.** Xcode supplies `xcrun simctl`, which does simulator and app lifecycle. [WebDriverAgent](https://github.com/appium/WebDriverAgent) (Apache-2.0) supplies the XCUITest hierarchy and the input pipeline; you build and run it, and point browxai at its port. With nothing listening, session creation refuses with `wda-unreachable` and names the fix. browxai takes **no** npm dependency for either and reaches nothing GPL.
 
