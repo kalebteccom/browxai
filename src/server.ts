@@ -30,6 +30,7 @@ import { log } from "./util/logging.js";
 import { PACKAGE_VERSION } from "./util/version.js";
 import type { ToolRegistration, ToolResponse } from "./tools/host.js";
 import { buildHost } from "./tools/host-build.js";
+import { installLogMask } from "./tools/host-egress-mask.js";
 import { registerActionTools } from "./tools/action-tools.js";
 import { registerReadObserveDomTools } from "./tools/read-observe-dom-tools.js";
 import { registerReadObserveExtractTools } from "./tools/read-observe-extract-tools.js";
@@ -269,6 +270,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     operator,
     approvals,
   });
+  const removeLogMask = installLogMask(caps.enabled.has("secrets"), registry);
 
   const server = new McpServer({ name: NAME, version: VERSION }, { capabilities: { tools: {} } });
 
@@ -378,6 +380,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await registry.closeAll();
       operator?.close();
       await server.close().catch(() => undefined);
+      removeLogMask();
     },
     isToolListed: listing.isListed,
     registrations: host.registrations,

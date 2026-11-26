@@ -14,6 +14,7 @@ import type { ConfirmHook } from "../util/capabilities.js";
 import type { BrowxBridge } from "../helper/bridge.js";
 import type { OperatorGrant, OperatorPrompt } from "../helper/operator-channel.js";
 import { log } from "../util/logging.js";
+import { redactUrlForLog } from "../util/url-sanitizer.js";
 
 export interface ConfirmContext {
   hooks: ReadonlySet<ConfirmHook>;
@@ -173,18 +174,22 @@ export async function confirmNavigation(
     return { ok: true, reason: "on-allowlist", asked: false };
   }
   const blockedBy = blockedByPattern(url, ctx.policy);
+  // The log shows the URL without userinfo, query values or fragment. The
+  // operator prompt below carries the full URL to the operator channel, which
+  // redacts on its own.
+  const shown = redactUrlForLog(url);
   if (!ctx.hooks.has("navigate_off_allowlist")) {
     log.warn(
       blockedBy !== null
-        ? `navigate: ${url} is blocked by BROWX_BLOCKED_ORIGINS entry "${blockedBy}"; no confirm hook set, proceeding`
-        : `navigate: ${url} is off the allowed-origins list; no confirm hook set, proceeding`,
+        ? `navigate: ${shown} is blocked by BROWX_BLOCKED_ORIGINS entry "${blockedBy}"; no confirm hook set, proceeding`
+        : `navigate: ${shown} is off the allowed-origins list; no confirm hook set, proceeding`,
     );
     return { ok: true, reason: "off-allowlist; no hook", asked: false };
   }
   if (ctx.approvals?.consume("navigate_off_allowlist", ctx.sessionId)) {
     return { ok: true, reason: "pre-approved", asked: false };
   }
-  return askHuman(ctx, "off-allowlist", `confirm navigate (off-allowlist): ${url}`, {
+  return askHuman(ctx, "off-allowlist", `confirm navigate (off-allowlist): ${shown}`, {
     kind: "approval",
     scope: "navigate_off_allowlist",
     tool: "navigate",
@@ -262,6 +267,7 @@ function applyGrant(ctx: ConfirmContext, scope: ConfirmHook, grant: OperatorGran
 async function askHuman(
   ctx: ConfirmContext,
   label: string,
+  /** The line written to the log. Callers redact any URL in it first. */
   prompt: string,
   operator: OperatorPrompt,
 ): Promise<ConfirmDecision> {

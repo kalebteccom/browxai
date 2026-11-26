@@ -2,11 +2,17 @@
 // result through one masking pass. Exercised through the real `buildHost`
 // wrapper with stub dependencies, so no browser and no keystone.
 
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { buildHost, type HostDeps } from "./host-build.js";
-import { maskToolResponse, activeSecretRegistries } from "./host-egress-mask.js";
+import {
+  installLogMask,
+  maskLogText,
+  maskToolResponse,
+  activeSecretRegistries,
+} from "./host-egress-mask.js";
 import type { ToolResponse } from "./host.js";
 import { SecretRegistry } from "../util/secrets.js";
+import { clearLogMasks, log } from "../util/logging.js";
 
 type Handler = (args: unknown) => Promise<ToolResponse>;
 
@@ -171,5 +177,103 @@ describe("maskToolResponse", () => {
     const full = reg();
     expect(activeSecretRegistries(true, [{ secrets: empty }, { secrets: full }])).toEqual([full]);
     expect(activeSecretRegistries(false, [{ secrets: full }])).toEqual([]);
+  });
+});
+
+describe("the stderr log masks registered secrets", () => {
+  let written: string[];
+
+  /** A registry holding one value. Registered with the warning silenced, so
+   *  the captured log starts empty. */
+  const registryWith = (name: string, value: string): SecretRegistry => {
+    const quiet = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    const r = new SecretRegistry();
+    r.register({ name, value });
+    quiet.mockRestore();
+    return r;
+  };
+
+  beforeEach(() => {
+    written = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
+      written.push(String(chunk));
+      return true;
+    });
+  });
+
+  afterEach(() => {
+    clearLogMasks();
+    vi.restoreAllMocks();
+  });
+
+  /** One server's session list, as `installLogMask` reads it. */
+  const server = (sessions: Array<{ secrets: SecretRegistry }>) => ({ list: () => sessions });
+
+  it("masks with every open session of the server", () => {
+    const a = registryWith("PASSWORD", "hunter2");
+    const b = registryWith("API_KEY", 'ab/cd"ef==');
+    installLogMask(true, server([{ secrets: a }, { secrets: b }]));
+    log.info("await_human (input): type hunter2 here", { key: 'ab/cd"ef==' });
+    expect(written).toHaveLength(1);
+    expect(written[0]).toContain(
+      'info browxai: await_human (input): type <PASSWORD> here {"key":"<API_KEY>"}\n',
+    );
+    expect(written[0]).not.toContain("hunter2");
+  });
+
+  it("covers a session opened after the mask was installed", () => {
+    const sessions: Array<{ secrets: SecretRegistry }> = [];
+    installLogMask(true, server(sessions));
+    log.info("before hunter2");
+    sessions.push({ secrets: registryWith("PASSWORD", "hunter2") });
+    log.info("after hunter2");
+    expect(written[0]).toContain("before hunter2");
+    expect(written[1]).toContain("after <PASSWORD>");
+  });
+
+  it("writes entries as given when the secrets capability is off", () => {
+    installLogMask(false, server([{ secrets: registryWith("PASSWORD", "hunter2") }]));
+    log.info("plain hunter2");
+    expect(written[0]).toContain("plain hunter2");
+  });
+
+  it("two servers in one process: each one's values stay masked", () => {
+    const first = server([{ secrets: registryWith("PASSWORD", "hunter2") }]);
+    const second = server([{ secrets: registryWith("PIN", "48151623") }]);
+    installLogMask(true, first);
+    installLogMask(true, second);
+    log.info("pw hunter2 pin 48151623");
+    expect(written[0]).toContain("pw <PASSWORD> pin <PIN>");
+  });
+
+  it("two servers: a second with secrets off does not unmask the first", () => {
+    installLogMask(true, server([{ secrets: registryWith("PASSWORD", "hunter2") }]));
+    installLogMask(false, server([{ secrets: registryWith("PIN", "48151623") }]));
+    log.info("pw hunter2 pin 48151623");
+    expect(written[0]).toContain("pw <PASSWORD> pin 48151623");
+  });
+
+  it("two servers: shutting one down removes only its own mask", () => {
+    const removeFirst = installLogMask(
+      true,
+      server([{ secrets: registryWith("PASSWORD", "hunter2") }]),
+    );
+    const removeSecond = installLogMask(
+      true,
+      server([{ secrets: registryWith("PIN", "48151623") }]),
+    );
+    removeFirst();
+    log.info("pw hunter2 pin 48151623");
+    expect(written[0]).toContain("pw hunter2 pin <PIN>");
+    removeSecond();
+    log.info("pw hunter2 pin 48151623");
+    expect(written[1]).toContain("pw hunter2 pin 48151623");
+  });
+
+  it("maskLogText masks with each registry and returns the text itself with none", () => {
+    const a = registryWith("PASSWORD", "hunter2");
+    const b = registryWith("PIN", "48151623");
+    expect(maskLogText("pw hunter2 pin 48151623", [a, b])).toBe("pw <PASSWORD> pin <PIN>");
+    expect(maskLogText("pw hunter2", [])).toBe("pw hunter2");
   });
 });

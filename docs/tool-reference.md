@@ -336,7 +336,7 @@ Persistence model: each call records the resolved value on the session's `device
 
 This table says what ran on each of the eight engines (the `ios-app` engine has a second row for its one real-device run), where, on which version, on what date, and how to rerun it. A date is a day the repo records a passing run: a release date in the CHANGELOG or the date of a report. `not run` means the repo records no passing run for that engine.
 
-**Rule.** A row dated before the latest release is marked stale in the next release PR, and the release checklist includes refreshing these dates. The table was written against 0.19.0 (2026-11-22) and refreshed in the 0.19.1, 0.20.0 and 0.20.1 release PRs.
+**Rule.** A row dated before the latest release is marked stale in the next release PR, and the release checklist includes refreshing these dates. The table was written against 0.19.0 (2026-11-22) and refreshed in the 0.19.1, 0.20.0, 0.20.1 and 0.20.2 release PRs.
 
 | engine                  | What ran                                                                                                                                                                                               | Where                                               | Version                                                                | Date                        | How to rerun                                                                                                                                                                                          |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -352,9 +352,9 @@ This table says what ran on each of the eight engines (the `ios-app` engine has 
 
 How to read the table:
 
-- The three CI rows take their date from the release. RELEASING.md requires a green `pnpm test:keystone` before a release, and the repo keeps no CI run logs, so the 0.19.0 release date is the record. The 0.19.1, 0.20.0 and 0.20.1 PRs leave those three dates at 0.19.0, because the repo records no green run for any of those releases yet. The browser build numbers come from the run itself, so they are not repeated here.
+- The three CI rows take their date from the release. RELEASING.md requires a green `pnpm test:keystone` before a release, and the repo keeps no CI run logs, so the 0.19.0 release date is the record. The 0.19.1, 0.20.0, 0.20.1 and 0.20.2 PRs leave those three dates at 0.19.0, because the repo records no green run for any of those releases yet. The browser build numbers come from the run itself, so they are not repeated here.
 - The `safari`, `android-app` and `electron` dates come from CHANGELOG lines: the 0.10.0 line "22 of 23 keystone files green, including real Safari.app", and the 0.11.0 lines for the Android 14 emulator and the VS Code run. No Safari version was written down for that run. A later probe of Safari 26.5 on macOS 26.5 is recorded in the RFC 0002 research notes. That probe was a separate run.
-- `(stale)` marks a row dated before the latest release (0.20.1), whose run nobody has repeated since. The `safari`, `android-app` and `electron` rows are stale. The three CI rows are not marked: they move to the release date once a green 0.20.1 run is recorded.
+- `(stale)` marks a row dated before the latest release (0.20.2), whose run nobody has repeated since. The `safari`, `android-app` and `electron` rows are stale. The three CI rows are not marked: they move to the release date once a green 0.20.2 run is recorded.
 - The 0.10.0 changelog records the `android` keystone as skipped for lack of a device, and no later entry records a pass.
 - The `ios-app` engine reads its hierarchy from WebDriverAgent. The keystone's own run uses a stand-in server. The one real-device row is a probe of the WebDriverAgent endpoints, run by hand on 2026-11-24: it found the pinch route wrong, and the route is fixed in 0.20.1. The engine itself has not run against a device, because device selection, install and launch still use `simctl`. The roadmap tracks that as item 7.
 - A second suite, the capability testbed, drives every tool against a test app: `pnpm --filter @browxai/capability-testbed report`. Its latest recorded pass is on Chromium, on 2026-06-16: 196 pass, 0 fail, 0 error and 2 skip. The repo records no testbed run on another engine.
@@ -1267,7 +1267,7 @@ find_feedback({ query: "the save button in the toolbar", ref: "e42" })
 
 Recorded actions become a draft flow-file YAML (site-docs-flavoured): a locators block + steps with selectorHints transcribed from the action target. Use during calibration to cut hand-writing the YAML; review the locators (entries flagged `stability: medium|low` deserve a second look) and add prerequisites/assertions before committing.
 
-**Optional session-replay artifact.** Pass `start_recording({ flowName, replay: { tier?, sizeCap?, eventCap?, redaction?, maskSelectors?, dir? } })` to also emit a `.browx` archive when `end_recording` runs. `tier` is `"actions"` | `"replay"` (default, DOM stream + network/WS metadata) | `"reexecutable"` (adds response bodies). **Requires the off-by-default `replay` capability**; without it the argument is refused with a structured `capability-denied` shape. **The archive is as sensitive as the session it recorded**, registered secrets are masked at capture time before anything reaches disk, but the DOM, request/response metadata, and console output are otherwise the session's real content. Store under `$BROWX_WORKSPACE` and treat it accordingly. Truncation (`size-cap` / `event-cap` / `backpressure`) is reported on `manifest.truncated`; backpressure is distinct and does not stop capture. `end_recording` returns `replay: { path, absolutePath, bytes, events, counts, entries, truncated? }` when a writer was engaged; `export_session_report` links the most-recent completed archive under `replayArtifact`. `record_annotate({ label })` tags the current annotation with an acceptance-criterion id, the offline player's coverage view groups spans by this label.
+**Optional session-replay artifact.** Pass `start_recording({ flowName, replay: { tier?, sizeCap?, eventCap?, redaction?, maskSelectors?, dir? } })` to also emit a `.browx` archive when `end_recording` runs. `tier` is `"actions"` | `"replay"` (default, DOM stream + network/WS metadata) | `"reexecutable"` (adds response bodies). **Requires the off-by-default `replay` capability**; without it the argument is refused with a structured `capability-denied` shape. **The archive is as sensitive as the session it recorded**: registered secrets are masked at capture time, and the DOM, request/response metadata and console output are otherwise the session's real content. When `end_recording` writes the archive, the whole event log is masked once more with the secrets registered by then, so a value registered partway through a recording is also masked in the events captured before it. Until then those earlier events sit unmasked in the intermediate log file under `$BROWX_WORKSPACE`, which is deleted when the recording ends or the session closes. Some call arguments are never recorded and appear as a `{ redacted: true, reason: "secret" }` marker: the `value` of `register_secret`, the `value` of `cookies_set`, and an inline state passed to `inject_storage_state` or `open_session({ storageState })` (a workspace path is kept), including when the call is an inner call of `batch` or the `action` of a composing tool. A network event keeps a fixed list of fields: ids, resource type, timing, method, status, MIME type, headers and bodies under the redaction rules, and URLs without their query string, fragment or userinfo and with id-like path segments replaced by `:id`, as `network_read` reports them. The initiator stack, raw header text and security details are not recorded. The base64 request body parts are recorded at the `reexecutable` tier only, masked as text, and a part that is not UTF-8 text is recorded without its bytes. Store under `$BROWX_WORKSPACE` and treat it accordingly. Truncation (`size-cap` / `event-cap` / `backpressure`) is reported on `manifest.truncated`; backpressure is distinct and does not stop capture. `end_recording` returns `replay: { path, absolutePath, bytes, events, counts, entries, truncated? }` when a writer was engaged; `export_session_report` links the most-recent completed archive under `replayArtifact`. `record_annotate({ label })` tags the current annotation with an acceptance-criterion id, the offline player's coverage view groups spans by this label.
 
 **The offline player's network and console panels.** The player is one HTML file that opens from `file://`, with no server, no network and no account. Its Network and Console panels list what the archive holds, synced to the playhead, and both take a text filter. The network panel also filters by status: in flight, succeeded (below 400), HTTP errors, or failed to load, judged at the playhead, so a response that had not arrived yet does not count. Selecting a row seeks the replay to that moment and opens a details pane beside the list. For a request the pane shows the URL, method, status, type, size and timing, then request headers, request body, response headers and response body. For a console message it shows the whole message, and for a page error its stack. The row the playhead is on is marked, and the list scrolls to it during playback. Rows are buttons, so the lists work from the keyboard, and the details pane is a single tab stop ahead of the rows. The panels show only what the archive carries, already masked at capture: a registered secret appears as its `<NAME>` alias, a dropped header or body appears as `[redacted: reason]`, and a filter cannot match a secret value because it was never stored. Bodies are recorded at the `reexecutable` tier only, so below it the response body section says `Not captured at this tier`, and the network panel says the same for an `actions` archive, which holds no network events. Panel registration for your own views and an element panel are not built yet.
 
@@ -2843,6 +2843,27 @@ that writes a space as `+`) or as its own base64 or base64url encoding,
 padded or not. A shorter value is masked only as typed, since its encodings
 are short enough to turn up by chance.
 
+Escaped forms: a value of 6 characters or more that holds a character JSON
+or HTML escaping rewrites is also masked as those encoders write it, so it is
+masked inside a string that itself holds JSON or markup (a `network_body`
+response, a `ws_read` frame, exported HTML). The JSON forms cover `\"` and
+`\\`, `/` written as `\/`, non-ASCII characters written as `\uXXXX`, and
+`< > & '` written as `\u003c` and so on, with lowercase or uppercase hex. The
+HTML forms cover `&amp; &lt; &gt; &quot;`, the apostrophe as `&#39;`,
+`&#x27;`, `&#039;` or `&apos;`, and decimal or hex numeric references for
+those five characters and for non-ASCII characters. A value made of letters,
+digits and other characters these encoders leave alone gets no extra form. One
+value is masked in at most 24 forms.
+
+**The server log.** The server's stderr log (the macOS app writes it to
+`~/Library/Logs/Browxai/browxai.log`) goes through the same registered
+values: every log entry has them replaced with `<NAME>` before it is written,
+for every open session, when the `secrets` capability is on. This covers the
+`await_human` prompt and the confirm-hook lines. Independently of `secrets`,
+a URL in the navigate, confirm-hook and attach-endpoint log lines is printed
+without userinfo, with `?…` for a query and `#…` for a fragment, and with
+identifier-shaped path segments as `:id`.
+
 **Limitations** (enumerated for the threat model):
 
 1. **`screenshot()` is a partial sink.** PNG/JPEG bytes are not OCR'd
@@ -2862,7 +2883,12 @@ are short enough to turn up by chance.
    (JSON / text) is fully masked.
 3. **Cap is 32 secrets per session.** Bounded so the per-sink scan stays
    O(secrets × text-len) reasonable; realistic auth flows fit well under.
-4. **`scope` narrows dispatch, not egress.** Scoped secrets won't be
+4. **A value escaped in a mixed or unlisted way is not masked.** The escaped
+   forms above each render the whole value the way one encoder does. A value
+   with some characters escaped one way and some another, a named entity for
+   a non-ASCII character (`&ntilde;`), lowercase percent-hex (`%2f`), or two
+   levels of escaping inside one string are not in the list.
+5. **`scope` narrows dispatch, not egress.** Scoped secrets won't be
    substituted into a `fill` in a frame on another origin (refused with a
    clear error), but if a registered value reaches a sink for any reason,
    it's masked regardless of scope.
@@ -3606,7 +3632,7 @@ JSONL records the redacted form, never the raw value.
 
 ### `await_human({ kind?, prompt, choices?, timeoutMs? })`
 
-Blocks the calling agent until the human responds. `kind` defaults to `acknowledge`. `timeoutMs` defaults to 300000 (5 minutes) and is capped at 3600000; an unanswered prompt is denied at the timeout. The `prompt` is logged to stderr. The prompt names the session's isolated world (`browxai-<random>`) and a short ticket. The operator answers from DevTools after switching the console's context dropdown from `top` to that world, which the page's own scripts cannot reach, and passes the ticket as the last argument. An answer without the current ticket, or after its prompt ended, is dropped. The supported kinds:
+Blocks the calling agent until the human responds. `kind` defaults to `acknowledge`. `timeoutMs` defaults to 300000 (5 minutes) and is capped at 3600000; an unanswered prompt is denied at the timeout. The `prompt` is logged to stderr, with registered secret values masked. The prompt names the session's isolated world (`browxai-<random>`) and a short ticket. The operator answers from DevTools after switching the console's context dropdown from `top` to that world, which the page's own scripts cannot reach, and passes the ticket as the last argument. An answer without the current ticket, or after its prompt ended, is dropped. The supported kinds:
 
 - `acknowledge`: `__browx.proceed(ticket)` (the original site-docs `manual-capture` use case)
 - `confirm`: `__browx.confirm(true, ticket)` or `__browx.confirm(false, ticket)`

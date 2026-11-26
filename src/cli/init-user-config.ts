@@ -114,19 +114,31 @@ export function planUserConfig(
   return { kind: "add", path, before, after: JSON.stringify(doc, null, 2) + "\n" };
 }
 
+/** The two file-system steps of a write that a caller can replace. `sync` flushes
+ *  a temp file to disk before `rename` moves it over the target. A flush can take
+ *  seconds on a busy disk, so a test that is not about durability passes a no-op. */
+export interface UserConfigIo {
+  rename?: typeof renameSync;
+  sync?: (fd: number) => void;
+}
+
 /** Write the planned file: to a random sibling temp file first, then rename over
  *  the target. The new file keeps the old one's mode, 0600 when there was none.
  *  A symlinked config stays a symlink: the file it points at is replaced. The
  *  previous contents are kept in `<config>.browxai-bak`. */
 export function applyUserConfig(
   plan: Extract<UserConfigPlan, { kind: "add" }>,
-  rename: typeof renameSync = renameSync,
+  io: UserConfigIo = {},
 ): void {
+  const steps: Required<UserConfigIo> = {
+    rename: io.rename ?? renameSync,
+    sync: io.sync ?? fsyncSync,
+  };
   mkdirSync(dirname(plan.path), { recursive: true });
   const target = realTarget(plan.path);
   const mode = existingMode(target);
-  if (mode !== undefined) replaceVia(`${target}.browxai-bak`, readFileSync(target), mode, rename);
-  replaceVia(target, plan.after, mode ?? 0o600, rename);
+  if (mode !== undefined) replaceVia(`${target}.browxai-bak`, readFileSync(target), mode, steps);
+  replaceVia(target, plan.after, mode ?? 0o600, steps);
 }
 
 /** The file a write to `path` should replace: the path itself, or the end of
@@ -154,12 +166,12 @@ function replaceVia(
   path: string,
   data: string | Buffer,
   mode: number,
-  rename: typeof renameSync,
+  io: Required<UserConfigIo>,
 ): void {
   const tmp = join(dirname(path), `.${basename(path)}.${randomBytes(6).toString("hex")}.tmp`);
   try {
-    writeNew(tmp, data, mode);
-    rename(tmp, path);
+    writeNew(tmp, data, mode, io.sync);
+    io.rename(tmp, path);
   } catch (e) {
     rmSync(tmp, { force: true });
     throw e;
@@ -177,13 +189,18 @@ function existingMode(path: string): number | undefined {
 }
 
 /** Create `path`, which must not exist yet, with exactly `mode`. */
-function writeNew(path: string, data: string | Buffer, mode: number): void {
+function writeNew(
+  path: string,
+  data: string | Buffer,
+  mode: number,
+  sync: (fd: number) => void,
+): void {
   const fd = openSync(path, "wx", mode);
   try {
     writeSync(fd, typeof data === "string" ? Buffer.from(data, "utf8") : data);
     // The umask can strip bits from the mode given to open; set it exactly.
     fchmodSync(fd, mode);
-    fsyncSync(fd);
+    sync(fd);
   } finally {
     closeSync(fd);
   }

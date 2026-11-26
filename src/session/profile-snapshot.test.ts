@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   chmodSync,
   cpSync,
@@ -17,9 +17,6 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { snapshotProfile, restoreProfile, treeDigest } from "./profile-snapshot.js";
-
-// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
-vi.setConfig({ testTimeout: 15_000 });
 
 let ws: string;
 beforeEach(() => {

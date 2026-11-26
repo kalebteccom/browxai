@@ -110,7 +110,7 @@ This item had no number because it needed a decision before it needed work. The 
 - **Decisions.** No self-hosted CI agent and no daemon. The owner runs the lane by hand on one Mac and copies the result into the engine evidence table with a date, using the format in RFC 0008 section 10.7.
 - **Risk.** High on upkeep, low on posture: it sits behind `native-device`. A device target also needs a code change (device discovery, lifecycle and screenshot that do not assume `simctl`), which is its own PR with a threat-model row.
 - **Done.** The Simulator run passes against a real WebDriverAgent with the Xcode and runtime versions recorded, the phone run does the same once the device code lands, and the README says so. Until then the wording stays "unproven".
-- **First PR.** The plan and the script, in this docs change. The pinch route fix and the real-device probe evidence followed. The next PR is the device launch path (selection, install, launch and screenshot that do not use `simctl`), then the Simulator run's evidence row.
+- **First PR.** The plan and the script, in this docs change. The pinch route fix and the real-device probe evidence followed. The next PR is the device launch path (selection, install, launch and screenshot that do not use `simctl`), then the Simulator run's evidence row. [RFC 0014](../docs/rfcs/0014-ios-real-device-engine.md) is the spec for that path, including the guard rails for a physical phone. It is proposed and waits for reviewer sign-off, so no device code is built yet.
 
 ### 8. A reference deployment for containers and CI (M, built as a guide)
 
@@ -160,6 +160,7 @@ This item had no number because it needed a decision before it needed work. The 
   5. The manual macOS app section of `RELEASING.md`. Written, unverified until built and run on a Mac.
 - **Done.** A notarized zip that passes `verify-app.sh`, a cask install that opens with no Gatekeeper warning, and a second build whose designated requirement equals the first.
 - **First PR.** Slice 1, docs and scripts only. Slice 2 followed as sources and a build script that the owner builds on a Mac.
+- **Follow-up.** MCP clients start a stdio server of their own and do not reach the app's daemon. RFC 0013 (`docs/rfcs/0013-stdio-socket-bridge.md`) proposes a stdio-to-socket bridge for them. It is a design waiting for sign-off, with nothing built.
 
 ## Not planned
 

@@ -77,17 +77,155 @@ describe("network sources", () => {
     });
   });
 
-  it("passes an unknown field on the source payload through instead of dropping it", () => {
+  it("keeps the listed fields of a request and leaves out any other", () => {
     const ev = netRequestEvent(ctx(), {
       ...request,
       frameId: "F1",
-      initiator: { type: "script" },
+      loaderId: "L1",
+      timestamp: 12.5,
+      wallTime: 1_700_000_000.25,
+      hasUserGesture: true,
+      initiator: { type: "script", stack: { callFrames: [{ url: "https://a.test/app.js?k=1" }] } },
       someFieldCdpAddsIn2027: { nested: true },
     });
-    expect(ev.payload.frameId).toBe("F1");
-    expect(ev.payload.initiator).toEqual({ type: "script" });
-    expect(ev.payload.someFieldCdpAddsIn2027).toEqual({ nested: true });
-    expect(ev.payload.request.url).toBe("https://app.example.com/api/login");
+    expect(ev.payload).toEqual({
+      requestId: "42",
+      type: "XHR",
+      frameId: "F1",
+      loaderId: "L1",
+      timestamp: 12.5,
+      wallTime: 1_700_000_000.25,
+      hasUserGesture: true,
+      request: {
+        url: "https://app.example.com/api/login",
+        method: "POST",
+        headers: { authorization: redactedMarker("header"), "content-type": "application/json" },
+        postData: '{"user":"ada"}',
+      },
+    });
+  });
+
+  it("leaves out a listed field that does not hold a scalar", () => {
+    const ev = netRequestEvent(ctx(), { ...request, frameId: { nested: "F1" }, loaderId: ["L1"] });
+    expect("frameId" in ev.payload).toBe(false);
+    expect("loaderId" in ev.payload).toBe(false);
+  });
+
+  it("keeps the listed fields of a response and leaves out any other", () => {
+    const ev = netResponseEvent(ctx(), {
+      requestId: "42",
+      type: "XHR",
+      frameId: "F1",
+      hasExtraInfo: true,
+      response: {
+        url: "https://app.example.com/api/login",
+        status: 200,
+        statusText: "OK",
+        mimeType: "application/json",
+        protocol: "h2",
+        encodedDataLength: 321,
+        headers: { "set-cookie": "sid=1", "content-length": "9" },
+        headersText: "HTTP/1.1 200 OK\r\nSet-Cookie: sid=1\r\n",
+        requestHeaders: { cookie: "sid=1" },
+        requestHeadersText: "POST /api/login HTTP/1.1\r\nCookie: sid=1\r\n",
+        securityDetails: { subjectName: "app.example.com" },
+        timing: { requestTime: 1 },
+      },
+    });
+    expect(ev.payload).toEqual({
+      requestId: "42",
+      type: "XHR",
+      frameId: "F1",
+      response: {
+        url: "https://app.example.com/api/login",
+        status: 200,
+        statusText: "OK",
+        mimeType: "application/json",
+        protocol: "h2",
+        encodedDataLength: 321,
+        headers: { "set-cookie": redactedMarker("header"), "content-length": "9" },
+      },
+    });
+  });
+
+  it("records a URL without its query string, fragment or userinfo", () => {
+    const ev = netRequestEvent(ctx(), {
+      requestId: "7",
+      documentURL: "https://user:pw@app.example.com/home?session=abc#top",
+      request: { url: "https://user:pw@app.example.com/api/items?token=abc#frag", method: "GET" },
+      redirectResponse: {
+        url: "https://app.example.com/old?token=abc",
+        status: 302,
+        headers: { location: "/api/items", "set-cookie": "sid=1" },
+      },
+    });
+    expect(ev.payload.request.url).toBe("https://app.example.com/api/items?…#…");
+    expect(ev.payload.documentURL).toBe("https://app.example.com/home?…#…");
+    expect(ev.payload.redirectResponse).toEqual({
+      url: "https://app.example.com/old?…",
+      status: 302,
+      headers: { location: "/api/items", "set-cookie": redactedMarker("header") },
+    });
+    const res = netResponseEvent(ctx(), {
+      requestId: "7",
+      response: { url: "https://user:pw@app.example.com/api/items?token=abc", status: 200 },
+    });
+    expect(res.payload.response.url).toBe("https://app.example.com/api/items?…");
+  });
+
+  it("records the base64 request body parts at the re-executable tier only", () => {
+    const withParts = {
+      requestId: "8",
+      request: {
+        url: "https://app.example.com/api/login",
+        method: "POST",
+        postData: '{"user":"ada"}',
+        postDataEntries: [{ bytes: Buffer.from('{"user":"ada"}', "utf8").toString("base64") }],
+      },
+    };
+    expect("postDataEntries" in netRequestEvent(ctx(), withParts).payload.request).toBe(false);
+    expect(
+      "postDataEntries" in netRequestEvent(ctx({ tier: "replay" }), withParts).payload.request,
+    ).toBe(false);
+    const kept = netRequestEvent(ctx({ tier: "reexecutable" }), withParts);
+    expect(kept.payload.request.postDataEntries).toEqual(withParts.request.postDataEntries);
+  });
+
+  it("gives a request body part the body rules, and drops bytes that are not text", () => {
+    const redact = new Redactor({ bodyPaths: ["token"] });
+    const ev = netRequestEvent(ctx({ redact, tier: "reexecutable" }), {
+      requestId: "9",
+      request: {
+        url: "https://app.example.com/api",
+        method: "POST",
+        postDataEntries: [
+          { bytes: Buffer.from('{"token":"t","ok":true}', "utf8").toString("base64") },
+          { bytes: Buffer.from([0xff, 0xfe, 0x00, 0x80]).toString("base64") },
+          {},
+        ],
+      },
+    });
+    const [json, binary, empty] = ev.payload.request.postDataEntries ?? [];
+    expect(JSON.parse(Buffer.from(json?.bytes as string, "base64").toString("utf8"))).toEqual({
+      token: redactedMarker("body-rule"),
+      ok: true,
+    });
+    expect(binary).toEqual({});
+    expect(empty).toEqual({});
+    const dropped = netRequestEvent(
+      ctx({ redact: new Redactor({ bodyPaths: ["$"] }), tier: "reexecutable" }),
+      {
+        requestId: "9",
+        request: {
+          url: "https://app.example.com/api",
+          method: "POST",
+          postDataEntries: [{ bytes: Buffer.from("a=1", "utf8").toString("base64") }],
+        },
+      },
+    );
+    expect(dropped.payload.request.postDataEntries).toEqual([
+      { bytes: redactedMarker("body-rule") },
+    ]);
   });
 
   it("redacts response headers and the optional re-executable-tier body", () => {
@@ -176,6 +314,23 @@ describe("the agent timeline", () => {
     });
     expect(ev.payload.warnings).toEqual(["slow"]);
     expect(ev.payload.tokensEstimate).toBe(120);
+  });
+});
+
+describe("a register_secret call on the agent timeline", () => {
+  it("is recorded without its value, before the value is in any registry", () => {
+    const value = "not-registered-yet-hunter2";
+    // `ctx()` has no registry: the state when action/call is emitted, ahead of
+    // the handler that registers the value.
+    const ev = actionCallEvent(ctx(), {
+      tool: "register_secret",
+      args: { name: "PASSWORD", value, session: "s1" },
+    });
+    expect(JSON.stringify(ev)).not.toContain(value);
+    expect(ev.payload).toEqual({
+      tool: "register_secret",
+      args: { name: "PASSWORD", value: redactedMarker("secret"), session: "s1" },
+    });
   });
 });
 
@@ -293,6 +448,73 @@ describe("a registered secret never survives into an event", () => {
       expect(line, `${ev.type} leaked the registered secret`).not.toContain(SECRET);
       expect(line).toContain("<PASSWORD>");
     }
+  });
+
+  it("is in no field of a CDP-shaped request or response", () => {
+    const c = { ...withSecret("PASSWORD", SECRET), tier: "reexecutable" as const };
+    const body = JSON.stringify({ email: "a@b.co", password: SECRET });
+    const b64 = (text: string): string => Buffer.from(text, "utf8").toString("base64");
+    const request = netRequestEvent(c, {
+      requestId: "1",
+      loaderId: "L1",
+      documentURL: `https://${SECRET}:x@app.example.com/login?next=${SECRET}`,
+      type: "Fetch",
+      request: {
+        url: `https://user:${SECRET}@app.example.com/api/login?p=${SECRET}#${SECRET}`,
+        urlFragment: `#${SECRET}`,
+        method: "POST",
+        headers: { "x-echo": SECRET, cookie: `sid=${SECRET}` },
+        postData: body,
+        postDataEntries: [{ bytes: b64(body) }, { bytes: b64(`tail ${SECRET}`) }],
+      },
+      redirectResponse: {
+        url: `https://app.example.com/sso?ticket=${SECRET}`,
+        status: 302,
+        statusText: `Found ${SECRET}`,
+        headers: { location: `/cb?ticket=${SECRET}`, "set-cookie": `sid=${SECRET}` },
+        headersText: `HTTP/1.1 302 Found\r\nSet-Cookie: sid=${SECRET}\r\n`,
+        requestHeaders: { cookie: `sid=${SECRET}` },
+        requestHeadersText: `GET /sso HTTP/1.1\r\nCookie: sid=${SECRET}\r\n`,
+      },
+      initiator: { type: "script", url: `https://app.example.com/app.js?k=${SECRET}` },
+    });
+    const response = netResponseEvent(
+      c,
+      {
+        requestId: "1",
+        response: {
+          url: `https://app.example.com/api/login?p=${SECRET}`,
+          status: 200,
+          headers: { "x-echo": SECRET, "set-cookie": `sid=${SECRET}` },
+          headersText: `HTTP/1.1 200 OK\r\nSet-Cookie: sid=${SECRET}\r\n`,
+          requestHeaders: { authorization: `Bearer ${SECRET}` },
+          requestHeadersText: `POST /api/login HTTP/1.1\r\nAuthorization: Bearer ${SECRET}\r\n`,
+        },
+      },
+      { body: JSON.stringify({ echoed: SECRET }) },
+    );
+    for (const ev of [request, response]) {
+      const line = JSON.stringify(ev);
+      expect(line, `${ev.type} holds the registered value`).not.toContain(SECRET);
+      // No base64 part holds it either, once decoded.
+      for (const part of line.match(/[A-Za-z0-9+/]{16,}={0,2}/g) ?? []) {
+        expect(Buffer.from(part, "base64").toString("utf8")).not.toContain(SECRET);
+      }
+      expect(line).toContain("<PASSWORD>");
+    }
+    const parts = request.payload.request.postDataEntries ?? [];
+    expect(parts.map((p) => Buffer.from(p.bytes as string, "base64").toString("utf8"))).toEqual([
+      JSON.stringify({ email: "a@b.co", password: "<PASSWORD>" }),
+      "tail <PASSWORD>",
+    ]);
+    expect(request.payload.request.url).toBe("https://app.example.com/api/login?…#…");
+    expect(request.payload.documentURL).toBe("https://app.example.com/login?…");
+    expect(request.payload.redirectResponse?.url).toBe("https://app.example.com/sso?…");
+    expect(request.payload.redirectResponse?.headers).toEqual({
+      location: "/cb?ticket=<PASSWORD>",
+      "set-cookie": redactedMarker("header"),
+    });
+    expect(Object.keys(response.payload.response).sort()).toEqual(["headers", "status", "url"]);
   });
 
   it("still masks when a header rule already dropped the value", () => {

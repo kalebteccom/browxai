@@ -2,7 +2,8 @@
 // one Redactor, one AssetStore and the live capture-source subscriptions.
 // Nothing here summarises — every source's shape rides through as the schema
 // designed it — and every event that reaches the log has already passed the
-// registered-secret chokepoint in `redact.ts`.
+// registered-secret chokepoint in `redact.ts`. `end()` runs the whole
+// log through it once more, with the registry as it stands at that point.
 //
 // The orchestrator is the single place `start_recording` / `end_recording` /
 // `record_annotate` reach for. That keeps `sources.ts` a leaf and `log.ts`
@@ -23,6 +24,7 @@ import {
   type ReplayManifest,
 } from "./schema.js";
 import { Redactor, redactEvent } from "./redact.js";
+import { remaskEventLog } from "./remask.js";
 import {
   actionCallEvent,
   annotateSpanEvent,
@@ -152,7 +154,7 @@ export class ReplaySession {
     this.tier = tier;
     this.artifactPath = artifactRel;
     this.jsonlPath = rlog.path;
-    this.ctx = { clock, redact: redactor };
+    this.ctx = { clock, redact: redactor, tier };
     this.engine = this.entry.session.engine;
     // attachSources reads this.replayLog through the subscribe helpers; we
     // assign it here so the helpers see the live handle, but if attach throws
@@ -255,7 +257,11 @@ export class ReplaySession {
     // failed `end()` returns the session to an idle-ready state and the next
     // `start()` succeeds. On success it also unlinks the intermediate JSONL.
     try {
-      const events = await readFile(jsonlPath);
+      // The log was masked with the registry as it stood when each event was
+      // captured. Mask it again with the registry as it stands now, so a value
+      // registered after an event that holds it is masked in the archive too.
+      const captured = await readFile(jsonlPath);
+      const events = this.redactor ? remaskEventLog(captured, this.redactor) : captured;
       const written = await writeArtifact({
         workspaceRoot: workspace.root,
         path: artifactPath,
