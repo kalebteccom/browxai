@@ -15,6 +15,13 @@
 // Everything in this file is read-only.
 
 import type { CDPSession } from "playwright-core";
+import {
+  clipMasked,
+  clipPageText,
+  pageReadLength,
+  PLAIN_CUT,
+  type TextCut,
+} from "../util/frame-cap.js";
 import { type CdpDomNode, findByBackendId } from "./shadow-core.js";
 
 /** One shadow-tree-entry surfaced by `shadow_trees`. */
@@ -55,6 +62,30 @@ export interface ShadowTreesOptions {
   /** Hard cap on returned hosts. Default 200 — enough for typical
    *  shadow-heavy pages, bounded enough to keep tokens predictable. */
   maxHosts?: number;
+  /** Secrets mask for child text: masked before it is cut. */
+  textCut?: TextCut;
+}
+
+/** Longest child `text`, in characters, "…" included. */
+const CHILD_TEXT_MAX = 80;
+
+/** Mask each child `text`, then cut it to `CHILD_TEXT_MAX`. `fromPage`: the
+ *  text came from the page walk, which read `CHILD_TEXT_MAX + slack + 1`
+ *  characters; otherwise it is whole. */
+function clipChildTexts<T extends { children: ShadowChildSummary[] }>(
+  entries: T[],
+  cut: TextCut,
+  fromPage: boolean,
+): T[] {
+  for (const e of entries) {
+    for (const c of e.children) {
+      if (c.text === undefined) continue;
+      c.text = fromPage
+        ? clipPageText(c.text, CHILD_TEXT_MAX, cut, { marker: "…" })
+        : clipMasked(c.text, CHILD_TEXT_MAX, cut.mask, { marker: "…" });
+    }
+  }
+  return entries;
 }
 
 export interface ShadowTreesResult {
@@ -86,6 +117,7 @@ export function collectShadowTrees(
   }
   const entries: ShadowTreeEntry[] = [];
   walkForShadowHosts(subtree, entries, cap);
+  clipChildTexts(entries, opts.textCut ?? PLAIN_CUT, false);
   if (entries.length >= cap) return { entries, cappedAt: cap };
   return { entries };
 }
@@ -141,7 +173,7 @@ function directText(node: CdpDomNode): string | undefined {
   for (const c of node.children ?? []) {
     if (c.nodeType === 3 && c.nodeValue) {
       const t = c.nodeValue.replace(/\s+/g, " ").trim();
-      if (t) return t.length > 80 ? `${t.slice(0, 79)}…` : t;
+      if (t) return t;
     }
   }
   return undefined;
@@ -176,7 +208,7 @@ function countDescendantElements(node: CdpDomNode): number {
  * Run as a `Runtime.evaluate` — kept ES5-ish so it survives every Chromium
  * vintage the project supports.
  */
-const OPEN_SHADOW_WALK = `function(rootSel, max) {
+const OPEN_SHADOW_WALK = `function(rootSel, max, textRead) {
   var roots = [];
   var queue = [];
   if (rootSel) {
@@ -195,7 +227,7 @@ const OPEN_SHADOW_WALK = `function(rootSel, max) {
     }
     t = t.replace(/\\s+/g, ' ').trim();
     if (!t) return null;
-    return t.length > 80 ? t.slice(0, 79) + '…' : t;
+    return t.slice(0, textRead);
   }
   function descendantCount(root) {
     var n = 0;
@@ -248,16 +280,18 @@ export async function runOpenShadowWalk(
   cdp: CDPSession,
   rootSelector: string | undefined,
   max: number,
+  cut: TextCut = PLAIN_CUT,
 ): Promise<Array<Omit<ShadowTreeEntry, "hostRef">>> {
   const rootArg = rootSelector ? JSON.stringify(rootSelector) : "null";
-  const expr = `(${OPEN_SHADOW_WALK})(${rootArg}, ${max})`;
+  const read = pageReadLength(CHILD_TEXT_MAX, cut.slack);
+  const expr = `(${OPEN_SHADOW_WALK})(${rootArg}, ${max}, ${read})`;
   try {
     const { result } = (await cdp.send("Runtime.evaluate", {
       expression: expr,
       returnByValue: true,
       awaitPromise: false,
     })) as { result: { value?: { trees: Array<Omit<ShadowTreeEntry, "hostRef">> } } };
-    return result.value?.trees ?? [];
+    return clipChildTexts(result.value?.trees ?? [], cut, true);
   } catch {
     return [];
   }

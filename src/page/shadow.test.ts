@@ -7,6 +7,8 @@
 
 import { describe, it, expect, vi } from "vitest";
 import type { CDPSession } from "playwright-core";
+import { textCutFor } from "../util/frame-cap.js";
+import { SecretRegistry } from "../util/secrets.js";
 import {
   collectShadowTrees,
   fetchPiercedDocument,
@@ -226,5 +228,94 @@ describe("runOpenShadowWalk", () => {
     });
     const trees = await runOpenShadowWalk(cdp, undefined, 50);
     expect(trees).toEqual([]);
+  });
+});
+
+describe("shadow text over the cap is masked before it is cut", () => {
+  const VALUE = "tok_0123456789abcdef";
+  const secrets = new SecretRegistry();
+  secrets.register({ name: "TOKEN", value: VALUE });
+  const cut = textCutFor(secrets);
+
+  it("masks closed-root child text across the 80-character cut", () => {
+    const tree: FakeNode = el("html", {
+      backendNodeId: 1,
+      children: [
+        el("closed-shell", {
+          backendNodeId: 30,
+          shadowRoots: [
+            shadowRoot("closed", [
+              el("div", {
+                backendNodeId: 31,
+                children: [text("a".repeat(70) + VALUE + "b".repeat(20))],
+              }),
+            ]),
+          ],
+        }),
+      ],
+    });
+    const plain = collectShadowTrees(tree, {}).entries[0]!.children[0]!.text;
+    expect(plain).toBe("a".repeat(70) + "tok_01234…");
+    const masked = collectShadowTrees(tree, { textCut: cut }).entries[0]!.children[0]!.text;
+    expect(masked).toBe("a".repeat(70) + "<TOKEN>" + "bb…");
+  });
+
+  it("masks a closed-shadow element name across the 120-character cut", async () => {
+    const root: FakeNode = el("html", {
+      backendNodeId: 1,
+      children: [
+        el("closed-widget", {
+          backendNodeId: 20,
+          shadowRoots: [
+            shadowRoot("closed", [
+              el("button", {
+                attributes: ["aria-label", "n".repeat(110) + VALUE],
+                backendNodeId: 21,
+              }),
+            ]),
+          ],
+        }),
+      ],
+    });
+    const cdp = fakeCdp({ send: async () => ({ root }) });
+    const plain = await harvestClosedShadowElements(cdp, ["data-testid"], 100);
+    expect(plain.entries[0]!.name).toBe("n".repeat(110) + "tok_012345");
+    const r = await harvestClosedShadowElements(cdp, ["data-testid"], 100, cut.mask);
+    expect(r.entries[0]!.name).toBe("n".repeat(110) + "<TOKEN>");
+  });
+
+  it("masks open-root child text the page read past the cap", async () => {
+    let expr = "";
+    const cdp = fakeCdp({
+      send: async (_m: string, params?: unknown) => {
+        expr = (params as { expression: string }).expression;
+        // What the page returns: the text cut at the read length it was given.
+        const read = Number(/, (\d+)\)$/.exec(expr)![1]);
+        const full = "a".repeat(70) + VALUE + "b".repeat(200);
+        return {
+          result: {
+            value: {
+              trees: [
+                {
+                  hostTag: "x-a",
+                  mode: "open",
+                  children: [{ tag: "div", childCount: 0, text: full.slice(0, read) }],
+                  descendantCount: 1,
+                },
+              ],
+            },
+          },
+        };
+      },
+    });
+    const plain = await runOpenShadowWalk(cdp, undefined, 50);
+    expect(expr.endsWith(", 81)")).toBe(true);
+    expect(plain[0]!.children[0]!.text).toBe("a".repeat(70) + "tok_01234…");
+    const trees = await runOpenShadowWalk(cdp, undefined, 50, cut);
+    // The page cut its read, so the last `slack` characters of the masked read
+    // are dropped (they could hold the head of a value crossing the read's end).
+    const text = trees[0]!.children[0]!.text!;
+    expect(text).not.toContain("tok_");
+    expect(text).toBe("a".repeat(68) + "…");
   });
 });

@@ -54,6 +54,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
     caps,
     config,
     elementFor,
+    egressFor,
   } = host;
 
   // ---------- verify-family — assertive read primitives ----------
@@ -180,7 +181,13 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       }
       try {
         const res = await withDeadline(
-          verifyText(elementFor(e), target, args.text, args.exact === true),
+          verifyText(
+            elementFor(e),
+            target,
+            args.text,
+            args.exact === true,
+            egressFor(e).textCut().mask,
+          ),
           cfgActionTimeout(),
           "verify_text",
         );
@@ -239,7 +246,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       }
       try {
         const res = await withDeadline(
-          verifyValue(elementFor(e), target, args.value),
+          verifyValue(elementFor(e), target, args.value, egressFor(e).textCut().mask),
           cfgActionTimeout(),
           "verify_value",
         );

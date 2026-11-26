@@ -12,7 +12,36 @@
 //                                                    → feed/card context
 // Otherwise: no annotation (the field stays undefined).
 
+import { clipMasked, type TextCut } from "../util/frame-cap.js";
 import { walk, type A11yNode, type StructuralContext } from "./a11y.js";
+
+/** Longest `rowKey` and `rowText`, in characters, "…" included. */
+const ROW_KEY_MAX = 80;
+const ROW_TEXT_MAX = 200;
+
+/** The uncut row key and text behind a context whose fields were cut, so a
+ *  reader with a secrets mask masks before the cut (`maskedContext`). */
+const uncut = new WeakMap<StructuralContext, { rowKey?: string; rowText?: string }>();
+
+/** `ctx` with `rowKey` / `rowText` masked with `cut.mask` before they are cut.
+ *  The context itself when nothing is registered or nothing was cut. */
+export function maskedContext(ctx: StructuralContext, cut: TextCut): StructuralContext {
+  const full = cut.mask ? uncut.get(ctx) : undefined;
+  if (!full) return ctx;
+  const out: StructuralContext = { ...ctx };
+  if (full.rowKey) out.rowKey = clipMasked(full.rowKey, ROW_KEY_MAX, cut.mask, { marker: "…" });
+  if (full.rowText) out.rowText = clipMasked(full.rowText, ROW_TEXT_MAX, cut.mask, { marker: "…" });
+  return out;
+}
+
+/** `items` with each `context` through `maskedContext`. */
+export function withMaskedContexts<T extends { context?: StructuralContext }>(
+  items: T[],
+  cut: TextCut | undefined,
+): T[] {
+  if (!cut?.mask) return items;
+  return items.map((it) => (it.context ? { ...it, context: maskedContext(it.context, cut) } : it));
+}
 
 const COLLECTION_ROLES = new Set(["table", "grid", "treegrid", "rowgroup", "list", "feed"]);
 const ROW_ROLE = "row";
@@ -91,10 +120,13 @@ function buildStructuralContext(
   };
   const rowKey = firstNonEmptyName(row);
   const column = resolveColumn(node, chain, row, collectionRoot, columnHeadersByRoot);
-  const rowText = collectVisibleText(row, 200);
-  if (rowKey) ctx.rowKey = rowKey;
+  const rowText = collectVisibleText(row);
+  if (rowKey) ctx.rowKey = clipMasked(rowKey, ROW_KEY_MAX, null, { marker: "…" });
   if (column) ctx.column = column;
-  if (rowText) ctx.rowText = rowText;
+  if (rowText) ctx.rowText = clipMasked(rowText, ROW_TEXT_MAX, null, { marker: "…" });
+  if ((rowKey && ctx.rowKey !== rowKey) || (rowText && ctx.rowText !== rowText)) {
+    uncut.set(ctx, { rowKey, rowText });
+  }
   return ctx;
 }
 
@@ -149,18 +181,17 @@ function findHeaderRow(root: A11yNode): A11yNode | undefined {
 function firstNonEmptyName(row: A11yNode): string | undefined {
   for (const { node } of walk(row)) {
     const n = (node.name ?? "").trim();
-    if (n) return n.length > 80 ? n.slice(0, 79) + "…" : n;
+    if (n) return n;
   }
   return undefined;
 }
 
-function collectVisibleText(node: A11yNode, max: number): string {
+function collectVisibleText(node: A11yNode): string {
   const parts: string[] = [];
   for (const { node: n } of walk(node)) {
     const name = (n.name ?? "").trim();
     if (name) parts.push(name);
   }
   const joined = parts.join(" ").replace(/\s+/g, " ").trim();
-  if (!joined) return "";
-  return joined.length > max ? joined.slice(0, max - 1) + "…" : joined;
+  return joined;
 }

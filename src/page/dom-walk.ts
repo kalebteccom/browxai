@@ -14,6 +14,7 @@
 // doesn't produce children; the a11y tree is the structural source).
 
 import type { CDPSession, Frame } from "playwright-core";
+import { clipPageText, pageReadLength, PLAIN_CUT, type TextCut } from "../util/frame-cap.js";
 import { elementKey, RefRegistry } from "./refs.js";
 import { bindRefFrame } from "./ref-frames.js";
 import { walk, isGenericNoise, type A11yNode } from "./a11y-types.js";
@@ -54,6 +55,21 @@ export interface DomWalkOptions {
    *    document's children.
    */
   pierce?: "open" | "closed" | false;
+  /** Secrets mask and slack. The page reads `NAME_MAX + slack + 1` characters
+   *  of a capped name; the server masks it, then cuts it to `NAME_MAX`. */
+  textCut?: TextCut;
+}
+
+/** Longest name a DOM-walk entry carries, in characters. */
+const NAME_MAX = 120;
+
+/** Mask each entry's name, then cut it to `NAME_MAX` the way the page used to. */
+function clipNames(entries: DomWalkEntry[], cut: TextCut): DomWalkEntry[] {
+  return entries.map((e) =>
+    typeof e.name === "string" && e.name.length > NAME_MAX
+      ? { ...e, name: clipPageText(e.name, NAME_MAX, cut) }
+      : e,
+  );
 }
 
 const DEFAULT_TEST_ATTRS = ["data-testid", "data-test", "data-cy", "data-qa"];
@@ -83,14 +99,16 @@ export async function runDomWalk(
   // here; the CDP path in src/page/shadow.ts covers them and adds the
   // result via the merge layer.
   const walkOpen = opts.pierce === "open" || opts.pierce === "closed";
-  const expr = `(${PAGE_SCRIPT})(${JSON.stringify(testAttrs)}, ${max}, ${walkOpen})`;
+  const cut = opts.textCut ?? PLAIN_CUT;
+  const read = pageReadLength(NAME_MAX, cut.slack);
+  const expr = `(${PAGE_SCRIPT})(${JSON.stringify(testAttrs)}, ${max}, ${walkOpen}, ${read})`;
   try {
     const { result } = (await cdp.send("Runtime.evaluate", {
       expression: expr,
       returnByValue: true,
       awaitPromise: false,
     })) as { result: { value?: DomWalkEntry[] } };
-    return result.value ?? [];
+    return clipNames(result.value ?? [], cut);
   } catch {
     return [];
   }
@@ -114,6 +132,7 @@ export async function runDomWalkOnFrame(
   const testAttrs = opts.testAttributes ?? DEFAULT_TEST_ATTRS;
   const max = opts.maxEntries ?? DEFAULT_MAX;
   const walkOpen = opts.pierce === "open" || opts.pierce === "closed";
+  const cut = opts.textCut ?? PLAIN_CUT;
   try {
     const raw = await frame.evaluate(
       ({
@@ -121,11 +140,13 @@ export async function runDomWalkOnFrame(
         attrs,
         cap,
         openShadow,
+        nameRead,
       }: {
         script: string;
         attrs: string[];
         cap: number;
         openShadow: boolean;
+        nameRead: number;
       }): DomWalkEntry[] => {
         // The page-side `Function` constructor produces an untyped callable;
         // annotate its precise call signature (the PAGE_SCRIPT IIFE returns
@@ -135,13 +156,25 @@ export async function runDomWalkOnFrame(
           "attrs",
           "cap",
           "openShadow",
-          `return (${script})(attrs, cap, openShadow)`,
-        ) as (attrs: string[], cap: number, openShadow: boolean) => DomWalkEntry[];
-        return run(attrs, cap, openShadow);
+          "nameRead",
+          `return (${script})(attrs, cap, openShadow, nameRead)`,
+        ) as (
+          attrs: string[],
+          cap: number,
+          openShadow: boolean,
+          nameRead: number,
+        ) => DomWalkEntry[];
+        return run(attrs, cap, openShadow, nameRead);
       },
-      { script: PAGE_SCRIPT, attrs: testAttrs, cap: max, openShadow: walkOpen },
+      {
+        script: PAGE_SCRIPT,
+        attrs: testAttrs,
+        cap: max,
+        openShadow: walkOpen,
+        nameRead: pageReadLength(NAME_MAX, cut.slack),
+      },
     );
-    return raw ?? [];
+    return clipNames(raw ?? [], cut);
   } catch {
     return [];
   }
@@ -165,12 +198,12 @@ export async function runDomWalkViaExecute(
   const max = opts.maxEntries ?? DEFAULT_MAX;
   const walkOpen = opts.pierce === "open" || opts.pierce === "closed";
   try {
-    const raw = await exec(`return (${PAGE_SCRIPT})(arguments[0], arguments[1], arguments[2])`, [
-      testAttrs,
-      max,
-      walkOpen,
-    ]);
-    return (raw as DomWalkEntry[]) ?? [];
+    const cut = opts.textCut ?? PLAIN_CUT;
+    const raw = await exec(
+      `return (${PAGE_SCRIPT})(arguments[0], arguments[1], arguments[2], arguments[3])`,
+      [testAttrs, max, walkOpen, pageReadLength(NAME_MAX, cut.slack)],
+    );
+    return clipNames((raw as DomWalkEntry[]) ?? [], cut);
   } catch {
     return [];
   }
@@ -181,7 +214,10 @@ export async function runDomWalkViaExecute(
  *  `Element.shadowRoot` (open mode) and runs the same predicate-match on its
  *  descendants. Closed shadow roots are platform-protected and unreachable from
  *  the page side; the CDP path in `src/page/shadow.ts` covers them. */
-const PAGE_SCRIPT = `function(testAttrs, max, walkOpenShadow) {
+const PAGE_SCRIPT = `function(testAttrs, max, walkOpenShadow, nameRead) {
+  // A name read with a cap keeps nameRead characters (the cap, the mask slack
+  // and one); the server masks it, then cuts it to the cap.
+  if (!(nameRead > 0)) nameRead = 120;
   var ATTR_INTERACTIVE_SEL = '[role],button,a[href],input,select,textarea,[onclick],[tabindex],[contenteditable="true"]';
   var attrSel = testAttrs.map(function(a){ return '['+a+']'; }).join(',');
   var sel = ATTR_INTERACTIVE_SEL + (attrSel ? ',' + attrSel : '');
@@ -247,16 +283,16 @@ const PAGE_SCRIPT = `function(testAttrs, max, walkOpenShadow) {
   }
   function nameFor(el) {
     var aria = el.getAttribute('aria-label');
-    if (aria) return aria.trim().slice(0, 120);
+    if (aria) return aria.trim().slice(0, nameRead);
     var lid = el.getAttribute('aria-labelledby');
     if (lid) {
       var parts = lid.split(/\\s+/).map(function(id){ var n = document.getElementById(id); return n ? (n.textContent || '') : ''; });
       var s = parts.join(' ').trim();
-      if (s) return s.slice(0, 120);
+      if (s) return s.slice(0, nameRead);
     }
     if (el.tagName === 'INPUT') {
-      if (el.placeholder) return el.placeholder.trim().slice(0, 120);
-      if (el.value && el.type !== 'password') return String(el.value).trim().slice(0, 120);
+      if (el.placeholder) return el.placeholder.trim().slice(0, nameRead);
+      if (el.value && el.type !== 'password') return String(el.value).trim().slice(0, nameRead);
     }
     var text = (el.textContent || '').replace(/\\s+/g, ' ').trim();
     if (text && text.length <= 120) return text;
@@ -264,7 +300,7 @@ const PAGE_SCRIPT = `function(testAttrs, max, walkOpenShadow) {
     // commonly carry their visible label here when neither aria-label nor
     // textContent (the icon's empty span) is set.
     var title = el.getAttribute('title');
-    if (title) return title.trim().slice(0, 120);
+    if (title) return title.trim().slice(0, nameRead);
     return '';
   }
   function testIdFor(el) {

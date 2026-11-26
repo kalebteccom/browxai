@@ -12,6 +12,7 @@ import type { NetworkEntry, NetworkSummary, MutationEntry } from "./network.js";
 import { estimateTokens } from "../util/tokens.js";
 import { withDeadline, DeadlineError, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
 import { invariant } from "../util/invariant.js";
+import { textCutFor } from "../util/frame-cap.js";
 import { classifyFailure } from "../util/failure.js";
 import { type DialogRecord, UNHANDLED_DIALOG_HINT } from "../session/dialog.js";
 import { type PermissionRecord, UNHANDLED_PERMISSION_HINT } from "../session/permission.js";
@@ -133,7 +134,9 @@ export async function runInActionWindow(
   // --- post-state ---
   const frameNavigatedMain = pre.detach();
   const urlAfter = ctx.page.url();
-  const postTree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
+  const postTree = await ctx.snapshot
+    .a11yTree(ctx.refs, ctx.testAttributes, textCutFor(ctx.secrets))
+    .catch(() => null);
   const postRegions = postTree ? topLevelRegions(postTree) : new Map<string, Region>();
   const network = pre.net ? await pre.net.close() : EMPTY_NETWORK;
 
@@ -237,7 +240,9 @@ async function openActionWindow(ctx: ActionContext): Promise<OpenWindow> {
   const urlBefore = ctx.page.url();
   const tabsBefore = new Set(ctx.pages().map((p) => p.url()));
   const tBefore = Date.now();
-  const preTree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
+  const preTree = await ctx.snapshot
+    .a11yTree(ctx.refs, ctx.testAttributes, textCutFor(ctx.secrets))
+    .catch(() => null);
   const preRegions = preTree ? topLevelRegions(preTree) : new Map<string, Region>();
   // Playwright's `framenavigated` is cross-browser and fires on the same main-frame
   // nav the CDP `Page.frameNavigated` did, so navigation detection works on every

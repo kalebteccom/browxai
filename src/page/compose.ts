@@ -78,28 +78,16 @@ export async function composeSnapshot(
   if (a11y) markSource(a11y, "a11y");
 
   const a11yInteractive = a11y ? countInteractive(a11y) : 0;
-  const entries = await runDomWalk(cdp, { testAttributes, pierce: opts.pierce });
+  const entries = await runDomWalk(cdp, {
+    testAttributes,
+    pierce: opts.pierce,
+    textCut: opts.textCut,
+  });
   // closed-shadow elements come from a separate CDP pass.
-  // Same DomWalkEntry shape; merged via the same registry path so the
-  // selectorHint tier + `[from-dom]` evidence remain coherent.
-  let closedEntries: DomWalkEntry[] = [];
-  let closedShadowWarning: string | undefined;
-  let closedShadowCount = 0;
-  if (opts.pierce === "closed") {
-    const harvested = await harvestClosedShadowElements(cdp, testAttributes, 500);
-    closedEntries = harvested.entries.map((e) => ({
-      role: e.role,
-      name: e.name,
-      testId: e.testId,
-      testIdAttr: e.testIdAttr,
-      tag: e.tag,
-      id: e.id,
-      structuralPath: e.structuralPath,
-      cssPath: e.cssPath,
-    }));
-    closedShadowCount = closedEntries.length;
-    closedShadowWarning = harvested.warning;
-  }
+  const closed = await harvestClosedEntries(cdp, testAttributes, opts);
+  const closedEntries = closed.entries;
+  const closedShadowWarning = closed.warning;
+  const closedShadowCount = closedEntries.length;
   const allEntries = [...entries, ...closedEntries];
   const merge = a11y
     ? mergeDomWalkIntoTree(a11y, allEntries, refs, { identify: identifyVia(domIndex) })
@@ -139,6 +127,30 @@ export async function composeSnapshot(
     },
     warnings,
   };
+}
+
+/** Closed-shadow elements from the CDP pierce pass, as DOM-walk entries: the
+ *  same shape, merged through the same registry path, so the selectorHint tier
+ *  and `[from-dom]` evidence stay coherent. Empty unless `pierce` is "closed". */
+async function harvestClosedEntries(
+  cdp: CDPSession,
+  testAttributes: string[],
+  opts: ComposeOptions,
+): Promise<{ entries: DomWalkEntry[]; warning?: string }> {
+  if (opts.pierce !== "closed") return { entries: [] };
+  const mask = opts.textCut?.mask ?? null;
+  const harvested = await harvestClosedShadowElements(cdp, testAttributes, 500, mask);
+  const entries = harvested.entries.map((e) => ({
+    role: e.role,
+    name: e.name,
+    testId: e.testId,
+    testIdAttr: e.testIdAttr,
+    tag: e.tag,
+    id: e.id,
+    structuralPath: e.structuralPath,
+    cssPath: e.cssPath,
+  }));
+  return { entries, ...(harvested.warning ? { warning: harvested.warning } : {}) };
 }
 
 /**
@@ -182,7 +194,11 @@ export async function composeSnapshotForFrame(
     children: [],
   };
 
-  const entries = await runDomWalkOnFrame(frame, { testAttributes, pierce: opts.pierce });
+  const entries = await runDomWalkOnFrame(frame, {
+    testAttributes,
+    pierce: opts.pierce,
+    textCut: opts.textCut,
+  });
   const merge = mergeDomWalkIntoTree(root, entries, refs, { frameId, frame });
   annotateStructuralContext(root);
 

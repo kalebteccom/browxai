@@ -13,6 +13,7 @@
 // Everything in this file is read-only.
 
 import type { CDPSession } from "playwright-core";
+import { clipMasked, type Mask } from "../util/frame-cap.js";
 import { type CdpDomNode, fetchPiercedDocument } from "./shadow-core.js";
 
 /**
@@ -59,6 +60,7 @@ export async function harvestClosedShadowElements(
   cdp: CDPSession,
   testAttrs: string[],
   maxEntries: number,
+  mask: Mask | null = null,
 ): Promise<{ entries: ClosedShadowDomEntry[]; warning?: string }> {
   const { root, warning } = await fetchPiercedDocument(cdp);
   if (!root) return { entries: [], ...(warning ? { warning } : {}) };
@@ -84,8 +86,14 @@ export async function harvestClosedShadowElements(
     for (const c of n.children ?? []) stack.push(c);
     if (n.contentDocument) stack.push(n.contentDocument);
   }
+  // Names are read whole and cut here, after the mask, so a registered value
+  // across the cut leaves no head.
+  for (const e of entries) e.name = clipMasked(e.name, NAME_MAX, mask);
   return { entries };
 }
+
+/** Longest closed-shadow element name, in characters. */
+const NAME_MAX = 120;
 
 const INTERACTIVE_TAGS = new Set(["button", "a", "input", "select", "textarea"]);
 
@@ -177,10 +185,10 @@ function firstTestAttr(
 
 function nameFromAttrs(attrs: Map<string, string>): string {
   const aria = attrs.get("aria-label");
-  if (aria) return aria.trim().slice(0, 120);
+  if (aria) return aria.trim();
   const title = attrs.get("title");
-  if (title) return title.trim().slice(0, 120);
+  if (title) return title.trim();
   const placeholder = attrs.get("placeholder");
-  if (placeholder) return placeholder.trim().slice(0, 120);
+  if (placeholder) return placeholder.trim();
   return "";
 }

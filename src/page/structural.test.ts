@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import type { A11yNode } from "./a11y.js";
-import { annotateStructuralContext } from "./structural.js";
+import { PLAIN_CUT, textCutFor } from "../util/frame-cap.js";
+import { SecretRegistry } from "../util/secrets.js";
+import { annotateStructuralContext, maskedContext, withMaskedContexts } from "./structural.js";
 
 let refSeq = 0;
 function n(role: string, name?: string, children: A11yNode[] = []): A11yNode {
@@ -130,5 +132,46 @@ describe("annotateStructuralContext", () => {
     const t = cells[0]!.context?.rowText ?? "";
     expect(t.length).toBeLessThanOrEqual(200);
     expect(t.endsWith("…")).toBe(true);
+  });
+});
+
+describe("row context over the cap is masked before it is cut", () => {
+  const VALUE = "tok_0123456789abcdef";
+  const secrets = new SecretRegistry();
+  secrets.register({ name: "TOKEN", value: VALUE });
+  const cut = textCutFor(secrets);
+
+  function rowWith(first: string, rest: string): { cell: A11yNode; root: A11yNode } {
+    const cell = n("cell", rest);
+    const row = n("row", undefined, [n("cell", first), cell]);
+    return { cell, root: n("WebArea", "Page", [n("table", "T", [row])]) };
+  }
+
+  it("masks a value across the 80-character rowKey cut", () => {
+    const { cell, root } = rowWith("k".repeat(70) + VALUE, "other");
+    annotateStructuralContext(root);
+    expect(cell.context!.rowKey).toBe("k".repeat(70) + "tok_01234…");
+    const masked = maskedContext(cell.context!, cut);
+    expect(masked.rowKey).toBe("k".repeat(70) + "<TOKEN>");
+    expect(masked.rowKey).not.toContain("tok_");
+  });
+
+  it("masks a value across the 200-character rowText cut", () => {
+    const { cell, root } = rowWith("key", "t".repeat(190) + VALUE);
+    annotateStructuralContext(root);
+    const masked = maskedContext(cell.context!, cut);
+    expect(masked.rowText).toHaveLength(200);
+    expect(masked.rowText).not.toContain("tok_");
+    expect(masked.rowText!.endsWith("…")).toBe(true);
+  });
+
+  it("returns the context as it is with no secret registered", () => {
+    const { cell, root } = rowWith("k".repeat(90), "short");
+    annotateStructuralContext(root);
+    expect(maskedContext(cell.context!, PLAIN_CUT)).toBe(cell.context);
+    expect(cell.context!.rowKey).toBe("k".repeat(79) + "…");
+    expect(withMaskedContexts([{ context: cell.context }], PLAIN_CUT)[0]!.context).toBe(
+      cell.context,
+    );
   });
 });

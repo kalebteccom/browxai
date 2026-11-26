@@ -18,6 +18,7 @@
 import type { A11yNode } from "./a11y-types.js";
 import type { RefRegistry } from "./refs.js";
 import type { ComposedSnapshot, ComposeOptions } from "./compose-types.js";
+import type { TextCut } from "../util/frame-cap.js";
 
 /** The a11y+DOM tree source the snapshot/find tools mint refs from. One
  *  instance wraps one session's engine handle; the methods carry no engine
@@ -37,5 +38,10 @@ export interface SnapshotSubstrate {
   /** The raw a11y tree only (no DOM-walk merge). The action window's pre/post
    *  snapshotDelta and `watch`'s region sampling consume this — they need the
    *  structural a11y tree, not the find-ranking-augmented composed tree. */
-  a11yTree(refs: RefRegistry, testAttributes: string[]): Promise<A11yNode | null>;
+  a11yTree(
+    refs: RefRegistry,
+    testAttributes: string[],
+    /** Secrets mask for names a DOM walk reads with a cap. */
+    textCut?: TextCut,
+  ): Promise<A11yNode | null>;
 }

@@ -3,6 +3,7 @@ import { findByRef } from "../page/snapshot.js";
 import { fetchPiercedDocument, collectShadowTrees, runOpenShadowWalk } from "../page/shadow.js";
 import { extract } from "../page/extract.js";
 import { withDeadline } from "../util/deadline.js";
+import type { TextCut } from "../util/frame-cap.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 import { jsonResult, jsonResultWithEstimate } from "./json-result.js";
@@ -29,6 +30,7 @@ async function collectShadowTreesForRef(
     scopeSelector: string | undefined;
     cap: number;
     timeoutMs: number;
+    textCut: TextCut;
   },
 ): Promise<{ trees: ShadowTree[]; closedShadowAvailable: boolean; cappedAt: number | undefined }> {
   let trees: ShadowTree[] = [];
@@ -46,6 +48,7 @@ async function collectShadowTreesForRef(
       const harvested = collectShadowTrees(fetched.root, {
         rootBackendNodeId: opts.rootBackendId,
         maxHosts: opts.cap,
+        textCut: opts.textCut,
       });
       trees = harvested.entries;
       cappedAt = harvested.cappedAt;
@@ -58,7 +61,7 @@ async function collectShadowTreesForRef(
   if (trees.length === 0) {
     try {
       const open = await withDeadline(
-        runOpenShadowWalk(requireCdp(s), opts.scopeSelector, opts.cap),
+        runOpenShadowWalk(requireCdp(s), opts.scopeSelector, opts.cap, opts.textCut),
         opts.timeoutMs,
         "shadow_trees",
       );
@@ -129,8 +132,17 @@ async function resolveShadowScope(
  * shared `ToolHost` seam.
  */
 export function registerReadObserveExtractTools(host: ToolHost): void {
-  const { z, register, gateCheck, entryFor, engineGate, cfgActionTimeout, config, targetFor } =
-    host;
+  const {
+    z,
+    register,
+    gateCheck,
+    entryFor,
+    engineGate,
+    cfgActionTimeout,
+    config,
+    targetFor,
+    egressFor,
+  } = host;
 
   register(
     "shadow_trees",
@@ -190,6 +202,7 @@ export function registerReadObserveExtractTools(host: ToolHost): void {
         scopeSelector,
         cap,
         timeoutMs: cfgActionTimeout(),
+        textCut: egressFor(e).textCut(),
       });
       const { closedShadowAvailable, cappedAt } = collected;
       // Hard de-duplicate by hostRef + hostTag + mode — defensive guard for the
