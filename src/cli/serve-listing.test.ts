@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { ToolRegistration } from "../tools/host.js";
-import { CAPABILITY_META_KEY, listedTool, PLUGIN_TOOL_SUMMARY, toolRow } from "./serve-listing.js";
+import {
+  CAPABILITY_META_KEY,
+  inputSchemaOf,
+  listedTool,
+  PLUGIN_TOOL_SUMMARY,
+  toolRow,
+} from "./serve-listing.js";
 
 const reg = (
   description: string,
@@ -40,16 +47,47 @@ describe("toolRow", () => {
 });
 
 describe("listedTool", () => {
-  it("is a tools/list entry with a real description, the capability in _meta and an open schema", () => {
-    const entry = listedTool("snapshot", reg("Read the page as a compact tree.", "read"));
+  const snapshot: ToolRegistration = {
+    description: "Read the page as a compact tree. Refs are stable until the page changes.",
+    capability: "read",
+    inputSchema: {
+      session: z.string().optional().describe("The session id."),
+      maxNodes: z.number().int().describe("How many nodes to return."),
+    },
+  };
+
+  it("is a tools/list entry with the full description and the capability in _meta", () => {
+    const entry = listedTool("snapshot", snapshot);
     expect(entry.name).toBe("snapshot");
-    expect(entry.description).toBe("Read the page as a compact tree.");
-    expect(entry.description).not.toMatch(/^browxai\//);
+    expect(entry.description).toBe(snapshot.description);
     expect(entry._meta[CAPABILITY_META_KEY]).toBe("read");
-    expect(entry.inputSchema).toEqual({ type: "object", additionalProperties: true });
   });
 
-  it("lists a plugin tool with the plugin label", () => {
-    expect(listedTool("example.echo", undefined)._meta[CAPABILITY_META_KEY]).toBe("plugin");
+  it("lists the tool's real input schema, with no dialect marker", () => {
+    const schema = listedTool("snapshot", snapshot).inputSchema as {
+      type: string;
+      properties: Record<string, { type: string; description: string }>;
+      required: string[];
+      $schema?: string;
+    };
+    expect(schema.type).toBe("object");
+    expect(Object.keys(schema.properties).sort()).toEqual(["maxNodes", "session"]);
+    expect(schema.properties.session?.description).toBe("The session id.");
+    expect(schema.properties.maxNodes?.type).toBe("integer");
+    expect(schema.required).toEqual(["maxNodes"]);
+    expect(schema.$schema).toBeUndefined();
+  });
+
+  it("lists a tool that takes no arguments with an object schema", () => {
+    const entry = listedTool("list_sessions", reg("List the open sessions."));
+    expect(entry.inputSchema.type).toBe("object");
+    expect(inputSchemaOf(reg("List the open sessions."))?.properties).toEqual({});
+  });
+
+  it("lists a plugin tool with the fixed line, an open schema and the plugin label", () => {
+    const entry = listedTool("example.echo", undefined);
+    expect(entry.description).toBe(PLUGIN_TOOL_SUMMARY);
+    expect(entry.inputSchema).toEqual({ type: "object", additionalProperties: true });
+    expect(entry._meta[CAPABILITY_META_KEY]).toBe("plugin");
   });
 });

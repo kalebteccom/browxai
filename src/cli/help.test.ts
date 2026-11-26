@@ -67,6 +67,7 @@ describe("helpTarget", () => {
 describe("subcommand usage registry", () => {
   it("registers a usage for every subcommand except plugin, which answers help itself", () => {
     expect(registeredCommands().sort()).toEqual([
+      "bridge",
       "call",
       "chrome",
       "doctor",
@@ -77,7 +78,7 @@ describe("subcommand usage registry", () => {
     ]);
     expect(usageFor("plugin")).toBeUndefined();
     expect(commandFor("plugin")).toBeDefined();
-    for (const name of ["chrome", "doctor", "init", "serve", "tools", "call"]) {
+    for (const name of ["chrome", "doctor", "init", "serve", "tools", "call", "bridge"]) {
       expect(usageFor(name), name).toMatch(new RegExp(`^usage: browxai ${name}\\b`));
     }
   });
@@ -115,7 +116,9 @@ describe("subcommand usage registry", () => {
   });
 
   it("keeps the shell route usage in 80 columns and warns about the command line", () => {
-    for (const name of ["tools", "call"]) {
+    for (const flag of ["--socket", "--connect-timeout"])
+      expect(usageFor("bridge"), flag).toContain(flag);
+    for (const name of ["tools", "call", "bridge"]) {
       for (const line of usageFor(name)!.split("\n")) {
         expect(line.length, `${name}: ${line}`).toBeLessThanOrEqual(80);
       }

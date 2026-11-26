@@ -4,16 +4,13 @@
 import { lstatSync, unlinkSync, type Stats } from "node:fs";
 import type { Server } from "node:net";
 import { resolve } from "node:path";
+import { isPipePath } from "../transport/socket-guard.js";
+
+export { isPipePath };
 
 /** Thrown when the requested socket path cannot be used. The message is meant to
  *  be printed as is. */
 export class SocketPathError extends Error {}
-
-/** A Windows named pipe (`\\.\pipe\name`, or `//./pipe/name`). It has no file
- *  mode and no file on disk, so none of the file handling below applies. */
-export function isPipePath(path: string): boolean {
-  return /^(\\\\|\/\/)[.?][\\/]pipe[\\/]/i.test(path);
-}
 
 /** The path the socket is created at: absolute, so the chmod and the cleanup
  *  address the same file the listener made whatever the working directory. */
