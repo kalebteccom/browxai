@@ -22,6 +22,17 @@ browxai has three test layers. Pick the right one. Picking wrong silently passes
 - Mandatory for any tool calling `page.evaluate` / `locator.evaluate`.
 - Use keystone tests for: page-side function regression, end-to-end flow against a fixture page, ActionResult shape against real navigation / structure-change signals, capability-gate denial path (asserting `capability-denied` envelope shape).
 
+### Keystone skips
+
+A keystone skips only through `test/keystone/keystone-gate.ts`, and every skip names its reason. `test/architecture/keystone-skips.test.ts` fails on a `describe.skip`, `it.skipIf`, `ctx.skip()` or `skip: true` anywhere else under `test/keystone/`.
+
+- `gatedDescribe(engineGate("chromium" | "firefox" | "webkit"))`: the file needs a Playwright browser. A missing binary skips, and with `BROWX_REQUIRE_BROWSER=1` it throws at module load, so the file fails. The CI browser shards (`.woodpecker/browser.yml`) set it, because the image installs all three engines.
+- `gatedDescribe(hostGate(available, reason))`: the file needs something no CI box has. Today that is an Android device (`android`, `android-app`), an iOS simulator (`ios-app`), macOS safaridriver (`safari`), a running Electron app (`electron`, via `BROWX_ELECTRON_CDP`) and a non-Windows host (`bridge`, `shell-route`). These skip in CI and run by hand.
+
+After the run, `test/keystone/skip-reporter.ts` prints `keystone: N run, M skipped` and one line per skipped file with its reason. Each CI shard prints its own slice. A skip printed with `no reason given` came from outside the gate.
+
+A keystone that returns early from inside a test body still passes silently, and no check catches it. Put the condition in a gate.
+
 ## The decision rule
 
 - Pure logic, no page touch → **unit**.

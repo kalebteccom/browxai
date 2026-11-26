@@ -3,8 +3,8 @@
 // profile BYOB lane.
 //
 // REQUIRES a USB-connected Android device with Chrome open + USB debugging
-// enabled; SKIPS cleanly otherwise (the same honest device-gate pattern as the
-// firefox / webkit keystones — when their binary is absent they `describe.skip`).
+// enabled; SKIPS cleanly otherwise, with its reason printed by the keystone skip
+// reporter (keystone-gate.ts `hostGate`).
 // This is doctrine-conforming: it is NOT a silently-passing mock. The whole point
 // is that mocks cannot prove the adb forward → /json/version → connectOverCDP
 // chain reaches a real phone — only a real device run does.
@@ -20,12 +20,13 @@
 //     presence — Android falls into the SAME chromium-substrate path, no new
 //     substrate code)
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
+import { gatedDescribe, hostGate } from "./keystone-gate.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
@@ -46,7 +47,9 @@ const androidDeviceAvailable = (() => {
     return false;
   }
 })();
-const describeAndroid = androidDeviceAvailable ? describe : describe.skip;
+const describeAndroid = gatedDescribe(
+  hostGate(androidDeviceAvailable, "no Android device in the `device` state (`adb devices`)"),
+);
 
 let server: Awaited<ReturnType<typeof createServer>>;
 let handlers: Handlers;

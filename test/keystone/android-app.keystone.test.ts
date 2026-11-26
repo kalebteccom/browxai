@@ -35,6 +35,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
 import { androidAppDeviceGate } from "./android-device-gate.js";
+import { gatedDescribe, hostGate } from "./keystone-gate.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
@@ -44,7 +45,9 @@ const KEYSTONE_TIMEOUT = 180_000;
  *  or whose UiAutomator server does not answer, is a broken environment and the
  *  live lane fails on it (see `beforeAll` below) instead of reporting green. */
 const gate = androidAppDeviceGate();
-const describeDevice = gate.kind === "absent" ? describe.skip : describe;
+const describeDevice = gatedDescribe(
+  hostGate(gate.kind !== "absent", "no Android device listed by `adb devices`"),
+);
 
 const savedEnv: Record<string, string | undefined> = {};
 
