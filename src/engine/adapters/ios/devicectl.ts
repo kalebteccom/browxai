@@ -162,6 +162,8 @@ export interface DeviceProcess {
   pid: number;
   /** Present only when devicectl reports one per process. */
   bundleId?: string;
+  /** The executable's path or file URL, when devicectl reports it. */
+  executable?: string;
 }
 
 /** The processes `devicectl device info processes` reports. The shape is from
@@ -175,7 +177,12 @@ export function parseProcesses(json: unknown): DeviceProcess[] {
     const r = obj(row);
     if (typeof r.processIdentifier !== "number") continue;
     const bundleId = str(r.bundleIdentifier);
-    out.push({ pid: r.processIdentifier, ...(bundleId ? { bundleId } : {}) });
+    const executable = str(r.executable);
+    out.push({
+      pid: r.processIdentifier,
+      ...(bundleId ? { bundleId } : {}),
+      ...(executable ? { executable } : {}),
+    });
   }
   return out;
 }

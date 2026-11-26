@@ -25,6 +25,7 @@ import type {
 import { log } from "../../../util/logging.js";
 import type { IosDeviceHost } from "./device-host.js";
 import { IosDeviceError } from "./device-errors.js";
+import { onAppList } from "./device-settings.js";
 import { appVerdict, unapprovedError, type AppVerb } from "./device-app-policy.js";
 import { readBundleId, defaultPlutilRunner, type PlutilRunner } from "./bundle-id.js";
 import {
@@ -86,8 +87,8 @@ export class IosPhysicalDevice implements IosDeviceHost, NativeAppGuard {
   }
 
   async launch(bundleId: string): Promise<NativeAppInfo> {
-    await this.assertConnected();
     this.admit("launch", bundleId);
+    await this.assertConnected();
     this.deps.limits.take("launch");
     await this.route("/wda/apps/launch", () => this.deps.wda.launchApp(bundleId));
     log.info("ios-device: launched", { bundleId });
@@ -95,8 +96,8 @@ export class IosPhysicalDevice implements IosDeviceHost, NativeAppGuard {
   }
 
   async terminate(bundleId: string): Promise<void> {
-    await this.assertConnected();
     this.admit("terminate", bundleId);
+    await this.assertConnected();
     this.deps.limits.take("launch");
     await this.route("/wda/apps/terminate", () => this.deps.wda.terminateApp(bundleId));
     log.info("ios-device: terminated", { bundleId });
@@ -116,7 +117,9 @@ export class IosPhysicalDevice implements IosDeviceHost, NativeAppGuard {
     const installed = parseInstalledAppIds(
       await this.devicectl(listAppsArgs(this.deps.identifier)),
     );
-    return installed.filter((id) => this.deps.apps.includes(id)).map((bundleId) => ({ bundleId }));
+    return installed
+      .filter((id) => onAppList(this.deps.apps, id))
+      .map((bundleId) => ({ bundleId }));
   }
 
   async openUrl(url: string): Promise<void> {
@@ -163,7 +166,11 @@ export class IosPhysicalDevice implements IosDeviceHost, NativeAppGuard {
   }
 
   admitOnce(verb: NativeAppVerb, appId: string): void {
-    this.approved.add(`${verb}:${appId}`);
+    this.approved.add(approvalKey(verb, appId));
+  }
+
+  forget(verb: NativeAppVerb, appId: string): void {
+    this.approved.delete(approvalKey(verb, appId));
   }
 
   /** Refuse a verb the app allowlist does not allow, spending an approval when
@@ -172,7 +179,7 @@ export class IosPhysicalDevice implements IosDeviceHost, NativeAppGuard {
     const verdict = appVerdict(verb, bundleId, this.deps.apps);
     if (verdict.kind === "allow") return;
     if (verdict.kind === "refuse") throw verdict.error;
-    if (this.approved.delete(`${verb}:${bundleId}`)) return;
+    if (this.approved.delete(approvalKey(verb, bundleId))) return;
     throw unapprovedError(verb, bundleId, verdict.why);
   }
 
@@ -214,6 +221,10 @@ export class IosPhysicalDevice implements IosDeviceHost, NativeAppGuard {
   private build(): string {
     return this.deps.wdaBuild ?? "build unknown";
   }
+}
+
+function approvalKey(verb: AppVerb, appId: string): string {
+  return `${verb}:${appId.toLowerCase()}`;
 }
 
 /** devicectl's own reason for a failed install: the first `ERROR:` line, or the

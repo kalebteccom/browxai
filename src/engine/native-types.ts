@@ -207,6 +207,9 @@ export interface NativeAppGuard {
   check(verb: NativeAppVerb, subject: string): Promise<NativeAppDecision>;
   /** Admit the next `verb` of `appId`, once. */
   admitOnce(verb: NativeAppVerb, appId: string): void;
+  /** Drop an approval the call it was given for did not spend, because that
+   *  call failed first. A no-op once spent. */
+  forget(verb: NativeAppVerb, appId: string): void;
 }
 
 /** The native session handle — `BrowserSession.native?()`, mirroring `safari?()`.

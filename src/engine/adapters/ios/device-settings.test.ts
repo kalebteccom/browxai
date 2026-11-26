@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deviceSettingsFrom, isSystemApp } from "./device-settings.js";
+import { deviceSettingsFrom, isLoopback, isSystemApp } from "./device-settings.js";
 
 const ENV = {
   BROWX_IOS_DEVICE_ALLOWLIST: "A,B",
@@ -75,9 +75,39 @@ describe("deviceSettingsFrom", () => {
 });
 
 describe("isSystemApp", () => {
-  it("is the com.apple. prefix, case-sensitive", () => {
+  it("is the com.apple. prefix, without regard to case", () => {
     expect(isSystemApp("com.apple.Preferences")).toBe(true);
+    expect(isSystemApp("Com.Apple.x")).toBe(true);
     expect(isSystemApp("com.applesauce.app")).toBe(false);
-    expect(isSystemApp("Com.Apple.x")).toBe(false);
+  });
+});
+
+describe("isLoopback", () => {
+  it("covers every form a URL normalises to that reaches this Mac", () => {
+    for (const raw of [
+      "http://127.0.0.1:8100",
+      "http://127.1.2.3",
+      "http://localhost",
+      "http://wda.localhost",
+      "http://[::1]:8100",
+      "http://[::]:8100",
+      "http://0.0.0.0:8100",
+      "http://0:8100",
+      "http://2130706433:8100",
+      "http://[::ffff:127.0.0.1]:8100",
+    ]) {
+      expect(isLoopback(new URL(raw).hostname), raw).toBe(true);
+    }
+    for (const raw of ["http://192.0.2.10:8100", "http://[fe80::1]:8100", "http://phone.lan"]) {
+      expect(isLoopback(new URL(raw).hostname), raw).toBe(false);
+    }
+  });
+});
+
+describe("app ids", () => {
+  it("a mixed-case app id on the list matches", () => {
+    expect(deviceSettingsFrom({ ...ENV, BROWX_IOS_APP_ID: "COM.ACME.APP" }).appId).toBe(
+      "COM.ACME.APP",
+    );
   });
 });

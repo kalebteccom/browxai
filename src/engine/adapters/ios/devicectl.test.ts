@@ -152,7 +152,10 @@ describe("devicectl device commands", () => {
         ],
       },
     };
-    expect(parseProcesses(json)).toEqual([{ pid: 7 }, { pid: 8, bundleId: "a.b" }]);
+    expect(parseProcesses(json)).toEqual([
+      { pid: 7, executable: "file:///x/App.app/App" },
+      { pid: 8, bundleId: "a.b" },
+    ]);
     expect(parseProcesses(null)).toEqual([]);
   });
 });

@@ -15,7 +15,7 @@ export const WDA_URL = "http://192.0.2.10:8100";
 export interface FakePhoneState {
   devices: unknown;
   installed: string[];
-  processes: Array<{ processIdentifier: number; bundleIdentifier?: string }>;
+  processes: Array<{ processIdentifier: number; bundleIdentifier?: string; executable?: string }>;
   bundleId: string;
   status: Record<string, unknown>;
   locked: boolean;
@@ -32,7 +32,12 @@ export function phoneState(over: Partial<FakePhoneState> = {}): FakePhoneState {
   return {
     devices: DEVICECTL_LIST,
     installed: [APP_ID, "com.acme.other", "com.apple.Preferences", "com.bank.app"],
-    processes: [{ processIdentifier: APP_PID }],
+    processes: [
+      {
+        processIdentifier: APP_PID,
+        executable: "file:///private/var/containers/Bundle/Application/F/Checkout.app/Checkout",
+      },
+    ],
     bundleId: APP_ID,
     status: { ready: true, os: { name: "iOS", version: "27.2" }, build: { version: "16.15.3" } },
     locked: false,

@@ -6,7 +6,10 @@
 //   1. `/status` does not describe a simulator (`ios.simulatorVersion` absent).
 //   2. The iOS version in `/status` (`os.version`) equals devicectl's.
 //   3. After `POST /session`, the frontmost app's pid is running on the phone
-//      devicectl lists, under the same bundle id when devicectl reports one.
+//      devicectl lists, under the same bundle id when devicectl reports one,
+//      and otherwise as an executable inside an `.app` bundle. Without a bundle
+//      id on the row this ties the address to the phone by pid only, which is
+//      the partial binding RFC 0014 D12 allows.
 //
 // The field names are from WebDriverAgent and devicectl as remembered, and are
 // unverified on Xcode 26.5 (RFC 0014 §17, items 5 and 7). Each check fails
@@ -65,7 +68,12 @@ export function checkPidBinding(
     throw mismatch("WebDriverAgent reported no pid for the app under test.");
   }
   const row = processes.find((p) => p.pid === front.pid);
-  if (!row || (row.bundleId !== undefined && row.bundleId !== bundleId)) {
+  const sameApp =
+    row !== undefined &&
+    (row.bundleId !== undefined
+      ? row.bundleId.toLowerCase() === bundleId.toLowerCase()
+      : /\.app\//.test(row.executable ?? ""));
+  if (!sameApp) {
     throw mismatch(
       "the app WebDriverAgent launched is not running on the phone devicectl lists under that pid.",
     );

@@ -20,8 +20,15 @@ import { deviceLimitsFrom, type DeviceLimits } from "./device-limits.js";
 /** Bundle ids under this prefix are Apple's own apps (RFC 0014 G4). */
 export const SYSTEM_APP_PREFIX = "com.apple.";
 
+/** iOS compares bundle ids without regard to case, so every check here does too. */
 export function isSystemApp(bundleId: string): boolean {
-  return bundleId.startsWith(SYSTEM_APP_PREFIX);
+  return bundleId.toLowerCase().startsWith(SYSTEM_APP_PREFIX);
+}
+
+/** Whether `bundleId` is on the app allowlist, ignoring case, exact otherwise. */
+export function onAppList(apps: readonly string[], bundleId: string): boolean {
+  const id = bundleId.toLowerCase();
+  return apps.some((a) => a.toLowerCase() === id);
 }
 
 export interface IosDeviceSettings {
@@ -39,10 +46,15 @@ export interface IosDeviceSettings {
   limits: DeviceLimits;
 }
 
-const LOOPBACK = new Set(["localhost", "::1", "[::1]"]);
-
-function isLoopback(host: string): boolean {
-  return LOOPBACK.has(host.toLowerCase()) || /^127\./.test(host);
+/** A host that reaches this Mac: localhost, 127/8, ::1, the unspecified
+ *  addresses and IPv4-mapped loopback. `URL` has already normalised forms such
+ *  as `http://0:8100` and `http://2130706433`. */
+export function isLoopback(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (h === "localhost" || h.endsWith(".localhost")) return true;
+  if (h === "::1" || h === "::" || h === "0.0.0.0") return true;
+  if (/^127\./.test(h)) return true;
+  return /^::ffff:(127\.|7f[0-9a-f]{2}:|0\.0\.0\.0$|0:0$)/.test(h);
 }
 
 /** The device entry, or the `ios-device-not-allowlisted` refusal. */
@@ -83,7 +95,7 @@ function appUnderTest(env: NodeJS.ProcessEnv, apps: readonly string[]): string {
         "BROWX_IOS_DEVICE_APPS and launch it with `app_launch`, which asks a person each time.",
     );
   }
-  if (!apps.includes(appId)) {
+  if (!onAppList(apps, appId)) {
     throw new IosDeviceError(
       "ios-device-app-not-allowed",
       `BROWX_IOS_APP_ID "${appId}" is not on BROWX_IOS_DEVICE_APPS. List it there exactly. ` +

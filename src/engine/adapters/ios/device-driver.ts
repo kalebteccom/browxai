@@ -24,6 +24,7 @@ import type { NativeAppInfo, NativeDriver, NativeNode, NativePoint } from "../..
 import { IosDeviceError } from "./device-errors.js";
 import { WdaCommandError, WdaUnreachableError } from "./wda-client.js";
 import type { DeviceRateLimiter } from "./device-limits.js";
+import { onAppList } from "./device-settings.js";
 
 /** What the fence checks against. */
 export interface DeviceFence {
@@ -148,7 +149,7 @@ export class IosDeviceDriver implements NativeDriver {
   /** The frontmost app is on the app allowlist, or the fence refuses. */
   private async assertForeground(): Promise<void> {
     const front = await this.inner.foregroundApp();
-    if (!this.fence.apps.includes(front.bundleId)) throw fenceRefusal(front.bundleId);
+    if (!onAppList(this.fence.apps, front.bundleId)) throw fenceRefusal(front.bundleId);
   }
 
   protected async read<T>(fn: () => Promise<T>): Promise<T> {

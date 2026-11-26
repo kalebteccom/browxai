@@ -2,7 +2,7 @@
 // G3). A fake guard and a fake human channel stand in for the phone.
 
 import { describe, expect, it, vi } from "vitest";
-import { holdNativeApp } from "./native-app-hold.js";
+import { holdNativeApp, type NativeAppHold } from "./native-app-hold.js";
 import { BrowxBridge } from "../helper/bridge.js";
 import { ApprovalStore, type ConfirmContext } from "../policy/confirm.js";
 import type {
@@ -15,12 +15,24 @@ import type { ConfirmHook } from "../util/capabilities.js";
 
 const ENTRY = { id: "s1" } as unknown as SessionEntry;
 
-function guard(decision: NativeAppDecision): NativeAppGuard & { admitted: string[] } {
+/** A fake guard. `admitted` is every approval ever given; `live` is the ones not
+ *  yet spent or forgotten. */
+function guard(
+  decision: NativeAppDecision,
+): NativeAppGuard & { admitted: string[]; live: Set<string> } {
   const admitted: string[] = [];
+  const live = new Set<string>();
   return {
     admitted,
+    live,
     check: vi.fn(async () => decision),
-    admitOnce: (verb, appId) => admitted.push(`${verb}:${appId}`),
+    admitOnce: (verb, appId) => {
+      admitted.push(`${verb}:${appId}`);
+      live.add(`${verb}:${appId}`);
+    },
+    forget: (verb, appId) => {
+      live.delete(`${verb}:${appId}`);
+    },
   };
 }
 
@@ -47,17 +59,17 @@ function answering(decision: "approve" | "deny"): BrowxBridge {
   });
 }
 
-const parse = (r: { content: Array<{ text: string }> } | null) =>
-  r ? (JSON.parse(r.content[0]!.text) as Record<string, unknown>) : null;
+const parse = (h: NativeAppHold) =>
+  "refused" in h ? (JSON.parse(h.refused.content[0]!.text) as Record<string, unknown>) : null;
 
 describe("holdNativeApp", () => {
   it("passes a session with no guard untouched (a simulator or an emulator)", async () => {
-    await expect(holdNativeApp(host(), ENTRY, handle(), "launch", "x.y")).resolves.toBeNull();
+    expect(parse(await holdNativeApp(host(), ENTRY, handle(), "launch", "x.y"))).toBeNull();
   });
 
   it("passes an allowed app without asking", async () => {
     const g = guard({ kind: "allow" });
-    await expect(holdNativeApp(host(), ENTRY, handle(g), "launch", "a.b")).resolves.toBeNull();
+    expect(parse(await holdNativeApp(host(), ENTRY, handle(g), "launch", "a.b"))).toBeNull();
     expect(g.admitted).toEqual([]);
   });
 
@@ -88,8 +100,12 @@ describe("holdNativeApp", () => {
   it("admits one call after a person approves, and nothing after a denial", async () => {
     const g = guard({ kind: "confirm", appId: "com.bank.app", why: "x" });
     const yes = host({ bridge: answering("approve") });
-    await expect(holdNativeApp(yes, ENTRY, handle(g), "install", "/w/B.app")).resolves.toBeNull();
+    const held = await holdNativeApp(yes, ENTRY, handle(g), "install", "/w/B.app");
+    expect(parse(held)).toBeNull();
     expect(g.admitted).toEqual(["install:com.bank.app"]);
+    // The install failed before it spent the approval: release drops it.
+    if (!("refused" in held)) held.release();
+    expect(g.live.size).toBe(0);
     const no = host({ bridge: answering("deny") });
     const r = await holdNativeApp(no, ENTRY, handle(g), "launch", "com.bank.app");
     expect(parse(r)?.ok).toBe(false);

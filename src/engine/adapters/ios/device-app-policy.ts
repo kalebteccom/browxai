@@ -12,7 +12,7 @@
 // for it first.
 
 import { IosDeviceError } from "./device-errors.js";
-import { isSystemApp } from "./device-settings.js";
+import { isSystemApp, onAppList } from "./device-settings.js";
 
 export type AppVerb = "launch" | "install" | "terminate";
 
@@ -22,7 +22,7 @@ export type AppVerdict =
   | { kind: "refuse"; appId: string; error: IosDeviceError };
 
 export function appVerdict(verb: AppVerb, appId: string, apps: readonly string[]): AppVerdict {
-  const listed = apps.includes(appId);
+  const listed = onAppList(apps, appId);
   const system = isSystemApp(appId);
   if (listed && !system) return { kind: "allow", appId };
   if (listed && verb === "terminate") return { kind: "allow", appId };

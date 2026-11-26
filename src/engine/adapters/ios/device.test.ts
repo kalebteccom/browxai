@@ -143,6 +143,24 @@ describe("IosPhysicalDevice: a person's approval (G3)", () => {
     expect(wda.calls.filter((c) => c.route === "/wda/apps/launch")).toHaveLength(1);
   });
 
+  it("forget drops an unspent approval, so a failed call leaves nothing behind", async () => {
+    const { host, state } = await rig();
+    state.devices = { result: { devices: [] } };
+    host.admitOnce("launch", "com.bank.app");
+    await expect(host.launch("com.bank.app")).rejects.toThrow(/ios-device-disconnected/);
+    host.forget("launch", "com.bank.app");
+    state.devices = phoneState().devices;
+    await expect(host.launch("com.bank.app")).rejects.toThrow(/approval/);
+  });
+
+  it("matches the app list without regard to case", async () => {
+    const { host } = await rig();
+    await expect(host.check("launch", "COM.ACME.CHECKOUT")).resolves.toEqual({ kind: "allow" });
+    await expect(host.check("launch", "Com.Apple.MobileSMS")).resolves.toMatchObject({
+      kind: "refuse",
+    });
+  });
+
   it("a listed system app needs an approval on every launch (G4)", async () => {
     const { host } = await rig();
     host.admitOnce("launch", "com.apple.Preferences");

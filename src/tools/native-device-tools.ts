@@ -240,8 +240,12 @@ export function registerNativeDeviceTools(
         const e = await entryFor(session);
         const handle = requireNative(e.session);
         const held = await holdNativeApp(host, e, handle, "install", bundle);
-        if (held) return held;
-        await handle.lifecycle.install(bundle, reinstall === true);
+        if ("refused" in held) return held.refused;
+        try {
+          await handle.lifecycle.install(bundle, reinstall === true);
+        } finally {
+          held.release();
+        }
         return json({ ok: true, apkPath, reinstalled: reinstall === true });
       } catch (err) {
         return failure(err);
@@ -292,8 +296,13 @@ export function registerNativeDeviceTools(
         const e = await entryFor(session);
         const handle = requireNative(e.session);
         const held = await holdNativeApp(host, e, handle, "launch", appId);
-        if (held) return held;
-        const launched = await handle.lifecycle.launch(appId);
+        if ("refused" in held) return held.refused;
+        let launched;
+        try {
+          launched = await handle.lifecycle.launch(appId);
+        } finally {
+          held.release();
+        }
         handle.app = launched;
         return json({ ok: true, ...launched });
       } catch (err) {

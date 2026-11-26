@@ -21,9 +21,20 @@ describe("checkStatusBinding", () => {
 });
 
 describe("checkPidBinding", () => {
-  it("passes a pid the phone lists, with or without a bundle id on the row", () => {
-    expect(() => checkPidBinding({ pid: 5 }, "a.b", [{ pid: 5 }])).not.toThrow();
-    expect(() => checkPidBinding({ pid: 5 }, "a.b", [{ pid: 5, bundleId: "a.b" }])).not.toThrow();
+  it("passes a pid the phone lists under the bundle id, or as an app executable", () => {
+    expect(() => checkPidBinding({ pid: 5 }, "a.b", [{ pid: 5, bundleId: "A.b" }])).not.toThrow();
+    const app = {
+      pid: 5,
+      executable: "file:///private/var/containers/Bundle/Application/X/A.app/A",
+    };
+    expect(() => checkPidBinding({ pid: 5 }, "a.b", [app])).not.toThrow();
+  });
+
+  it("refuses a pid whose row has neither a bundle id nor an app executable", () => {
+    expect(() => checkPidBinding({ pid: 5 }, "a.b", [{ pid: 5 }])).toThrow(/mismatch/);
+    expect(() =>
+      checkPidBinding({ pid: 5 }, "a.b", [{ pid: 5, executable: "/usr/libexec/backboardd" }]),
+    ).toThrow(/mismatch/);
   });
 
   it("refuses a missing pid, an unknown pid and a pid under another bundle id", () => {
