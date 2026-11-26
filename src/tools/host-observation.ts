@@ -7,6 +7,7 @@ import {
   type DiagnosticsRecorder,
   type DiagnosticsRecord,
 } from "../util/diagnostics.js";
+import { recordableArgs } from "../replay/call-args.js";
 import type { ToolResponse } from "./host.js";
 import { requirePage } from "../engine/index.js";
 
@@ -212,10 +213,13 @@ export function buildObservation(deps: ObservationDeps): Observation {
     if (!diagnostics.enabled) return;
     const sessionId = (args as { session?: string } | undefined)?.session ?? DEFAULT_SESSION_ID;
     const entry = registry.peek(sessionId);
-    // Apply the per-session secrets mask to args BEFORE structural redaction
-    // so a registered secret value echoed in the call args never lands raw
-    // in the JSONL store.
-    const maskedArgsIn = entry?.secrets ? entry.secrets.applyMaskDeep(args) : args;
+    // Drop the secret-value fields first (a `register_secret` value the
+    // registry refused, or a cookie value, is never in the mask), then apply
+    // the per-session secrets mask BEFORE structural redaction so a
+    // registered secret value echoed in the call args never lands raw in the
+    // JSONL store.
+    const recordable = recordableArgs(toolName, args);
+    const maskedArgsIn = entry?.secrets ? entry.secrets.applyMaskDeep(recordable) : recordable;
     const parsed = firstJsonResult(res);
     const sizeBytes = res.content.reduce((n, item) => {
       if (item.type === "text") return n + Buffer.byteLength(item.text, "utf8");

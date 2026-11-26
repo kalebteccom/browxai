@@ -11,6 +11,7 @@
 
 import type { CDPSession } from "playwright-core";
 
+import { capFramePayload, type CappedPayload } from "../util/frame-cap.js";
 import { log } from "../util/logging.js";
 import type { ReplayLog } from "./log.js";
 import type { CaptureTier } from "./schema.js";
@@ -32,7 +33,9 @@ import {
  *  can push megabyte frames at rate; without a cap those land raw on the log's
  *  synchronous hot path and either burn the pending-write budget (backpressure
  *  drops) or trip `size-cap` early. Truncation is per frame, not per stream —
- *  the schema's `WsFramePayload.truncated: boolean` records it. */
+ *  the schema's `WsFramePayload.truncated: boolean` records it. A frame over
+ *  the cap is masked before it is cut, so a registered value across the cut
+ *  leaves no head behind. */
 export const WS_MAX_PAYLOAD = 2000;
 
 /** Result of `attachReplayNetwork`: the caller's detach hook and the set of
@@ -124,10 +127,8 @@ function attachHttp(
  *  stream into one unnamed row. */
 function attachWs(cdp: CDPSession, ctx: SourceContext, rlog: ReplayLog): () => void {
   const urls = new Map<string, string>();
-  const trunc = (s: string): { payload: string; truncated?: boolean } =>
-    s.length <= WS_MAX_PAYLOAD
-      ? { payload: s }
-      : { payload: s.slice(0, WS_MAX_PAYLOAD), truncated: true };
+  const trunc = (s: string): CappedPayload =>
+    capFramePayload(s, WS_MAX_PAYLOAD, (t) => ctx.redact.mask(t));
   const onCreated = (payload: unknown): void => {
     const e = payload as { requestId: string; url: string };
     urls.set(e.requestId, e.url);

@@ -35,10 +35,16 @@ a version bump.
 7. Watch the Actions UI; approve the `release` environment when prompted.
    Publishing happens **only** through `release.yml` — never run
    `npm publish` / `pnpm publish` locally (see "OIDC trusted publishing").
-8. After publish succeeds, verify `npm install browxai@X.Y.Z` from a clean
-   machine and run `npm audit signatures`.
-9. Create the GitHub Release from the tag, pasting the `CHANGELOG.md`
-   section; the workflow attaches `sbom.cdx.json` automatically.
+8. After publish succeeds, wait until the registry serves the version:
+   `npm view browxai@X.Y.Z version` returns 404 for about 8 minutes after a
+   publish. Poll it every minute until it prints `X.Y.Z`, and do not announce
+   the release or retry the publish before then. Then verify
+   `npm install browxai@X.Y.Z` from a clean machine and run
+   `npm audit signatures`.
+9. Check the GitHub Release. The workflow creates it from the tag with the
+   tag's `CHANGELOG.md` section as its body
+   (`scripts/changelog-section.mjs`) and attaches `sbom.cdx.json`. A missing
+   or empty section fails the `sbom` job, so fix `CHANGELOG.md` before tagging.
 
 ## macOS app (manual, on the owner's Mac)
 
