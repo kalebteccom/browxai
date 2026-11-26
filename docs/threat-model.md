@@ -708,7 +708,7 @@ the same gate refusal and hint.
   **Attaching to a desktop Electron app (`engine: electron`) rides this same capability.** `BROWX_ATTACH_CDP` can point at any loopback CDP endpoint, and a running Electron application, VS Code, Slack, Discord, and others, exposes one when launched with `--remote-debugging-port`. browxai detects that case from `Browser.getVersion`'s user agent and reports the session as `engine: "electron"`; it does not ask you to declare it, and it does not refuse the attach. **This is the same hazard `byob-attach` already names, in a sharper form, so it is not a separate capability:** the endpoint is one env var, and an operator who set it to an app's port chose that app. A second toggle for a decision already made by choosing the port would read as a control without being one. What is genuinely different is written out below.
 
   - **One app, one identity, no URL bar.** An attached Chrome holds many origins and the origin allowlist can fence them. An attached Electron app is one signed-in application: its whole surface is the user's authenticated session, and the allowlist has nothing to constrain. Everything the signed-in user can reach, conversations, files, tokens in `localStorage`, is in scope of any tool call.
-  - **The default confirm hook covers it.** An Electron session is `mode: "byob"`, so `byob_action` fires on every action tool, and it is in the default `BROWX_CONFIRM_REQUIRED` set. Measured: an un-approved `click` against an attached VS Code blocked for the full five-minute confirm window and did not act. For an unattended run, enable `self-approval` and call `approve_actions({ scopes: ["byob_action"] })` with a short `ttlSeconds`.
+  - **The default confirm hook covers it.** An Electron session is `mode: "attached"`, so `byob_action` fires on every action tool, and it is in the default `BROWX_CONFIRM_REQUIRED` set. Measured: an un-approved `click` against an attached VS Code blocked for the full five-minute confirm window and did not act. For an unattended run, enable `self-approval` and call `approve_actions({ scopes: ["byob_action"] })` with a short `ttlSeconds`.
   - **`navigate` is refused outright** on an Electron session (`EngineCapabilities.refusedTools`). It would run an arbitrary web page inside the application's own renderer, which on many Electron apps is privileged through a preload IPC bridge, and it discards everything that renderer held in memory. `go_back` / `go_forward` stay available. They operate on the app's own document.
   - **Your EDR will flag the launch, and it should.** Starting a Chromium-family app with `--remote-debugging-port` alongside `--user-data-dir` matches prebuilt detection rules for infostealer cookie theft (MITRE **T1539**, Steal Web Session Cookie). The Elastic Security ruleset ships one. That is a correct detection, not a false positive: the technique browxai uses here is the technique the rule looks for. Expect the alert, and tell your security team before they find it.
   - **The port is unauthenticated for the life of the app.** browxai does not hold it exclusively; any local process can attach to the same endpoint while the app runs. Prefer a throwaway instance with its own `--user-data-dir` where the work allows it, and quit the app when done.
@@ -916,6 +916,11 @@ BROWX_CONFIRM_REQUIRED=navigate_off_allowlist,byob_action
 That is the default. `navigate_off_allowlist` acts only when an allowlist is set, and
 `byob_action` only in an attached session. `file_download` and `file_upload` are accepted
 and reserved: no tool consults them yet.
+
+`byob_action` reads the mode of the session the call runs in. An attached desktop Chrome,
+an attached Chrome on Android and an attached Electron app are all `mode: "attached"` and
+are held. A `persistent` or `incognito` session is not held, including one opened on a
+server started with `BROWX_ATTACH_CDP`.
 
 ### Origin allow/blocklist
 

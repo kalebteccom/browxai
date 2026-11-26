@@ -86,8 +86,6 @@ export interface HostDeps {
   originPolicy: OriginPolicy;
   /** Session-independent pre-approval store. */
   approvals: ApprovalStore;
-  /** Whether this server attached to an existing browser (BYOB). */
-  isByob: boolean;
   /** Resolved workspace (root dir for file-io-bound captures and archives). */
   workspace: Workspace;
   /** The diagnostics JSONL recorder. */
@@ -135,7 +133,6 @@ export function buildHost(deps: HostDeps): ToolHost {
     confirmHooks,
     originPolicy,
     approvals,
-    isByob,
     workspace,
     diagnostics,
     credentialsResolved,
@@ -155,11 +152,13 @@ export function buildHost(deps: HostDeps): ToolHost {
     return entry;
   };
 
+  // The hold follows the session, so one server can run a managed session
+  // beside an attached one and ask only on the attached one.
   const confirmCtxFor = (e: SessionEntry) => ({
     hooks: confirmHooks,
     policy: originPolicy,
     bridge: e.bridge,
-    isByob,
+    isByob: e.mode === "attached",
     approvals,
     sessionId: e.id,
   });

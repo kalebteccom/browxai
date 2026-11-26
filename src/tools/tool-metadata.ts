@@ -144,7 +144,6 @@ function makeMetadataHostDeps(): HostDeps {
     confirmHooks,
     originPolicy,
     approvals,
-    isByob: false,
     workspace,
     diagnostics,
     credentialsResolved,

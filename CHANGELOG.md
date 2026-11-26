@@ -8,6 +8,16 @@ surface" covers.
 
 ## Unreleased
 
+**Upgrading from 0.20.2.** Two changes to when the `byob_action` confirm hook asks, both on servers that attach to a browser. An attached Chrome on Android now waits for a human before each action, as attached desktop Chrome does. For an unattended Android run, drop `byob_action` from `BROWX_CONFIRM_REQUIRED`, or enable `self-approval` and call `approve_actions({ scopes: ["byob_action"], ttlSeconds })`. A `persistent` or `incognito` session on a server started with `BROWX_ATTACH_CDP` no longer asks. If you relied on that server asking for every session, open those sessions as `attached`.
+
+### Fixed
+
+- **An attached Chrome on Android is held by `byob_action`.** The hook was switched on by the server's `BROWX_ATTACH_CDP` setting, and an Android attach needs no endpoint, so its actions ran without asking. The hook now reads the session's own mode, and every `mode: "attached"` session is held: desktop Chrome, Chrome on Android and an Electron app.
+
+### Changed
+
+- **`byob_action` follows the session's mode.** A `persistent` or `incognito` session opened on a server started with `BROWX_ATTACH_CDP` is a browser browxai launched, and its actions no longer wait for a human. The attached sessions on the same server are held as before.
+
 ## [0.20.2] - 2026-11-26
 
 **Upgrading from 0.20.1.** Nothing to do. Registered secrets are masked in more places: escaped forms in text, the server log, replay archives and SDK errors.

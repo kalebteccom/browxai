@@ -303,7 +303,6 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     confirmHooks,
     originPolicy,
     approvals,
-    isByob,
     workspace,
     diagnostics,
     credentialsResolved,

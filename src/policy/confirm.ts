@@ -4,7 +4,7 @@
 //
 // Hooks defined:
 //   - navigate_off_allowlist: navigate() to a URL outside BROWX_ALLOWED_ORIGINS
-//   - byob_action: any action while attached over BROWX_ATTACH_CDP
+//   - byob_action: a held tool call in an attached session (desktop, Android or Electron)
 //   - file_download / file_upload: (slot reserved; future tools)
 //
 // Configuring via env: BROWX_CONFIRM_REQUIRED (handled in src/util/capabilities.ts).
@@ -20,7 +20,8 @@ export interface ConfirmContext {
   hooks: ReadonlySet<ConfirmHook>;
   policy: OriginPolicy;
   bridge: BrowxBridge | null;
-  /** True iff the active session attached over CDP (BYOB). */
+  /** True iff the session the call runs in is attached (`mode: "attached"`).
+   *  Read per session: a managed session on a server that also attaches is false. */
   isByob: boolean;
   /** Pre-approvals from `approve_actions`. When a scope is granted, confirm
    *  hooks for that scope auto-approve without asking the human. Granting is
