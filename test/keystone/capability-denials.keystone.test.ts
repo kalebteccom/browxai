@@ -13,8 +13,10 @@
 //   extensions       extensions_install / _list / _reload / _trigger / _uninstall
 //   canvas           canvas_capture, gesture_chain, canvas_world_to_screen,
 //                    canvas_screen_to_world, canvas_query
-//   file-io          the 13 tool-gated tools, plus the `screenshot({path})` branch
-//                    and `navigate` to a `file:` URL
+//   file-io          the 13 tool-gated tools, the `action` and `read` tools that
+//                    write a workspace file (`artifact_save`, `start_har`, and
+//                    `dump_storage_state` / `export_playwright_script` with `path`),
+//                    plus the `screenshot({path})` branch and `navigate` to a `file:` URL
 //   diagnostics      diagnostics_note
 //   eval             poll_eval, and the document / script content-type branch of `route`,
 //                    `route_queue` and `sw_intercept_fetch` (the tools are
@@ -23,6 +25,9 @@
 //   network-body     `open_session({har:{content:"embed"}})`, and the body of a
 //                    `caches_get` entry, which is left out with `bodyOmitted`
 //   action           `open_session` `storageState` / `hars` on a server without it
+//   file-io          `pdf_save`, `heap_snapshot`, `perf_start`, `perf_stop` on an
+//                    open session (the engine check runs first, so they read the
+//                    session), and `open_session` with `har` or `recordVideo`
 //   secrets          `get_credential` on a server with `credentials` alone
 //   extensions       `extensions_install` from a directory tools write into
 // Not table-driven, because the gate is a behaviour branch and not a tool gate:
@@ -112,6 +117,18 @@ const DENIALS: readonly Case[] = [
   { capability: "file-io", tool: "screenshot_on", args: {} },
   { capability: "file-io", tool: "stop_video", args: {} },
   { capability: "file-io", tool: "get_video", args: {} },
+  { capability: "file-io", tool: "artifact_save", args: { name: "ks-denied", content: "x" } },
+  { capability: "file-io", tool: "start_har", args: { path: "ks-file-io-denials/x.har" } },
+  {
+    capability: "file-io",
+    tool: "dump_storage_state",
+    args: { path: "ks-file-io-denials/state.json" },
+  },
+  {
+    capability: "file-io",
+    tool: "export_playwright_script",
+    args: { path: "ks-file-io-denials/flow.spec.ts" },
+  },
   { capability: "diagnostics", tool: "diagnostics_note", args: { insight: "keystone note" } },
   { capability: "eval", tool: "poll_eval", args: { expr: "true" } },
   {
@@ -320,6 +337,62 @@ describe("capability denials with the default capability set", () => {
       KEYSTONE_TIMEOUT,
     );
 
+    it.each([
+      ["pdf_save", "pdfs"],
+      ["heap_snapshot", "heap-snapshots"],
+      ["perf_start", "perf-traces"],
+      ["perf_stop", "perf-traces"],
+    ])(
+      "refuses %s on an open session and writes nothing",
+      async (tool, dir) => {
+        const denied = await call<Denied & { reason: string }>(tool, { session });
+        expect(denied.ok).toBe(false);
+        expect(denied.requiredCapability).toBe("file-io");
+        expect(denied.reason).toContain(`${tool} writes`);
+        expect([...denied.activeCapabilities].sort()).toEqual([...DEFAULT_SET].sort());
+        expect(existsSync(join(workspace, dir))).toBe(false);
+      },
+      KEYSTONE_TIMEOUT,
+    );
+
+    it.each([
+      ["har", { har: { path: "ks-file-io-denials/open.har" } }],
+      ["recordVideo", { recordVideo: { path: "ks-file-io-denials/open.webm" } }],
+    ])(
+      "refuses open_session with %s before the session opens",
+      async (name, args) => {
+        const denied = await call<Denied & { reason: string }>("open_session", {
+          session: "ks-recording",
+          mode: "incognito",
+          ...args,
+        });
+        expect(denied.ok).toBe(false);
+        expect(denied.requiredCapability).toBe("file-io");
+        expect(denied.reason).toContain(name);
+        const listed = await call<{ sessions: Array<{ id: string }> }>("list_sessions", {});
+        expect(listed.sessions.map((x) => x.id)).not.toContain("ks-recording");
+        expect(existsSync(join(workspace, "ks-file-io-denials"))).toBe(false);
+      },
+      KEYSTONE_TIMEOUT,
+    );
+
+    it(
+      "still returns dump_storage_state and export_playwright_script inline with no path",
+      async () => {
+        const dumped = await call<{ ok: boolean; requiredCapability?: string }>(
+          "dump_storage_state",
+          { session },
+        );
+        expect(dumped.requiredCapability).toBeUndefined();
+        expect(dumped.ok).toBe(true);
+        const exported = await call<{ requiredCapability?: string }>("export_playwright_script", {
+          session,
+        });
+        expect(exported.requiredCapability).toBeUndefined();
+      },
+      KEYSTONE_TIMEOUT,
+    );
+
     it(
       "still returns an inline screenshot when no path is given",
       async () => {
@@ -385,22 +458,6 @@ describe("capability denials with the default capability set", () => {
         expect(got.requiredCapability).toBe("network-body");
         expect(got.text).toBeUndefined();
         expect(JSON.stringify(got)).not.toContain("ks-cached-body");
-      },
-      KEYSTONE_TIMEOUT,
-    );
-
-    it(
-      "starts a recording with no bodies by default",
-      async () => {
-        const started = await call<{ ok: boolean; content: string }>("start_har", {
-          session,
-          path: "ks-har-denials/default.har",
-        });
-        expect(started.ok).toBe(true);
-        expect(started.content).toBe("omit");
-        const stopped = await call<{ ok: boolean; wasActive: boolean }>("stop_har", { session });
-        expect(stopped.ok).toBe(true);
-        expect(stopped.wasActive).toBe(true);
       },
       KEYSTONE_TIMEOUT,
     );
@@ -523,6 +580,44 @@ describe("the same surfaces with their capabilities on", () => {
       expect(shot.requiredCapability).toBeUndefined();
       expect(shot.ok).toBe(true);
       expect(shot.bytes).toBeGreaterThan(0);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "file-io: start_har records with no bodies by default",
+    async () => {
+      const started = await call<{ ok: boolean; content: string }>("start_har", {
+        session,
+        path: "ks-har-denials/default.har",
+      });
+      expect(started.ok).toBe(true);
+      expect(started.content).toBe("omit");
+      const stopped = await call<{ ok: boolean; wasActive: boolean }>("stop_har", { session });
+      expect(stopped.ok).toBe(true);
+      expect(stopped.wasActive).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "file-io: artifact_save and pdf_save write their files",
+    async () => {
+      const saved = await call<{ ok: boolean; requiredCapability?: string }>("artifact_save", {
+        session,
+        name: "ks-enabled",
+        content: "x",
+      });
+      expect(saved.requiredCapability).toBeUndefined();
+      expect(saved.ok).toBe(true);
+      await call("navigate", { session, url: `${fixture.url}/` });
+      const pdf = await call<{ ok: boolean; bytes: number; requiredCapability?: string }>(
+        "pdf_save",
+        { session, path: "ks-capability-denials/page.pdf" },
+      );
+      expect(pdf.requiredCapability).toBeUndefined();
+      expect(pdf.ok).toBe(true);
+      expect(pdf.bytes).toBeGreaterThan(0);
     },
     KEYSTONE_TIMEOUT,
   );

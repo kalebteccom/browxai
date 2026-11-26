@@ -66,7 +66,8 @@ export interface OpenSessionArgs {
   storageState?: string | Record<string, unknown>;
   /** Named slot saved with `auth_save`. Mutually exclusive with `storageState`. */
   authState?: string;
-  /** Record a HAR for the session; the file is written on `close_session`. */
+  /** Record a HAR for the session; the file is written on `close_session`. Needs the
+   *  `file-io` capability (off by default). */
   har?: {
     /** Workspace-rooted `.har` path (a `.zip` path is refused). */
     path?: string;

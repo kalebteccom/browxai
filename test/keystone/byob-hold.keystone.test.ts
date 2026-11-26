@@ -4,8 +4,9 @@
 // five-minute confirm window.
 //
 //   1. An attached session holds the tools that change the browser, whichever
-//      handler they live in: each call reaches the daemon as a `byob_action`
-//      approval and comes back as a `policy:` refusal when the daemon says no.
+//      handler they live in, and the read tools that return its cookie values:
+//      each call reaches the daemon as a `byob_action` approval and comes back
+//      as a `policy:` refusal when the daemon says no.
 //   2. Read tools and the tools pinned as not held run without a prompt.
 //   3. A managed session on the same server is not held.
 //   4. After `approve_actions`, the held tools run and the daemon is not asked.
@@ -173,6 +174,9 @@ describeHold("attached-session hold — real Chrome, operator answers no", () =>
     ["grant_permissions", { permissions: ["geolocation"] }],
     ["set_geolocation", { latitude: 1, longitude: 1 }],
     ["click", { selector: "body" }],
+    ["cookies_get", { name: "ks-cookie" }],
+    ["cookies_list", {}],
+    ["dump_storage_state", {}],
   ];
 
   it(
@@ -243,6 +247,8 @@ describeHold("attached-session hold — real Chrome, operator answers no", () =>
       expect(clicked.ok, JSON.stringify(clicked)).toBe(true);
       const evaluated = await call("eval_js", { session: "managed", expr: "1 + 1" });
       expect(evaluated.value).toBe(2);
+      const cookies = await call("cookies_list", { session: "managed" });
+      expect(cookies.ok, JSON.stringify(cookies)).toBe(true);
       expect(asked.length).toBe(before);
     },
     KEYSTONE_TIMEOUT,

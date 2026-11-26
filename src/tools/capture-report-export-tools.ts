@@ -5,6 +5,7 @@ import { assertPdfSupported } from "../page/pdf.js";
 import { pageArchive } from "../page/archive.js";
 import { SESSION_ARG } from "./schemas.js";
 import { jsonResult, jsonResultWithEstimate, errorResult, jsonToolResult } from "./json-result.js";
+import { fileWriteGate } from "./file-write-gate.js";
 import type { ToolHost } from "./host.js";
 
 /**
@@ -132,7 +133,7 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
       byobConfirm: false,
       deep: true,
       description:
-        'Print the current page to a workspace-rooted PDF (`page.pdf()`, CDP `Page.printToPDF`), when you need text and layout as a document rather than an image. Defaults: `format:"A4"`, `scale:1`, `printBackground:false` (the browser-print default; turn it on when background colour or imagery matters). `path` must resolve inside `$BROWX_WORKSPACE` (default `pdfs/<sessionId>-<ts>.pdf`). Refused on `attached` sessions, because printing would change your own Chrome window: open a `persistent` or `incognito` session and run it there. Returns `{ ok, path, bytes, format, scale, printBackground }`.',
+        'Print the current page to a workspace-rooted PDF (`page.pdf()`, CDP `Page.printToPDF`), when you need text and layout as a document rather than an image. Defaults: `format:"A4"`, `scale:1`, `printBackground:false` (the browser-print default; turn it on when background colour or imagery matters). `path` must resolve inside `$BROWX_WORKSPACE` (default `pdfs/<sessionId>-<ts>.pdf`). Refused on `attached` sessions, because printing would change your own Chrome window: open a `persistent` or `incognito` session and run it there. Returns `{ ok, path, bytes, format, scale, printBackground }`. Requires the `file-io` capability (off by default).',
       inputSchema: {
         path: z
           .string()
@@ -167,6 +168,9 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       const eg = engineGate("pdf_save", e);
       if (eg) return eg;
+      // After the engine gate: on an engine that cannot print, `file-io` would not help.
+      const fg = fileWriteGate(gateCheck, "pdf_save", "a PDF of the page");
+      if (fg) return fg;
       try {
         const refused = assertPdfSupported({ mode: e.mode });
         if (refused) {

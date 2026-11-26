@@ -8,6 +8,7 @@ import {
 } from "../page/har.js";
 import { stopVideo, readVideoIfReady, VIDEO_INLINE_CAP_BYTES } from "../page/video.js";
 import { SESSION_ARG } from "./schemas.js";
+import { fileWriteGate } from "./file-write-gate.js";
 import type {
   RegisterHost,
   GateHost,
@@ -45,7 +46,7 @@ export function registerStorageArtifactHarVideoTools(
   // this, agents round-tripped scripts/files/blobs through `name_ref`/
   // `name_region` — both ref-typed and a poor fit for raw bytes.
   //
-  // Capability split: `artifact_save` → `action` (writes a file);
+  // Capability split: `artifact_save` → `action` plus `file-io` (writes a file);
   // `artifact_get` / `artifact_list` → `read`. Workspace-rooted at
   // `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`. Name restricted
   // (no separators / `..` / leading dots). Capacity-bounded (200 entries,
@@ -59,7 +60,7 @@ export function registerStorageArtifactHarVideoTools(
       // Not held in an attached session: Writes a file in the workspace artifact store. Nothing in the browser changes.
       byobConfirm: false,
       description:
-        'Save a text or binary artifact to the session\'s key-value store at `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`. `name` is letters, digits and `._-` only (no separators, `..` or leading dot). `content` is text by default (`encoding:"utf8"`); pass `encoding:"base64"` for binary. Saving an existing name overwrites it. The store holds 200 entries or 50 MiB per session; past either cap the oldest-written entry is evicted. Artifacts are deleted on `close_session`. Read back with `artifact_get`, list with `artifact_list`. Returns `{ ok, name, size, mtime, path }`.',
+        'Save a text or binary artifact to the session\'s key-value store at `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`. `name` is letters, digits and `._-` only (no separators, `..` or leading dot). `content` is text by default (`encoding:"utf8"`); pass `encoding:"base64"` for binary. Saving an existing name overwrites it. The store holds 200 entries or 50 MiB per session; past either cap the oldest-written entry is evicted. Artifacts are deleted on `close_session`. Read back with `artifact_get`, list with `artifact_list`. Returns `{ ok, name, size, mtime, path }`. Requires the `file-io` capability (off by default).',
       inputSchema: {
         name: z
           .string()
@@ -81,6 +82,8 @@ export function registerStorageArtifactHarVideoTools(
     async ({ name, content, encoding, session }) => {
       const g = gateCheck("artifact_save");
       if (g) return g;
+      const fg = fileWriteGate(gateCheck, "artifact_save", "the artifact as a file");
+      if (fg) return fg;
       try {
         const e = await entryFor(session);
         const info = e.artifacts.save(name, content, encoding ?? "utf8");
@@ -158,7 +161,7 @@ export function registerStorageArtifactHarVideoTools(
   // Full-session reproducibility — capture every request the page made into a
   // HAR file, then later replay with `open_session({hars:[file]})` so XHR/fetch
   // are served from the archive. Recording sits under capability `action`
-  // (writes a file). Replay is wired at `open_session` time (no separate tool).
+  // plus `file-io` (writes a file). Replay is wired at `open_session` time (no separate tool).
   //
   // Finalize timing. Playwright writes the HAR file on `context.close()` —
   // there is no public mid-session flush. Both `start_har` (runtime) and
@@ -167,13 +170,30 @@ export function registerStorageArtifactHarVideoTools(
   // the recording route so further requests aren't logged, but the file
   // remains pending until session teardown.
 
+  /** The second-capability refusal for a `start_har` call, or null. Bodies on
+   *  disk are response content, the same thing `network_body` returns, so they
+   *  need the same capability; the file itself needs `file-io`. */
+  const harRefusal = (content: "embed" | "attach" | "omit" | undefined) => {
+    if (harWritesBodies(content)) {
+      const bodies = gateCheck(
+        "start_har",
+        ["network-body"],
+        `start_har content "${content}" writes request and response bodies; pass content:"omit" or enable network-body`,
+      );
+      if (bodies) return bodies;
+    }
+    return fileWriteGate(gateCheck, "start_har", "a HAR file");
+  };
+
   register(
     "start_har",
     {
       capability: "action",
       batchable: true,
+      // A call the capability arms refuse is refused before the hold asks a human.
+      byobPrecheck: ({ content }) => harRefusal(content),
       description:
-        'Start recording a HAR on the current session through `context.routeFromHAR(path, {update:true})`. The file is finalized only when the session closes (`close_session`); Playwright has no mid-session flush. Calling it again while recording stops the earlier recorder and adds the new path (every recorded file is rewritten on close). To record from the start of a session, pass `open_session({har})` instead. Bodies are omitted by default (`content:"omit"`); `embed` and `attach` write bodies to disk and need the `network-body` capability (off by default). On close the file is rewritten with `Cookie`, `Set-Cookie` and `Authorization` values emptied (names kept) and registered secrets masked in headers, URLs and text bodies; without `network-body` request bodies are emptied too. Paths are workspace-rooted `.har` files: a path outside the workspace or a `.zip` path is rejected.',
+        'Start recording a HAR on the current session through `context.routeFromHAR(path, {update:true})`. The file is finalized only when the session closes (`close_session`); Playwright has no mid-session flush. Calling it again while recording stops the earlier recorder and adds the new path (every recorded file is rewritten on close). To record from the start of a session, pass `open_session({har})` instead. Bodies are omitted by default (`content:"omit"`); `embed` and `attach` write bodies to disk and need the `network-body` capability (off by default). On close the file is rewritten with `Cookie`, `Set-Cookie` and `Authorization` values emptied (names kept) and registered secrets masked in headers, URLs and text bodies; without `network-body` request bodies are emptied too. Paths are workspace-rooted `.har` files: a path outside the workspace or a `.zip` path is rejected. Requires the `file-io` capability (off by default).',
       inputSchema: {
         path: z
           .string()
@@ -203,16 +223,8 @@ export function registerStorageArtifactHarVideoTools(
     async ({ path, mode, content, urlFilter, session }) => {
       const g = gateCheck("start_har");
       if (g) return g;
-      // Bodies on disk are response content, the same thing `network_body`
-      // returns, so they need the same capability.
-      if (harWritesBodies(content)) {
-        const bodies = gateCheck(
-          "start_har",
-          ["network-body"],
-          `start_har content "${content}" writes request and response bodies; pass content:"omit" or enable network-body`,
-        );
-        if (bodies) return bodies;
-      }
+      const armed = harRefusal(content);
+      if (armed) return armed;
       try {
         const e = await entryFor(session);
         const r = await withDeadline(

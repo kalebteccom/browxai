@@ -63,31 +63,31 @@ Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rule
 
 Safe by default — no auto-broadening. Every off-by-default capability has a per-tool keystone test asserting the gate blocks when the capability is not granted.
 
-| State           | Capability            | Notes                                                                                                         |
-| --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
-| ON by default   | `read`                | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot                  |
-| ON by default   | `navigation`          | navigate (web, `about:blank`, `data:`; other schemes are opt-in), go_back, go_forward, scroll, set_viewport   |
-| ON by default   | `action`              | click, fill, select, drag, hover, press, wait_for, route (data and static requests), set_* emulation          |
-| ON by default   | `human`               | confirmation hooks, await_human                                                                               |
-| OFF + loud-warn | `eval`                | `eval_js`, `poll_eval`: arbitrary JS in page context; `route` answering document, script or worker requests   |
-| OFF + loud-warn | `network-body`        | `network_body`, `caches_get` bodies, `start_har` `embed`/`attach`: full response bodies                       |
-| OFF + loud-warn | `byob-attach`         | attach to user's existing Chrome (desktop or Android), or a running desktop Electron app (no managed profile) |
-| OFF             | `clipboard`           | `shortcut` copy/cut/paste writes the OS clipboard (write-only, never read back)                               |
-| OFF             | `file-io`             | `upload_file`, downloads, `screenshot({path})`, exports, video, `navigate` to `file:`, all workspace-rooted   |
-| OFF + loud-warn | `secrets`             | `register_secret`, secret materialization at egress                                                           |
-| OFF + loud-warn | `extensions`          | install/inspect Chrome extensions                                                                             |
-| OFF + loud-warn | `stealth`             | anti-fingerprint posture tweaks                                                                               |
-| OFF + loud-warn | `credentials`         | `get_totp`, `get_credential` against a password manager CLI                                                   |
-| OFF + loud-warn | `captcha`             | `solve_captcha`: forwards a captcha to a third-party solving service (2Captcha, CapMonster)                   |
-| OFF + loud-warn | `device-emulation`    | `emulate_bluetooth` / `emulate_usb` / `emulate_hid`, `device_requests`: synthetic Web device catalogs         |
-| OFF + loud-warn | `diagnostics`         | recorder, `diagnostics_note` (the read-side queries ride `read`)                                              |
-| OFF + loud-warn | `canvas`              | `canvas_*` tools and `gesture_chain` (figma / tldraw / excalidraw plugins)                                    |
-| OFF + loud-warn | `replay`              | `.browx` session-replay artifact capture (DOM stream + network + console)                                     |
-| OFF + loud-warn | `native-device`       | gates two ENGINES: `ios-app` / `android-app` install and launch apps and drive OS-level input                 |
-| OFF + loud-warn | `self-approval`       | `approve_actions` — the agent pre-approves the confirm hooks that hold its own actions                        |
-| OFF + loud-warn | `human-gate-override` | `set_*_policy` may move a policy off `ask-human`; `grant_permissions` may grant what it holds                 |
-| OFF + loud-warn | `operator-channel`    | `await_human` and the confirm hooks go to the host daemon's Unix socket, and only its answer counts           |
-| OFF + loud-warn | `live-view`           | the socket's daemon can stream browser pixels to the operator (needs `operator-channel`)                      |
+| State           | Capability            | Notes                                                                                                                                                                 |
+| --------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ON by default   | `read`                | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot                                                                          |
+| ON by default   | `navigation`          | navigate (web, `about:blank`, `data:`; other schemes are opt-in), go_back, go_forward, scroll, set_viewport                                                           |
+| ON by default   | `action`              | click, fill, select, drag, hover, press, wait_for, route (data and static requests), set_* emulation                                                                  |
+| ON by default   | `human`               | confirmation hooks, await_human                                                                                                                                       |
+| OFF + loud-warn | `eval`                | `eval_js`, `poll_eval`: arbitrary JS in page context; `route` answering document, script or worker requests                                                           |
+| OFF + loud-warn | `network-body`        | `network_body`, `caches_get` bodies, `start_har` `embed`/`attach`: full response bodies                                                                               |
+| OFF + loud-warn | `byob-attach`         | attach to user's existing Chrome (desktop or Android), or a running desktop Electron app (no managed profile)                                                         |
+| OFF             | `clipboard`           | `shortcut` copy/cut/paste writes the OS clipboard (write-only, never read back)                                                                                       |
+| OFF             | `file-io`             | `upload_file`, downloads, every workspace file a tool writes (screenshots, exports, PDFs, traces, HAR, video, artifacts), `navigate` to `file:`, all workspace-rooted |
+| OFF + loud-warn | `secrets`             | `register_secret`, secret materialization at egress                                                                                                                   |
+| OFF + loud-warn | `extensions`          | install/inspect Chrome extensions                                                                                                                                     |
+| OFF + loud-warn | `stealth`             | anti-fingerprint posture tweaks                                                                                                                                       |
+| OFF + loud-warn | `credentials`         | `get_totp`, `get_credential` against a password manager CLI                                                                                                           |
+| OFF + loud-warn | `captcha`             | `solve_captcha`: forwards a captcha to a third-party solving service (2Captcha, CapMonster)                                                                           |
+| OFF + loud-warn | `device-emulation`    | `emulate_bluetooth` / `emulate_usb` / `emulate_hid`, `device_requests`: synthetic Web device catalogs                                                                 |
+| OFF + loud-warn | `diagnostics`         | recorder, `diagnostics_note` (the read-side queries ride `read`)                                                                                                      |
+| OFF + loud-warn | `canvas`              | `canvas_*` tools and `gesture_chain` (figma / tldraw / excalidraw plugins)                                                                                            |
+| OFF + loud-warn | `replay`              | `.browx` session-replay artifact capture (DOM stream + network + console)                                                                                             |
+| OFF + loud-warn | `native-device`       | gates two ENGINES: `ios-app` / `android-app` install and launch apps and drive OS-level input                                                                         |
+| OFF + loud-warn | `self-approval`       | `approve_actions` — the agent pre-approves the confirm hooks that hold its own actions                                                                                |
+| OFF + loud-warn | `human-gate-override` | `set_*_policy` may move a policy off `ask-human`; `grant_permissions` may grant what it holds                                                                         |
+| OFF + loud-warn | `operator-channel`    | `await_human` and the confirm hooks go to the host daemon's Unix socket, and only its answer counts                                                                   |
+| OFF + loud-warn | `live-view`           | the socket's daemon can stream browser pixels to the operator (needs `operator-channel`)                                                                              |
 
 Per-capability rationale, ActionResult shape, and threat-model rows live in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/ai-context/architecture/capability-posture-map.md`](docs/ai-context/architecture/capability-posture-map.md).
 
@@ -121,7 +121,7 @@ Do not loosen the keystone gate. See [`docs/ai-context/page-side-functions/dom-e
 Adding a new MCP tool:
 
 1. Gate definition — Zod schema for input + output in the tool handler file.
-2. Capability — set `capability` (and `batchable` / `deep` where they apply) in the `host.register` metadata. The central capability, batch and deep maps are derived from it, and so is the attached-session hold: a tool under `action`, `navigation`, `eval`, `file-io`, `clipboard`, `canvas`, `extensions` or `device-emulation` waits on `byob_action` in an attached session. Set `byobConfirm: false`, with a reason comment, only for a tool that changes nothing in the browser, and pin it in `test/architecture/byob-hold-completeness.test.ts`.
+2. Capability — set `capability` (and `batchable` / `deep` where they apply) in the `host.register` metadata. The central capability, batch and deep maps are derived from it, and so is the attached-session hold: a tool under `action`, `navigation`, `eval`, `file-io`, `clipboard`, `canvas`, `extensions` or `device-emulation` waits on `byob_action` in an attached session. Set `byobConfirm: false`, with a reason comment, only for a tool that changes nothing in the browser, and pin it in `test/architecture/byob-hold-completeness.test.ts`. Set `byobConfirm: true`, pinned the same way, for a tool under another capability whose result carries the attached browser's cookie values.
 3. Handler implementation — under `src/page/<tool>.ts` (page-touching) or `src/session/` (session-scope). Returns an `ActionResult`.
 4. Registry — put the `host.register` call in the matching `src/tools/<area>-tools.ts` module. `src/server.ts` composes those modules and holds no registrations.
 5. Threat-model row — `docs/threat-model.md`.

@@ -16,6 +16,7 @@ import {
 } from "../page/export-playwright-script.js";
 import { engineDeclares } from "../engine/index.js";
 import { SESSION_ARG } from "./schemas.js";
+import { fileWriteGate } from "./file-write-gate.js";
 import type { ToolHost } from "./host.js";
 
 /** Stamp the body with its token estimate and wrap it as a tool text response —
@@ -349,18 +350,24 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
     },
   );
 
+  /** `path` writes the spec to a file, which needs `file-io`. */
+  const scriptPathRefusal = (path: string | undefined) =>
+    path === undefined
+      ? null
+      : fileWriteGate(gateCheck, "export_playwright_script", "the spec as a file");
+
   register(
     "export_playwright_script",
     {
       capability: "read",
       description:
-        "Turn the session's recorded action trace into a runnable `@playwright/test` spec. It needs an active recording (`start_recording` first) and does not end it; `end_recording` returns the flow-file YAML instead and `export_session_report` bundles QA evidence. Each recorded action becomes one Playwright call using the best selectorHint captured (testid attribute, then role and name, then role only with a `// TODO: fragile selector` comment). Actions that used `coords` are not recorded. Recorded reads lower too: `extract` to a per-field re-read (fields using the property-name rule emit `null` and a TODO), `find` to a named locator, `eval_js` to `page.evaluate` of the recorded expression, `snapshot` to a comment. With `path` it also writes a workspace-rooted `.spec.ts`; a path outside $BROWX_WORKSPACE is rejected. Returns `{ ok, name, source, path?, stats:{steps,handled,unhandled,fragile}, tokensEstimate }`.",
+        "Turn the session's recorded action trace into a runnable `@playwright/test` spec. It needs an active recording (`start_recording` first) and does not end it; `end_recording` returns the flow-file YAML instead and `export_session_report` bundles QA evidence. Each recorded action becomes one Playwright call using the best selectorHint captured (testid attribute, then role and name, then role only with a `// TODO: fragile selector` comment). Actions that used `coords` are not recorded. Recorded reads lower too: `extract` to a per-field re-read (fields using the property-name rule emit `null` and a TODO), `find` to a named locator, `eval_js` to `page.evaluate` of the recorded expression, `snapshot` to a comment. With `path` it also writes a workspace-rooted `.spec.ts`, which needs the `file-io` capability (off by default); a path outside $BROWX_WORKSPACE is rejected. Returns `{ ok, name, source, path?, stats:{steps,handled,unhandled,fragile}, tokensEstimate }`.",
       inputSchema: {
         path: z
           .string()
           .optional()
           .describe(
-            "Optional workspace-rooted file path to write the `.spec.ts` to (in addition to returning it inline). Rejected if it escapes $BROWX_WORKSPACE.",
+            "Optional workspace-rooted file path to write the `.spec.ts` to (in addition to returning it inline). Rejected if it escapes $BROWX_WORKSPACE. Requires the `file-io` capability (off by default).",
           ),
         ...SESSION_ARG,
       },
@@ -368,6 +375,8 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
     async ({ path, session }) => {
       const g = gateCheck("export_playwright_script");
       if (g) return g;
+      const fg = scriptPathRefusal(path);
+      if (fg) return fg;
       const e = await entryFor(session);
       const snap = e.recorder.inspect();
       if (!snap) {

@@ -11,6 +11,7 @@ import type { HeldAskHuman } from "../session/registry.js";
 import { askHumanReopenGate } from "./ask-human-gate.js";
 import type { GateHost, ToolResponse } from "./host.js";
 import { harWritesBodies } from "../page/har.js";
+import { fileWriteGate } from "./file-write-gate.js";
 
 /** The parsed policy bundle `open_session` threads into `registry.get`. */
 export interface ParsedOpenSessionPolicies {
@@ -34,6 +35,9 @@ export interface OpenSessionPolicyArgs {
    *  page sees, as `inject_storage_state` and `route` do, so they need
    *  `action`. */
   seeds?: { storageState: boolean; hars: boolean };
+  /** Set when the new session records to a workspace file for its lifetime: a
+   *  HAR (`har`) or a video (`recordVideo`). Both need `file-io`. */
+  records?: { har: boolean; video: boolean };
 }
 
 /** The `action` refusal for an argument that seeds the new session, or null. */
@@ -49,6 +53,21 @@ function seedingRefusal(
   if (seeds?.hars) {
     const reason = "`hars` answers the new session's requests from recorded responses";
     return gateCheck("open_session", ["action"], reason);
+  }
+  return null;
+}
+
+/** The `file-io` refusal for an argument that records to a file, or null. */
+function recordingRefusal(
+  gateCheck: GateHost["gateCheck"],
+  records: OpenSessionPolicyArgs["records"],
+): ToolResponse | null {
+  if (records?.har) {
+    const refused = fileWriteGate(gateCheck, "open_session", "the `har` recording as a file");
+    if (refused) return refused;
+  }
+  if (records?.video) {
+    return fileWriteGate(gateCheck, "open_session", "the `recordVideo` recording as a file");
   }
   return null;
 }
@@ -70,7 +89,7 @@ function parseOpenSessionPolicies(args: OpenSessionPolicyArgs): ParsedOpenSessio
 /** Parse the policy args into the bundle `open_session` opens with, or the
  *  refusal to return instead: the `action` refusal for a state-seeding argument
  *  on a server without it, the `network-body` refusal for a HAR that would
- *  write bodies, a structured `ok:false` for a malformed policy, or
+ *  write bodies, the `file-io` refusal for a HAR or video recording, a structured `ok:false` for a malformed policy, or
  *  the `human-gate-override` refusal when a name that held `ask-human` when it
  *  last closed would reopen with a policy that moves a held key off it. Nothing
  *  has launched yet when this runs. */
@@ -87,6 +106,8 @@ export function resolveOpenSessionPolicies(
     const bodies = gateCheck("open_session", ["network-body"], reason);
     if (bodies) return { ok: false, response: bodies };
   }
+  const recording = recordingRefusal(gateCheck, args.records);
+  if (recording) return { ok: false, response: recording };
   let policies: ParsedOpenSessionPolicies;
   try {
     policies = parseOpenSessionPolicies(args);

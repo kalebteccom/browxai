@@ -10,6 +10,7 @@ import { ALL_AUDIT_CATEGORIES } from "../page/perf-audit.js";
 import { runPerfAudit } from "../page/perf-audit-runner.js";
 import { SESSION_ARG } from "./schemas.js";
 import { jsonToolResult } from "./json-result.js";
+import { fileWriteGate } from "./file-write-gate.js";
 import type { ToolHost } from "./host.js";
 
 /** Cheap one-pass counter for perf_stop's inline summary — gives the agent a
@@ -92,7 +93,7 @@ export function registerDeepPerfTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        "Start a CDP performance trace on this session (`Tracing.start`), to find out why an interaction was slow. Stop it with `perf_stop`, which writes a Chromium-format trace under `<workspace>/perf-traces/`; `perf_insights` then extracts long tasks, layout shifts, render-blocking resources, LCP and navigation timing from that file. Use `perf_audit` for a one-call report with remediations. One trace per session: calling `perf_start` while one runs stops it (events discarded) and starts fresh, so an agent that lost track can just call again. Empty `categories` uses a DevTools-Performance-like default (devtools.timeline, loading, blink.user_timing, frame). On `attached` sessions `perf_stop` is required to detach the trace buffer from your Chrome; `close_session` also cleans up.",
+        "Start a CDP performance trace on this session (`Tracing.start`), to find out why an interaction was slow. Stop it with `perf_stop`, which writes a Chromium-format trace under `<workspace>/perf-traces/`; `perf_insights` then extracts long tasks, layout shifts, render-blocking resources, LCP and navigation timing from that file. Use `perf_audit` for a one-call report with remediations. One trace per session: calling `perf_start` while one runs stops it (events discarded) and starts fresh, so an agent that lost track can just call again. Empty `categories` uses a DevTools-Performance-like default (devtools.timeline, loading, blink.user_timing, frame). On `attached` sessions `perf_stop` is required to detach the trace buffer from your Chrome; `close_session` also cleans up. Requires the `file-io` capability (off by default), as `perf_stop` does.",
       inputSchema: {
         categories: z
           .array(z.string())
@@ -109,6 +110,11 @@ export function registerDeepPerfTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("perf_start", e);
       if (eg) return eg;
+      // A trace leaves only through the file `perf_stop` writes, so starting one
+      // needs `file-io` too. Refusing here keeps a trace from running on a server
+      // that could never stop it. After the engine gate, as in `perf_stop`.
+      const fg = fileWriteGate(gateCheck, "perf_start", "a trace file, through perf_stop,");
+      if (fg) return fg;
       return jsonToolResult(async () => {
         const r = await e.perf.start(requireCdp(e.session), { categories });
         const body: Record<string, unknown> = {
@@ -136,7 +142,7 @@ export function registerDeepPerfTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        "Stop the running performance trace and write it to a workspace-rooted JSON file (`Tracing.end`). Returns `{ path, bytes, eventCount, categories, durationMs }` plus a short summary (long-task, layout-shift and render-blocking counts), so you may not need `perf_insights`. Default path `<workspace>/perf-traces/<sessionId>-<ts>.json`; `path` must resolve inside `$BROWX_WORKSPACE`. Safe to call repeatedly: with no trace running it returns `notRunning:true`. The file loads in DevTools' Performance panel and `chrome://tracing`.",
+        "Stop the running performance trace and write it to a workspace-rooted JSON file (`Tracing.end`). Returns `{ path, bytes, eventCount, categories, durationMs }` plus a short summary (long-task, layout-shift and render-blocking counts), so you may not need `perf_insights`. Default path `<workspace>/perf-traces/<sessionId>-<ts>.json`; `path` must resolve inside `$BROWX_WORKSPACE`. Safe to call repeatedly: with no trace running it returns `notRunning:true`. The file loads in DevTools' Performance panel and `chrome://tracing`. Requires the `file-io` capability (off by default).",
       inputSchema: {
         path: z
           .string()
@@ -153,6 +159,9 @@ export function registerDeepPerfTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("perf_stop", e);
       if (eg) return eg;
+      // After the engine gate: on an engine with no tracing, `file-io` would not help.
+      const fg = fileWriteGate(gateCheck, "perf_stop", "the trace file");
+      if (fg) return fg;
       return jsonToolResult(async () => {
         const r = await e.perf.stop(requireCdp(e.session));
         if (r.notRunning) {

@@ -10,6 +10,7 @@ import {
 } from "../page/heap.js";
 import { SESSION_ARG } from "./schemas.js";
 import { jsonToolResult } from "./json-result.js";
+import { fileWriteGate } from "./file-write-gate.js";
 import type { ToolHost } from "./host.js";
 
 /**
@@ -190,7 +191,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        "Take a V8 heap snapshot of this session's target (CDP `HeapProfiler.takeHeapSnapshot`), to diagnose memory leaks: pair it with `heap_retainers({snapshotPath, query})` to ask who still points at objects of a given name or type, which `snapshot` and `find` cannot show because leaked nodes are no longer in the DOM. One snapshot per call. Default path `<workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot`; `path` must resolve inside `$BROWX_WORKSPACE`. The file opens in DevTools' Memory panel. Snapshots are heavy (tens to hundreds of MiB on a real page): do not take them in a loop.",
+        "Take a V8 heap snapshot of this session's target (CDP `HeapProfiler.takeHeapSnapshot`), to diagnose memory leaks: pair it with `heap_retainers({snapshotPath, query})` to ask who still points at objects of a given name or type, which `snapshot` and `find` cannot show because leaked nodes are no longer in the DOM. One snapshot per call. Default path `<workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot`; `path` must resolve inside `$BROWX_WORKSPACE`. The file opens in DevTools' Memory panel. Snapshots are heavy (tens to hundreds of MiB on a real page): do not take them in a loop. Requires the `file-io` capability (off by default).",
       inputSchema: {
         path: z
           .string()
@@ -207,6 +208,9 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("heap_snapshot", e);
       if (eg) return eg;
+      // After the engine gate: on an engine with no heap profiler, `file-io` would not help.
+      const fg = fileWriteGate(gateCheck, "heap_snapshot", "a heap snapshot file");
+      if (fg) return fg;
       return jsonToolResult(async () => {
         const snapshotJson = await takeHeapSnapshot(requireCdp(e.session));
         const targetPath = path ?? defaultHeapSnapshotPath(workspace.root, e.id);
