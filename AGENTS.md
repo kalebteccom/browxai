@@ -121,7 +121,7 @@ Do not loosen the keystone gate. See [`docs/ai-context/page-side-functions/dom-e
 Adding a new MCP tool:
 
 1. Gate definition — Zod schema for input + output in the tool handler file.
-2. Capability — set `capability` (and `batchable` / `deep` where they apply) in the `host.register` metadata. The central capability, batch and deep maps are derived from it.
+2. Capability — set `capability` (and `batchable` / `deep` where they apply) in the `host.register` metadata. The central capability, batch and deep maps are derived from it, and so is the attached-session hold: a tool under `action`, `navigation`, `eval`, `file-io`, `clipboard`, `canvas`, `extensions` or `device-emulation` waits on `byob_action` in an attached session. Set `byobConfirm: false`, with a reason comment, only for a tool that changes nothing in the browser, and pin it in `test/architecture/byob-hold-completeness.test.ts`.
 3. Handler implementation — under `src/page/<tool>.ts` (page-touching) or `src/session/` (session-scope). Returns an `ActionResult`.
 4. Registry — put the `host.register` call in the matching `src/tools/<area>-tools.ts` module. `src/server.ts` composes those modules and holds no registrations.
 5. Threat-model row — `docs/threat-model.md`.
@@ -162,6 +162,16 @@ The single index of every check is
 [`docs/ai-context/architecture/fitness-functions.md`](docs/ai-context/architecture/fitness-functions.md).
 A guardrail is relaxed only via an RFC amendment, never an inline disable. The
 PR-time `architecture-fitness-auditor` agent re-runs the suite against the diff.
+
+## UI and copy rules
+
+Any change to `website/`, the README, published docs or user-visible strings follows [`docs/ui-rules.md`](docs/ui-rules.md). The rules in short:
+
+- Flat look, `--space-*` tokens, 44px tap targets, visible `:focus-visible`, transitions on `transform` and `opacity` only with a reduced-motion substitution, no horizontal scroll at 320px.
+- Plain copy. No em dashes, no "rather than" or "not just", no operator detail on public pages. A copy change updates every locale.
+- The "Design engineering checks" table in `docs/ui-rules.md` has 14 rows with stable ids (M1, A3, S7 and so on). Cite the row id in a PR or review.
+- Verify at 390 and 1280, light and dark, every shipped locale, each touched page plus the home page. Name anything not captured as unchecked. Captures stay outside the repo.
+- Every PR body carries `ui-rules checked: yes, <what was checked>` (with an `unchecked:` list), or `ui-rules checked: n/a docs only`. A UI or copy PR without it is sent back.
 
 ## Workspace + paths
 

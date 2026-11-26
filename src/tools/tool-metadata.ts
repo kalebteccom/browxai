@@ -146,7 +146,6 @@ function makeMetadataHostDeps(): HostDeps {
     // The metadata host serves no call, so it reads no scheme list.
     navigateExtraSchemes: new Set<string>(),
     approvals,
-    isByob: false,
     workspace,
     diagnostics,
     credentialsResolved,

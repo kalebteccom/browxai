@@ -1,4 +1,3 @@
-import { confirmByobAction } from "../policy/confirm.js";
 import { withDeadline } from "../util/deadline.js";
 import { uploadFile } from "../page/upload.js";
 import { dropFiles, type DropFileInput } from "../page/drop-files.js";
@@ -15,17 +14,7 @@ import { requirePage } from "../engine/index.js";
  * the shared `ToolHost` seam.
  */
 export function registerCaptureReportUploadTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-    confirmCtxFor,
-    denyContent,
-    asTarget,
-    cfgActionTimeout,
-    workspace,
-  } = host;
+  const { z, register, gateCheck, entryFor, asTarget, cfgActionTimeout, workspace } = host;
 
   register(
     "upload_file",
@@ -60,8 +49,6 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
       const g = gateCheck("upload_file");
       if (g) return g;
       const e = await entryFor(args.session);
-      const c = await confirmByobAction("upload_file", confirmCtxFor(e));
-      if (!c.ok) return denyContent("upload_file", c);
       try {
         const target = asTarget(args, "upload_file", e.refs);
         if ("coords" in target) {
@@ -137,8 +124,6 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
       const g = gateCheck("drop_files");
       if (g) return g;
       const e = await entryFor(args.session);
-      const c = await confirmByobAction("drop_files", confirmCtxFor(e));
-      if (!c.ok) return denyContent("drop_files", c);
       return jsonToolResult(async () => {
         const target = asTarget(args, "drop_files", e.refs);
         const r = await withDeadline(
@@ -162,6 +147,8 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
     "downloads_capture",
     {
       capability: "file-io",
+      // Not held in an attached session: Sets whether this server keeps download files in the workspace.
+      byobConfirm: false,
       description:
         "Turn download capture on or off for the session. With `on:true`, each download fired during a later action is saved to `$BROWX_WORKSPACE/.downloads/<sessionId>/<prefix>-<sanitised-name>` and listed on `ActionResult.downloads[{id, suggestedFilename, mimeType, sizeBytes, path}]`; read it with `download_get({id})`. With `on:false` (the default) downloads are discarded, so a session that never opted in leaves no file on disk. The page-supplied file name is sanitised (no path separators, NULs, leading dots or control bytes; length-capped). Pass `clear:true` with `on:false` to also delete every captured file. Returns `{ ok, captureOn, storageDir, captured: [{id, suggestedFilename, sizeBytes, path, mimeType?}], tokensEstimate }`. Requires the `file-io` capability (off by default).",
       inputSchema: {
@@ -227,6 +214,8 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
     "download_get",
     {
       capability: "file-io",
+      // Not held in an attached session: Reads a captured download from the workspace.
+      byobConfirm: false,
       description:
         "Return the bytes (base64) of a captured download; pass the `id` from `ActionResult.downloads[]` or `downloads_capture({on:true}).captured[]`. Set `pathOnly:true` to skip the base64 and return only the path and metadata, which suits large files you hand on by path. A file over 16 MiB is never returned inline: the call fails with an error naming the limit and the saved path, and `pathOnly:true` still works. Returns `{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`. Requires the `file-io` capability (off by default).",
       inputSchema: {

@@ -10,7 +10,8 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveConfirmHooks, type Capability } from "../util/capabilities.js";
+import type { Capability } from "../util/capabilities.js";
+import { confirmHookRows } from "./doctor-confirm-hooks.js";
 import { resolveConfig } from "../util/config.js";
 import { resolveOriginPolicy, describePolicy } from "../policy/origin.js";
 import { resolveWorkspace } from "../util/workspace.js";
@@ -179,21 +180,7 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
   }
 
   // 6. Confirm-required hooks.
-  try {
-    const hooks = resolveConfirmHooks();
-    checks.push({
-      name: "confirm-hooks",
-      ok: true,
-      detail: hooks.size > 0 ? `[${[...hooks].join(", ")}]` : "(none)",
-    });
-  } catch (e) {
-    checks.push({
-      name: "confirm-hooks",
-      ok: false,
-      detail: e instanceof Error ? e.message : String(e),
-      fix: "fix BROWX_CONFIRM_REQUIRED, see " + docsUrl.threatModelConfiguring,
-    });
-  }
+  checks.push(...confirmHookRows());
 
   // 6b. Which tools `tools/list` reports.
   checks.push(toolListRow());

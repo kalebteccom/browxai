@@ -27,6 +27,8 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
     "element_export",
     {
       capability: "file-io",
+      // Not held in an attached session: Reads the page and writes the export to the workspace.
+      byobConfirm: false,
       description:
         'Save one element\'s subtree as a self-contained snippet: its outerHTML, the page\'s stylesheets and every resource the subtree references. Use `page_archive` for the whole page and `dom_export` for markup only. `ref` comes from `snapshot` or `find`; an unknown ref is a structured error, so refresh refs and retry. `format:"directory"` (default) writes `<intoDir>/element.html` plus `<intoDir>/assets/` with relative references; `"single-file"` writes one HTML at `<intoDir>` with `data:` URIs. `intoDir` must resolve inside `$BROWX_WORKSPACE` (default `elements/<sessionId>-<ISO>-<ref>`, or `.html` for single-file). `maxSizeMb` caps the export (default 50). Cross-origin stylesheets the page cannot read are listed in `warnings[]`, and the snippet may render differently. The output is not masked, so treat it as sensitive. Returns `{ ok, format, ref, path, sizeBytes, resourceCount, droppedCount, warnings[] }`. Requires the `file-io` capability (off by default).',
       inputSchema: {
@@ -87,6 +89,8 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
     "dom_export",
     {
       capability: "file-io",
+      // Not held in an attached session: Reads the page and writes the export to the workspace.
+      byobConfirm: false,
       description:
         'Dump the whole DOM to a workspace-rooted file. Use `page_archive` when you also need the page\'s resources, and `snapshot` or `extract` to read content without a file. `format:"html"` (default) writes `document.documentElement.outerHTML` and does not serialise shadow DOM. `"jsonl"` writes one JSON object per line (`{tag, role?, attrs, text?, ref?, depth}`) depth-first and descends open shadow roots when `includeShadow` is true (default). Closed shadow roots cannot be reached and are noted in `warnings[]` when custom elements are present. `path` must resolve inside `$BROWX_WORKSPACE` (default `dom-dumps/<sessionId>-<ISO>.{html|jsonl}`). Load and settle the page first. The output is not masked, so treat it as sensitive. Returns `{ ok, format, path, sizeBytes, nodeCount, shadowRootCount, warnings[] }`. Requires the `file-io` capability (off by default).',
       inputSchema: {

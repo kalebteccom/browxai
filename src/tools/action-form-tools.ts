@@ -1,4 +1,3 @@
-import { confirmByobAction } from "../policy/confirm.js";
 import { REF_OR_SELECTOR, ACTION_OPTS } from "./schemas.js";
 import { actionTool, type ActionToolHost } from "./action-tool.js";
 import type { ServerServicesHost } from "./host.js";
@@ -70,6 +69,8 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
     "wait_for",
     {
       capability: "action",
+      // Not held in an attached session: Waits for a page condition and changes nothing.
+      byobConfirm: false,
       batchable: true,
       description:
         "Wait until an element is visible (`ref`, `selector`, `named` or `coords`), or until visible `text` appears anywhere on the page, for SPA readiness after a reload or navigation. Pass exactly one of a target or `text`. Use `verify_visible` or `verify_text` when a miss should fail the step, `act_and_wait_for_network` to wait on a response, and `poll_eval` for a JS condition. `timeoutMs` is both the max wait and the anti-wedge deadline (default 5000, hard cap 3600000). `ok:false` means the wait expired: on a healthy page the element or text never appeared. If snapshot or navigate also time out, the session is wedged: call `close_session`, then `open_session` a fresh one. Returns an ActionResult.",
@@ -154,8 +155,6 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
       const g = host.gateCheck("scroll");
       if (g) return g;
       const e = await host.entryFor(args.session);
-      const c = await confirmByobAction("scroll", host.confirmCtxFor(e));
-      if (!c.ok) return host.denyContent("scroll", c);
       const hasTarget = !!(args.ref || args.selector || args.named || args.coords);
       const target = hasTarget ? host.asTarget(args, "scroll", e.refs) : undefined;
       const td = host.actionTimeout(args);
@@ -198,8 +197,6 @@ export function registerActionFormTools(host: ActionToolHost & ServerServicesHos
       const g = host.gateCheck("choose_option");
       if (g) return g;
       const e = await host.entryFor(args.session);
-      const c = await confirmByobAction("choose_option", host.confirmCtxFor(e));
-      if (!c.ok) return host.denyContent("choose_option", c);
       const target = host.asTarget(args, "choose_option", e.refs);
       if ("coords" in target) {
         return {

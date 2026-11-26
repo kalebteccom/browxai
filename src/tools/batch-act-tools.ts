@@ -267,6 +267,8 @@ export function registerBatchActTools(
     "flake_check",
     {
       capability: "action",
+      // Not held in an attached session: Runs other tools, and each inner call is held on its own.
+      byobConfirm: false,
       description:
         "Run the same call sequence `n` times and report what differed between runs, to find an intermittent flake before reading logs. Use `batch` for a single run. Inner calls follow the `batch` whitelist, with capability and confirm hooks unchanged. Each run uses `stopOnError:false`, so a failure mid-sequence does not hide later steps. Returns per-step success rate, distinct errors, distinct resolution signatures, the first step where `ok` diverged (`firstDivergence`), and `cachedResolvers[]`: `{step, ref or selectorHint}` for steps where every run agreed and succeeded. `stopOnAllGreen: K` stops early after K consecutive all-green runs.",
       inputSchema: {

@@ -38,6 +38,7 @@ import { screenshotSave } from "../page/screenshot-save.js";
 import type { ActionContext } from "../page/actionresult.js";
 import {
   capabilitiesWith,
+  capabilityMissing,
   isToolEnabled,
   declareToolCapability,
   toolCapabilityMap,
@@ -57,6 +58,7 @@ import { buildObservation } from "./host-observation.js";
 import { activeSecretRegistries, maskedToolError, maskToolResponse } from "./host-egress-mask.js";
 import { askHumanProfileRefusal } from "./ask-human-gate.js";
 import { byobAttachRefusal } from "./byob-attach-gate.js";
+import { holdAttached, shouldHold, type ByobHoldDeps } from "./byob-hold.js";
 import { docsUrl } from "../util/docs-links.js";
 
 /** The createServer locals the host's closures close over. Each field is the
@@ -90,8 +92,6 @@ export interface HostDeps {
   navigateExtraSchemes: ReadonlySet<string>;
   /** Session-independent pre-approval store. */
   approvals: ApprovalStore;
-  /** Whether this server attached to an existing browser (BYOB). */
-  isByob: boolean;
   /** Resolved workspace (root dir for file-io-bound captures and archives). */
   workspace: Workspace;
   /** The diagnostics JSONL recorder. */
@@ -140,7 +140,6 @@ export function buildHost(deps: HostDeps): ToolHost {
     originPolicy,
     navigateExtraSchemes,
     approvals,
-    isByob,
     workspace,
     diagnostics,
     credentialsResolved,
@@ -160,11 +159,13 @@ export function buildHost(deps: HostDeps): ToolHost {
     return entry;
   };
 
+  // The hold follows the session, so one server can run a managed session
+  // beside an attached one and ask only on the attached one.
   const confirmCtxFor = (e: SessionEntry) => ({
     hooks: confirmHooks,
     policy: originPolicy,
     bridge: e.bridge,
-    isByob,
+    isByob: e.mode === "attached",
     approvals,
     sessionId: e.id,
   });
@@ -445,6 +446,17 @@ export function buildHost(deps: HostDeps): ToolHost {
   // The registries a tool result is masked with, read per call.
   const liveRegistries = () => activeSecretRegistries(caps.enabled.has("secrets"), registry.list());
 
+  // The attached-session hold every held tool runs through. It is armed only
+  // where a session can be attached and the hook is set, so any other server
+  // resolves no session before its handler does.
+  const hold: ByobHoldDeps = {
+    armed: confirmHooks.has("byob_action") && !capabilityMissing("byob-attach", caps),
+    entryFor,
+    engineGate,
+    confirmCtxFor,
+    denyContent,
+  };
+
   const register = <S extends z.ZodRawShape = Record<string, never>>(
     name: string,
     def: {
@@ -453,6 +465,7 @@ export function buildHost(deps: HostDeps): ToolHost {
       capability?: Capability;
       batchable?: boolean;
       deep?: boolean;
+      byobConfirm?: boolean;
     },
     handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ): void => {
@@ -479,7 +492,9 @@ export function buildHost(deps: HostDeps): ToolHost {
       capability: def.capability,
       batchable: def.batchable,
       deep: def.deep,
+      byobConfirm: def.byobConfirm,
     });
+    const held = shouldHold(def.capability, def);
     const tracked = isWedgeTracked(def.capability ?? "");
     const wrapped = async (rawArgs: unknown): Promise<ToolResponse> => {
       // Every caller reaches the handler through here: the MCP wire, `batch`, the
@@ -498,8 +513,15 @@ export function buildHost(deps: HostDeps): ToolHost {
       // held `ask-human` profile refusal inside the registry; each leaves here as
       // the same structured gate refusal `open_session` returns, for every tool
       // and for `batch` alike.
+      // Before the handler: the tool's own capability, then the attached-session
+      // hold. A handler that forgot either still gets both, and a call the
+      // capability refuses never reaches the hold.
       const run = async (): Promise<ToolResponse> => {
         try {
+          const gated = def.capability !== undefined ? gateCheck(name) : null;
+          if (gated) return gated;
+          const refused = held ? await holdAttached(name, args, hold) : null;
+          if (refused) return refused;
           return await handler(args);
         } catch (err) {
           const refusal =

@@ -1,5 +1,4 @@
 import { withDeadline } from "../util/deadline.js";
-import { confirmByobAction } from "../policy/confirm.js";
 import { SESSION_ARG } from "./schemas.js";
 import type {
   RegisterHost,
@@ -64,8 +63,6 @@ export function registerStorageCachesTools(
     entryFor,
     okText,
     errText,
-    confirmCtxFor,
-    denyContent,
     storageFor,
     cfgActionTimeout,
   } = host;
@@ -200,8 +197,6 @@ export function registerStorageCachesTools(
         const e = await entryFor(session);
         const sg = subInterfaceGate("caches_put", "storage", e);
         if (sg) return sg;
-        const c = await confirmByobAction("caches_put", confirmCtxFor(e));
-        if (!c.ok) return denyContent("caches_put", c);
         const r = await withDeadline(
           storageFor(e).cachesPut({ cacheName, url, response }, "caches_put"),
           cfgActionTimeout(),
@@ -233,8 +228,6 @@ export function registerStorageCachesTools(
         const e = await entryFor(session);
         const sg = subInterfaceGate("caches_delete", "storage", e);
         if (sg) return sg;
-        const c = await confirmByobAction("caches_delete", confirmCtxFor(e));
-        if (!c.ok) return denyContent("caches_delete", c);
         const r = await withDeadline(
           storageFor(e).cachesDelete({ cacheName, url }, "caches_delete"),
           cfgActionTimeout(),
@@ -265,8 +258,6 @@ export function registerStorageCachesTools(
         const e = await entryFor(session);
         const sg = subInterfaceGate("caches_clear", "storage", e);
         if (sg) return sg;
-        const c = await confirmByobAction("caches_clear", confirmCtxFor(e));
-        if (!c.ok) return denyContent("caches_clear", c);
         const r = await withDeadline(
           storageFor(e).cachesClear({ cacheName }, "caches_clear"),
           cfgActionTimeout(),
@@ -297,8 +288,6 @@ export function registerStorageCachesTools(
         const e = await entryFor(session);
         const sg = subInterfaceGate("caches_delete_storage", "storage", e);
         if (sg) return sg;
-        const c = await confirmByobAction("caches_delete_storage", confirmCtxFor(e));
-        if (!c.ok) return denyContent("caches_delete_storage", c);
         const r = await withDeadline(
           storageFor(e).cachesDeleteStorage({ cacheName }, "caches_delete_storage"),
           cfgActionTimeout(),
