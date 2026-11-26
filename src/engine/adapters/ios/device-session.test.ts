@@ -72,6 +72,15 @@ describe("launchIosDeviceSession: the order", () => {
     ]);
   });
 
+  it("carries the app guard and fences reads on the opened session", async () => {
+    const r = rig();
+    const h = await r.launch();
+    expect(h.appGuard).toBeDefined();
+    r.state.front = { bundleId: "com.apple.springboard" };
+    await expect(h.driver.hierarchy()).rejects.toThrow(/^ios-device-foreground-not-allowed:/);
+    await expect(h.driver.pressButton("lock")).rejects.toThrow(/^ios-device-button-refused:/);
+  });
+
   it("matches the allowlist by hardware UDID and drives by CoreDevice identifier", async () => {
     const r = rig({ BROWX_IOS_DEVICE_ALLOWLIST: PHONE_UDID });
     const h = await r.launch();
@@ -119,6 +128,12 @@ describe("launchIosDeviceSession: refusals", () => {
   it("refuses a system app as the app under test even when listed (G4)", async () => {
     const r = rig({ BROWX_IOS_APP_ID: "com.apple.Preferences" });
     await expect(r.launch()).rejects.toThrow(/^ios-device-system-app:/);
+  });
+
+  it("refuses a mistyped rate limit before devicectl runs", async () => {
+    const r = rig({ BROWX_IOS_DEVICE_MAX_INPUTS: "lots" });
+    await expect(r.launch()).rejects.toThrow(/^ios-device-rate-limit-invalid:/);
+    expect(r.devicectl.calls).toEqual([]);
   });
 
   it("refuses the default and loopback WebDriverAgent address", async () => {

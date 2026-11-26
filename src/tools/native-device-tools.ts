@@ -42,6 +42,7 @@ import { listSimulators } from "../engine/adapters/ios/simulator.js";
 import { listIosDevices } from "../engine/adapters/ios/device-discovery.js";
 import { errorResult as failure, jsonResult as json } from "./json-result.js";
 import { requireNative } from "../engine/session-native.js";
+import { holdNativeApp } from "./native-app-hold.js";
 import { resolveWorkspaceReadPath } from "../util/workspace.js";
 import type {
   ConfigHost,
@@ -186,7 +187,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "List the app ids installed on the session's device. On `android-app`, third-party only by default, because the full list is ~200 system packages of noise. On `ios-app`, `simctl listapps` reports user and runtime apps in one list with no flag to separate them, so `includeSystem` has nothing to select on and the full list is what you get. Requires the `native-device` capability (off by default) and a native session.",
+        "List the app ids installed on the session's device. On `android-app`, third-party only by default, because the full list is ~200 system packages of noise. On `ios-app`, `simctl listapps` reports user and runtime apps in one list with no flag to separate them, so `includeSystem` has nothing to select on and the full list is what you get. On a real iPhone (BROWX_IOS_TARGET=device) it is `devicectl device info apps` cut to BROWX_IOS_DEVICE_APPS: no other app on the phone is reported, not even as a count. Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: {
         includeSystem: z
           .boolean()
@@ -215,7 +216,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Install an app bundle from a path under $BROWX_WORKSPACE onto the session's device: an `.apk` on `android-app`, a `.app` on `ios-app`. `reinstall` keeps the app's data (`adb install -r`); without it, installing over an existing app fails. Installing an app is the broadest thing this engine does: the bundle is arbitrary code that runs on the device with the permissions it declares, so you choose the file and the `native-device` capability says you meant to. Failures report adb's own reason (wrong ABI, insufficient storage, unsigned build). Requires the `native-device` capability (off by default) and a native session.",
+        "Install an app bundle from a path under $BROWX_WORKSPACE onto the session's device: an `.apk` on `android-app`, a `.app` on `ios-app`. `reinstall` keeps the app's data (`adb install -r`); without it, installing over an existing app fails. Installing an app is the broadest thing this engine does: the bundle is arbitrary code that runs on the device with the permissions it declares, so you choose the file and the `native-device` capability says you meant to. Failures report adb's own reason (wrong ABI, insufficient storage, unsigned build). On a real iPhone it is `devicectl device install app`: the bundle id is read from the bundle first, a bundle off BROWX_IOS_DEVICE_APPS needs a person's approval through the `native_device_app` confirm hook, an Apple system app off the list refuses, and installs are rate-limited per session. Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: {
         apkPath: z
           .string()
@@ -236,7 +237,10 @@ export function registerNativeDeviceTools(
       if (g) return g;
       try {
         const bundle = resolveAppBundlePath(host.workspace.root, apkPath);
-        const handle = requireNative((await entryFor(session)).session);
+        const e = await entryFor(session);
+        const handle = requireNative(e.session);
+        const held = await holdNativeApp(host, e, handle, "install", bundle);
+        if (held) return held;
         await handle.lifecycle.install(bundle, reinstall === true);
         return json({ ok: true, apkPath, reinstalled: reinstall === true });
       } catch (err) {
@@ -250,7 +254,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Uninstall an app from the session's device and remove its data. `android-app` only: on `ios-app` it refuses, naming the engine, because `simctl uninstall` could remove an app installed by hand on a device the session leases and does not own. Requires the `native-device` capability (off by default) and a native session.",
+        "Uninstall an app from the session's device and remove its data. `android-app` only: on `ios-app` it refuses, naming the engine, because `simctl uninstall` could remove an app installed by hand on a device the session leases and does not own, and on a real iPhone because removing an app deletes its data. Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: {
         appId: z.string().describe("Package id, e.g. `com.acme.app`."),
         ...SESSION_ARG,
@@ -275,7 +279,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Launch an app and point the session at it. On `android-app` it resolves the declared launcher activity first, so a missing package is reported as missing (`monkey -p <pkg>` reports success having done nothing), and returns the resolved component. On `ios-app` there is no activity. The app may still be on a splash screen when this returns: follow with `snapshot`, which reports `native-hierarchy-not-idle` while a spinner keeps the window busy. Requires the `native-device` capability (off by default) and a native session.",
+        "Launch an app and point the session at it. On `android-app` it resolves the declared launcher activity first, so a missing package is reported as missing (`monkey -p <pkg>` reports success having done nothing), and returns the resolved component. On `ios-app` there is no activity. On a real iPhone it is WebDriverAgent's `/wda/apps/launch`: an app off BROWX_IOS_DEVICE_APPS, or an Apple system app listed on it, needs a person's approval through the `native_device_app` confirm hook every time (`approve_actions` cannot grant it), an Apple system app off the list refuses, and launches are rate-limited per session. The app may still be on a splash screen when this returns: follow with `snapshot`, which reports `native-hierarchy-not-idle` while a spinner keeps the window busy. Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: {
         appId: z.string().describe("Package / bundle id, e.g. `com.acme.app`. See `app_list`."),
         ...SESSION_ARG,
@@ -285,7 +289,10 @@ export function registerNativeDeviceTools(
       const g = gateCheck("app_launch");
       if (g) return g;
       try {
-        const handle = requireNative((await entryFor(session)).session);
+        const e = await entryFor(session);
+        const handle = requireNative(e.session);
+        const held = await holdNativeApp(host, e, handle, "launch", appId);
+        if (held) return held;
         const launched = await handle.lifecycle.launch(appId);
         handle.app = launched;
         return json({ ok: true, ...launched });
@@ -300,7 +307,7 @@ export function registerNativeDeviceTools(
     {
       capability: "native-device",
       description:
-        "Stop a running app on the session's device. On `android-app` this is `am force-stop`, not `am kill`, because kill only affects background processes and silently does nothing to the foreground app. On `ios-app` it is `simctl terminate`. App data survives; use `app_reset` to clear it where the platform has that. Requires the `native-device` capability (off by default) and a native session.",
+        "Stop a running app on the session's device. On `android-app` this is `am force-stop`, not `am kill`, because kill only affects background processes and silently does nothing to the foreground app. On `ios-app` it is `simctl terminate`, and on a real iPhone WebDriverAgent's `/wda/apps/terminate`, for apps on BROWX_IOS_DEVICE_APPS only. App data survives; use `app_reset` to clear it where the platform has that. Requires the `native-device` capability (off by default) and a native session.",
       inputSchema: {
         appId: z.string().describe("Package id to stop."),
         ...SESSION_ARG,

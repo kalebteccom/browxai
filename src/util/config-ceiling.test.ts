@@ -11,10 +11,12 @@ describe("clampPolicy", () => {
     expect(clampPolicy(cfg({ confirmRequired: [] }), c).confirmRequired).toEqual([
       "navigate_off_allowlist",
       "byob_action",
+      "native_device_app",
     ]);
     expect(clampPolicy(cfg({ confirmRequired: ["file_upload"] }), c).confirmRequired).toEqual([
       "navigate_off_allowlist",
       "byob_action",
+      "native_device_app",
       "file_upload",
     ]);
   });
@@ -110,7 +112,7 @@ describe("policyWidening", () => {
         c,
       ),
     ).toEqual({
-      confirmRequired: ["navigate_off_allowlist", "byob_action"],
+      confirmRequired: ["navigate_off_allowlist", "byob_action", "native_device_app"],
       allowedOrigins: ["(empty list: any origin)"],
       blockedOrigins: ["https://t.example"],
       disableWebSecurity: [true],
@@ -124,7 +126,12 @@ describe("policyWidening", () => {
     expect(
       policyWidening(
         {
-          confirmRequired: ["navigate_off_allowlist", "byob_action", "file_upload"],
+          confirmRequired: [
+            "navigate_off_allowlist",
+            "byob_action",
+            "native_device_app",
+            "file_upload",
+          ],
           allowedOrigins: ["https://a.example"],
           blockedOrigins: ["https://t.example", "https://u.example"],
           disableWebSecurity: false,

@@ -444,20 +444,31 @@ export function isToolEnabled(tool: string, caps: CapabilityConfig): boolean {
 }
 
 /**  confirm-required policy. Each name corresponds to a runtime hook (see
- *  src/policy/confirm.ts). Default: `navigate_off_allowlist,byob_action`. The
- *  first acts when `BROWX_ALLOWED_ORIGINS` is set, the second in a session whose
- *  mode is `attached`. */
+ *  src/policy/confirm.ts). Default: `navigate_off_allowlist,byob_action,
+ *  native_device_app`. The first acts when `BROWX_ALLOWED_ORIGINS` is set, the
+ *  second in a session whose mode is `attached`, the third in an `ios-app`
+ *  session on a real phone (`BROWX_IOS_TARGET=device`). */
 export type ConfirmHook =
-  "navigate_off_allowlist" | "file_download" | "file_upload" | "byob_action";
+  "navigate_off_allowlist" | "file_download" | "file_upload" | "byob_action" | "native_device_app";
 
 const ALL_CONFIRM_HOOKS: readonly ConfirmHook[] = [
   "navigate_off_allowlist",
   "file_download",
   "file_upload",
   "byob_action",
+  "native_device_app",
 ];
 
-const DEFAULT_CONFIRM_HOOKS: readonly ConfirmHook[] = ["navigate_off_allowlist", "byob_action"];
+const DEFAULT_CONFIRM_HOOKS: readonly ConfirmHook[] = [
+  "navigate_off_allowlist",
+  "byob_action",
+  "native_device_app",
+];
+
+/** Default hooks whose absence makes the server stricter, so leaving one out
+ *  of a custom list needs no warning. Without `native_device_app` an app off
+ *  BROWX_IOS_DEVICE_APPS refuses on a phone with no prompt. */
+const STRICTER_WHEN_ABSENT: readonly ConfirmHook[] = ["native_device_app"];
 
 /** Hooks the parser accepts that no tool consults yet. */
 const RESERVED_CONFIRM_HOOKS: readonly ConfirmHook[] = ["file_download", "file_upload"];
@@ -503,7 +514,7 @@ export function confirmHookWarnings(hooks: ReadonlySet<ConfirmHook>): string[] {
     );
   }
   for (const hook of DEFAULT_CONFIRM_HOOKS) {
-    if (hooks.has(hook)) continue;
+    if (hooks.has(hook) || STRICTER_WHEN_ABSENT.includes(hook)) continue;
     const kept = [...hooks, hook].join(",");
     warnings.push(
       `BROWX_CONFIRM_REQUIRED replaces the default set, and "${hook}" is not in the list: ${DEFAULT_HOOK_ABSENT[hook]}. ` +

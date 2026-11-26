@@ -11,12 +11,22 @@ const ENV = {
 
 describe("deviceSettingsFrom", () => {
   it("returns the named entry, the app list and a trimmed WebDriverAgent URL", () => {
-    expect(deviceSettingsFrom(ENV)).toEqual({
+    expect(deviceSettingsFrom(ENV)).toMatchObject({
       entry: "B",
       apps: ["com.acme.app"],
       appId: "com.acme.app",
       wdaUrl: "http://192.0.2.10:8100",
+      schemes: [],
     });
+  });
+
+  it("reads the scheme list lowercased without colons, and refuses a bad rate limit", () => {
+    expect(
+      deviceSettingsFrom({ ...ENV, BROWX_IOS_DEVICE_URL_SCHEMES: "Acme:, https" }).schemes,
+    ).toEqual(["acme", "https"]);
+    expect(() => deviceSettingsFrom({ ...ENV, BROWX_IOS_DEVICE_MAX_INSTALLS: "many" })).toThrow(
+      /^ios-device-rate-limit-invalid:/,
+    );
   });
 
   it("refuses two listed phones with none named", () => {

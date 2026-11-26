@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { IosPhysicalDevice, schemeOf } from "./device.js";
 import { WdaClient } from "./wda-client.js";
+import { DEFAULT_DEVICE_LIMITS, DeviceRateLimiter, type DeviceLimits } from "./device-limits.js";
 import { PHONE_ID } from "./__fixtures__/devicectl-devices.js";
 import {
   APP_ID,
@@ -15,7 +16,11 @@ import {
   type FakePhoneState,
 } from "./__fixtures__/fake-phone.js";
 
-async function rig(state: FakePhoneState = phoneState()) {
+async function rig(
+  state: FakePhoneState = phoneState(),
+  limits: Partial<DeviceLimits> = {},
+  schemes: string[] = ["acme"],
+) {
   const devicectl = fakeDevicectl(state);
   const wda = fakeWda(state);
   const client = new WdaClient(WDA_URL, wda.http);
@@ -24,6 +29,8 @@ async function rig(state: FakePhoneState = phoneState()) {
     identifier: PHONE_ID,
     wda: client,
     apps: [APP_ID, "com.apple.Preferences"],
+    schemes,
+    limits: new DeviceRateLimiter({ ...DEFAULT_DEVICE_LIMITS, ...limits }),
     devicectl: devicectl.run,
     plutil: fakePlutil(state),
     wdaBuild: "build 16.15.3",
@@ -101,6 +108,84 @@ describe("IosPhysicalDevice", () => {
     await host.terminateOnClose("com.bank.app");
     expect(wda.calls.some((c) => c.route === "/wda/apps/terminate")).toBe(false);
     state.unreachable = true;
+    await expect(host.terminateOnClose(APP_ID)).resolves.toBeUndefined();
+  });
+});
+
+describe("IosPhysicalDevice: a person's approval (G3)", () => {
+  it("says which launches and installs need a person, reading the bundle id for an install", async () => {
+    const { host, state } = await rig();
+    await expect(host.check("launch", APP_ID)).resolves.toEqual({ kind: "allow" });
+    await expect(host.check("launch", "com.bank.app")).resolves.toMatchObject({
+      kind: "confirm",
+      appId: "com.bank.app",
+    });
+    await expect(host.check("launch", "com.apple.Preferences")).resolves.toMatchObject({
+      kind: "confirm",
+    });
+    await expect(host.check("launch", "com.apple.MobileSMS")).resolves.toMatchObject({
+      kind: "refuse",
+    });
+    state.bundleId = "com.bank.app";
+    await expect(host.check("install", "/w/Bank.app")).resolves.toMatchObject({
+      kind: "confirm",
+      appId: "com.bank.app",
+    });
+  });
+
+  it("an approval admits exactly one call of that verb on that app", async () => {
+    const { host, wda } = await rig();
+    host.admitOnce("launch", "com.bank.app");
+    await host.launch("com.bank.app");
+    await expect(host.launch("com.bank.app")).rejects.toThrow(/^ios-device-app-not-allowed:/);
+    host.admitOnce("install", "com.bank.app");
+    await expect(host.launch("com.bank.app")).rejects.toThrow(/ios-device-app-not-allowed/);
+    expect(wda.calls.filter((c) => c.route === "/wda/apps/launch")).toHaveLength(1);
+  });
+
+  it("a listed system app needs an approval on every launch (G4)", async () => {
+    const { host } = await rig();
+    host.admitOnce("launch", "com.apple.Preferences");
+    await host.launch("com.apple.Preferences");
+    await expect(host.launch("com.apple.Preferences")).rejects.toThrow(/approval/);
+  });
+});
+
+describe("IosPhysicalDevice: deep link schemes (G7)", () => {
+  it("opens a listed scheme through WebDriverAgent /url", async () => {
+    const { host, wda } = await rig();
+    await host.openUrl("ACME://checkout/42");
+    expect(wda.calls.at(-1)).toMatchObject({ route: "/url" });
+  });
+
+  it("refuses an unlisted scheme before WebDriverAgent, and every scheme when the list is empty", async () => {
+    const listed = await rig();
+    for (const url of ["tel:123", "sms:1", "https://example.com", "prefs:root=General"]) {
+      await expect(listed.host.openUrl(url)).rejects.toThrow(/^ios-device-scheme-not-allowed:/);
+    }
+    const empty = await rig(phoneState(), {}, []);
+    await expect(empty.host.openUrl("acme://x")).rejects.toThrow(/list is empty/);
+    expect([...listed.wda.calls, ...empty.wda.calls].some((c) => c.route === "/url")).toBe(false);
+  });
+});
+
+describe("IosPhysicalDevice: rate limits (G10)", () => {
+  it("refuses the call over each limit and names the variable", async () => {
+    const { host, state } = await rig(phoneState(), { install: 1, launch: 2, deepLink: 1 });
+    await host.install("/w/A.app");
+    await expect(host.install("/w/A.app")).rejects.toThrow(
+      /^ios-device-rate-limit:.*1 installs.*BROWX_IOS_DEVICE_MAX_INSTALLS/,
+    );
+    await host.launch(APP_ID);
+    await host.terminate(APP_ID);
+    await expect(host.launch(APP_ID)).rejects.toThrow(/BROWX_IOS_DEVICE_MAX_LAUNCHES/);
+    await host.openUrl("acme://a");
+    await expect(host.openUrl("acme://b")).rejects.toThrow(/BROWX_IOS_DEVICE_MAX_DEEP_LINKS/);
+    expect(state).toBeDefined();
+  });
+
+  it("does not count the close path's terminate", async () => {
+    const { host } = await rig(phoneState(), { launch: 0 });
     await expect(host.terminateOnClose(APP_ID)).resolves.toBeUndefined();
   });
 });

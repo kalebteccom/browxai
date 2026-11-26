@@ -134,6 +134,22 @@ export function ensureDiagnosticsRoot(workspaceRoot: string): string {
   return root;
 }
 
+/** Create the diagnostics root and run the retention sweep, both best-effort,
+ *  so a long-idle workspace does not keep months of stale JSONL. Run once at
+ *  server start when `diagnostics` is on. */
+export function prepareDiagnosticsRoot(workspaceRoot: string, retentionDays: number): void {
+  try {
+    ensureDiagnosticsRoot(workspaceRoot);
+  } catch {
+    /* best-effort */
+  }
+  try {
+    sweepRetention(workspaceRoot, retentionDays);
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Resolve retention window from env. Defaults to 30 days; negative /
  *  non-numeric falls back to the default with no error. `0` disables the
  *  sweep (everything is kept). */

@@ -187,6 +187,28 @@ export interface NativeLifecycle {
   foreground(): Promise<NativeAppTarget | null>;
 }
 
+/** An app verb a guard may hold for a person's approval. */
+export type NativeAppVerb = "launch" | "install";
+
+/** What a guard says about one launch or install. */
+export type NativeAppDecision =
+  | { kind: "allow" }
+  /** Allowed once a person approves it, through the `native_device_app` hook. */
+  | { kind: "confirm"; appId: string; why: string }
+  | { kind: "refuse"; error: string };
+
+/** The app policy a session on a real phone carries (RFC 0014 G3). The tool
+ *  layer asks `check` before `app_launch` and `app_install`, and on `confirm` it
+ *  asks a person and records the approval with `admitOnce`. The lifecycle runs
+ *  the same check and refuses a `confirm` it holds no approval for, so a caller
+ *  that skips the tool layer is refused, not waved through. */
+export interface NativeAppGuard {
+  /** `subject` is a bundle id for `launch` and a host bundle path for `install`. */
+  check(verb: NativeAppVerb, subject: string): Promise<NativeAppDecision>;
+  /** Admit the next `verb` of `appId`, once. */
+  admitOnce(verb: NativeAppVerb, appId: string): void;
+}
+
 /** The native session handle — `BrowserSession.native?()`, mirroring `safari?()`.
  *  Carries the platform, the device the session is leased to, the app under test
  *  and the app-lifecycle seam, which is RFC 0008 §1.4.
@@ -212,6 +234,9 @@ export interface NativeSessionHandle {
   /** Device and app lifecycle. Every native session has one; its individual
    *  verbs refuse where the platform has no primitive. */
   readonly lifecycle: NativeLifecycle;
+  /** Present on a session that drives a real phone, absent on a simulator or an
+   *  emulator, where no app needs a person's approval. */
+  readonly appGuard?: NativeAppGuard;
   close(): Promise<void>;
 }
 

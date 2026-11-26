@@ -66,3 +66,11 @@ export function namedDeviceEntry(env: NodeJS.ProcessEnv): string | undefined {
   if (requested) return allowlist.includes(requested) ? requested : undefined;
   return allowlist.length === 1 ? allowlist[0] : undefined;
 }
+
+/** `BROWX_IOS_DEVICE_URL_SCHEMES`: the deep link schemes `navigate` may open on a
+ *  phone, lowercased, without the colon. Unset means none (RFC 0014 G7). */
+export function deviceUrlSchemesFrom(env: NodeJS.ProcessEnv): string[] {
+  return parseIdList(env.BROWX_IOS_DEVICE_URL_SCHEMES?.toLowerCase()).map((s) =>
+    s.replace(/:+$/, ""),
+  );
+}

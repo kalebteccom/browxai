@@ -4,6 +4,7 @@ import {
   confirmNavigation,
   confirmByobAction,
   confirmLanding,
+  confirmNativeDeviceApp,
   type ConfirmContext,
 } from "./confirm.js";
 import { resolveOriginPolicy, type OriginPolicy } from "./origin.js";
@@ -479,5 +480,85 @@ describe("confirm log lines: URL redaction and the log mask", () => {
     );
     expect(written[0]).toContain("navigate: https://off.example/reset?… is off");
     expect(written[0]).not.toContain("abc123");
+  });
+});
+
+describe("confirmNativeDeviceApp — an app a phone's allowlist sends to a person", () => {
+  const hooks = new Set(["native_device_app"] as const);
+  const operatorBridge = (decision: "approve" | "deny") => {
+    const ask = vi.fn(async () => ({ decision }));
+    return {
+      ask,
+      bridge: new BrowxBridge({ operator: { ask, close: () => undefined }, sessionId: "a" }),
+    };
+  };
+
+  it("refuses without asking when the hook is not in BROWX_CONFIRM_REQUIRED", async () => {
+    const { ask, bridge } = operatorBridge("approve");
+    const d = await confirmNativeDeviceApp(
+      "app_launch",
+      "com.bank.app",
+      "not on BROWX_IOS_DEVICE_APPS",
+      ctx({ hooks: new Set(["byob_action"]), bridge, isByob: false }),
+    );
+    expect(d.ok).toBe(false);
+    expect(d.asked).toBe(false);
+    expect(d.reason).toContain("BROWX_CONFIRM_REQUIRED");
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("refuses with no human channel, and names the app list, not removing the hook", async () => {
+    const d = await confirmNativeDeviceApp(
+      "app_launch",
+      "com.bank.app",
+      "not on BROWX_IOS_DEVICE_APPS",
+      ctx({ hooks, bridge: null, isByob: false }),
+    );
+    expect(d).toMatchObject({ ok: false, asked: false });
+    expect(d.reason).toContain("no human channel");
+    expect(d.reason).toContain("BROWX_IOS_DEVICE_APPS");
+  });
+
+  it("asks the person and follows the answer", async () => {
+    const yes = operatorBridge("approve");
+    await expect(
+      confirmNativeDeviceApp(
+        "app_install",
+        "com.bank.app",
+        "x",
+        ctx({ hooks, bridge: yes.bridge, isByob: false }),
+      ),
+    ).resolves.toEqual({ ok: true, reason: "human-approved", asked: true });
+    const prompt = (yes.ask.mock.calls[0] as unknown as [{ prompt: Record<string, unknown> }])[0]
+      .prompt;
+    expect(prompt).toMatchObject({
+      kind: "approval",
+      scope: "native_device_app",
+      tool: "app_install",
+    });
+    expect(prompt.grantable).toBeUndefined();
+    const no = operatorBridge("deny");
+    await expect(
+      confirmNativeDeviceApp(
+        "app_launch",
+        "com.bank.app",
+        "x",
+        ctx({ hooks, bridge: no.bridge, isByob: false }),
+      ),
+    ).resolves.toMatchObject({ ok: false, asked: true });
+  });
+
+  it("ignores a pre-approval in the store: approve_actions cannot stand in for the person", async () => {
+    const approvals = new ApprovalStore();
+    approvals.grant("native_device_app", 3600);
+    approvals.grant("native_device_app", 3600, "a");
+    const d = await confirmNativeDeviceApp(
+      "app_launch",
+      "com.bank.app",
+      "x",
+      ctx({ hooks, bridge: null, isByob: false, approvals, sessionId: "a" }),
+    );
+    expect(d.ok).toBe(false);
+    expect(approvals.list().every((g) => g.uses === 0)).toBe(true);
   });
 });

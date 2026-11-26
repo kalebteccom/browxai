@@ -9,7 +9,13 @@
 
 import { isAbsolute, resolve } from "node:path";
 import { IosDeviceError } from "./device-errors.js";
-import { deviceAllowlistFrom, deviceAppsFrom, namedDeviceEntry } from "./device-config.js";
+import {
+  deviceAllowlistFrom,
+  deviceAppsFrom,
+  deviceUrlSchemesFrom,
+  namedDeviceEntry,
+} from "./device-config.js";
+import { deviceLimitsFrom, type DeviceLimits } from "./device-limits.js";
 
 /** Bundle ids under this prefix are Apple's own apps (RFC 0014 G4). */
 export const SYSTEM_APP_PREFIX = "com.apple.";
@@ -27,6 +33,10 @@ export interface IosDeviceSettings {
   /** An absolute host path, when the operator named a bundle to install. */
   appPath?: string;
   wdaUrl: string;
+  /** BROWX_IOS_DEVICE_URL_SCHEMES (G7). */
+  schemes: readonly string[];
+  /** The rate limits (G10). */
+  limits: DeviceLimits;
 }
 
 const LOOPBACK = new Set(["localhost", "::1", "[::1]"]);
@@ -122,5 +132,7 @@ export function deviceSettingsFrom(env: NodeJS.ProcessEnv): IosDeviceSettings {
     appId,
     ...(rawPath ? { appPath: isAbsolute(rawPath) ? rawPath : resolve(rawPath) } : {}),
     wdaUrl: wdaUrl(env),
+    schemes: deviceUrlSchemesFrom(env),
+    limits: deviceLimitsFrom(env),
   };
 }

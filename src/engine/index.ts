@@ -129,3 +129,4 @@ export {
 } from "./adapters/ios/device-config.js";
 export { partitionByAllowlist } from "./adapters/ios/device-discovery.js";
 export { defaultHttp as defaultWdaHttp, type Http as WdaHttp } from "./adapters/ios/wda-client.js";
+export { warnIosDeviceTarget } from "./adapters/ios/device-startup.js";

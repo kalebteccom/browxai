@@ -22,6 +22,7 @@ import { leaseIosDevice } from "./device-lease.js";
 import { checkPidBinding, checkStatusBinding, wdaBuildOf } from "./device-binding.js";
 import { IosPhysicalDevice } from "./device.js";
 import { IosDeviceDriver } from "./device-driver.js";
+import { DeviceRateLimiter } from "./device-limits.js";
 import { IosXcuiDriver } from "./xcui-driver.js";
 import { IosLifecycle } from "./lifecycle.js";
 import { defaultHttp, WdaClient } from "./wda-client.js";
@@ -133,10 +134,13 @@ interface Opened {
 async function attach(o: Opened, release: () => void): Promise<IosNativeHandle> {
   const { settings, phone, wda, devicectl } = o;
   const wdaBuild = await checkWda(wda, phone);
+  const limits = new DeviceRateLimiter(settings.limits);
   const host = new IosPhysicalDevice({
     identifier: phone.identifier,
     wda,
     apps: settings.apps,
+    schemes: settings.schemes,
+    limits,
     devicectl,
     ...(o.plutil ? { plutil: o.plutil } : {}),
     ...(wdaBuild ? { wdaBuild } : {}),
@@ -150,7 +154,10 @@ async function attach(o: Opened, release: () => void): Promise<IosNativeHandle> 
     transport: phone.transport,
     appId: settings.appId,
   });
-  const driver = new IosDeviceDriver(new IosXcuiDriver(wda, host));
+  const driver = new IosDeviceDriver(new IosXcuiDriver(wda, host), {
+    apps: settings.apps,
+    limits,
+  });
   return {
     engine: "ios-app",
     platform: "ios",
@@ -158,6 +165,7 @@ async function attach(o: Opened, release: () => void): Promise<IosNativeHandle> 
     app: { appId: settings.appId },
     driver,
     lifecycle: new IosLifecycle(host, driver, "device"),
+    appGuard: host,
     close: async () => {
       // The app under test and the WebDriverAgent session are what this session
       // owns (G14). The runner, and every other app, are the operator's.

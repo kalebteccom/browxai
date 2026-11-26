@@ -7,12 +7,21 @@
 //   openUrl                     WebDriverAgent /url
 //   screenshot                  WebDriverAgent /screenshot
 //
-// Every install, launch and terminate passes the app allowlist first (G2, G4),
-// and every lifecycle call first checks that devicectl still lists the phone
-// with its tunnel up (`ios-device-disconnected`). Nothing here uninstalls,
-// unlocks or locks.
+// Every install, launch and terminate passes the app allowlist first (G2, G4).
+// An app the allowlist sends to a person (G3) runs only after the tool layer
+// recorded that person's approval with `admitOnce`. A deep link needs its scheme
+// on the list (G7). Installs, launches and deep links count against the
+// session's rate limits (G10), and each one is logged with its bundle id or
+// scheme (G13). Every lifecycle call first checks that devicectl still lists the
+// phone with its tunnel up (`ios-device-disconnected`). Nothing here
+// uninstalls, unlocks or locks.
 
-import type { NativeAppInfo } from "../../native-types.js";
+import type {
+  NativeAppDecision,
+  NativeAppGuard,
+  NativeAppInfo,
+  NativeAppVerb,
+} from "../../native-types.js";
 import { log } from "../../../util/logging.js";
 import type { IosDeviceHost } from "./device-host.js";
 import { IosDeviceError } from "./device-errors.js";
@@ -28,6 +37,7 @@ import {
   type DevicectlRunner,
 } from "./devicectl.js";
 import { WdaCommandError, type WdaClient } from "./wda-client.js";
+import type { DeviceRateLimiter } from "./device-limits.js";
 
 export interface IosPhysicalDeviceDeps {
   /** The CoreDevice identifier, already matched against the device allowlist. */
@@ -35,6 +45,9 @@ export interface IosPhysicalDeviceDeps {
   wda: WdaClient;
   /** BROWX_IOS_DEVICE_APPS. */
   apps: readonly string[];
+  /** BROWX_IOS_DEVICE_URL_SCHEMES. Empty refuses every deep link. */
+  schemes: readonly string[];
+  limits: DeviceRateLimiter;
   devicectl?: DevicectlRunner;
   plutil?: PlutilRunner;
   /** The WebDriverAgent build `/status` reported, named when a route is missing. */
@@ -44,9 +57,11 @@ export interface IosPhysicalDeviceDeps {
 /** WebDriverAgent's answer to a route its build does not serve. */
 const MISSING_ROUTE = /unknown command|unhandled endpoint|unknown method/i;
 
-export class IosPhysicalDevice implements IosDeviceHost {
+export class IosPhysicalDevice implements IosDeviceHost, NativeAppGuard {
   private readonly devicectl: DevicectlRunner;
   private readonly plutil: PlutilRunner;
+  /** `verb:appId` approvals a person gave, each spent by one call. */
+  private readonly approved = new Set<string>();
 
   constructor(private readonly deps: IosPhysicalDeviceDeps) {
     this.devicectl = deps.devicectl ?? defaultDevicectlRunner;
@@ -61,6 +76,7 @@ export class IosPhysicalDevice implements IosDeviceHost {
     await this.assertConnected();
     const bundleId = await readBundleId(appPath, this.plutil);
     this.admit("install", bundleId);
+    this.deps.limits.take("install");
     try {
       await this.devicectl(installAppArgs(this.deps.identifier, appPath));
     } catch (err) {
@@ -75,6 +91,7 @@ export class IosPhysicalDevice implements IosDeviceHost {
   async launch(bundleId: string): Promise<NativeAppInfo> {
     await this.assertConnected();
     this.admit("launch", bundleId);
+    this.deps.limits.take("launch");
     await this.route("/wda/apps/launch", () => this.deps.wda.launchApp(bundleId));
     log.info("ios-device: launched", { bundleId });
     return { bundleId };
@@ -83,6 +100,7 @@ export class IosPhysicalDevice implements IosDeviceHost {
   async terminate(bundleId: string): Promise<void> {
     await this.assertConnected();
     this.admit("terminate", bundleId);
+    this.deps.limits.take("launch");
     await this.route("/wda/apps/terminate", () => this.deps.wda.terminateApp(bundleId));
     log.info("ios-device: terminated", { bundleId });
   }
@@ -105,6 +123,19 @@ export class IosPhysicalDevice implements IosDeviceHost {
   }
 
   async openUrl(url: string): Promise<void> {
+    const scheme = schemeOf(url);
+    if (!this.deps.schemes.includes(scheme)) {
+      throw new IosDeviceError(
+        "ios-device-scheme-not-allowed",
+        `the "${scheme}" scheme is not on BROWX_IOS_DEVICE_URL_SCHEMES, so \`navigate\` does not ` +
+          "open it on a phone. " +
+          (this.deps.schemes.length === 0
+            ? "The list is empty, so every deep link refuses. "
+            : `Allowed: ${this.deps.schemes.join(", ")}. `) +
+          "On a phone `tel:`, `sms:`, `mailto:` and the settings schemes leave the app under test.",
+      );
+    }
+    this.deps.limits.take("deepLink");
     try {
       await this.deps.wda.openUrl(url);
     } catch (err) {
@@ -117,18 +148,34 @@ export class IosPhysicalDevice implements IosDeviceHost {
       }
       throw err;
     }
-    log.info("ios-device: opened deep link", { scheme: schemeOf(url) });
+    log.info("ios-device: opened deep link", { scheme });
   }
 
   async screenshot(): Promise<Buffer> {
     return Buffer.from(await this.deps.wda.screenshot(), "base64");
   }
 
-  /** Refuse a verb the app allowlist does not allow. */
+  /** What a launch or install needs. For an install the bundle id is read from
+   *  the bundle, the same read `install` makes. */
+  async check(verb: NativeAppVerb, subject: string): Promise<NativeAppDecision> {
+    const appId = verb === "install" ? await readBundleId(subject, this.plutil) : subject;
+    const verdict = appVerdict(verb, appId, this.deps.apps);
+    if (verdict.kind === "refuse") return { kind: "refuse", error: verdict.error.message };
+    if (verdict.kind === "confirm") return { kind: "confirm", appId, why: verdict.why };
+    return { kind: "allow" };
+  }
+
+  admitOnce(verb: NativeAppVerb, appId: string): void {
+    this.approved.add(`${verb}:${appId}`);
+  }
+
+  /** Refuse a verb the app allowlist does not allow, spending an approval when
+   *  the verb needed one. */
   private admit(verb: AppVerb, bundleId: string): void {
     const verdict = appVerdict(verb, bundleId, this.deps.apps);
     if (verdict.kind === "allow") return;
     if (verdict.kind === "refuse") throw verdict.error;
+    if (this.approved.delete(`${verb}:${bundleId}`)) return;
     throw unapprovedError(verb, bundleId, verdict.why);
   }
 

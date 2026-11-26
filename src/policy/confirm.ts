@@ -5,6 +5,8 @@
 // Hooks defined:
 //   - navigate_off_allowlist: navigate() to a URL outside BROWX_ALLOWED_ORIGINS
 //   - byob_action: a held tool call in an attached session (desktop, Android or Electron)
+//   - native_device_app: app_launch / app_install of an app a real phone's
+//     allowlist sends to a person (RFC 0014 G3). Never pre-approvable.
 //   - file_download / file_upload: (slot reserved; future tools)
 //
 // Configuring via env: BROWX_CONFIRM_REQUIRED (handled in src/util/capabilities.ts).
@@ -250,6 +252,46 @@ export async function confirmByobAction(
     tool: toolName,
     summary: `${toolName} on an attached browser`,
     grantable: "byob_action",
+  });
+}
+
+/**
+ * Decide whether an `app_launch` or `app_install` on a real phone may proceed
+ * for an app the phone's allowlist sends to a person: one off
+ * BROWX_IOS_DEVICE_APPS, or an Apple system app listed on it (RFC 0014 G3, G4).
+ *
+ * Stricter than the other hooks, in three ways. Without the hook in
+ * BROWX_CONFIRM_REQUIRED the call refuses; it never proceeds unasked. No
+ * pre-approval counts: the agent whose action this holds must not be the one
+ * that approves it, so `approve_actions` and its store are not consulted. And
+ * an approval carries no grant: a person answers every launch.
+ */
+export async function confirmNativeDeviceApp(
+  toolName: string,
+  appId: string,
+  why: string,
+  ctx: ConfirmContext,
+): Promise<ConfirmDecision> {
+  const fix = `Ask the operator to list "${appId}" in BROWX_IOS_DEVICE_APPS if the agent should reach it.`;
+  if (!ctx.hooks.has("native_device_app")) {
+    return {
+      ok: false,
+      reason: `native_device_app: "${appId}" is ${why}, and native_device_app is not in BROWX_CONFIRM_REQUIRED, so ${toolName} refuses on a phone. ${fix}`,
+      asked: false,
+    };
+  }
+  if (!ctx.bridge || !ctx.bridge.humanChannelAvailable()) {
+    return {
+      ok: false,
+      reason: `native_device_app: "${appId}" is ${why}, so ${toolName} on a phone needs a person's approval, and this session has no human channel to ask on. ${fix}`,
+      asked: false,
+    };
+  }
+  return askHuman(ctx, "native-device-app", `confirm ${toolName} on a phone: ${appId} (${why})`, {
+    kind: "approval",
+    scope: "native_device_app",
+    tool: toolName,
+    summary: `${toolName} "${appId}" on the allowlisted phone (${why})`,
   });
 }
 

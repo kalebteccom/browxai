@@ -91,6 +91,7 @@ function answer(state: FakePhoneState, method: string, route: string): unknown {
   if (route.endsWith("/wda/activeAppInfo")) return state.front;
   if (route.endsWith("/screenshot")) return Buffer.from("PNGDATA").toString("base64");
   if (route.endsWith("/source")) return { type: "XCUIElementTypeApplication", children: [] };
+  if (route === "/element" && method === "POST") return { ELEMENT: "ROOT" };
   return null;
 }
 
