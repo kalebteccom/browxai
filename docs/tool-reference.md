@@ -3777,13 +3777,13 @@ With `BROWX_IOS_TARGET=device` the engine drives one physical iPhone, reached ov
 
 **Opening a session**, in order, each step refusing before the next can reach the phone:
 
-1. The settings: the allowlists, `BROWX_IOS_APP_ID` (never a `com.apple.` app), `BROWX_IOS_WDA_URL` (required, not loopback) and the rate limits.
+1. The settings: the allowlists (bundle ids compare without regard to case), `BROWX_IOS_APP_ID` (never a `com.apple.` app), `BROWX_IOS_WDA_URL` (required, and never an address on this Mac) and the rate limits.
 2. `xcrun devicectl list devices`: the allowlisted phone must be listed, paired, with its tunnel connected and Developer Mode on.
 3. The lease: one session per phone (`native-device-leased`, naming the holder).
 4. WebDriverAgent `/status`: it must not describe a simulator, and its iOS version must equal the phone's (`ios-device-wda-mismatch`).
 5. `/wda/locked`: a locked phone refuses with `ios-device-locked`.
 6. `BROWX_IOS_APP_PATH`, when set, is installed with `devicectl device install app`.
-7. `POST /session` launches the app under test. It must then be the frontmost app, and its pid must be running on the allowlisted phone according to `devicectl device info processes` (`ios-device-wda-mismatch`).
+7. `POST /session` launches the app under test. It must then be the frontmost app, and its pid must be running on the allowlisted phone according to `devicectl device info processes`, under its bundle id or as an executable inside an `.app` bundle (`ios-device-wda-mismatch`).
 
 **While it runs:**
 
