@@ -247,7 +247,7 @@ describeHold("attached-session hold — real Chrome, operator answers no", () =>
       expect(String(evaluated.value)).toContain(fixture.url);
       const clicked = await call("double_click", {
         session: "held",
-        selector: '[data-testid="save-btn"]',
+        target: { selector: '[data-testid="save-btn"]' },
       });
       expect(clicked.ok, JSON.stringify(clicked)).toBe(true);
       const geo = await call("set_geolocation", { session: "held", latitude: 1, longitude: 1 });
