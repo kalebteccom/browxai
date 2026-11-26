@@ -6,6 +6,7 @@ import { gestureErrorResponse, gestureResponse } from "./gesture-envelope.js";
 import type { ToolHost } from "./host.js";
 import type { TouchPhase } from "../page/action-substrate.js";
 import { requirePage } from "../engine/index.js";
+import { errorResult, jsonResult } from "./json-result.js";
 
 /**
  * Low-level input primitives: the raw mouse pipeline (mouse_down / mouse_move /
@@ -49,20 +50,9 @@ export function registerInputTools(host: ToolHost): void {
             cfgActionTimeout(),
             act,
           );
-          return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+          return jsonResult(r);
         } catch (err) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  { ok: false, error: err instanceof Error ? err.message : String(err) },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return errorResult(err);
         }
       },
     );
@@ -166,42 +156,20 @@ export function registerInputTools(host: ToolHost): void {
         const g = gateCheck(action);
         if (g) return g;
         if (registry.list().length > 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    ok: false,
-                    error: `${action}: close all sessions first (close_sessions({all:true})), because copying a profile directory while Chromium has it open corrupts it.`,
-                    openSessions: registry.list().map((s) => s.id),
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return jsonResult({
+            ok: false,
+            error: `${action}: close all sessions first (close_sessions({all:true})), because copying a profile directory while Chromium has it open corrupts it.`,
+            openSessions: registry.list().map((s) => s.id),
+          });
         }
         try {
           const r =
             action === "profile_snapshot"
               ? snapshotProfile(workspace.root, profile, snapshot, workspace.defaultProfile())
               : restoreProfile(workspace.root, profile, snapshot, workspace.defaultProfile());
-          return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+          return jsonResult(r);
         } catch (err) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  { ok: false, error: err instanceof Error ? err.message : String(err) },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return errorResult(err);
         }
       },
     );

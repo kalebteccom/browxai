@@ -2,6 +2,7 @@ import { BYOB_DEVICE_EMU_WARNING, type DeviceApi } from "../session/device-emu.j
 import { estimateTokens } from "../util/tokens.js";
 import type { ToolHost } from "./host.js";
 import { SESSION_ARG } from "./schemas.js";
+import { errorResult, jsonResult } from "./json-result.js";
 
 /**
  * Synthetic device emulation — the off-by-default `device-emulation` surface.
@@ -131,20 +132,9 @@ export function registerDeviceEmulationTools(host: ToolHost): void {
           };
           if (warnings.length) body.warnings = warnings;
           body.tokensEstimate = estimateTokens(JSON.stringify(body));
-          return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+          return jsonResult(body);
         } catch (err) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  { ok: false, error: err instanceof Error ? err.message : String(err) },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return errorResult(err);
         }
       },
     );

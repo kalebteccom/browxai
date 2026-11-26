@@ -14,6 +14,7 @@ import type { ServiceWorkerAccess } from "../page/workers.js";
 import type { SessionEntry } from "../session/registry.js";
 import type { OriginPolicy } from "../policy/origin.js";
 import { executableContentTypeReason, isExecutableContentType } from "../page/fulfil-policy.js";
+import { jsonResult } from "./json-result.js";
 
 /** Whether this session's engine can reach service workers. Playwright exposes
  *  them (`context.serviceWorkers()`) on the engines that declare the raw-CDP
@@ -82,7 +83,7 @@ export function registerGestureWorkerTools(
         // Worker script URLs are page-controlled and can carry a registered value.
         const body = { ok: true, workers: egressFor(e).maskDeep(list), tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
         const body = {
           ok: false,
@@ -90,7 +91,7 @@ export function registerGestureWorkerTools(
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       }
     },
   );
@@ -127,7 +128,7 @@ export function registerGestureWorkerTools(
         // A failed send echoes the page's error message.
         const body = { ...egressFor(e).maskDeep(r), tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
         const body = {
           ok: false,
@@ -136,7 +137,7 @@ export function registerGestureWorkerTools(
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       }
     },
   );
@@ -168,7 +169,7 @@ export function registerGestureWorkerTools(
         // Message data is whatever the worker posted, so it is masked like `ws_read` frames.
         const body = { ok: true, messages: egressFor(e).maskDeep(messages), tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
         const body = {
           ok: false,
@@ -176,7 +177,7 @@ export function registerGestureWorkerTools(
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       }
     },
   );
@@ -239,7 +240,7 @@ export function registerGestureWorkerTools(
         });
         const body = { ok: true, ...r, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
         const body = {
           ok: false,
@@ -247,7 +248,7 @@ export function registerGestureWorkerTools(
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       }
     },
   );
@@ -282,7 +283,7 @@ export function registerGestureWorkerTools(
         );
         const body = { ok: true, ...r, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       } catch (err) {
         const body = {
           ok: false,
@@ -290,7 +291,7 @@ export function registerGestureWorkerTools(
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        return jsonResult(body);
       }
     },
   );

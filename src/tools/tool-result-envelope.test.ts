@@ -23,6 +23,18 @@ import { registerCaptureReportExportTools } from "./capture-report-export-tools.
 import { registerCaptureReportUploadTools } from "./capture-report-upload-tools.js";
 import { registerDeepCoverageTools } from "./deep-coverage-tools.js";
 import { registerDeepPerfTools } from "./deep-perf-tools.js";
+import { registerReadObserveBufferTools } from "./read-observe-buffer-tools.js";
+import { registerReadObserveCaptureTools } from "./read-observe-capture-tools.js";
+import { registerReadObserveExtractTools } from "./read-observe-extract-tools.js";
+import { registerActionGestureTools } from "./action-gesture-tools.js";
+import { registerGestureCoordTools } from "./gesture-coord-tools.js";
+import { registerCaptureReportMarksTools } from "./capture-report-marks-tools.js";
+import { registerInputTools } from "./input-tools.js";
+import { registerSessionLifecycleTools } from "./session-lifecycle-tools.js";
+import { registerLiveEmulationTools } from "./live-emulation-tools.js";
+import { registerDeepDeterminismTools } from "./deep-determinism-tools.js";
+import { registerExtensionsTools } from "./extensions-tools.js";
+import { registerSecretsCaptchaTools } from "./secrets-captcha-tools.js";
 import { registerSessionDialogPermissionTools } from "./session-dialog-permission-tools.js";
 import { PermissionPolicyState } from "../session/permission-policy.js";
 import { FsPickerPolicyState } from "../session/fs-picker-policy.js";
@@ -555,5 +567,145 @@ describe("dialog, permission and picker policy tools", () => {
       }),
       "fs_picker_respond: each file must pass exactly one of `path` or `contents`",
     );
+  });
+});
+
+describe("read and observe tools", () => {
+  it("sample renders a thrown error bare, without ok", async () => {
+    const h = handlersOf(registerReadObserveBufferTools, noBrowser);
+    const body = bare(await h.sample!({ metric: "scrollTop" }));
+    expect(body).toEqual({ error: NO_PAGE });
+  });
+
+  it("sample refuses a coords target bare", async () => {
+    const h = handlersOf(registerReadObserveBufferTools, noBrowser);
+    const body = bare(await h.sample!({ metric: "scrollTop", coords: { x: 1, y: 2 } }));
+    expect(Object.keys(body)).toEqual(["error"]);
+  });
+
+  it.each(["screenshot_on", "screenshot_schedule"])(
+    "%s renders a thrown error with an estimate",
+    async (tool) => {
+      const h = handlersOf(registerReadObserveCaptureTools, noBrowser);
+      estimatedError(await h[tool]!({ everyMs: 100, count: 1 }), NO_PAGE);
+    },
+  );
+
+  it("extract renders an internal failure bare", async () => {
+    const h = handlersOf(registerReadObserveExtractTools, noBrowser);
+    const body = bare(await h.extract!({ schema: { type: "string" } }));
+    expect(body.ok).toBe(false);
+    expect((body.failure as Body).kind).toBe("internal");
+  });
+});
+
+describe("action tools", () => {
+  it("drag without `to` renders its refusal bare", async () => {
+    const h = handlersOf(registerActionGestureTools, noBrowser);
+    bareError(
+      await h.drag!({ from: { ref: "e1" } }),
+      "drag: `to` is required unless `preflight:true`",
+    );
+  });
+
+  it("double_click renders a thrown error bare", async () => {
+    const h = handlersOf(registerActionGestureTools, noBrowser);
+    bareError(await h.double_click!({ ref: "e1" }), NO_PAGE);
+  });
+});
+
+describe("coordinate gesture tools", () => {
+  it("mouse_wheel renders a thrown error bare", async () => {
+    const h = handlersOf(registerGestureCoordTools, noBrowser);
+    bareError(await h.mouse_wheel!({ deltaY: 10 }), NO_CDP);
+  });
+});
+
+describe("marked screenshot tools", () => {
+  it.each([
+    ["screenshot_region", { x: 0, y: 0, width: 10, height: 10 }],
+    ["screenshot_marks", {}],
+  ] as Array<[string, Body]>)("%s renders a thrown error bare", async (tool, args) => {
+    const h = handlersOf(registerCaptureReportMarksTools, noBrowser);
+    bareError(await h[tool]!(args), NO_PAGE);
+  });
+});
+
+describe("mouse button tools", () => {
+  it.each([
+    ["mouse_down", {}],
+    ["mouse_move", { x: 1, y: 2 }],
+    ["mouse_up", {}],
+  ] as Array<[string, Body]>)("%s renders a thrown error bare", async (tool, args) => {
+    const h = handlersOf(registerInputTools, noBrowser);
+    bareError(await h[tool]!(args), NO_PAGE);
+  });
+});
+
+describe("session lifecycle tools", () => {
+  it("close_sessions with no selector renders its refusal bare", async () => {
+    const h = handlersOf(registerSessionLifecycleTools, noBrowser);
+    bareError(
+      await h.close_sessions!({}),
+      "close_sessions: pass `prefix`, `idleMs` and/or `all:true` to say which sessions to close.",
+    );
+  });
+});
+
+describe("live emulation tools", () => {
+  // The emulation failure envelope carries a literal `tokensEstimate: 0`.
+  it.each([
+    ["set_locale", { locale: "fr-FR" }, NO_PAGE],
+    ["set_timezone", { timezoneId: "Europe/Madrid" }, NO_CDP],
+    ["set_user_agent", { userAgent: "x" }, NO_CDP],
+    ["grant_permissions", { permissions: ["geolocation"] }, NO_PAGE],
+  ] as Array<[string, Body, string | RegExp]>)(
+    "%s renders a thrown error with the action and a zero estimate",
+    async (tool, args, message) => {
+      const h = handlersOf(registerLiveEmulationTools, noBrowser);
+      const text = textOf(await h[tool]!(args));
+      const body = JSON.parse(text) as Body;
+      expect(Object.keys(body)).toEqual(["ok", "action", "error", "tokensEstimate"]);
+      expect(text).toBe(bareText(body));
+      expect(body).toMatchObject({ ok: false, action: { type: tool }, tokensEstimate: 0 });
+      if (typeof message === "string") expect(body.error).toBe(message);
+      else expect(body.error).toMatch(message);
+    },
+  );
+});
+
+describe("determinism tools", () => {
+  it("poll_eval renders a thrown error bare", async () => {
+    const h = handlersOf(registerDeepDeterminismTools, noBrowser);
+    const body = bare(await h.poll_eval!({ expr: "true" }));
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe(NO_PAGE);
+  });
+});
+
+describe("extension tools", () => {
+  it.each([
+    "extensions_install",
+    "extensions_list",
+    "extensions_reload",
+    "extensions_trigger",
+    "extensions_uninstall",
+  ])("%s refuses an incognito session with an estimate", async (tool) => {
+    const h = handlersOf(registerExtensionsTools, noBrowser, {
+      startOptions: {},
+      resolvedConfig: { headless: false },
+    });
+    const body = estimated(await h[tool]!({ id: "x", path: "ext" }));
+    expect(Object.keys(body)).toEqual(["ok", "error", "hint"]);
+    expect(body.error).toBe(`${tool}: extension management is refused on incognito sessions`);
+  });
+});
+
+describe("captcha tool", () => {
+  it("solve_captcha with no provider renders its refusal with an estimate", async () => {
+    const h = handlersOf(registerSecretsCaptchaTools, noBrowser);
+    const body = estimated(await h.solve_captcha!({}));
+    expect(Object.keys(body).slice(0, 3)).toEqual(["ok", "provider", "error"]);
+    expect(body.provider).toBeNull();
   });
 });

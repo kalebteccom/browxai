@@ -6,6 +6,7 @@ import { actionTool, type ActionToolHost } from "./action-tool.js";
 import type { ConfigHost, ServerServicesHost } from "./host.js";
 import { requirePage } from "../engine/index.js";
 import { checkLanding, requestedUrlRefusal } from "./navigation-gate.js";
+import { errorResult, jsonResult } from "./json-result.js";
 
 /**
  * Core action verbs: navigate / click / fill / press / shortcut. Split out of
@@ -212,31 +213,9 @@ export function registerActionCoreTools(
           td.ms,
           "shortcut",
         );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                td.warning ? { ...result, warning: td.warning } : result,
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult(td.warning ? { ...result, warning: td.warning } : result);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );

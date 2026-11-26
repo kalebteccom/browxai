@@ -3,9 +3,9 @@ import { findByRef } from "../page/snapshot.js";
 import { fetchPiercedDocument, collectShadowTrees, runOpenShadowWalk } from "../page/shadow.js";
 import { extract } from "../page/extract.js";
 import { withDeadline } from "../util/deadline.js";
-import { estimateTokens } from "../util/tokens.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
+import { jsonResult, jsonResultWithEstimate } from "./json-result.js";
 
 type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
 type Session = SessionEntry["session"];
@@ -208,12 +208,7 @@ export function registerReadObserveExtractTools(host: ToolHost): void {
         warnings,
       };
       if (cappedAt !== undefined) body.cappedAt = cappedAt;
-      const tokensEstimate = estimateTokens(JSON.stringify(body));
-      return {
-        content: [
-          { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-        ],
-      };
+      return jsonResultWithEstimate(body);
     },
   );
 
@@ -284,28 +279,17 @@ export function registerReadObserveExtractTools(host: ToolHost): void {
               .catch(() => ""),
           );
         }
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        return jsonResult(result);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  failure: {
-                    source: "browxai",
-                    kind: "internal",
-                    expected: "extract to complete",
-                    actual: err instanceof Error ? err.message : String(err),
-                  },
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          ok: false,
+          failure: {
+            source: "browxai",
+            kind: "internal",
+            expected: "extract to complete",
+            actual: err instanceof Error ? err.message : String(err),
+          },
+        });
       }
     },
   );

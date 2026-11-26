@@ -22,6 +22,7 @@
 
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
+import { jsonResult } from "./json-result.js";
 
 /** Register the three network-observation tools. */
 export function registerReadObserveNetworkTools(host: ToolHost): void {
@@ -52,7 +53,7 @@ export function registerReadObserveNetworkTools(host: ToolHost): void {
       const sg = subInterfaceGate("network_read", "network", e);
       if (sg) return sg;
       const result = e.network.recent(limit ?? 50);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      return jsonResult(result);
     },
   );
 
@@ -90,7 +91,7 @@ export function registerReadObserveNetworkTools(host: ToolHost): void {
         requestId,
         caps.enabled.has("secrets") ? e.secrets : null,
       );
-      return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }] };
+      return jsonResult(r);
     },
   );
 
@@ -120,7 +121,7 @@ export function registerReadObserveNetworkTools(host: ToolHost): void {
       const sg = subInterfaceGate("ws_read", "network", e);
       if (sg) return sg;
       const result = e.ws.recent(limit ?? 50, urlPattern);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      return jsonResult(result);
     },
   );
 }

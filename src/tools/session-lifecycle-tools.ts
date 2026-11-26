@@ -20,11 +20,12 @@ import type {
   TargetHost,
   ToolResponse,
 } from "./host.js";
+import { jsonResult } from "./json-result.js";
 
 /** Wrap a JSON-serialisable body as a tool text response — the shared shape the
  *  session-lifecycle handlers return. */
 function lifecycleJson(body: object): ToolResponse {
-  return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+  return jsonResult(body);
 }
 
 /** The standard `ok:false` lifecycle envelope for an unknown throw — the message
@@ -378,14 +379,7 @@ export function registerSessionLifecycleTools(
       // and the notes / calls filed right before the close are the most
       // valuable feedback the curator gets. Retention sweep (default 30d)
       // handles long-term cleanup; per-session removal is the wrong scope.
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ ok: true, session, wasOpen: closed }, null, 2),
-          },
-        ],
-      };
+      return jsonResult({ ok: true, session, wasOpen: closed });
     },
   );
 
@@ -410,35 +404,17 @@ export function registerSessionLifecycleTools(
     },
     async ({ prefix, all, idleMs }) => {
       if (prefix === undefined && idleMs === undefined && all !== true) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error:
-                    "close_sessions: pass `prefix`, `idleMs` and/or `all:true` to say which sessions to close.",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          ok: false,
+          error:
+            "close_sessions: pass `prefix`, `idleMs` and/or `all:true` to say which sessions to close.",
+        });
       }
       const closed = await registry.closeMatching({ prefix, all, idleMs });
       // Diagnostics JSONL is intentionally KEPT across session teardown —
       // notes filed pre-close are exactly the valuable feedback. Retention
       // sweep (default 30d) handles long-term cleanup.
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ ok: true, closed, count: closed.length }, null, 2),
-          },
-        ],
-      };
+      return jsonResult({ ok: true, closed, count: closed.length });
     },
   );
 
@@ -474,9 +450,7 @@ export function registerSessionLifecycleTools(
           openedAt: new Date(e.openedAt).toISOString(),
         })),
       );
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify({ sessions: rows }, null, 2) }],
-      };
+      return jsonResult({ sessions: rows });
     },
   );
 }

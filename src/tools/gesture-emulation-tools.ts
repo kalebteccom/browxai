@@ -9,6 +9,7 @@ import type {
   ServerServicesHost,
 } from "./host.js";
 import { requirePage } from "../engine/index.js";
+import { jsonResult } from "./json-result.js";
 
 /**
  * Live network/CPU emulation tools: network_emulate / cpu_emulate — CDP-deep
@@ -90,19 +91,11 @@ export function registerGestureEmulationTools(
             "BYOB / attached Chrome: this network override stays in effect on the attached browser after browxai detaches. Reset it (call again with empty args) or close the page when you're done.";
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
+        return jsonResult({ ...body, tokensEstimate });
       } catch (err) {
         const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
         const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
+        return jsonResult({ ...body, tokensEstimate });
       }
     },
   );
@@ -145,19 +138,11 @@ export function registerGestureEmulationTools(
             "BYOB / attached Chrome: this CPU throttle stays in effect on the attached browser after browxai detaches. Reset it (call again with no args or throttleRate:1) or close the page when you're done.";
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
+        return jsonResult({ ...body, tokensEstimate });
       } catch (err) {
         const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
         const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
+        return jsonResult({ ...body, tokensEstimate });
       }
     },
   );

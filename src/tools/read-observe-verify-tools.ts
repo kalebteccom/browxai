@@ -11,10 +11,10 @@ import {
 } from "../page/verify.js";
 import type { Predicate } from "../util/predicates.js";
 import { withDeadline } from "../util/deadline.js";
-import { estimateTokens } from "../util/tokens.js";
 import type { SessionEntry } from "../session/registry.js";
 import { REF_OR_SELECTOR, SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
+import { jsonResultWithEstimate, type TextResponse } from "./json-result.js";
 
 /**
  * Read / observe — the assertive verify_* family. Fail-emitting siblings of
@@ -79,18 +79,10 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
    *  element's real innerText / value / attribute on a miss, which is a
    *  direct value-disclosure of any registered secret. Callers that don't
    *  thread a session entry (no page-derived strings) pass `undefined`. */
-  const verifyResultText = (
-    res: VerifyResult,
-    e?: SessionEntry,
-  ): { content: Array<{ type: "text"; text: string }> } => {
+  const verifyResultText = (res: VerifyResult, e?: SessionEntry): TextResponse => {
     const rawBody = res.ok ? { ok: true as const } : { ok: false as const, failure: res.failure };
     const body = e && caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(rawBody) : rawBody;
-    const tokensEstimate = estimateTokens(JSON.stringify(body));
-    return {
-      content: [
-        { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-      ],
-    };
+    return jsonResultWithEstimate(body);
   };
 
   register(

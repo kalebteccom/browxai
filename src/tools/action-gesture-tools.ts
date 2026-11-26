@@ -10,6 +10,7 @@ import type {
   ServerServicesHost,
 } from "./host.js";
 import { requirePage } from "../engine/index.js";
+import { errorResult, jsonResult } from "./json-result.js";
 
 /**
  * Gesture action tools: drag / double_click. Both take the coords-capable
@@ -76,18 +77,7 @@ export function registerActionGestureTools(
       const g = host.gateCheck("drag");
       if (g) return g;
       if (!preflight && !to) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: "drag: `to` is required unless `preflight:true`" },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({ ok: false, error: "drag: `to` is required unless `preflight:true`" });
       }
       const e = await host.entryFor(session);
       try {
@@ -101,20 +91,9 @@ export function registerActionGestureTools(
           host.cfgActionTimeout(),
           "drag",
         );
-        return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+        return jsonResult(r);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );
@@ -142,20 +121,9 @@ export function registerActionGestureTools(
           host.cfgActionTimeout(),
           "double_click",
         );
-        return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+        return jsonResult(r);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
     },
   );

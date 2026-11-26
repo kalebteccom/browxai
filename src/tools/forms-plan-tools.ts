@@ -11,6 +11,7 @@ import type {
   ConfigHost,
   ServerServicesHost,
 } from "./host.js";
+import { errorResult, jsonResult } from "./json-result.js";
 
 /**
  * Plan / execute tools: separate intent capture (`plan`) from dispatch
@@ -120,18 +121,7 @@ export function registerFormsPlanTools(
           "plan",
         );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
       // Egress sink — `plan().evidence` mirrors `find().evidence` (selectorHint
       // / role / name) which IS masked. Match the find-handler's pattern so
@@ -140,7 +130,7 @@ export function registerFormsPlanTools(
       // (RFC 0004 P3 / D4): `egressFor(e).maskDeep(outcome)` is byte-identical
       // to `caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(outcome) : outcome`.
       const maskedPlan = egressFor(e).maskDeep(outcome);
-      return { content: [{ type: "text" as const, text: JSON.stringify(maskedPlan, null, 2) }] };
+      return jsonResult(maskedPlan);
     },
   );
 
@@ -196,20 +186,9 @@ export function registerFormsPlanTools(
           recordingHint,
         });
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(err);
       }
-      return { content: [{ type: "text" as const, text: JSON.stringify(outcome, null, 2) }] };
+      return jsonResult(outcome);
     },
   );
 }

@@ -18,7 +18,7 @@ import {
 import type { RefRegistry } from "../page/refs.js";
 import { touchAttachLease } from "../session/attach-pool.js";
 import { clampTimeout, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
-import { jsonResultWithEstimate } from "./json-result.js";
+import { jsonResult, jsonResultWithEstimate, type TextResponse } from "./json-result.js";
 import { engineCapabilityRefusal } from "./engine-capability-gate.js";
 import { parseToolArgs } from "./tool-input.js";
 import { invariant } from "../util/invariant.js";
@@ -178,30 +178,20 @@ export function buildHost(deps: HostDeps): ToolHost {
     requiredCapability: Capability | null,
     active: Capability[],
     reason?: string,
-  ): ToolResponse => ({
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          {
-            ok: false,
-            error: `tool "${toolName}" is disabled: its capability${requiredCapability ? ` "${requiredCapability}"` : ""} is not enabled on this server`,
-            requiredCapability,
-            activeCapabilities: active,
-            ...(reason ? { reason } : {}),
-            hint:
-              "Add the capability to `BROWX_CAPABILITIES` and restart the browxai server. The variable replaces the default set, so keep the defaults in it, e.g. `" +
-              capabilitiesWith(requiredCapability ?? "<capability>") +
-              '`. `set_config` cannot enable it: capabilities are read once at server start, and a saved list can only narrow them. If it stays off after a restart, run `reset_config` to clear a saved list that omits it, then check `get_config({scope:"resolved"}).capabilities`, which is the set this gate enforces. See ' +
-              docsUrl.threatModelConfiguring +
-              ".",
-          },
-          null,
-          2,
-        ),
-      },
-    ],
-  });
+  ): ToolResponse =>
+    jsonResult({
+      ok: false,
+      error: `tool "${toolName}" is disabled: its capability${requiredCapability ? ` "${requiredCapability}"` : ""} is not enabled on this server`,
+      requiredCapability,
+      activeCapabilities: active,
+      ...(reason ? { reason } : {}),
+      hint:
+        "Add the capability to `BROWX_CAPABILITIES` and restart the browxai server. The variable replaces the default set, so keep the defaults in it, e.g. `" +
+        capabilitiesWith(requiredCapability ?? "<capability>") +
+        '`. `set_config` cannot enable it: capabilities are read once at server start, and a saved list can only narrow them. If it stays off after a restart, run `reset_config` to clear a saved list that omits it, then check `get_config({scope:"resolved"}).capabilities`, which is the set this gate enforces. See ' +
+        docsUrl.threatModelConfiguring +
+        ".",
+    });
 
   /** Disabled-tool early-return shape. Used at the top of each handler:
    *    const g = gateCheck("foo"); if (g) return g;
@@ -276,23 +266,13 @@ export function buildHost(deps: HostDeps): ToolHost {
   };
 
   /** Confirm-hook early-return helper. Returns the rejection content if denied, else null. */
-  const denyContent = (toolName: string, decision: { reason: string }) => ({
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          {
-            ok: false,
-            action: { type: toolName },
-            error: `policy: ${decision.reason}`,
-            hint: "A confirm hook held this action and it was not approved. It is a policy gate, not a selector failure, so don't mark the feature unverified. Ways through, all the operator's call: a human answers `__browx.confirm(true, ticket)` from the DevTools `browxai-…` console context named in the server's stderr prompt (or, when the operator enabled `operator-channel`, the operator answers on that channel instead and DevTools answers are ignored); the operator removes the hook from BROWX_CONFIRM_REQUIRED; or the operator enables the off-by-default `self-approval` capability, after which `approve_actions({ scopes:[…], ttlSeconds })` pre-approves the scope.",
-          },
-          null,
-          2,
-        ),
-      },
-    ],
-  });
+  const denyContent = (toolName: string, decision: { reason: string }) =>
+    jsonResult({
+      ok: false,
+      action: { type: toolName },
+      error: `policy: ${decision.reason}`,
+      hint: "A confirm hook held this action and it was not approved. It is a policy gate, not a selector failure, so don't mark the feature unverified. Ways through, all the operator's call: a human answers `__browx.confirm(true, ticket)` from the DevTools `browxai-…` console context named in the server's stderr prompt (or, when the operator enabled `operator-channel`, the operator answers on that channel instead and DevTools answers are ignored); the operator removes the hook from BROWX_CONFIRM_REQUIRED; or the operator enables the off-by-default `self-approval` capability, after which `approve_actions({ scopes:[…], ttlSeconds })` pre-approves the scope.",
+    });
 
   /** Reconstruct a `selectorHint` string the recorder can write into a flow file
    *  YAML. Mirrors `buildSelectorHint` for `ref`/`named`; passes through `selector`. */
@@ -573,17 +553,14 @@ export function buildHost(deps: HostDeps): ToolHost {
 
   const asActionResultText = async (p: Promise<unknown>) => {
     const r = await p;
-    return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+    return jsonResult(r);
   };
 
   /** JSON envelope for the non-action families: stringify with `tokensEstimate`. */
   const okText = (body: Record<string, unknown>) => jsonResultWithEstimate(body);
 
   /** Same shape for an `ok:false` rejection so callers see a uniform envelope. */
-  const errText = (
-    tool: string,
-    err: unknown,
-  ): { content: Array<{ type: "text"; text: string }> } =>
+  const errText = (tool: string, err: unknown): TextResponse =>
     okText({ ok: false, tool, error: err instanceof Error ? err.message : String(err) });
 
   // The composition seam: bundle the shared state + helper closures into one

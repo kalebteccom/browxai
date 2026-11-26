@@ -8,6 +8,7 @@ import type {
 } from "./host.js";
 import type { CaptureTier } from "../replay/schema.js";
 import type { ReplayStartOptions } from "../replay/session.js";
+import { errorResult, jsonResult } from "./json-result.js";
 
 const REPLAY_TIERS: readonly CaptureTier[] = ["actions", "replay", "reexecutable"];
 /** The compound-capability arm engaged only when the caller opts in with the
@@ -103,7 +104,7 @@ export function registerFormsRecordingModeTools(
         replayInfo = await entry.replay.start(opts, workspace);
       }
       const payload = replayInfo ? { ...r, replay: replayInfo } : r;
-      return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
+      return jsonResult(payload);
     },
   );
 
@@ -123,20 +124,9 @@ export function registerFormsRecordingModeTools(
         const yamlPart = entry.recorder.end();
         const payload: Record<string, unknown> = { ...yamlPart };
         if (entry.replay.active()) payload.replay = await entry.replay.end(workspace);
-        return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
+        return jsonResult(payload);
       } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                { ok: false, error: e instanceof Error ? e.message : String(e) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errorResult(e);
       }
     },
   );
@@ -180,7 +170,7 @@ export function registerFormsRecordingModeTools(
       if (entry.replay.active()) {
         entry.replay.annotate({ label: label ?? copy, copy, phase: phase ?? "start" });
       }
-      return { content: [{ type: "text", text: JSON.stringify(yamlR, null, 2) }] };
+      return jsonResult(yamlR);
     },
   );
 }

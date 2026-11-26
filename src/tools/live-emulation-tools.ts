@@ -20,6 +20,7 @@ import type { ToolHost } from "./host.js";
 import { SESSION_ARG } from "./schemas.js";
 import { askHumanGrantGate } from "./ask-human-gate.js";
 import { WRAPPED_PERMISSIONS } from "../session/permission-policy.js";
+import { jsonResult, type TextResponse } from "./json-result.js";
 
 /**
  * Per-primitive live emulation — the seven sibling mutators that each set ONE
@@ -51,7 +52,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
     e: SessionEntry,
     applied: Record<string, unknown>,
     extra: { warnings?: string[]; note?: string } = {},
-  ): { content: Array<{ type: "text"; text: string }> } => {
+  ): TextResponse => {
     const warnings: string[] = [...(extra.warnings ?? [])];
     if (e.mode === "attached") warnings.push(BYOB_EMULATION_WARNING);
     const body: Record<string, unknown> = {
@@ -71,49 +72,29 @@ export function registerLiveEmulationTools(host: ToolHost): void {
     if (warnings.length) body.warnings = warnings;
     if (extra.note) body.note = extra.note;
     body.tokensEstimate = estimateTokens(JSON.stringify(body));
-    return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    return jsonResult(body);
   };
 
   /** Standard emulation failure envelope. */
-  const emulationError = (toolName: string, err: unknown) => ({
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          {
-            ok: false,
-            action: { type: toolName },
-            error: err instanceof Error ? err.message : String(err),
-            tokensEstimate: 0,
-          },
-          null,
-          2,
-        ),
-      },
-    ],
-  });
+  const emulationError = (toolName: string, err: unknown) =>
+    jsonResult({
+      ok: false,
+      action: { type: toolName },
+      error: err instanceof Error ? err.message : String(err),
+      tokensEstimate: 0,
+    });
 
   /** Render an EmulationSubstrate refusal as the standard failure envelope (the
    *  Safari adapter has no live surface for the knob). Carries the adapter's
    *  `hint` so the agent knows where the override IS available. */
-  const emulationRefusal = (toolName: string, refusal: EmulationResult & { kind: "refusal" }) => ({
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          {
-            ok: false,
-            action: { type: toolName },
-            error: refusal.error,
-            ...(refusal.hint ? { hint: refusal.hint } : {}),
-            tokensEstimate: 0,
-          },
-          null,
-          2,
-        ),
-      },
-    ],
-  });
+  const emulationRefusal = (toolName: string, refusal: EmulationResult & { kind: "refusal" }) =>
+    jsonResult({
+      ok: false,
+      action: { type: toolName },
+      error: refusal.error,
+      ...(refusal.hint ? { hint: refusal.hint } : {}),
+      tokensEstimate: 0,
+    });
 
   register(
     "set_locale",
@@ -447,7 +428,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
         state,
         holdMs,
       );
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return jsonResult(result);
     },
   );
 }

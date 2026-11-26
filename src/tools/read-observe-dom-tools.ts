@@ -9,6 +9,7 @@ import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost, ToolResponse } from "./host.js";
 import type { TargetSubstrate } from "../page/target-substrate.js";
 import { engineDeclares, requirePage } from "../engine/index.js";
+import { jsonResult } from "./json-result.js";
 
 type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
 type Session = SessionEntry["session"];
@@ -16,7 +17,7 @@ type FrameTarget = ReturnType<typeof resolveFrameById>;
 
 /** Wrap a JSON-serialisable error object as a tool text-content response. */
 function jsonErrorContent(payload: Record<string, unknown>): ToolResponse {
-  return { content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }] };
+  return jsonResult(payload);
 }
 
 /** Resolve a child-frame target by stable id (minting ids first so the lookup
@@ -325,7 +326,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       // <input value="hunter2"> whose accessible name embeds the value). Mask
       // the entire result via the deep-walk helper before serialising.
       const masked = egressFor(e).maskDeep({ query, ...result });
-      return { content: [{ type: "text", text: JSON.stringify(masked, null, 2) }] };
+      return jsonResult(masked);
     },
   );
 
@@ -359,7 +360,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       const frames = listFrames(requirePage(e.session), e.frames);
       const body = { ok: true as const, frames, tokensEstimate: 0 };
       body.tokensEstimate = estimateTokens(JSON.stringify(body));
-      return { content: [{ type: "text", text: JSON.stringify(body, null, 2) }] };
+      return jsonResult(body);
     },
   );
 
@@ -424,24 +425,17 @@ export function registerReadObserveDomTools(host: ToolHost): void {
           "text_search",
         );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { query: text, ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonResult({
+          query: text,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
       // egress masking — same posture as `find` (matches carry visible
       // text). The action-class catch-all so an `<input value=hunter2>`
       // rendered text leak doesn't slip through text_search.
       const masked = egressFor(e).maskDeep({ query: text, ...result });
-      return { content: [{ type: "text", text: JSON.stringify(masked, null, 2) }] };
+      return jsonResult(masked);
     },
   );
 }

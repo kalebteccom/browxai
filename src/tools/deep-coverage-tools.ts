@@ -106,7 +106,7 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        'Record a CDP trace for `durationMs` (default 5000, max 30000) that captures forced synchronous layouts, layout shifts and style recalculations, then group them by originating call stack, so you see "this rAF loop fired 200 forced layouts" without paging through a huge trace. Returns `{ok, forcedLayoutsCount, layoutShiftsCount, eventsByOrigin:[{originatingStack, count, totalDurationMs}], tracePath, durationMs}`, top 50 origins by count. `originatingStack` is `"<anonymous>"` when the event has no stack (Chromium adds stacks when DevTools is attached). `tracePath` is `<workspace>/perf/<sessionId>-layout-thrash-<ts>.json`, loadable in DevTools\' Performance panel.',
+        'Record a CDP trace for `durationMs` (default 5000, max 30000) that captures forced synchronous layouts, layout shifts and style recalculations, then group them by originating call stack, so you see "this rAF loop fired 200 forced layouts" without paging through a huge trace. Returns `{ok, forcedLayoutsCount, layoutShiftsCount, eventsByOrigin:[{originatingStack, count, totalDurationMs}], tracePath, durationMs}`, top 50 origins by count. `originatingStack` is `"<anonymous>"` when the event has no stack (Chromium adds stacks when DevTools is attached). `tracePath` is `<workspace>/perf/<sessionId>-layout-thrash-<ts>.json`, loadable in DevTools\' Performance panel. Requires the `file-io` capability (off by default).',
       inputSchema: {
         durationMs: z
           .number()
@@ -124,6 +124,9 @@ export function registerDeepCoverageTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("layout_thrash_trace", e);
       if (eg) return eg;
+      // After the engine gate: on an engine with no tracing, `file-io` would not help.
+      const fg = fileWriteGate(gateCheck, "layout_thrash_trace", "the trace file");
+      if (fg) return fg;
       return jsonToolResult(async () => {
         const r = await runLayoutThrashTrace(requireCdp(e.session), workspace.root, e.id, {
           durationMs,
