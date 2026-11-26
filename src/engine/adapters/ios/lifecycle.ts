@@ -1,5 +1,6 @@
 // `NativeLifecycle` for the ios-app engine — the same `app_*` tool family the
-// android engine serves, over `simctl`.
+// android engine serves, over the device host: `simctl` on a simulator,
+// `devicectl` and WebDriverAgent on a phone (RFC 0014 §3).
 //
 // FIVE VERBS ARE REAL AND TWO REFUSE, AND THE TWO REFUSE STRUCTURALLY. `simctl`
 // has `listapps`, `install`, `launch` and `terminate`, and WebDriverAgent reports
@@ -22,12 +23,19 @@ import {
   type NativeDriver,
   type NativeLifecycle,
 } from "../../native-types.js";
-import type { IosSimulator } from "./simulator.js";
+import type { IosDeviceHost } from "./device-host.js";
+import type { IosTarget } from "./device-config.js";
+
+/** Why a phone gets no uninstall or reset (RFC 0014 G12). */
+const PHONE_NOTE =
+  "On a phone this stays refused: removing an app deletes its data, and the phone is the " +
+  "operator's. `devicectl device uninstall app` exists and browxai does not call it.";
 
 export class IosLifecycle implements NativeLifecycle {
   constructor(
-    private readonly sim: IosSimulator,
+    private readonly sim: IosDeviceHost,
     private readonly driver: NativeDriver,
+    private readonly target: IosTarget = "simulator",
   ) {}
 
   async apps(_includeSystem: boolean): Promise<string[]> {
@@ -53,9 +61,12 @@ export class IosLifecycle implements NativeLifecycle {
     throw new NativeUnsupportedError(
       "ios-app",
       "app_uninstall",
-      `browxai does not uninstall "${appId}" from a simulator. \`simctl uninstall\` would remove ` +
-        "an app the operator may have installed by hand, on a device this session leases rather " +
-        "than owns. Remove it with `xcrun simctl uninstall <udid> <bundle-id>` if you mean to.",
+      this.target === "device"
+        ? `browxai does not uninstall "${appId}" from a phone. ${PHONE_NOTE}`
+        : `browxai does not uninstall "${appId}" from a simulator. \`simctl uninstall\` would ` +
+            "remove an app the operator may have installed by hand, on a device this session " +
+            "leases rather than owns. Remove it with `xcrun simctl uninstall <udid> <bundle-id>` " +
+            "if you mean to.",
     );
   }
 
@@ -64,9 +75,12 @@ export class IosLifecycle implements NativeLifecycle {
     throw new NativeUnsupportedError(
       "ios-app",
       "app_reset",
-      `iOS has no per-app data clear. The only primitive is \`xcrun simctl erase\`, which wipes ` +
-        `every app on the device, including "${appId}". Reinstalling the .app bundle, or erasing ` +
-        "the simulator yourself between runs, is the honest way to start from a known state.",
+      this.target === "device"
+        ? `iOS has no per-app data clear for "${appId}". ${PHONE_NOTE}`
+        : `iOS has no per-app data clear. The only primitive is \`xcrun simctl erase\`, which ` +
+            `wipes every app on the device, including "${appId}". Reinstalling the .app bundle, ` +
+            "or erasing the simulator yourself between runs, is the honest way to start from a " +
+            "known state.",
     );
   }
 

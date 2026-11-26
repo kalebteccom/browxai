@@ -1,6 +1,7 @@
-// `IosXcuiDriver` — the `NativeDriver` implementation for the iOS Simulator.
-// Reads and input go through WebDriverAgent (`WdaClient`); the whole-screen
-// screenshot goes through `simctl`, which needs nothing extra installed.
+// `IosXcuiDriver` — the `NativeDriver` implementation for the ios-app engine.
+// Reads and input go through WebDriverAgent (`WdaClient`). The whole-screen
+// screenshot and the deep link go through the device host: `simctl` on a
+// simulator, WebDriverAgent on a phone (RFC 0014 §3).
 //
 // This file also holds the ONE place WebDriverAgent's source JSON becomes
 // browxai's `NativeNode`. Keeping the conversion here rather than in the snapshot
@@ -15,7 +16,7 @@ import type {
   NativePoint,
   NativeRect,
 } from "../../native-types.js";
-import type { IosSimulator } from "./simulator.js";
+import type { IosDeviceHost } from "./device-host.js";
 import { WdaClient } from "./wda-client.js";
 
 /** WebDriverAgent's source-JSON node. Every field is optional and several are
@@ -136,18 +137,19 @@ export class IosXcuiDriver implements NativeDriver {
 
   constructor(
     private readonly wda: WdaClient,
-    private readonly sim: IosSimulator,
+    private readonly host: IosDeviceHost,
   ) {}
 
   async hierarchy(): Promise<NativeNode> {
     return toNativeTree(await this.wda.source());
   }
 
-  /** simctl's screenshot, not WebDriverAgent's. It is the one read that works
-   *  with no WebDriverAgent running, it needs no base64 round trip, and it
-   *  captures the whole screen including anything drawn over the app. */
+  /** The host's screenshot. On a simulator that is simctl's, the one read that
+   *  works with no WebDriverAgent running, and it captures the whole screen
+   *  including anything drawn over the app. A phone has no simctl, so its host
+   *  asks WebDriverAgent. */
   async screenshot(): Promise<Buffer> {
-    return this.sim.screenshot();
+    return this.host.screenshot();
   }
 
   async findByIdentifier(identifier: string): Promise<string | null> {
@@ -185,11 +187,11 @@ export class IosXcuiDriver implements NativeDriver {
     await this.wda.pressButton(name);
   }
 
-  /** `simctl openurl`, not a WebDriverAgent call: it is the platform's own
-   *  deep-link entry point and it works whether or not an XCUITest session is
-   *  attached. */
+  /** The host's deep link: `simctl openurl` on a simulator, which works whether
+   *  or not an XCUITest session is attached, and WebDriverAgent's `/url` on a
+   *  phone. */
   async openUrl(url: string): Promise<void> {
-    await this.sim.openUrl(url);
+    await this.host.openUrl(url);
   }
 
   async foregroundApp(): Promise<NativeAppInfo> {

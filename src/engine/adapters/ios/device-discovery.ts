@@ -10,7 +10,7 @@ import {
   listDevicesArgs,
   parsePhysicalDevices,
   type DevicectlRunner,
-  type IosPhysicalDevice,
+  type DevicectlDevice,
 } from "./devicectl.js";
 import { deviceAllowlistFrom, iosTargetFrom, isAllowlisted } from "./device-config.js";
 
@@ -33,7 +33,7 @@ export interface IosDeviceListing {
 }
 
 /** The fields a caller may see. The hardware UDID stays behind. */
-export function toIosDeviceRow(d: IosPhysicalDevice): IosDeviceRow {
+export function toIosDeviceRow(d: DevicectlDevice): IosDeviceRow {
   return {
     id: d.identifier,
     model: d.model,
@@ -47,9 +47,9 @@ export function toIosDeviceRow(d: IosPhysicalDevice): IosDeviceRow {
 
 /** Split parsed devices by the allowlist. */
 export function partitionByAllowlist(
-  devices: readonly IosPhysicalDevice[],
+  devices: readonly DevicectlDevice[],
   allowlist: readonly string[],
-): { allowed: IosPhysicalDevice[]; notAllowed: number } {
+): { allowed: DevicectlDevice[]; notAllowed: number } {
   const allowed = devices.filter((d) => isAllowlisted(d, allowlist));
   return { allowed, notAllowed: devices.length - allowed.length };
 }
@@ -64,7 +64,7 @@ export async function listIosDevices(
   run: DevicectlRunner = defaultDevicectlRunner,
 ): Promise<IosDeviceListing> {
   if (iosTargetFrom(env) !== "device") return { iosDevices: [], iosDevicesNotAllowed: 0 };
-  let devices: IosPhysicalDevice[];
+  let devices: DevicectlDevice[];
   try {
     devices = parsePhysicalDevices(await run(listDevicesArgs()));
   } catch {

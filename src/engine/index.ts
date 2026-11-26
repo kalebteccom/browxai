@@ -117,7 +117,7 @@ export {
   versionArgs as devicectlVersionArgs,
   parsePhysicalDevices,
   type DevicectlRunner,
-  type IosPhysicalDevice,
+  type DevicectlDevice,
 } from "./adapters/ios/devicectl.js";
 export {
   deviceAllowlistFrom,
