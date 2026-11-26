@@ -13,6 +13,7 @@ import { engineDeclaration, requirePage } from "../engine/index.js";
 import type { ServiceWorkerAccess } from "../page/workers.js";
 import type { SessionEntry } from "../session/registry.js";
 import type { OriginPolicy } from "../policy/origin.js";
+import { executableContentTypeReason, isExecutableContentType } from "../page/fulfil-policy.js";
 
 /** Whether this session's engine can reach service workers. Playwright exposes
  *  them (`context.serviceWorkers()`) on the engines that declare the raw-CDP
@@ -186,7 +187,7 @@ export function registerGestureWorkerTools(
       capability: "action",
       deep: true,
       description:
-        "Register a fetch interceptor for requests a Service Worker handles. `pattern` is a glob against the request URL (`*` is one path segment, `**` is any, as in `route` and `ws_intercept`). `response` is the canned reply `{status?, body?, contentType?, headers?}` (defaults: 200, empty body, `application/json`). It fires only when the worker's `fetch` handler runs, which separates worker-mediated traffic from page-direct traffic. Adding the same pattern again replaces the earlier entry. Per session; lost when the session closes.",
+        "Register a fetch interceptor for requests a Service Worker handles. `pattern` is a glob against the request URL (`*` is one path segment, `**` is any, as in `route` and `ws_intercept`). `response` is the canned reply `{status?, body?, contentType?, headers?}` (defaults: 200, empty body, `application/json`). It fires only when the worker's `fetch` handler runs, which separates worker-mediated traffic from page-direct traffic. Like `route`, it answers data and static requests (xhr, fetch, eventsource, image, media, font, stylesheet, texttrack, manifest); a matching document, script or worker request continues to the network unless the server has the `eval` capability, and an HTML, XHTML, SVG or JavaScript content type needs `eval` (the result's `fulfils` says which applies). Adding the same pattern again replaces the earlier entry. Per session; lost when the session closes.",
       inputSchema: {
         pattern: z
           .string()
@@ -209,11 +210,33 @@ export function registerGestureWorkerTools(
     async ({ pattern, response, session }) => {
       const g = gateCheck("sw_intercept_fetch");
       if (g) return g;
+      // The same rule `route` applies: a canned response the page would run is
+      // `eval`'s to give. The content type can arrive as `contentType` or as a
+      // `content-type` header, so both are read.
+      const executable = [
+        response.contentType,
+        ...Object.entries(response.headers ?? {})
+          .filter(([name]) => name.toLowerCase() === "content-type")
+          .map(([, value]) => value),
+      ].find(isExecutableContentType);
+      if (executable !== undefined) {
+        const refused = gateCheck(
+          "sw_intercept_fetch",
+          ["eval"],
+          executableContentTypeReason(executable),
+        );
+        if (refused) return refused;
+      }
+      const allowExecutable = gateCheck("sw_intercept_fetch", ["eval"]) === null;
       const e = await entryFor(session);
       const eg = engineGate("sw_intercept_fetch", e);
       if (eg) return eg;
       try {
-        const r = await e.workers.addFetchIntercept(requireCdp(e.session), { pattern, response });
+        const r = await e.workers.addFetchIntercept(requireCdp(e.session), {
+          pattern,
+          response,
+          allowExecutable,
+        });
         const body = { ok: true, ...r, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
@@ -233,9 +256,11 @@ export function registerGestureWorkerTools(
     "sw_unintercept_fetch",
     {
       capability: "action",
+      // Not held in an attached session: Removes a service-worker fetch intercept this server installed.
+      byobConfirm: false,
       deep: true,
       description:
-        "Remove a `sw_intercept_fetch` interceptor by exact `pattern`, or every one this session installed when `pattern` is omitted.",
+        "Remove a `sw_intercept_fetch` interceptor by exact `pattern`, or every one this session installed when `pattern` is omitted. `skippedExecutable` in the result counts the document, script and worker requests the removed interceptors left to the network.",
       inputSchema: {
         pattern: z
           .string()

@@ -1,5 +1,4 @@
 import type { z as zType } from "zod";
-import { confirmByobAction } from "../policy/confirm.js";
 import { fillForm, type FillFormField } from "../page/fill-form.js";
 import type { ActionTarget } from "../page/locator.js";
 import { RefRegistry } from "../page/refs.js";
@@ -22,17 +21,7 @@ import type {
 export function registerFormsFillTools(
   host: RegisterHost & GateHost & SessionHost & ActionHost & EnvelopeHost & ServerServicesHost,
 ): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-    confirmCtxFor,
-    denyContent,
-    actionTimeout,
-    asActionResultText,
-    ctxFor,
-  } = host;
+  const { z, register, gateCheck, entryFor, actionTimeout, asActionResultText, ctxFor } = host;
 
   // ---------- multi-field form fill (compose fill into one action window) ----------
 
@@ -112,8 +101,6 @@ export function registerFormsFillTools(
       const g = gateCheck("fill_form");
       if (g) return g;
       const e = await entryFor(args.session);
-      const c = await confirmByobAction("fill_form", confirmCtxFor(e));
-      if (!c.ok) return denyContent("fill_form", c);
 
       // Project the schema-validated args into the lower-half's shape. Any
       // target-shape error here surfaces as a structured "invalid args"

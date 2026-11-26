@@ -1,10 +1,11 @@
-import { confirmNavigation, confirmLanding, confirmByobAction } from "../policy/confirm.js";
+import { confirmNavigation } from "../policy/confirm.js";
 import { withDeadline } from "../util/deadline.js";
 import { runShortcut } from "../page/shortcut.js";
 import { ACTION_OPTS, REF_OR_SELECTOR, SESSION_ARG, TIMEOUT_ARG } from "./schemas.js";
 import { actionTool, type ActionToolHost } from "./action-tool.js";
 import type { ConfigHost, ServerServicesHost } from "./host.js";
 import { requirePage } from "../engine/index.js";
+import { checkLanding, requestedUrlRefusal } from "./navigation-gate.js";
 
 /**
  * Core action verbs: navigate / click / fill / press / shortcut. Split out of
@@ -27,7 +28,7 @@ export function registerActionCoreTools(
       capability: "navigation",
       batchable: true,
       description:
-        "Load an absolute URL in the page. Origin rules (`BROWX_ALLOWED_ORIGINS`, `BROWX_BLOCKED_ORIGINS`) apply to the requested URL and to the page it lands on after redirects: a held origin asks the human or returns a deny, and the page stays on the landed URL. Returns an ActionResult (navigation, structure changes, console and network slice, post-snapshot). Use `go_back` and `go_forward` for history.",
+        "Load an absolute URL in the page. Opens `http:`, `https:`, `about:blank` and `data:` URLs by default. A `file:` URL needs the `file-io` capability and a path inside the workspace, `javascript:` needs `eval`, an extension page needs `extensions`, and any other scheme (`chrome:`, `view-source:`) is refused unless the operator listed it in `BROWX_NAVIGATE_EXTRA_SCHEMES`. Origin rules (`BROWX_ALLOWED_ORIGINS`, `BROWX_BLOCKED_ORIGINS`) apply to the requested URL and to the page it lands on after redirects: a held origin asks the human or returns a deny, and the page stays on the landed URL. A landing on a scheme `navigate` would not open returns the refusal and resets the page to `about:blank`. Returns an ActionResult (navigation, structure changes, console and network slice, post-snapshot). Use `go_back` and `go_forward` for history.",
       inputSchema: {
         url: z.string().describe("Absolute URL with scheme, e.g. https://app.example.com/login."),
         ...ACTION_OPTS,
@@ -43,6 +44,8 @@ export function registerActionCoreTools(
       // block rather than an engine limit.
       const eg = host.engineGate("navigate", e);
       if (eg) return eg;
+      const refused = requestedUrlRefusal(host, "navigate", e, url);
+      if (refused) return refused;
       const decision = await confirmNavigation(url, host.confirmCtxFor(e));
       if (!decision.ok) return host.denyContent("navigate", decision);
       const td = host.actionTimeout({ timeoutMs });
@@ -53,18 +56,10 @@ export function registerActionCoreTools(
         deadlineMs: td.ms,
         deadlineWarning: td.warning,
       });
-      // A redirect can land on an origin the policy holds, so the final URL
-      // goes through the same hook as the requested one.
-      const landed = result.navigation?.changed ? result.navigation.to : undefined;
-      if (landed) {
-        const after = await confirmLanding(url, landed, host.confirmCtxFor(e));
-        if (!after.ok) {
-          return host.denyContent("navigate", {
-            reason: `${after.reason} (redirected to ${landed}; the page stays there)`,
-          });
-        }
-      }
-      return host.asActionResultText(Promise.resolve(result));
+      // A redirect can land on a scheme or an origin the policy holds, so the
+      // final URL goes through the same checks as the requested one.
+      const held = await checkLanding(host, "navigate", e, url, result.navigation, td.ms);
+      return held ?? host.asActionResultText(Promise.resolve(result));
     },
   );
 
@@ -162,8 +157,6 @@ export function registerActionCoreTools(
       const g = host.gateCheck("press");
       if (g) return g;
       const e = await host.entryFor(args.session);
-      const conf = await confirmByobAction("press", host.confirmCtxFor(e));
-      if (!conf.ok) return host.denyContent("press", conf);
       const hasTarget = !!(args.ref || args.selector || args.named);
       const target = hasTarget ? host.asTarget(args, "press", e.refs) : undefined;
       const td = host.actionTimeout(args);
@@ -199,8 +192,6 @@ export function registerActionCoreTools(
       const g = host.gateCheck("shortcut");
       if (g) return g;
       const e = await host.entryFor(args.session);
-      const conf = await confirmByobAction("shortcut", host.confirmCtxFor(e));
-      if (!conf.ok) return host.denyContent("shortcut", conf);
       const hasTarget = !!(args.ref || args.selector || args.named);
       const target = hasTarget ? host.asTarget(args, "shortcut", e.refs) : undefined;
       const td = host.actionTimeout(args);

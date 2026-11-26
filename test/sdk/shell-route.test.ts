@@ -396,6 +396,7 @@ skipIfWindows("browxai call against a daemon with throwing, silent and image too
       registry: { list: () => [{ secrets }], peek: () => undefined },
       config: { testAttributes: [] },
       caps: { enabled: new Set(["read", "secrets"]) },
+      confirmHooks: new Set(),
       diagnostics: { enabled: false },
       pluginRecords: () => [],
     } as unknown as HostDeps);

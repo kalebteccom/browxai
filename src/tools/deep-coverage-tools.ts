@@ -25,6 +25,8 @@ export function registerDeepCoverageTools(host: ToolHost): void {
     "coverage_start",
     {
       capability: "action",
+      // Not held in an attached session: Starts coverage collection, which observes the page.
+      byobConfirm: false,
       batchable: true,
       deep: true,
       description:
@@ -183,6 +185,8 @@ export function registerDeepCoverageTools(host: ToolHost): void {
     "heap_snapshot",
     {
       capability: "action",
+      // Not held in an attached session: Reads the heap and writes a snapshot to the workspace.
+      byobConfirm: false,
       batchable: true,
       deep: true,
       description:
@@ -231,6 +235,8 @@ export function registerDeepCoverageTools(host: ToolHost): void {
     "heap_retainers",
     {
       capability: "action",
+      // Not held in an attached session: Queries a heap snapshot. The page is unchanged.
+      byobConfirm: false,
       batchable: true,
       deep: true,
       description:

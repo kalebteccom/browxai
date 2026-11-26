@@ -85,8 +85,10 @@ beforeAll(async () => {
   // not refused by the CAPABILITY gate — leaving only the ENGINE gate as the
   // thing under test (and on android the engine gate ALLOWS it: deep:true).
   // byob-attach because every android session is an attach to the phone's
-  // real Chrome.
-  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach,diagnostics";
+  // real Chrome. self-approval because an attached session holds `navigate`,
+  // and the test approves it up front.
+  process.env.BROWX_CAPABILITIES =
+    "read,navigation,action,human,byob-attach,diagnostics,self-approval";
   // The android engine attaches to the user's real Chrome-on-Android over adb +
   // CDP — the server defaults android to mode:"attached" (endpoint discovered
   // over adb, no BROWX_ATTACH_CDP).
@@ -108,6 +110,7 @@ describeAndroid("android keystone — real Chrome-on-Android over adb + CDP (BYO
     "attaches to real Chrome-on-Android tagged engine:android and drives navigate → snapshot → find (CDP substrate)",
     async () => {
       const session = "android-read";
+      await callJson("approve_actions", { scopes: ["byob_action"], ttlSeconds: 600 });
       const opened = await callJson<{ ok: boolean }>("open_session", {
         session,
         mode: "attached",

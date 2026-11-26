@@ -112,6 +112,8 @@ export function registerGestureWebsocketTools(
     "ws_unintercept",
     {
       capability: "action",
+      // Not held in an attached session: Removes a WebSocket intercept this server installed.
+      byobConfirm: false,
       description:
         "Remove a `ws_intercept` interceptor by exact `pattern`, or every interceptor this session installed when `pattern` is omitted.",
       inputSchema: {

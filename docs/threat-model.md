@@ -142,7 +142,7 @@ state. Defenses:
   while `navigate_off_allowlist` is in `BROWX_CONFIRM_REQUIRED` (the default), and proceeds with a
   logged warning when that hook is off. An entry without a port matches the scheme's default port
   only; an entry with a port matches that port. `navigate` checks the URL it landed on after a
-  redirect with the same policy.
+  redirect with the same policy, and `go_back` and `go_forward` check the page they land on.
 - Documented as **defense-in-depth, not a security boundary**. Page-initiated redirects
   may still go through, especially in BYOB mode where browxai isn't intercepting all
   navigation. `@playwright/mcp` makes the same qualification on its `--allowed-origins`.
@@ -161,7 +161,8 @@ Defenses:
 - **Confirmation hooks.** The `confirmRequired` config key (`BROWX_CONFIRM_REQUIRED`) names
   actions that block on `await_human` first: BYOB-mode actions and navigation off the
   allowlist. The names `file_download` and `file_upload` are accepted but reserved: no tool
-  consults them yet.
+  consults them yet. A list that leaves out a default hook or names a reserved one is
+  accepted, with a startup warning and a `browxai doctor` warning row.
 - **Loud one-time warnings.** Anything that crosses a known-dangerous threshold
   (`BROWX_ATTACH_CDP` set, `--insecure` chrome, `eval_js` enabled) prints a stderr warning
   naming what's exposed before the first tool call goes out.
@@ -678,6 +679,7 @@ human-answer channel (section 7) is not a page binding and is untouched.
 | **Compromised local machine**                                                            | The operator's user account owns the workspace; everything in it is reachable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | OS-level controls (FileVault, full-disk encryption, etc.).                                                                                                                                                                                                                                                                                                                                                       |
 | **Page content reaching the host from a browser launched without Chromium's OS sandbox** | `auto` launches without the sandbox as root, in a container, on a host without user namespaces, and after a launch that failed on it, and `off` does so on request (see the trust boundary). A bug in the browser engine that runs page code can reach whatever the browser's user can there.                                                                                                                                                                                                                                                                                                                                                                                                   | Run browxai as a non-root user on a host that supports the sandbox, or in a container or VM you can lose, with no secrets on it and no route to your internal network. `BROWX_CHROMIUM_SANDBOX=on` refuses a launch that would go without the sandbox. Keep Chrome and Playwright current.                                                                                                                       |
 | **BYOB attach to a `--disable-web-security` Chrome with the operator's real profile**    | The operator opted in (`BROWX_ATTACH_CDP` is off-by-default; `browxai chrome start --insecure` is explicit). SOP is off; the operator's session cookies are in scope of every page; there's no recovery.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Use BYOB only against test/dev targets. Use the managed-profile default for anything sensitive.                                                                                                                                                                                                                                                                                                                  |
+| **An app that runs what it fetches** (JSONP, `eval` or `innerHTML` of a response body)   | `route`, `route_queue` and `sw_intercept_fetch` answer `fetch` and `xhr` requests under `action`, which is their documented use. What the page does with a response it read is the app's own code: an app that evaluates a fetched body, or writes it into the DOM as markup, runs what the canned response holds. browxai sees the request's resource type and cannot see how the page uses the body.                                                                                                                                                                                                                                                                                          | Mock such an app's endpoints with data you would let that app run. For an agent that must not run script in the page at all, leave `action` out of `BROWX_CAPABILITIES`, or set an origin allowlist so the session stays on apps you know.                                                                                                                                                                       |
 | **Network-level interception** (MitM on the CDP port, DNS poisoning)                     | CDP is bound to loopback only; a same-machine process can still attach, and OS-level controls apply.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Run on a non-shared machine.                                                                                                                                                                                                                                                                                                                                                                                     |
 | **Page content** rendered as PNG that contains visual prompt injection                   | Vision-reading is the host agent's call; browxai just serves the image. The `screenshot({describe})` caption is structured (role/name/bbox), not OCR.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Treat screenshot text like any other untrusted page content at the host-agent layer.                                                                                                                                                                                                                                                                                                                             |
 | **Anti-bot challenges** (Cloudflare managed challenge / Turnstile, Anubis, and the rest) | Circumventing an access control is the site owner's call to make, not ours: browxai ships no token service, and the default surface has no fingerprint patch and no solver. Detection only observes the current page read-only and names what it found on `ActionResult.challenge`. It broadens no posture, so it needs no capability. Two off-by-default capabilities go further and each has its own entry below: `stealth` patches `navigator.webdriver` and three other properties, and `captcha` enables `solve_captcha`, which forwards a captcha to a third-party service the operator configures.                                                                                       | `await_human`: a person clears the gate in the live browser, then the run continues.                                                                                                                                                                                                                                                                                                                             |
@@ -703,11 +705,13 @@ the same gate refusal and hint.
 
 - `navigation`, default **on**. Tools: `navigate`, `go_back`, `go_forward`, `scroll`, `set_viewport`.
 
-  Viewport/history movement. Honoured by the origin allowlist when set.
+  Viewport and history movement. `navigate` opens `http:`, `https:`, `about:blank` and `data:` URLs. A `file:` URL needs `file-io` and a path inside the workspace, a `javascript:` URL needs `eval`, an extension page (`chrome-extension:`, `moz-extension:`) needs `extensions`, and every other scheme is refused unless the operator listed it in `BROWX_NAVIGATE_EXTRA_SCHEMES` (see [Navigation schemes](#navigation-schemes)). The origin allowlist, when set, applies to `navigate` and to the page `go_back` or `go_forward` lands on.
 
 - `action`, default **on**. Tools: `click`, `fill`, `press`, `hover`, `select`, `choose_option`, `drag`, `wait_for`, `route`, and the `set_*` emulation and policy tools other than `set_viewport`.
 
   The core agentic surface. Confirmation hook gates the irreversible sub-cases (see policy).
+
+  `route` and `route_queue` answer a matching request with a body the caller wrote, and `sw_intercept_fetch` does the same for the requests it pauses. Under `action` alone they answer data and static requests only: the resource types `xhr`, `fetch`, `eventsource`, `image`, `media`, `font`, `stylesheet`, `texttrack` and `manifest`. A matching document, script or worker request, or one of any other type, goes to the real network, so the page runs what its own server sent. The check reads the resource type the browser gives the request. The response's content type does not decide it, because a browser runs a classic script whatever its content type when the response has no `nosniff` header. Answering those requests is part of `eval` (below). Each result carries `fulfils: "data"` or `"all"`, and `unroute`, `sw_unintercept_fetch` and a replacing install report `skippedExecutable`, the number of matches left to the network. Pinned by `test/keystone/route-fulfil.keystone.test.ts`.
 
 - `human`, default **on**. Tools: `await_human`, `name_ref`.
 
@@ -737,6 +741,8 @@ the same gate refusal and hint.
 
   Arbitrary page-side JS execution. `poll_eval` re-runs an expression until it is truthy and is gated by `eval` alone. Off by default; loud warning when enabled.
 
+  `eval` also gates one branch of `route`, `route_queue` and `sw_intercept_fetch`: answering a document, script or worker request with a canned body. A page runs such a response, so a body the caller wrote is caller-written script in the page, the same thing `eval_js` gives. With `eval` on, the three tools answer every matching request and report `fulfils: "all"`. Without it they answer data and static requests only (see `action`), and a canned response whose content type is HTML, XHTML, SVG or a JavaScript type is refused at install with the standard gate refusal (`requiredCapability: "eval"`) and a `reason`, before any route is installed.
+
 - `byob-attach`, default **off**. Tools: none; it gates every `attached` session: `open_session({mode:"attached"})`, the default session of a server started with `BROWX_ATTACH_CDP`, and the attach-only `android` and `electron` engines. Without it, session creation refuses before any connection is made. `open_session` and any tool that creates the default session lazily return the standard refusal with `requiredCapability: "byob-attach"`.
 
   Lowered-security CDP-attach against the operator's Chrome. Loud one-time warning when enabled, and a start-time warning when `BROWX_ATTACH_CDP` is set without it. The check reads the start-time capability set, so a saved config or `set_config` cannot add it. `browxai chrome start` only launches Chrome and attaches nothing, so it needs no capability; the `browxai-attached` entry that `browxai init` writes sets `byob-attach` in its env.
@@ -748,7 +754,7 @@ the same gate refusal and hint.
   **Attaching to a desktop Electron app (`engine: electron`) rides this same capability.** `BROWX_ATTACH_CDP` can point at any loopback CDP endpoint, and a running Electron application, VS Code, Slack, Discord, and others, exposes one when launched with `--remote-debugging-port`. browxai detects that case from `Browser.getVersion`'s user agent and reports the session as `engine: "electron"`; it does not ask you to declare it, and it does not refuse the attach. **This is the same hazard `byob-attach` already names, in a sharper form, so it is not a separate capability:** the endpoint is one env var, and an operator who set it to an app's port chose that app. A second toggle for a decision already made by choosing the port would read as a control without being one. What is genuinely different is written out below.
 
   - **One app, one identity, no URL bar.** An attached Chrome holds many origins and the origin allowlist can fence them. An attached Electron app is one signed-in application: its whole surface is the user's authenticated session, and the allowlist has nothing to constrain. Everything the signed-in user can reach, conversations, files, tokens in `localStorage`, is in scope of any tool call.
-  - **The default confirm hook covers it.** An Electron session is `mode: "byob"`, so `byob_action` fires on every action tool, and it is in the default `BROWX_CONFIRM_REQUIRED` set. Measured: an un-approved `click` against an attached VS Code blocked for the full five-minute confirm window and did not act. For an unattended run, enable `self-approval` and call `approve_actions({ scopes: ["byob_action"] })` with a short `ttlSeconds`.
+  - **The default confirm hook covers it.** An Electron session is `mode: "attached"`, so `byob_action` holds every tool that changes the app (see "What `byob_action` holds" under the `confirmRequired` section), and it is in the default `BROWX_CONFIRM_REQUIRED` set. Measured: an un-approved `click` against an attached VS Code blocked for the full five-minute confirm window and did not act. For an unattended run, enable `self-approval` and call `approve_actions({ scopes: ["byob_action"] })` with a short `ttlSeconds`.
   - **`navigate` is refused outright** on an Electron session (`EngineCapabilities.refusedTools`). It would run an arbitrary web page inside the application's own renderer, which on many Electron apps is privileged through a preload IPC bridge, and it discards everything that renderer held in memory. `go_back` / `go_forward` stay available. They operate on the app's own document.
   - **Your EDR will flag the launch, and it should.** Starting a Chromium-family app with `--remote-debugging-port` alongside `--user-data-dir` matches prebuilt detection rules for infostealer cookie theft (MITRE **T1539**, Steal Web Session Cookie). The Elastic Security ruleset ships one. That is a correct detection, not a false positive: the technique browxai uses here is the technique the rule looks for. Expect the alert, and tell your security team before they find it.
   - **The port is unauthenticated for the life of the app.** browxai does not hold it exclusively; any local process can attach to the same endpoint while the app runs. Prefer a throwaway instance with its own `--user-data-dir` where the work allows it, and quit the app when done.
@@ -808,9 +814,9 @@ the same gate refusal and hint.
 
   Per-session clipboard model for `shortcut` copy, cut and paste chords. Each session keeps its own buffer. The shared OS clipboard is written only at the moment of a copy, cut or paste command (`pbcopy` on macOS, `clip` on Windows, `xclip` on Linux, fixed argv, content over stdin) and is never read back into a session, so one session cannot pick up what a person or another session put there. With the capability off, `shortcut` still reports what the page handled and leaves the OS clipboard alone.
 
-- `file-io`, default **off**. Tools: `upload_file`, `drop_files`, `download_get`, `downloads_capture`, `fs_picker_respond`, `screenshot_on`, `screenshot_schedule`, `page_archive`, `asset_export`, `dom_export`, `element_export`, `get_video`, `stop_video`, and the `path` argument of `screenshot`.
+- `file-io`, default **off**. Tools: `upload_file`, `drop_files`, `download_get`, `downloads_capture`, `fs_picker_respond`, `screenshot_on`, `screenshot_schedule`, `page_archive`, `asset_export`, `dom_export`, `element_export`, `get_video`, `stop_video`, the `path` argument of `screenshot`, and a `file:` URL passed to `navigate`.
 
-  Tools that read a file into the page or write page-derived bytes to disk. Every path goes through `resolveWorkspacePath` in `src/util/workspace.ts`, so a path that escapes `$BROWX_WORKSPACE` is rejected. The `file_upload` and `file_download` confirm hooks (see `BROWX_CONFIRM_REQUIRED`) are reserved names that no tool consults yet, so the `file-io` gate and the workspace path rules are what hold these tools. Downloaded and exported files carry real page content and are as sensitive as the session that produced them.
+  Tools that read a file into the page or write page-derived bytes to disk. Every path goes through `resolveWorkspacePath` in `src/util/workspace.ts`, so a path that escapes `$BROWX_WORKSPACE` is rejected. `navigate` to a `file:` URL follows the same rule as a file read: the path must sit inside the workspace after links are resolved, and outside the browser profile directories. The `file_upload` and `file_download` confirm hooks (see `BROWX_CONFIRM_REQUIRED`) are reserved names that no tool consults yet, so the `file-io` gate and the workspace path rules are what hold these tools. Downloaded and exported files carry real page content and are as sensitive as the session that produced them.
 
 - `canvas`, default **off**. Tools: `canvas_capture`, `gesture_chain`, `canvas_world_to_screen`, `canvas_screen_to_world`, `canvas_query` (`canvas_diff` is pure-byte math under `read`).
 
@@ -957,6 +963,35 @@ That is the default. `navigate_off_allowlist` acts only when an allowlist is set
 `byob_action` only in an attached session. `file_download` and `file_upload` are accepted
 and reserved: no tool consults them yet.
 
+A value for `BROWX_CONFIRM_REQUIRED` replaces the default set, so a list written to add a
+hook also drops every default it leaves out. The server logs a warning at start for each
+default hook missing from the list, naming what is no longer held and the value that keeps
+it, and one for each reserved name in the list. `browxai doctor` shows the same warnings
+as `confirm-hooks` rows. The warnings change nothing about which hooks are in force.
+
+`byob_action` reads the mode of the session the call runs in. An attached desktop Chrome,
+an attached Chrome on Android and an attached Electron app are all `mode: "attached"` and
+are held. A `persistent` or `incognito` session is not held, including one opened on a
+server started with `BROWX_ATTACH_CDP`.
+
+**What `byob_action` holds.** In an attached session, every tool gated by `action`,
+`navigation`, `eval`, `file-io`, `clipboard`, `canvas`, `extensions` or `device-emulation`
+waits for a yes before it runs. The hold runs once per call, in the wrapper every tool is
+registered through, after the tool's capability check and the engine check and before the
+handler. A tool added under one of those capabilities is held with no code of its own.
+`execute` is held once, as `execute`. `batch`, `flake_check` and the `act_and_*` tools are
+not held themselves, and each tool they dispatch is.
+
+Tools under those capabilities that change nothing in the browser are not held:
+`wait_for`, `unroute`, `ws_unintercept`, `sw_unintercept_fetch`, `stop_har`, `perf_start`, `perf_stop`, `perf_insights`, `coverage_start`, `heap_snapshot`, `heap_retainers`, `artifact_save`, `auth_delete`, `pdf_save`, `flake_check`, `downloads_capture`, `download_get`, `get_video`, `stop_video`, `asset_export`, `dom_export`, `element_export`, `page_archive`, `screenshot_on`, `screenshot_schedule` and `extensions_list`. Each one says why at its registration, and
+`test/architecture/byob-hold-completeness.test.ts` pins the list, so adding one is a
+visible change. `read` tools, `await_human`, `approve_actions` and the session and config
+tools are never held.
+
+A refused call returns `error: "policy: …"`. The ways through are the operator's: answer
+the prompt, remove `byob_action` from `BROWX_CONFIRM_REQUIRED`, or enable `self-approval`
+so the agent can call `approve_actions`.
+
 ### Origin allow/blocklist
 
 ```
@@ -985,6 +1020,44 @@ warning that names the matching `BROWX_BLOCKED_ORIGINS` entry, and the navigatio
 Documented as **defense-in-depth, not a security boundary**. Page-initiated redirects
 and JS-driven navigation may still escape; the allowlist is a blast-radius reducer + a
 confirmation hook point.
+
+### Navigation schemes
+
+`navigate` decides by URL scheme before it touches the page:
+
+| Scheme                                       | Opens when                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------- |
+| `http:`, `https:`, `about:blank`, `data:`    | always                                                                    |
+| `file:`                                      | `file-io` is on and the path is a readable path inside `$BROWX_WORKSPACE` |
+| `javascript:`                                | `eval` is on                                                              |
+| `chrome-extension:`, `moz-extension:`        | `extensions` is on                                                        |
+| anything else (`chrome:`, `view-source:`, …) | the operator listed the scheme in `BROWX_NAVIGATE_EXTRA_SCHEMES`          |
+
+```
+BROWX_NAVIGATE_EXTRA_SCHEMES=chrome,view-source
+```
+
+Unset by default. The list is read from the server's environment at start and is not a
+config key, so `set_config` and a saved `config.json` cannot add to it. Entries are scheme
+names, with or without the colon. A malformed entry stops the server at start, and so does
+`file`, `javascript` or an extension scheme, because a capability turns those on. For a
+scheme that wraps another URL (`view-source:`), the wrapped URL has to pass the same table:
+`view-source:file:///…` needs `view-source` in the list, `file-io`, and a workspace path.
+
+A capability refusal carries `requiredCapability` like any other gate refusal. Every other
+refusal is `{ ok:false, error:"navigation-scheme: …", scheme, hint }`.
+
+The same table runs on the URL the page landed on, for `navigate` (after redirects),
+`go_back` and `go_forward`. A landing on a URL the table refuses sends the page to
+`about:blank` and returns the refusal with the landed URL in it, so the page's content is
+not left open to the read tools. The browser's own error page is exempt.
+
+The table describes browser sessions. On the native-app engines (`ios-app`, `android-app`),
+which sit behind `native-device`, `navigate` opens a deep link and the OS routes its scheme.
+
+This covers the three navigation tools. A link click, `window.open`, a meta refresh or
+script on the page can still move the page to another scheme where the browser allows it;
+the scheme table is defense-in-depth, as the origin lists are.
 
 ## What ships under this model
 
