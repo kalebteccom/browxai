@@ -31,11 +31,17 @@ import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
  *  sends a newline would otherwise grow the read buffer without limit. */
 export const MAX_SOCKET_MESSAGE_BYTES = 32 * 1024 * 1024;
 
+/** Room in the read buffer past the longest line, for the newline that ends it.
+ *  Incoming data is appended one line at a time, so the buffer never holds more
+ *  than one line and its newline. The read buffer's own cap is set from the line
+ *  limit plus this, because its default is lower than the line limit. */
+const READ_BUFFER_SLACK_BYTES = 1;
+
 const NEWLINE = 0x0a;
 
 export class SocketTransport implements Transport {
   private readonly _socket: Socket;
-  private readonly _readBuffer = new ReadBuffer();
+  private readonly _readBuffer: ReadBuffer;
   private readonly _maxMessageBytes: number;
   /** Bytes buffered since the last newline: the length of the line in progress. */
   private _pendingBytes = 0;
@@ -49,6 +55,9 @@ export class SocketTransport implements Transport {
   constructor(socket: Socket, opts: { maxMessageBytes?: number } = {}) {
     this._socket = socket;
     this._maxMessageBytes = opts.maxMessageBytes ?? MAX_SOCKET_MESSAGE_BYTES;
+    this._readBuffer = new ReadBuffer({
+      maxBufferSize: this._maxMessageBytes + READ_BUFFER_SLACK_BYTES,
+    });
   }
 
   public start(): Promise<void> {
@@ -86,12 +95,34 @@ export class SocketTransport implements Transport {
 
   private _onData = (chunk: Buffer): void => {
     if (this._overLimit(chunk)) {
-      this._closeOversized();
+      this._closeWithError(
+        `SocketTransport: an incoming message is over the ${this._maxMessageBytes}-byte limit; closing the connection`,
+      );
       return;
     }
-    this._readBuffer.append(chunk);
-    this._processBuffer();
+    // This runs inside the socket's `data` event, where a throw would be an uncaught
+    // exception for the whole process. Anything that goes wrong closes this connection.
+    try {
+      this._appendByLine(chunk);
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      this._closeWithError(`SocketTransport: could not read an incoming message (${why})`);
+    }
   };
+
+  /** Append `chunk` one line at a time and deliver each finished line, so the read
+   *  buffer holds one line at most whatever the size of the chunk. */
+  private _appendByLine(chunk: Buffer): void {
+    let start = 0;
+    // cap: one pass per newline in `chunk`; `start` moves past each one.
+    while (start < chunk.length && !this._closed) {
+      const newline = chunk.indexOf(NEWLINE, start);
+      const end = newline === -1 ? chunk.length : newline + 1;
+      this._readBuffer.append(chunk.subarray(start, end));
+      if (newline !== -1) this._deliverLine();
+      start = end;
+    }
+  }
 
   /** Track the line in progress across chunks. True when any line, finished or
    *  not, runs past the limit. */
@@ -113,18 +144,20 @@ export class SocketTransport implements Transport {
     return pending > this._maxMessageBytes;
   }
 
-  private _closeOversized(): void {
+  /** Destroy the connection and report why. Nothing more is read from it. */
+  private _closeWithError(message: string): void {
+    if (this._closed) return;
     this._closed = true;
     this._socket.removeListener("data", this._onData);
     this._socket.removeListener("close", this._onClose);
     this._readBuffer.clear();
     this._pendingBytes = 0;
     this._socket.destroy();
-    this.onerror?.(
-      new Error(
-        `SocketTransport: an incoming message is over the ${this._maxMessageBytes}-byte limit; closing the connection`,
-      ),
-    );
+    try {
+      this.onerror?.(new Error(message));
+    } catch {
+      // A listener that throws must not turn a closed connection into an uncaught exception.
+    }
     this.onclose?.();
   }
 
@@ -139,16 +172,15 @@ export class SocketTransport implements Transport {
     this.onclose?.();
   };
 
-  private _processBuffer(): void {
-    for (;;) {
-      try {
-        const msg = this._readBuffer.readMessage();
-        if (!msg) return;
-        this.onmessage?.(msg);
-      } catch (err) {
-        this.onerror?.(err instanceof Error ? err : new Error(String(err)));
-        return;
-      }
+  /** Deliver the line the read buffer just finished. A line that is not a valid
+   *  message is reported and dropped: the buffer has already moved past it, so the
+   *  lines after it in the same chunk still arrive. */
+  private _deliverLine(): void {
+    try {
+      const msg = this._readBuffer.readMessage();
+      if (msg) this.onmessage?.(msg);
+    } catch (err) {
+      this.onerror?.(err instanceof Error ? err : new Error(String(err)));
     }
   }
 }
