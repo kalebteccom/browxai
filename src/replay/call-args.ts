@@ -1,4 +1,5 @@
-// Which tool-call arguments the replay log never records.
+// Which tool-call arguments the replay log never records. The diagnostics
+// recorder drops the same fields before it writes a call record.
 //
 // `action/call` is emitted before the tool's handler runs, so the value passed
 // to `register_secret` is not in the session's registry yet and the registry
