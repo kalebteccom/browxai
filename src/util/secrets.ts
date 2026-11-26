@@ -279,8 +279,11 @@ export class SecretRegistry {
   }
 
   /** Convenience: mask the string fields of an object/array, at any depth.
-   *  Non-string leaves pass through. Returns a new object — the input is not
-   *  mutated.
+   *  Object keys are masked like strings. A number is replaced by the string
+   *  `"<NAME>"` when its decimal digits contain a registered value of at least
+   *  `DIGIT_VALUE_MIN_LENGTH` characters made only of digits; shorter values
+   *  would match ordinary counts and sizes. Other leaves pass through. Returns
+   *  a new object — the input is not mutated.
    *
    *  There is no depth cap, and there must not be one. A cap here is not a
    *  safety bound, it is a leak: the previous `depth > 8` guard returned the
@@ -309,9 +312,10 @@ export class SecretRegistry {
    *  `seen` also collapses a shared (non-cyclic) sub-tree to one masked
    *  copy, so a DAG costs one walk per node, not one per reference. */
   applyMaskDeep<T>(obj: T): T {
-    // Masking only rewrites string leaves, so the result has the same structure
-    // as the input. The walk runs on `unknown` (every branch narrows with a
-    // real runtime check); the single `as T` is that structure-preserving contract.
+    // Masking rewrites leaves and keys only, so the result has the same shape
+    // as the input (a masked number becomes a string). The walk runs on
+    // `unknown` (every branch narrows with a real runtime check); the single
+    // `as T` is that shape-preserving contract.
     if (this.byName.size === 0) return obj;
     return this.maskValue(obj) as T;
   }
@@ -321,6 +325,7 @@ export class SecretRegistry {
    *  children are queued, which is what makes a self-reference resolvable. */
   private maskValue(root: unknown): unknown {
     if (typeof root === "string") return this.applyMaskInText(root);
+    if (typeof root === "number") return this.maskDeepNumber(root);
     if (!root || typeof root !== "object") return root;
 
     const seen = new WeakMap<object, unknown>();
@@ -337,6 +342,7 @@ export class SecretRegistry {
     const pending: Array<{ src: object; dst: unknown }> = [];
     const childOf = (v: unknown): unknown => {
       if (typeof v === "string") return this.applyMaskInText(v);
+      if (typeof v === "number") return this.maskDeepNumber(v);
       if (!v || typeof v !== "object") return v;
       const hit = seen.get(v);
       if (hit !== undefined) return hit;
@@ -356,10 +362,24 @@ export class SecretRegistry {
       }
       const rec = dst as Record<string, unknown>;
       for (const [k, v] of Object.entries(src as Record<string, unknown>)) {
-        rec[k] = childOf(v);
+        rec[this.applyMaskInText(k)] = childOf(v);
       }
     }
     return out;
+  }
+
+  /** `applyMaskDeep`'s number rule: only an all-digit registered value of at
+   *  least `DIGIT_VALUE_MIN_LENGTH` characters is looked for in the number's
+   *  decimal form. */
+  private maskDeepNumber(v: number): unknown {
+    const digits = String(v);
+    let hit: SecretEntry | undefined;
+    for (const entry of this.byName.values()) {
+      const { value } = entry;
+      if (value.length < DIGIT_VALUE_MIN_LENGTH || !/^[0-9]+$/.test(value)) continue;
+      if (digits.includes(value) && (!hit || value.length > hit.value.length)) hit = entry;
+    }
+    return hit ? `<${hit.name}>` : v;
   }
 
   /** Best-effort detection: does `text` contain any registered real-value?
@@ -389,6 +409,10 @@ export class SecretRegistry {
     return forms;
   }
 }
+
+/** Shortest all-digit registered value `applyMaskDeep` looks for inside a
+ *  number. */
+const DIGIT_VALUE_MIN_LENGTH = 6;
 
 /** One string the mask replaces with `<name>`. */
 interface MaskForm {

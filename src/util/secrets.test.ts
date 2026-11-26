@@ -485,6 +485,31 @@ describe("SecretRegistry.applyMaskDeep — recursive object/array masking", () =
     expect(out.b.code).toBe("otp <OTP>");
     expect(out.a).toBe(out.b);
   });
+
+  it("masks an object key that holds a registered value", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "TOKEN", value: "tok_abc123" });
+    const out = r.applyMaskDeep({ byToken: { tok_abc123: 1, "x-tok_abc123": 2 }, other: 3 });
+    expect(Object.keys(out.byToken as object)).toEqual(["<TOKEN>", "x-<TOKEN>"]);
+    expect(JSON.stringify(out)).not.toContain("tok_abc123");
+  });
+
+  it("masks a number that carries an all-digit value of six or more digits", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PIN", value: "4815162342" });
+    r.register({ name: "OTP", value: "987654" });
+    const out = r.applyMaskDeep({ a: 4815162342, b: 19876540, c: [987654], d: 42 });
+    expect(out).toEqual({ a: "<PIN>", b: "<OTP>", c: ["<OTP>"], d: 42 });
+    expect(r.applyMaskDeep(987654)).toBe("<OTP>");
+  });
+
+  it("leaves numbers alone for short or non-digit values", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "SHORT", value: "12345" });
+    r.register({ name: "MIXED", value: "a123456" });
+    const input = { a: 12345, b: 123456, c: 1123456 };
+    expect(r.applyMaskDeep(input)).toEqual(input);
+  });
 });
 
 describe("composeUrlAndSecretsInText — sanitiser composition (URL + secrets)", () => {
