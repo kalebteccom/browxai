@@ -8,6 +8,11 @@ surface" covers.
 
 ## Unreleased
 
+### Fixed
+
+- **Registered secrets are masked when they appear JSON-escaped or HTML-escaped inside text.** A value of 6 characters or more that holds a quote, backslash, slash, `< > & '` or a non-ASCII character is now also matched as a JSON encoder writes it (`\"`, `\/`, `\uXXXX` in lowercase or uppercase hex) and as an HTML encoder writes it (`&amp; &lt; &gt; &quot;`, four spellings of the apostrophe, and decimal or hex numeric references), so it becomes `<NAME>` inside a string that itself holds JSON or markup, such as a `network_body` response. A value these encoders leave alone gets no extra form, a value under 6 characters is still masked only as typed, and one value has at most 24 forms.
+- **The stderr and file log mask registered secrets and redact URL credentials and query values.** Every log entry has the registered values of every open session replaced with `<NAME>` before it is written, when `secrets` is on. The navigate, confirm-hook, bridge-signal and attach-endpoint log lines print a URL without userinfo, with `?…` for a query and `#…` for a fragment, and with identifier-shaped path segments as `:id`, the same way `browxai doctor` prints `BROWX_ATTACH_CDP`.
+
 ## [0.20.1] - 2026-11-24
 
 **Upgrading from 0.20.0.** Nothing to do. One iOS fix, one macOS-only doctor row, and docs and tooling for a signed macOS app that is not part of the npm package.

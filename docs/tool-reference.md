@@ -2843,6 +2843,27 @@ that writes a space as `+`) or as its own base64 or base64url encoding,
 padded or not. A shorter value is masked only as typed, since its encodings
 are short enough to turn up by chance.
 
+Escaped forms: a value of 6 characters or more that holds a character JSON
+or HTML escaping rewrites is also masked as those encoders write it, so it is
+masked inside a string that itself holds JSON or markup (a `network_body`
+response, a `ws_read` frame, exported HTML). The JSON forms cover `\"` and
+`\\`, `/` written as `\/`, non-ASCII characters written as `\uXXXX`, and
+`< > & '` written as `\u003c` and so on, with lowercase or uppercase hex. The
+HTML forms cover `&amp; &lt; &gt; &quot;`, the apostrophe as `&#39;`,
+`&#x27;`, `&#039;` or `&apos;`, and decimal or hex numeric references for
+those five characters and for non-ASCII characters. A value made of letters,
+digits and other characters these encoders leave alone gets no extra form. One
+value is masked in at most 24 forms.
+
+**The server log.** The server's stderr log (the macOS app writes it to
+`~/Library/Logs/Browxai/browxai.log`) goes through the same registered
+values: every log entry has them replaced with `<NAME>` before it is written,
+for every open session, when the `secrets` capability is on. This covers the
+`await_human` prompt and the confirm-hook lines. Independently of `secrets`,
+a URL in the navigate, confirm-hook and attach-endpoint log lines is printed
+without userinfo, with `?…` for a query and `#…` for a fragment, and with
+identifier-shaped path segments as `:id`.
+
 **Limitations** (enumerated for the threat model):
 
 1. **`screenshot()` is a partial sink.** PNG/JPEG bytes are not OCR'd
@@ -2862,7 +2883,12 @@ are short enough to turn up by chance.
    (JSON / text) is fully masked.
 3. **Cap is 32 secrets per session.** Bounded so the per-sink scan stays
    O(secrets × text-len) reasonable; realistic auth flows fit well under.
-4. **`scope` narrows dispatch, not egress.** Scoped secrets won't be
+4. **A value escaped in a mixed or unlisted way is not masked.** The escaped
+   forms above each render the whole value the way one encoder does. A value
+   with some characters escaped one way and some another, a named entity for
+   a non-ASCII character (`&ntilde;`), lowercase percent-hex (`%2f`), or two
+   levels of escaping inside one string are not in the list.
+5. **`scope` narrows dispatch, not egress.** Scoped secrets won't be
    substituted into a `fill` in a frame on another origin (refused with a
    clear error), but if a registered value reaches a sink for any reason,
    it's masked regardless of scope.
@@ -3606,7 +3632,7 @@ JSONL records the redacted form, never the raw value.
 
 ### `await_human({ kind?, prompt, choices?, timeoutMs? })`
 
-Blocks the calling agent until the human responds. `kind` defaults to `acknowledge`. `timeoutMs` defaults to 300000 (5 minutes) and is capped at 3600000; an unanswered prompt is denied at the timeout. The `prompt` is logged to stderr. The prompt names the session's isolated world (`browxai-<random>`) and a short ticket. The operator answers from DevTools after switching the console's context dropdown from `top` to that world, which the page's own scripts cannot reach, and passes the ticket as the last argument. An answer without the current ticket, or after its prompt ended, is dropped. The supported kinds:
+Blocks the calling agent until the human responds. `kind` defaults to `acknowledge`. `timeoutMs` defaults to 300000 (5 minutes) and is capped at 3600000; an unanswered prompt is denied at the timeout. The `prompt` is logged to stderr, with registered secret values masked. The prompt names the session's isolated world (`browxai-<random>`) and a short ticket. The operator answers from DevTools after switching the console's context dropdown from `top` to that world, which the page's own scripts cannot reach, and passes the ticket as the last argument. An answer without the current ticket, or after its prompt ended, is dropped. The supported kinds:
 
 - `acknowledge`: `__browx.proceed(ticket)` (the original site-docs `manual-capture` use case)
 - `confirm`: `__browx.confirm(true, ticket)` or `__browx.confirm(false, ticket)`
