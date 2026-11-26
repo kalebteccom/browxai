@@ -1,9 +1,9 @@
 import { withDeadline } from "../util/deadline.js";
-import { estimateTokens } from "../util/tokens.js";
 import { elementExportFromRef } from "../page/element-export.js";
 import { domExport } from "../page/dom-export.js";
 import { detectOverflow } from "../page/overflow-detect.js";
 import { SESSION_ARG } from "./schemas.js";
+import { jsonToolResult } from "./json-result.js";
 import type { ToolHost } from "./host.js";
 import { requirePage } from "../engine/index.js";
 
@@ -62,8 +62,8 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
       const g = gateCheck("element_export");
       if (g) return g;
       const e = await entryFor(args.session);
-      try {
-        const r = await withDeadline(
+      return jsonToolResult(() =>
+        withDeadline(
           elementExportFromRef(requirePage(e.session), e.refs, workspace.root, e.id, {
             ref: args.ref,
             format: args.format,
@@ -72,31 +72,8 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
           }),
           cfgActionTimeout(),
           "element_export",
-        );
-        const json = JSON.stringify(r);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
+        ),
+      );
     },
   );
 
@@ -138,8 +115,8 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
       const g = gateCheck("dom_export");
       if (g) return g;
       const e = await entryFor(args.session);
-      try {
-        const r = await withDeadline(
+      return jsonToolResult(() =>
+        withDeadline(
           domExport(requirePage(e.session), workspace.root, e.id, {
             format: args.format,
             includeShadow: args.includeShadow,
@@ -147,31 +124,8 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
           }),
           cfgActionTimeout(),
           "dom_export",
-        );
-        const json = JSON.stringify(r);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
+        ),
+      );
     },
   );
 
@@ -217,8 +171,8 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
       const g = gateCheck("overflow_detect");
       if (g) return g;
       const e = await entryFor(args.session);
-      try {
-        const r = await withDeadline(
+      return jsonToolResult(() =>
+        withDeadline(
           detectOverflow(requirePage(e.session), {
             scope: args.scope,
             types: args.types,
@@ -226,31 +180,8 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
           }),
           cfgActionTimeout(),
           "overflow_detect",
-        );
-        const json = JSON.stringify(r);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
+        ),
+      );
     },
   );
 }
