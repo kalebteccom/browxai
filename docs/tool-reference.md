@@ -3773,7 +3773,7 @@ The engine drives the iOS Simulator by default. With `BROWX_IOS_TARGET=device` i
 
 #### On a real iPhone
 
-With `BROWX_IOS_TARGET=device` the engine drives one physical iPhone, reached over the local network or a cable, with a WebDriverAgent you built, signed and started on it (`scripts/ios/wda-run.sh`, RFC 0008 section 10). browxai never builds, signs or starts WebDriverAgent, never unlocks the phone and never boots anything. The design is [RFC 0014](./rfcs/0014-ios-real-device-engine.md). The `native-device` capability alone opens nothing on a phone: a session also needs the phone on `BROWX_IOS_DEVICE_ALLOWLIST` and `BROWX_IOS_APP_ID` on `BROWX_IOS_DEVICE_APPS`.
+With `BROWX_IOS_TARGET=device` the engine drives one physical iPhone, reached over the local network or a cable, with a WebDriverAgent you built, signed and started on it (`scripts/ios/wda-run.sh`, RFC 0008 section 10). browxai never builds, signs or starts WebDriverAgent, never unlocks the phone and never boots anything. The design is RFC 0014. The `native-device` capability alone opens nothing on a phone: a session also needs the phone on `BROWX_IOS_DEVICE_ALLOWLIST` and `BROWX_IOS_APP_ID` on `BROWX_IOS_DEVICE_APPS`.
 
 **Opening a session**, in order, each step refusing before the next can reach the phone:
 
