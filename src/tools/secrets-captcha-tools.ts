@@ -10,7 +10,6 @@ import {
   SECRETS_REQUIRED_ERROR,
   type ProviderCredentialInternal,
 } from "../util/credentials.js";
-import { capabilityMissing } from "../util/capabilities.js";
 import { estimateTokens } from "../util/tokens.js";
 import type { ToolHost } from "./host.js";
 import { SESSION_ARG } from "./schemas.js";
@@ -127,7 +126,7 @@ function pageForSiteKeyRead(
  * `ToolHost` seam.
  */
 export function registerSecretsCaptchaTools(host: ToolHost): void {
-  const { z, register, gateCheck, entryFor, caps, credentialsResolved, targetFor } = host;
+  const { z, register, gateCheck, entryFor, credentialsResolved, targetFor } = host;
 
   // ---------- secrets registry (capability `secrets`) ----------
 
@@ -385,15 +384,13 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       },
     },
     async ({ account, session }: { account: string; session?: string }) => {
-      const g = gateCheck("get_credential");
+      // Without `secrets` the password could not be masked, so the lookup refuses
+      // here, before the vault is asked.
+      const g = gateCheck("get_credential", ["secrets"], SECRETS_REQUIRED_ERROR);
       if (g) return g;
       const provider = credentialsResolved.config.provider;
       // oathtool keeps TOTP seeds only, so a password lookup can never succeed.
       if (provider === "oathtool") return accountRefusal(provider, oathtoolCredentialError());
-      // Without `secrets` the password could not be masked, so the lookup refuses
-      // here, before the vault is asked.
-      if (capabilityMissing("secrets", caps))
-        return accountRefusal(provider, SECRETS_REQUIRED_ERROR);
       const bad = accountError(account);
       if (bad) return accountRefusal(provider, bad);
       // The password is bound to the origins the operator listed for this
