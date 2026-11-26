@@ -18,7 +18,7 @@ import {
 import type { RefRegistry } from "../page/refs.js";
 import { touchAttachLease } from "../session/attach-pool.js";
 import { clampTimeout, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
-import { estimateTokens } from "../util/tokens.js";
+import { jsonResultWithEstimate } from "./json-result.js";
 import { invariant } from "../util/invariant.js";
 import type { Workspace } from "../util/workspace.js";
 import { type DiagnosticsRecorder } from "../util/diagnostics.js";
@@ -237,19 +237,12 @@ export function buildHost(deps: HostDeps): ToolHost {
   /** The one engine-refusal envelope, shared by both engine-dimension gates so a
    *  caller classifies "this engine cannot" by shape, never by message text. */
   const engineRefusalText = (engine: EngineKind, refusal: EngineRefusal) => {
-    const body = { ok: false, error: refusal.error, engine, hint: refusal.hint };
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify(
-            { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-            null,
-            2,
-          ),
-        },
-      ],
-    };
+    return jsonResultWithEstimate({
+      ok: false,
+      error: refusal.error,
+      engine,
+      hint: refusal.hint,
+    });
   };
 
   const engineGate = (toolName: string, e: SessionEntry) => {
@@ -548,17 +541,8 @@ export function buildHost(deps: HostDeps): ToolHost {
   };
 
   /** JSON envelope for the non-action families: stringify with `tokensEstimate`. */
-  const okText = (
-    body: Record<string, unknown>,
-  ): { content: Array<{ type: "text"; text: string }> } => {
-    const json = JSON.stringify(body);
-    const tokensEstimate = estimateTokens(json);
-    return {
-      content: [
-        { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-      ],
-    };
-  };
+  const okText = (body: Record<string, unknown>) => jsonResultWithEstimate(body);
+
   /** Same shape for an `ok:false` rejection so callers see a uniform envelope. */
   const errText = (
     tool: string,
