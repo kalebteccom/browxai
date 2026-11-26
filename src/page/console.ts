@@ -4,6 +4,7 @@
 
 import type { Page } from "playwright-core";
 import { sanitizeUrlsInText } from "../util/url-sanitizer.js";
+import { capMasked, PLAIN_CUT, textCutFor, type TextCut } from "../util/frame-cap.js";
 import type { SecretRegistry } from "../util/secrets.js";
 
 export interface ConsoleMessage {
@@ -19,11 +20,15 @@ const DEFAULT_CAP = 200;
 export const MAX_CONSOLE_MESSAGE_CHARS = 8 * 1024;
 
 /** Cut a message to `MAX_CONSOLE_MESSAGE_CHARS`, ending in a marker that says how
- *  much was dropped. A message within the cap is returned as is. */
-export function capConsoleText(text: string): string {
+ *  much was dropped. A message within the cap is returned as is and masked at
+ *  read. A longer one is masked here, with the registry as it stands now, then
+ *  cut, so a registered value that crosses the cut leaves no head. */
+export function capConsoleText(text: string, cut: TextCut = PLAIN_CUT): string {
   if (text.length <= MAX_CONSOLE_MESSAGE_CHARS) return text;
+  const capped = capMasked(text, MAX_CONSOLE_MESSAGE_CHARS, cut.mask, cut.slack);
+  if (!capped.truncated) return capped.payload;
   const dropped = text.length - MAX_CONSOLE_MESSAGE_CHARS;
-  return `${text.slice(0, MAX_CONSOLE_MESSAGE_CHARS)}… [truncated ${dropped} chars]`;
+  return `${capped.payload}… [truncated ${dropped} chars]`;
 }
 
 export class ConsoleBuffer {
@@ -44,13 +49,22 @@ export class ConsoleBuffer {
     this.secrets = secrets;
   }
 
+  /** The mask an over-cap message is cut with at capture. */
+  private cut(): TextCut {
+    return textCutFor(this.secrets);
+  }
+
   attach(page: Page): void {
     page.on("console", (m) => {
-      this.msgs.push({ ts: Date.now(), type: m.type(), text: capConsoleText(m.text()) });
+      this.msgs.push({
+        ts: Date.now(),
+        type: m.type(),
+        text: capConsoleText(m.text(), this.cut()),
+      });
       if (this.msgs.length > this.cap) this.msgs.shift();
     });
     page.on("pageerror", (err) => {
-      this.errs.push({ ts: Date.now(), text: capConsoleText(err.message) });
+      this.errs.push({ ts: Date.now(), text: capConsoleText(err.message, this.cut()) });
       if (this.errs.length > this.cap) this.errs.shift();
     });
   }
@@ -63,7 +77,7 @@ export class ConsoleBuffer {
    *  vocabulary (`warn` → `warning`) the readers key on. */
   ingest(level: string, text: string): void {
     const type = level === "warn" ? "warning" : level;
-    this.msgs.push({ ts: Date.now(), type, text: capConsoleText(text) });
+    this.msgs.push({ ts: Date.now(), type, text: capConsoleText(text, this.cut()) });
     if (this.msgs.length > this.cap) this.msgs.shift();
   }
 

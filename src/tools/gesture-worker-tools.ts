@@ -165,6 +165,7 @@ export function registerGestureWorkerTools(
           requirePage(e.session),
           workerId !== undefined ? { workerId } : {},
           swAccessFor(e, host.confirmCtxFor(e).policy),
+          egressFor(e).textCut(),
         );
         // Message data is whatever the worker posted, so it is masked like `ws_read` frames.
         const body = { ok: true, messages: egressFor(e).maskDeep(messages), tokensEstimate: 0 };

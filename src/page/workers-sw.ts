@@ -30,10 +30,12 @@
 import type { BrowserContext, CDPSession, Worker } from "playwright-core";
 import { isOriginAllowed, type OriginPolicy } from "../policy/origin.js";
 import { docsUrl } from "../util/docs-links.js";
+import { PLAIN_CUT, type TextCut } from "../util/frame-cap.js";
 import { invariant } from "../util/invariant.js";
 import { isDataResourceType, type FulfilScope } from "./fulfil-policy.js";
 import { globToRegex } from "./ws-interactive.js";
 import type { SwFetchInterceptSpec, WorkerListing, WorkerMessage } from "./workers-types.js";
+import { clipWorkerData } from "./workers-page.js";
 
 export interface SwAttachment {
   /** CDP `targetId` from `Target.attachedToTarget`. */
@@ -68,7 +70,6 @@ interface PausedRequest {
 }
 
 const SW_RING_MAX = 500;
-const SW_PAYLOAD_MAX = 4000;
 const SW_URL_MAX = 64;
 
 /** Runs inside the service worker (`Worker.evaluate` serialises this function
@@ -428,11 +429,15 @@ export class WorkersSwChannel {
     return [...this.fetchInterceptors.keys()];
   }
 
-  /** Append a FROM-SW message to the server-side ring. */
-  recordSwMessage(workerId: string, data: string, at: number = Date.now()): void {
-    let trimmed = data;
-    if (trimmed.length > SW_PAYLOAD_MAX) trimmed = trimmed.slice(0, SW_PAYLOAD_MAX) + "…";
-    this.swMessages.push({ workerId, data: trimmed, at });
+  /** Append a FROM-SW message to the server-side ring, masked with `cut`
+   *  before it is cut to `WORKER_DATA_MAX` characters. */
+  recordSwMessage(
+    workerId: string,
+    data: string,
+    at: number = Date.now(),
+    cut: TextCut = PLAIN_CUT,
+  ): void {
+    this.swMessages.push({ workerId, data: clipWorkerData(data, cut), at });
     if (this.swMessages.length > SW_RING_MAX) {
       this.swMessages.splice(0, this.swMessages.length - SW_RING_MAX);
     }
@@ -443,7 +448,7 @@ export class WorkersSwChannel {
    *  script URL. The page owns that ring and can return anything, so the input
    *  is untyped: only the last `SW_RING_MAX` well-formed entries are kept, and
    *  every field is coerced and bounded. */
-  ingestPageMessages(drained: unknown, policy?: OriginPolicy): void {
+  ingestPageMessages(drained: unknown, policy?: OriginPolicy, cut: TextCut = PLAIN_CUT): void {
     if (!Array.isArray(drained)) return;
     for (const m of drained.slice(-SW_RING_MAX)) {
       if (typeof m !== "object" || m === null) continue;
@@ -460,6 +465,7 @@ export class WorkersSwChannel {
         id,
         typeof data === "string" ? data : "",
         typeof at === "number" && Number.isFinite(at) ? at : Date.now(),
+        cut,
       );
     }
   }

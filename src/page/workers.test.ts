@@ -14,6 +14,8 @@
 //     it at run-time; here we just prove we don't re-emit the init-script)
 
 import { describe, it, expect, vi } from "vitest";
+import { textCutFor } from "../util/frame-cap.js";
+import { SecretRegistry } from "../util/secrets.js";
 import { WorkersRegistry, WORKERS_PAGE_SCRIPT } from "./workers.js";
 import { resolveOriginPolicy } from "../policy/origin.js";
 
@@ -245,6 +247,34 @@ describe("WorkersRegistry.readMessages", () => {
       { workerId: "ww-1", data: "hello", at: 1000 },
       { workerId: "ww-1", data: "world", at: 1001 },
     ]);
+  });
+
+  it("masks a Web Worker or service-worker message before cutting it", async () => {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "TOKEN", value: "tok_0123456789abcdef" });
+    // 4,100 characters with the value across the 4,000-character cut, as the
+    // page ring keeps it (it no longer cuts at 4,000 itself).
+    const data = "x".repeat(3990) + "tok_0123456789abcdef" + "y".repeat(90);
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.enqueueResponse(() => undefined); // installPageWrapper re-inject
+    f.enqueueResponse(() => [{ workerId: "ww-1", data, at: 1 }]); // drain
+    f.enqueueResponse(() => [{ url: "https://x/sw.js", data, at: 2 }]); // drainSw
+    const out = await reg.readMessages(f.page, {}, {}, textCutFor(secrets));
+    expect(out).toHaveLength(2);
+    for (const m of out) {
+      expect(m.data).not.toContain("tok_");
+      expect(m.data).toBe("x".repeat(3990) + "<TOKEN>" + "yyy…");
+    }
+  });
+
+  it("cuts a long message to 4,000 characters and a marker with no secret registered", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.enqueueResponse(() => undefined);
+    f.enqueueResponse(() => [{ workerId: "ww-1", data: "z".repeat(8097), at: 1 }]);
+    const [m] = await reg.readMessages(f.page, { workerId: "ww-1" });
+    expect(m!.data).toBe("z".repeat(4000) + "…");
   });
 
   it("returns the messages a service worker posted to the page for sw-* reads", async () => {

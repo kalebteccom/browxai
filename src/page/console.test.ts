@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import type { Page } from "playwright-core";
+import { SecretRegistry } from "../util/secrets.js";
 import { ConsoleBuffer, MAX_CONSOLE_MESSAGE_CHARS, capConsoleText } from "./console.js";
 
 // ConsoleBuffer.ingest is the non-Playwright console feed — the safari engine
@@ -49,5 +51,55 @@ describe("console message size cap", () => {
     const [msg] = buf.recent();
     expect(msg!.text.length).toBeLessThan(MAX_CONSOLE_MESSAGE_CHARS + 64);
     expect(msg!.text).toContain("[truncated");
+  });
+});
+
+describe("console text over the cap is masked before it is cut", () => {
+  const VALUE = "tok_0123456789abcdef";
+  // The value starts 10 characters before the 8,192-character cut.
+  const straddling = "x".repeat(MAX_CONSOLE_MESSAGE_CHARS - 10) + VALUE + "y".repeat(20);
+
+  type Listener = (arg: unknown) => void;
+  function attached(buf: ConsoleBuffer): Map<string, Listener> {
+    const on = new Map<string, Listener>();
+    buf.attach({ on: (ev: string, cb: Listener) => on.set(ev, cb) } as unknown as Page);
+    return on;
+  }
+  function withSecret(): ConsoleBuffer {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "TOKEN", value: VALUE });
+    const buf = new ConsoleBuffer();
+    buf.setSecrets(secrets);
+    return buf;
+  }
+
+  it("masks a console message that crosses the cut", () => {
+    const buf = withSecret();
+    attached(buf).get("console")!({ type: () => "error", text: () => straddling });
+    const [msg] = buf.recent();
+    expect(msg!.text).not.toContain("tok_");
+    expect(msg!.text).toContain("<TOKEN");
+    expect(buf.errorsSince(0)[0]).not.toContain("tok_");
+  });
+
+  it("masks a page error that crosses the cut", () => {
+    const buf = withSecret();
+    attached(buf).get("pageerror")!(new Error(straddling));
+    expect(buf.pageErrorsSince(0)[0]).not.toContain("tok_");
+  });
+
+  it("masks an ingested message that crosses the cut", () => {
+    const buf = withSecret();
+    buf.ingest("error", straddling);
+    expect(buf.recent()[0]!.text).not.toContain("tok_");
+  });
+
+  it("still masks a message under the cap at read, for a value registered later", () => {
+    const secrets = new SecretRegistry();
+    const buf = new ConsoleBuffer();
+    buf.setSecrets(secrets);
+    buf.ingest("log", `short ${VALUE}`);
+    secrets.register({ name: "TOKEN", value: VALUE });
+    expect(buf.recent()[0]!.text).toBe("short <TOKEN>");
   });
 });
