@@ -87,6 +87,37 @@ describe("resolveExtensionPath", () => {
     });
     expect(resolveExtensionPath(workspace, ext, "extensions_install")).toBe(ext);
   });
+
+  // A directory a tool writes into holds page content or what the agent saved,
+  // so an extension staged there is refused even with a valid manifest.
+  it.each([".artifacts/s1/ext", ".downloads/s1/ext", "archives/ext", "ASSETS/ext"])(
+    "rejects %s, under a tool output directory",
+    (rel) => {
+      const dir = makeExtensionDir(workspace, rel, {
+        name: "x",
+        version: "1.0.0",
+        manifest_version: 3,
+      });
+      for (const input of [rel, dir]) {
+        const run = () => resolveExtensionPath(workspace, input, "extensions_install");
+        if (rel === "ASSETS/ext" && process.platform === "linux") {
+          // Case-sensitive filesystem: `ASSETS` is a different directory.
+          expect(run()).toBe(dir);
+        } else {
+          expect(run).toThrow(/where browxai tools write/);
+        }
+      }
+    },
+  );
+
+  it("accepts a directory whose name only starts like a tool output directory", () => {
+    const ext = makeExtensionDir(workspace, "archives-mine/ext", {
+      name: "x",
+      version: "1.0.0",
+      manifest_version: 3,
+    });
+    expect(resolveExtensionPath(workspace, "archives-mine/ext", "extensions_install")).toBe(ext);
+  });
 });
 
 // --- readManifest ----------------------------------------------------------

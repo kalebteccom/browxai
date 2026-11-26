@@ -9,6 +9,7 @@ import {
 import { askHumanProfileRefusal } from "./ask-human-gate.js";
 import { byobAttachRefusal } from "./byob-attach-gate.js";
 import { resolveOpenSessionPolicies } from "./open-session-policies.js";
+import { engineCapabilityRefusal } from "./engine-capability-gate.js";
 import { isValidProfileName, PROFILE_NAME_RULE } from "../util/profile-name.js";
 import { openSessionPrecheck } from "./open-session-precheck.js";
 import type {
@@ -106,10 +107,12 @@ export function registerSessionLifecycleTools(
   host: RegisterHost & GateHost & SessionHost & ServerServicesHost & TargetHost,
 ): void {
   const { z, register, registry, targetFor, gateCheck } = host;
-  // Session creation throws these two gate errors; open_session reports them
+  // Session creation throws these three gate errors; open_session reports them
   // in the standard capability-refusal shape.
   const gateRefusalFor = (err: unknown) =>
-    askHumanProfileRefusal(gateCheck, err) ?? byobAttachRefusal(gateCheck, err);
+    askHumanProfileRefusal(gateCheck, err) ??
+    byobAttachRefusal(gateCheck, err) ??
+    engineCapabilityRefusal(gateCheck, err);
 
   register(
     "open_session",
@@ -227,7 +230,7 @@ export function registerSessionLifecycleTools(
           ])
           .optional()
           .describe(
-            "Bulk-seed: inline state blob (`{cookies, origins}` from dump_storage_state) OR a workspace-rooted JSON path. Mutually exclusive with `authState`. Native on incognito; on persistent it post-seeds AND clears the profile (loud-warned); ignored on attached.",
+            "Bulk-seed: inline state blob (`{cookies, origins}` from dump_storage_state) OR a workspace-rooted JSON path. Mutually exclusive with `authState`. Native on incognito; on persistent it post-seeds AND clears the profile (loud-warned); ignored on attached. Needs the `action` capability.",
           ),
         authState: z
           .string()
@@ -268,7 +271,7 @@ export function registerSessionLifecycleTools(
           .array(z.string())
           .optional()
           .describe(
-            'Replay HAR file(s), workspace-rooted paths. Each is wired with `context.routeFromHAR(file, {notFound:"fallback"})` right after context creation: matching requests are served from the archive and the rest go to the live network. A path outside $BROWX_WORKSPACE (including through a symlink) is rejected, and a missing file errors. A HAR recorded without bodies replays empty bodies. Several HARs layer fixtures.',
+            'Replay HAR file(s), workspace-rooted paths. Each is wired with `context.routeFromHAR(file, {notFound:"fallback"})` right after context creation: matching requests are served from the archive and the rest go to the live network. A path outside $BROWX_WORKSPACE (including through a symlink) is rejected, and a missing file errors. A HAR recorded without bodies replays empty bodies. Several HARs layer fixtures. Needs the `action` capability.',
           ),
         recordVideo: z
           .object({
@@ -324,6 +327,7 @@ export function registerSessionLifecycleTools(
           notificationPolicy,
           fsPickerPolicy,
           harContent: har?.content,
+          seeds: { storageState: storageState !== undefined, hars: (hars?.length ?? 0) > 0 },
         },
       );
       if (!resolved.ok) return resolved.response;

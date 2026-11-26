@@ -102,7 +102,7 @@ const CONSUMERS: Record<
     tools: [
       { name: "set_geolocation", args: { latitude: 1, longitude: 2 } },
       { name: "set_color_scheme", args: { scheme: "dark" } },
-      { name: "set_reduced_motion", args: { motion: "reduce" } },
+      { name: "set_reduced_motion", args: { on: true } },
     ],
   },
   capture: {

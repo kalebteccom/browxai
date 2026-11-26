@@ -59,6 +59,7 @@ import {
 } from "../util/capabilities.js";
 import { refuseHeldProfile } from "./ask-human-gate.js";
 import { refuseAttachWithoutCapability } from "./byob-attach-gate.js";
+import { EngineCapabilityRefused } from "./engine-capability-gate.js";
 import {
   refuseLiveProfile,
   refuseLockedProfile,
@@ -174,13 +175,14 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // adding such an engine is still one `registerEngine(...)` call.
       const engineCapability = engineRequiresCapability(effectiveEngine);
       if (engineCapability && capabilityMissing(engineCapability, caps)) {
-        throw new Error(
+        throw new EngineCapabilityRefused(
           `capability-required: session "${id}": the "${effectiveEngine}" engine needs the ` +
             `\`${engineCapability}\` capability, which is off by default. It installs and ` +
             "launches applications and drives an OS-level input pipeline on a device, so it is " +
             `opt-in. Add it to BROWX_CAPABILITIES and keep the defaults in the list ` +
             `(${capabilitiesAssignment(engineCapability)}), then restart the server. See ${docsUrl.threatModelConfiguring} ` +
             "for what it grants.",
+          engineCapability,
         );
       }
       // Omitted engine keeps the exact legacy default mode (`serverDefaultMode`);

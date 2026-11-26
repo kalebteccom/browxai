@@ -38,7 +38,30 @@
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
-import { assertReadableWorkspacePath } from "../util/workspace.js";
+import { assertReadableWorkspacePath, workspaceDirContaining } from "../util/workspace.js";
+
+/** Workspace directories browxai tools write into by default: downloads and
+ *  exports carry page content, `.artifacts` carries what the agent saved. An
+ *  extension loaded from one of them would run code the page or the agent
+ *  wrote, so the operator stages extensions somewhere else. */
+export const TOOL_OUTPUT_DIRS: readonly string[] = [
+  ".artifacts",
+  ".auth-states",
+  ".downloads",
+  "archives",
+  "assets",
+  "diagnostics",
+  "dom-dumps",
+  "elements",
+  "har",
+  "heap-snapshots",
+  "pdfs",
+  "perf",
+  "perf-traces",
+  "replays",
+  "screenshots",
+  "videos",
+];
 
 /**
  * Loaded-extension record. `id` is the Chrome-computed extension id (a 32-char
@@ -75,6 +98,7 @@ export function newExtensionRegistry(): ExtensionRegistry {
  *   - non-existent paths
  *   - paths that are files (not a directory)
  *   - directories missing `manifest.json`
+ *   - paths under a directory tools write into (`TOOL_OUTPUT_DIRS`)
  *
  * Returns the resolved absolute path. Throws `Error` with a structured message
  * on any rejection — the tool handler converts that to the `ok:false` envelope.
@@ -98,6 +122,14 @@ export function resolveExtensionPath(workspaceRoot: string, p: string, tool: str
     );
   }
   assertReadableWorkspacePath(workspaceRoot, resolved, tool);
+  const toolDir = workspaceDirContaining(workspaceRoot, resolved, TOOL_OUTPUT_DIRS);
+  if (toolDir !== null) {
+    throw new Error(
+      `${tool}: refusing to load an extension from "${p}": it is under the workspace ` +
+        `${toolDir}/ directory, where browxai tools write page content and agent-supplied ` +
+        "files. Stage the unpacked extension in a directory of its own.",
+    );
+  }
   if (!existsSync(resolved)) {
     throw new Error(
       `${tool}: extension directory not found at "${resolved}". Check the path is relative to $BROWX_WORKSPACE.`,

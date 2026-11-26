@@ -1,5 +1,6 @@
-// The policy half of `open_session`: parse the four policy arguments, then run
-// the `ask-human` reopen gate over them. Split out of the lifecycle tools so the
+// The policy half of `open_session`: gate the arguments that need a capability
+// beyond the tool's own, parse the four policy arguments, then run the
+// `ask-human` reopen gate over them. Split out of the lifecycle tools so the
 // handler stays a short sequence and this stays one reason to change.
 
 import { parseDialogPolicyArg, type DialogPolicy } from "../session/dialog.js";
@@ -28,6 +29,28 @@ export interface OpenSessionPolicyArgs {
   /** `har.content`: `embed` / `attach` write bodies to disk and need
    *  `network-body`, as on `start_har`. */
   harContent?: "embed" | "attach" | "omit";
+  /** Set when the call seeds the new session's state (`storageState`) or
+   *  answers its requests from recorded HARs (`hars`). Both change what the
+   *  page sees, as `inject_storage_state` and `route` do, so they need
+   *  `action`. */
+  seeds?: { storageState: boolean; hars: boolean };
+}
+
+/** The `action` refusal for an argument that seeds the new session, or null. */
+function seedingRefusal(
+  gateCheck: GateHost["gateCheck"],
+  seeds: OpenSessionPolicyArgs["seeds"],
+): ToolResponse | null {
+  if (seeds?.storageState) {
+    const reason = "`storageState` writes cookies and storage into the new session";
+    const refused = gateCheck("open_session", ["action"], reason);
+    if (refused) return refused;
+  }
+  if (seeds?.hars) {
+    const reason = "`hars` answers the new session's requests from recorded responses";
+    return gateCheck("open_session", ["action"], reason);
+  }
+  return null;
 }
 
 /** Parse the four optional policy args. Throws on a malformed policy string. */
@@ -45,7 +68,8 @@ function parseOpenSessionPolicies(args: OpenSessionPolicyArgs): ParsedOpenSessio
 }
 
 /** Parse the policy args into the bundle `open_session` opens with, or the
- *  refusal to return instead: the `network-body` refusal for a HAR that would
+ *  refusal to return instead: the `action` refusal for a state-seeding argument
+ *  on a server without it, the `network-body` refusal for a HAR that would
  *  write bodies, a structured `ok:false` for a malformed policy, or
  *  the `human-gate-override` refusal when a name that held `ask-human` when it
  *  last closed would reopen with a policy that moves a held key off it. Nothing
@@ -56,6 +80,8 @@ export function resolveOpenSessionPolicies(
   held: HeldAskHuman | undefined,
   args: OpenSessionPolicyArgs,
 ): { ok: true; policies: ParsedOpenSessionPolicies } | { ok: false; response: ToolResponse } {
+  const seeding = seedingRefusal(gateCheck, args.seeds);
+  if (seeding) return { ok: false, response: seeding };
   if (harWritesBodies(args.harContent)) {
     const reason = `har.content "${args.harContent}" writes request and response bodies to disk`;
     const bodies = gateCheck("open_session", ["network-body"], reason);

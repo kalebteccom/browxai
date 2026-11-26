@@ -52,10 +52,10 @@ describe("device-emulation keystone — capability off → tools refuse at the g
         const res = await fn!({ devices: [] });
         const body = JSON.parse((res.content[0] as { text: string }).text) as {
           ok: boolean;
-          error?: string;
+          requiredCapability?: string;
         };
         expect(body.ok, `${tool} should refuse without device-emulation capability`).toBe(false);
-        expect(body.error ?? "").toMatch(/capability/i);
+        expect(body.requiredCapability, tool).toBe("device-emulation");
       }
     },
     KEYSTONE_TIMEOUT,

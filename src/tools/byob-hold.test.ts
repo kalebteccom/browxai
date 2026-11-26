@@ -135,6 +135,38 @@ describe("holdAttached", () => {
     expect(asked).toEqual([]);
   });
 
+  it("returns the tool's precheck refusal before asking", async () => {
+    const { asked, bridge } = bridgeAnswering(true);
+    const refusal: ToolResponse = { content: [{ type: "text", text: '{"scheme":"chrome"}' }] };
+    const seen: string[] = [];
+    const r = await holdAttached(
+      "navigate",
+      { session: "s1" },
+      deps({}, { bridge: bridge as never }),
+      (e) => (seen.push(e.id), refusal),
+    );
+    expect(r).toBe(refusal);
+    expect(seen).toEqual(["s1"]);
+    expect(asked).toEqual([]);
+  });
+
+  it("asks when the precheck passes", async () => {
+    const { asked, bridge } = bridgeAnswering(true);
+    const r = await holdAttached("navigate", {}, deps({}, { bridge: bridge as never }), () => null);
+    expect(r).toBeNull();
+    expect(asked).toEqual(["navigate"]);
+  });
+
+  it("runs no precheck for a session that is not attached", async () => {
+    let ran = 0;
+    const r = await holdAttached("navigate", {}, deps({}, { isByob: false }), () => {
+      ran++;
+      return null;
+    });
+    expect(r).toBeNull();
+    expect(ran).toBe(0);
+  });
+
   it("uses a pre-approval without asking, and counts one use", async () => {
     const approvals = new ApprovalStore();
     approvals.grant("byob_action", 60);

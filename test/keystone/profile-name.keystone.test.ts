@@ -14,6 +14,10 @@ import { createServer } from "../../src/server.js";
 
 const KEYSTONE_TIMEOUT = 60_000;
 
+/** The start of the naming rule every refusal here quotes, free of characters
+ *  JSON escapes, so it can be found in a result's raw text. */
+const PLAIN_NAME_RULE = "use a plain name: letters, digits";
+
 let server: Awaited<ReturnType<typeof createServer>>;
 let base: string;
 let ws: string;
@@ -64,10 +68,12 @@ describe("profile and session names keystone", () => {
     async () => {
       const body = JSON.parse(
         await call("open_session", { session: "ks-a", mode: "persistent", profile: "../x" }),
-      ) as { ok: boolean; code?: string; error?: string };
+      ) as { ok: boolean; error?: string };
+      // The input schema refuses the name before the handler runs, as the MCP
+      // SDK does on the wire, and the refusal names the argument and the rule.
       expect(body.ok).toBe(false);
-      expect(body.code).toBe("invalid-name");
-      expect(body.error).toMatch(/^invalid-name: profile "\.\.\/x"/);
+      expect(body.error).toMatch(/→ at profile/);
+      expect(body.error).toContain(PLAIN_NAME_RULE);
       assertNothingOutside();
     },
     KEYSTONE_TIMEOUT,
@@ -78,7 +84,7 @@ describe("profile and session names keystone", () => {
     async () => {
       for (const profile of ["../../x", "a/../../x", join(base, "x"), "..\\x"]) {
         const text = await call("open_session", { session: "ks-b", mode: "persistent", profile });
-        expect(text, profile).toContain("invalid-name");
+        expect(text, profile).toContain(PLAIN_NAME_RULE);
       }
       assertNothingOutside();
     },
@@ -90,7 +96,7 @@ describe("profile and session names keystone", () => {
     async () => {
       for (const session of ["../x", "../../x"]) {
         expect(await call("open_session", { session, mode: "persistent" })).toContain(
-          "invalid-name",
+          PLAIN_NAME_RULE,
         );
         expect(await call("navigate", { session, url: "about:blank" })).toContain("invalid-name");
       }

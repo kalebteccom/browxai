@@ -148,14 +148,21 @@ describe("get_credential — origin binding and account names", () => {
       },
       opts.providerName ?? "1password",
     );
+    const enabled = new Set<string>(opts.capabilities ?? ["secrets", "credentials"]);
+    // Refuses the first extra capability that is off, in the standard shape.
+    const gateCheck = (_tool: string, extra: readonly string[] = [], reason?: string) => {
+      const missing = extra.find((c) => !enabled.has(c));
+      if (missing === undefined) return null;
+      const text = JSON.stringify({ ok: false, requiredCapability: missing, reason });
+      return { content: [{ type: "text", text }] };
+    };
     const host = {
       z,
       register: (name: string, _def: unknown, handler: CapturedHandler) => {
         handlers[name] = handler;
       },
-      gateCheck: () => undefined,
+      gateCheck,
       entryFor: () => ({ secrets }),
-      caps: { enabled: new Set<string>(opts.capabilities ?? ["secrets", "credentials"]) },
       credentialsResolved: {
         provider,
         config: {
@@ -207,9 +214,9 @@ describe("get_credential — origin binding and account names", () => {
     });
     const body = bodyOf(await handler({ account: "acme" }));
     expect(body.ok).toBe(false);
-    expect(body.provider).toBe("1password");
-    expect(String(body.error)).toContain("`secrets` capability is not enabled");
-    expect(String(body.error)).toContain("BROWX_CAPABILITIES");
+    expect(body.requiredCapability).toBe("secrets");
+    expect(String(body.reason)).toContain("`secrets` capability is not enabled");
+    expect(String(body.reason)).toContain("BROWX_CAPABILITIES");
     expect(lookups).toEqual([]);
     expect(secrets.size()).toBe(0);
   });

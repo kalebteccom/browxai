@@ -16,9 +16,15 @@
 //   file-io          the 13 tool-gated tools, plus the `screenshot({path})` branch
 //                    and `navigate` to a `file:` URL
 //   diagnostics      diagnostics_note
-//   eval             the document / script content-type branch of `route`,
+//   eval             poll_eval, and the document / script content-type branch of `route`,
 //                    `route_queue` and `sw_intercept_fetch` (the tools are
 //                    `action`; the branch is refused before a session is read)
+// Not table-driven, because the gate is an argument or a result field:
+//   network-body     `open_session({har:{content:"embed"}})`, and the body of a
+//                    `caches_get` entry, which is left out with `bodyOmitted`
+//   action           `open_session` `storageState` / `hars` on a server without it
+//   secrets          `get_credential` on a server with `credentials` alone
+//   extensions       `extensions_install` from a directory tools write into
 // Not table-driven, because the gate is a behaviour branch and not a tool gate:
 //   clipboard        `shortcut` copy/cut/paste leaves the OS clipboard and the
 //                    per-session buffer alone
@@ -33,7 +39,7 @@
 // seconds to the keystone run.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -107,6 +113,7 @@ const DENIALS: readonly Case[] = [
   { capability: "file-io", tool: "stop_video", args: {} },
   { capability: "file-io", tool: "get_video", args: {} },
   { capability: "diagnostics", tool: "diagnostics_note", args: { insight: "keystone note" } },
+  { capability: "eval", tool: "poll_eval", args: { expr: "true" } },
   {
     capability: "eval",
     tool: "route",
@@ -341,6 +348,48 @@ describe("capability denials with the default capability set", () => {
     );
 
     it(
+      'refuses open_session({har:{content:"embed"}}) before the session opens',
+      async () => {
+        const denied = await call<Denied>("open_session", {
+          session: "ks-har-embed",
+          mode: "incognito",
+          har: { content: "embed", path: "ks-har-denials/open.har" },
+        });
+        expect(denied.ok).toBe(false);
+        expect(denied.requiredCapability).toBe("network-body");
+        const listed = await call<{ sessions: Array<{ id: string }> }>("list_sessions", {});
+        expect(listed.sessions.map((x) => x.id)).not.toContain("ks-har-embed");
+      },
+      KEYSTONE_TIMEOUT,
+    );
+
+    it(
+      "leaves the body out of caches_get and names network-body",
+      async () => {
+        await call("navigate", { session, url: `${fixture.url}/` });
+        const put = await call<{ ok: boolean }>("caches_put", {
+          session,
+          cacheName: "ks-denials",
+          url: `${fixture.url}/ks-cached`,
+          response: { body: "ks-cached-body", headers: { "content-type": "text/plain" } },
+        });
+        expect(put.ok).toBe(true);
+        const got = await call<{
+          found: boolean;
+          bodyOmitted?: boolean;
+          requiredCapability?: string;
+          text?: string;
+        }>("caches_get", { session, cacheName: "ks-denials", url: `${fixture.url}/ks-cached` });
+        expect(got.found).toBe(true);
+        expect(got.bodyOmitted).toBe(true);
+        expect(got.requiredCapability).toBe("network-body");
+        expect(got.text).toBeUndefined();
+        expect(JSON.stringify(got)).not.toContain("ks-cached-body");
+      },
+      KEYSTONE_TIMEOUT,
+    );
+
+    it(
       "starts a recording with no bodies by default",
       async () => {
         const started = await call<{ ok: boolean; content: string }>("start_har", {
@@ -394,6 +443,55 @@ describe("capability denials with the default capability set", () => {
       KEYSTONE_TIMEOUT,
     );
   });
+});
+
+// Servers narrower or wider than the default by one capability. Every call
+// here is refused before a browser starts.
+describe("arguments gated on a capability the server lacks", () => {
+  it(
+    "open_session refuses storageState and hars on a server without action",
+    async () => {
+      const server = await boot("read,navigation,human");
+      try {
+        const call = callerFor(server);
+        for (const seed of [
+          { storageState: { cookies: [], origins: [] } },
+          { hars: ["ks-missing.har"] },
+        ]) {
+          const denied = await call<Denied & { reason: string }>("open_session", {
+            session: "ks-seeded",
+            mode: "incognito",
+            ...seed,
+          });
+          expect(denied.ok, JSON.stringify(seed)).toBe(false);
+          expect(denied.requiredCapability).toBe("action");
+          expect(denied.reason).toMatch(/storageState|hars/);
+        }
+        const listed = await call<{ sessions: unknown[] }>("list_sessions", {});
+        expect(listed.sessions).toEqual([]);
+      } finally {
+        await server.shutdown().catch(() => undefined);
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "get_credential refuses with requiredCapability secrets when only credentials is on",
+    async () => {
+      const server = await boot("read,navigation,action,human,credentials");
+      try {
+        const denied = await callerFor(server)<Denied>("get_credential", {
+          account: "keystone-account",
+        });
+        expect(denied.ok).toBe(false);
+        expect(denied.requiredCapability).toBe("secrets");
+      } finally {
+        await server.shutdown().catch(() => undefined);
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
 });
 
 describe("the same surfaces with their capabilities on", () => {
@@ -467,6 +565,37 @@ describe("the same surfaces with their capabilities on", () => {
       expect(body.requiredCapability).toBeUndefined();
       const listed = await call<{ requiredCapability?: string }>("extensions_list", { session });
       expect(listed.requiredCapability).toBeUndefined();
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "extensions: an extension staged under .artifacts is refused",
+    async () => {
+      const dir = join(workspace, ".artifacts", "ks-ext");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "manifest.json"),
+        JSON.stringify({ name: "ks", version: "1.0.0", manifest_version: 3 }),
+      );
+      const opened = await call<{ ok: boolean }>("open_session", {
+        session: "ks-ext-persistent",
+        mode: "persistent",
+        profile: "ks-ext-persistent",
+      });
+      expect(opened.ok).toBe(true);
+      try {
+        const denied = await call<{ ok: boolean; error: string }>("extensions_install", {
+          session: "ks-ext-persistent",
+          path: ".artifacts/ks-ext",
+        });
+        expect(denied.ok).toBe(false);
+        // The session is headless, so the headed-session check refuses first. The
+        // tool-output directory guard has its own unit test in extensions.test.ts.
+        expect(denied.error).toMatch(/where browxai tools write|requires a headed session/);
+      } finally {
+        await call("close_session", { session: "ks-ext-persistent" });
+      }
     },
     KEYSTONE_TIMEOUT,
   );
