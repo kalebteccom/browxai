@@ -24,6 +24,8 @@ surface" covers.
 
 ### Fixed
 
+- **Diagnostics no longer records a `register_secret` value.** The recorder drops the same argument fields the replay log drops (the `register_secret` value, a `cookies_set` value, an inline storage state) before it writes a call, so a value the registry refused never reaches the JSONL.
+- **A WebSocket or SSE frame over 2,000 characters is masked before it is cut.** `ws_read`, the action-result frame slice and the replay log used to cut first, which left the head of a registered value that crossed the cut unmasked.
 - **Structured masking covers object keys and digit values.** Where a structured value is masked before it is serialised (the replay capture, diagnostics arguments, verify results), an object key holding a registered value is masked like a string, and a number whose digits contain a registered all-digit value of 6 or more characters becomes the string `"<NAME>"`.
 
 ## [0.21.0] - 2026-11-26
