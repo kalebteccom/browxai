@@ -19,6 +19,7 @@ Numbered RFCs for substantive design proposals. Each RFC is `NNNN-short-slug.md`
 | [0011](0011-shell-route.md)                 | A shell route (call one tool from the command line against `serve --socket`, for agents with shell access)                                    | Accepted, built. `browxai tools` and `browxai call`, a client of `serve --socket`.                                                                     |
 | [0012](0012-signed-macos-app.md)            | A signed, notarized macOS app that hosts the server (login agent, bundled Node, optional bundled helper)                                      | Proposed. Owner direction recorded. Design, release scripts and the app sources written, nothing built on a Mac yet.                                   |
 | [0013](0013-stdio-socket-bridge.md)         | A stdio-to-socket bridge (a CLI mode that relays an MCP client's stdio to the `serve --socket` daemon, so clients use the macOS app's server) | Proposed, awaiting reviewer sign-off. Design only, nothing built.                                                                                      |
+| [0014](0014-ios-real-device-engine.md)      | The `ios-app` engine on a real iPhone (device discovery with `devicectl`, lifecycle and screenshots through WebDriverAgent, guard rails)      | Proposed, awaiting reviewer sign-off. Design only, nothing built.                                                                                      |
 
 ## Reference corrections
 
