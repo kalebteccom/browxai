@@ -1,5 +1,4 @@
 import { requireCdp } from "../engine/index.js";
-import { estimateTokens } from "../util/tokens.js";
 import {
   DEFAULT_TRACE_CATEGORIES,
   defaultTracePath,
@@ -10,6 +9,7 @@ import {
 import { ALL_AUDIT_CATEGORIES } from "../page/perf-audit.js";
 import { runPerfAudit } from "../page/perf-audit-runner.js";
 import { SESSION_ARG } from "./schemas.js";
+import { jsonToolResult } from "./json-result.js";
 import type { ToolHost } from "./host.js";
 
 /** Cheap one-pass counter for perf_stop's inline summary — gives the agent a
@@ -107,7 +107,7 @@ export function registerDeepPerfTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("perf_start", e);
       if (eg) return eg;
-      try {
+      return jsonToolResult(async () => {
         const r = await e.perf.start(requireCdp(e.session), { categories });
         const body: Record<string, unknown> = {
           ok: true,
@@ -120,21 +120,8 @@ export function registerDeepPerfTools(host: ToolHost): void {
           body.warning =
             "A prior perf_start was still active. It was stopped and its events were discarded, and a fresh trace started.";
         }
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      }
+        return body;
+      });
     },
   );
 
@@ -162,7 +149,7 @@ export function registerDeepPerfTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("perf_stop", e);
       if (eg) return eg;
-      try {
+      return jsonToolResult(async () => {
         const r = await e.perf.stop(requireCdp(e.session));
         if (r.notRunning) {
           const body = {
@@ -170,12 +157,7 @@ export function registerDeepPerfTools(host: ToolHost): void {
             notRunning: true,
             hint: "No trace was running on this session, so there was nothing to stop. Call perf_start first to record one.",
           };
-          const tokensEstimate = estimateTokens(JSON.stringify(body));
-          return {
-            content: [
-              { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-            ],
-          };
+          return body;
         }
         const targetPath = path ?? defaultTracePath(workspace.root, e.id);
         // `targetPath` is rooted at workspace.root by construction (defaultTracePath
@@ -205,21 +187,8 @@ export function registerDeepPerfTools(host: ToolHost): void {
           body.warning =
             "BYOB / attached Chrome: the trace buffer on the human's Chrome has been released. The JSON file remains under $BROWX_WORKSPACE.";
         }
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      }
+        return body;
+      });
     },
   );
 
@@ -245,7 +214,7 @@ export function registerDeepPerfTools(host: ToolHost): void {
       if (g) return g;
       // No session-touching needed — pure file read + parse. But we still
       // resolve the entry to honour the SESSION_ARG contract for consistency.
-      try {
+      return jsonToolResult(() => {
         const { events, metadata } = readTraceFile(workspace.root, tracePath, "perf_insights");
         const insights = extractInsights(events);
         const body: Record<string, unknown> = {
@@ -255,21 +224,8 @@ export function registerDeepPerfTools(host: ToolHost): void {
           metadata: metadata ?? null,
           insights,
         };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      }
+        return body;
+      });
     },
   );
 
@@ -332,7 +288,7 @@ export function registerDeepPerfTools(host: ToolHost): void {
       const e = await entryFor(session);
       const eg = engineGate("perf_audit", e);
       if (eg) return eg;
-      try {
+      return jsonToolResult(async () => {
         const r = await runPerfAudit(requireCdp(e.session), workspace.root, e.id, {
           categories: categories,
           durationMs,
@@ -351,21 +307,8 @@ export function registerDeepPerfTools(host: ToolHost): void {
           body.warning =
             "BYOB / attached Chrome: trace + coverage state has been released on the human's Chrome. Evidence files remain under $BROWX_WORKSPACE.";
         }
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      } catch (err) {
-        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-        const tokensEstimate = estimateTokens(JSON.stringify(body));
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-          ],
-        };
-      }
+        return body;
+      });
     },
   );
 }
