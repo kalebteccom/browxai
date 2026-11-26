@@ -21,7 +21,8 @@ function isRec(v: unknown): v is Rec {
 }
 
 /** The base64 request body parts of a `net/request` event are opaque to the
- *  text mask, so they are decoded and masked again here. */
+ *  text mask, so they are decoded and masked again here. Changes `event` in
+ *  place, which is the caller's own parsed copy of the line. */
 function remaskRequestBodyParts(event: Rec, redact: Redactor): void {
   if (event.type !== "net/request" || !isRec(event.payload)) return;
   const request = event.payload.request;
@@ -39,9 +40,12 @@ function remaskLine(line: string, redact: Redactor): string {
     return redact.mask(line);
   }
   if (!isRec(parsed)) return redact.mask(line);
-  const masked = redact.mask(parsed);
-  remaskRequestBodyParts(masked, redact);
-  return JSON.stringify(masked);
+  // The body parts go first. The registry also matches a value's own base64,
+  // which can sit whole inside the base64 of a body. Masking the event first
+  // would write the alias into that base64 text and leave bytes that no longer
+  // decode to the body.
+  remaskRequestBodyParts(parsed, redact);
+  return JSON.stringify(redact.mask(parsed));
 }
 
 /**

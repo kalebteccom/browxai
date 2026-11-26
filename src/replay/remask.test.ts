@@ -97,6 +97,30 @@ describe("the end-of-recording mask pass", () => {
     expect(empty).toEqual({});
   });
 
+  it("decodes a body part before masking, so an aligned value still decodes", () => {
+    // 30 bytes come before the value and it is 21 bytes long, both multiples
+    // of three, so the base64 of the body holds the value's own base64 whole.
+    const aligned = "hunter2-real-password";
+    const body = JSON.stringify({ email: "a@b.co", password: aligned });
+    expect(b64(body)).toContain(b64(aligned));
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "TOKEN", value: aligned });
+    const log = jsonl({
+      t: 0,
+      type: "net/request",
+      v: 1,
+      payload: { requestId: "1", request: { postDataEntries: [{ bytes: b64(body) }] } },
+    });
+    const out = remaskEventLog(log, new Redactor({ secrets })).toString("utf8");
+    const parsed = JSON.parse(out) as {
+      payload: { request: { postDataEntries: { bytes: string }[] } };
+    };
+    const bytes = parsed.payload.request.postDataEntries[0]?.bytes ?? "";
+    expect(Buffer.from(bytes, "base64").toString("utf8")).toBe(
+      '{"email":"a@b.co","password":"<TOKEN>"}',
+    );
+  });
+
   it("masks a line that is not JSON as plain text and keeps it", () => {
     const log = jsonl(
       { t: 0, type: "console/message", v: 1, payload: { text: "ok" } },
