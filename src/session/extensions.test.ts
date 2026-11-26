@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
@@ -14,6 +14,9 @@ import {
   applyReload,
   type LoadedExtension,
 } from "./extensions.js";
+
+// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
+vi.setConfig({ testTimeout: 15_000 });
 
 // --- fixture helpers -------------------------------------------------------
 

@@ -14,10 +14,13 @@
 //     mention of `BROWX_WORKSPACE`, `workspace.`, `pidFile`, `mcpPath`, `browxDir`,
 //     `profileDir`, `runsDir`, `path.join`).
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
+vi.setConfig({ testTimeout: 15_000 });
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

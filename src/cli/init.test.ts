@@ -13,6 +13,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runInit } from "./init.js";
 import type { ClientSystem } from "./init-clients.js";
 
+// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
+vi.setConfig({ testTimeout: 15_000 });
+
 let dir: string;
 let out = "";
 

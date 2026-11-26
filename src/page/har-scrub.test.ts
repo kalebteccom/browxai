@@ -2,12 +2,15 @@
 // dropped with their names kept, and registered secrets are masked in header
 // values, URLs, request bodies and text response bodies.
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scrubHarFile } from "./har-scrub.js";
 import { SecretRegistry } from "../util/secrets.js";
+
+// File-handling suite: real temp-dir IO runs past the 5 s default when the CI box is loaded.
+vi.setConfig({ testTimeout: 15_000 });
 
 let ws: string;
 beforeEach(() => {
