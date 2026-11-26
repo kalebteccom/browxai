@@ -31,6 +31,7 @@ import type { BrowserContext, CDPSession, Worker } from "playwright-core";
 import { isOriginAllowed, type OriginPolicy } from "../policy/origin.js";
 import { docsUrl } from "../util/docs-links.js";
 import { invariant } from "../util/invariant.js";
+import { isDataResourceType, type FulfilScope } from "./fulfil-policy.js";
 import { globToRegex } from "./ws-interactive.js";
 import type { SwFetchInterceptSpec, WorkerListing, WorkerMessage } from "./workers-types.js";
 
@@ -51,6 +52,19 @@ interface ActiveFetchIntercept {
   pattern: string;
   regex: RegExp;
   response: SwFetchInterceptSpec["response"];
+  allowExecutable: boolean;
+  /** Matches left to the network because their resource type is one the page
+   *  runs and the spec did not carry `allowExecutable`. */
+  skippedExecutable: number;
+}
+
+/** A paused request as `Fetch.requestPaused` reports it. `resourceType` is a
+ *  CDP `Network.ResourceType` (`Document`, `Script`, `XHR`, `Fetch`, …). */
+interface PausedRequest {
+  requestId: string;
+  request: { url: string; method: string };
+  resourceType?: string;
+  sessionId?: string;
 }
 
 const SW_RING_MAX = 500;
@@ -157,27 +171,26 @@ export class WorkersSwChannel {
   /** `Fetch.requestPaused` (TOP session; flatten routes child events up by
    *  `sessionId`) — fulfill against a matching interceptor, else continue. */
   private registerRequestPaused(cdp: CDPSession): void {
-    type RequestPaused = {
-      requestId: string;
-      request: { url: string; method: string };
-      sessionId?: string;
-    };
     this.onCdp(cdp, "Fetch.requestPaused", (raw) => {
-      void this.handleRequestPaused(cdp, raw as RequestPaused);
+      void this.handleRequestPaused(cdp, raw as PausedRequest);
     });
   }
 
-  private async handleRequestPaused(
-    cdp: CDPSession,
-    e: { requestId: string; request: { url: string; method: string }; sessionId?: string },
-  ): Promise<void> {
-    let hit: ActiveFetchIntercept | undefined;
+  /** The interceptor that answers this paused request, if one does. The first
+   *  matching pattern decides: when it may not answer the request's resource
+   *  type, the skip is counted on it and the request continues to the network. */
+  private interceptorFor(e: PausedRequest): ActiveFetchIntercept | undefined {
     for (const ic of this.fetchInterceptors.values()) {
-      if (ic.regex.test(e.request.url)) {
-        hit = ic;
-        break;
-      }
+      if (!ic.regex.test(e.request.url)) continue;
+      if (ic.allowExecutable || isDataResourceType(e.resourceType)) return ic;
+      ic.skippedExecutable++;
+      return undefined;
     }
+    return undefined;
+  }
+
+  private async handleRequestPaused(cdp: CDPSession, e: PausedRequest): Promise<void> {
+    const hit = this.interceptorFor(e);
     if (!hit) {
       await cdp
         .send("Fetch.continueRequest", {
@@ -353,13 +366,17 @@ export class WorkersSwChannel {
   async addFetchIntercept(
     cdp: CDPSession,
     spec: SwFetchInterceptSpec,
-  ): Promise<{ key: string; active: string[] }> {
+  ): Promise<{ key: string; fulfils: FulfilScope; skippedExecutable?: number; active: string[] }> {
     await this.installSwListener(cdp);
     const key = spec.pattern;
+    const replacedSkipped = this.fetchInterceptors.get(key)?.skippedExecutable ?? 0;
+    const allowExecutable = spec.allowExecutable === true;
     this.fetchInterceptors.set(key, {
       pattern: key,
       regex: globToRegex(key),
       response: spec.response,
+      allowExecutable,
+      skippedExecutable: 0,
     });
     // Enable Fetch on every currently-attached SW (and on the parent — we
     // need the parent Fetch.enable so child Fetch events route up).
@@ -371,30 +388,40 @@ export class WorkersSwChannel {
     for (const att of this.swAttached.values()) {
       await this.applyFetchEnable(cdp, att).catch(() => undefined);
     }
-    return { key, active: this.listFetchIntercepts() };
+    return {
+      key,
+      fulfils: allowExecutable ? "all" : "data",
+      ...(replacedSkipped > 0 ? { skippedExecutable: replacedSkipped } : {}),
+      active: this.listFetchIntercepts(),
+    };
   }
 
   async removeFetchIntercept(
     cdp: CDPSession,
     sel: { pattern?: string },
-  ): Promise<{ removed: string[]; active: string[] }> {
+  ): Promise<{ removed: string[]; skippedExecutable?: number; active: string[] }> {
     await this.installSwListener(cdp);
-    let removed: string[];
-    if (sel.pattern === undefined) {
-      removed = [...this.fetchInterceptors.keys()];
-      this.fetchInterceptors.clear();
-    } else if (this.fetchInterceptors.has(sel.pattern)) {
-      removed = [sel.pattern];
-      this.fetchInterceptors.delete(sel.pattern);
-    } else {
-      removed = [];
+    const removed =
+      sel.pattern === undefined
+        ? [...this.fetchInterceptors.keys()]
+        : this.fetchInterceptors.has(sel.pattern)
+          ? [sel.pattern]
+          : [];
+    let skipped = 0;
+    for (const key of removed) {
+      skipped += this.fetchInterceptors.get(key)?.skippedExecutable ?? 0;
+      this.fetchInterceptors.delete(key);
     }
     if (this.fetchInterceptors.size === 0) {
       // Disable Fetch so we don't pause every request for no reason.
       await cdp.send("Fetch.disable").catch(() => undefined);
       for (const att of this.swAttached.values()) att.fetchEnabled = false;
     }
-    return { removed, active: this.listFetchIntercepts() };
+    return {
+      removed,
+      ...(skipped > 0 ? { skippedExecutable: skipped } : {}),
+      active: this.listFetchIntercepts(),
+    };
   }
 
   listFetchIntercepts(): string[] {

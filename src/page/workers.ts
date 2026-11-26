@@ -154,14 +154,14 @@ export class WorkersRegistry {
   async addFetchIntercept(
     cdp: CDPSession,
     spec: SwFetchInterceptSpec,
-  ): Promise<{ key: string; active: string[] }> {
+  ): ReturnType<WorkersSwChannel["addFetchIntercept"]> {
     return this.sw.addFetchIntercept(cdp, spec);
   }
 
   async removeFetchIntercept(
     cdp: CDPSession,
     sel: { pattern?: string },
-  ): Promise<{ removed: string[]; active: string[] }> {
+  ): ReturnType<WorkersSwChannel["removeFetchIntercept"]> {
     return this.sw.removeFetchIntercept(cdp, sel);
   }
 

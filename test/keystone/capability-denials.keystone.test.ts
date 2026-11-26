@@ -15,6 +15,9 @@
 //                    canvas_screen_to_world, canvas_query
 //   file-io          the 13 tool-gated tools, plus the `screenshot({path})` branch
 //   diagnostics      diagnostics_note
+//   eval             the document / script content-type branch of `route`,
+//                    `route_queue` and `sw_intercept_fetch` (the tools are
+//                    `action`; the branch is refused before a session is read)
 // Not table-driven, because the gate is a behaviour branch and not a tool gate:
 //   clipboard        `shortcut` copy/cut/paste leaves the OS clipboard and the
 //                    per-session buffer alone
@@ -58,7 +61,9 @@ interface Case {
 
 // One row per gated tool. The gate runs before any argument is read, so the
 // arguments only need to be plausible; no session is named because a refused
-// call must not reach (or create) one.
+// call must not reach (or create) one. The `eval` rows are the exception on
+// arguments: the tool itself is enabled, and a document or script content type
+// in the arguments is what the gate refuses.
 const DENIALS: readonly Case[] = [
   {
     capability: "captcha",
@@ -101,6 +106,27 @@ const DENIALS: readonly Case[] = [
   { capability: "file-io", tool: "stop_video", args: {} },
   { capability: "file-io", tool: "get_video", args: {} },
   { capability: "diagnostics", tool: "diagnostics_note", args: { insight: "keystone note" } },
+  {
+    capability: "eval",
+    tool: "route",
+    args: { urlPattern: "**/keystone-denied", contentType: "text/html", body: "<p>x</p>" },
+  },
+  {
+    capability: "eval",
+    tool: "route_queue",
+    args: {
+      urlPattern: "**/keystone-denied",
+      responses: [{ body: "{}" }, { contentType: "text/javascript", body: "void 0" }],
+    },
+  },
+  {
+    capability: "eval",
+    tool: "sw_intercept_fetch",
+    args: {
+      pattern: "**/keystone-denied",
+      response: { contentType: "application/javascript", body: "void 0" },
+    },
+  },
 ];
 
 let workspace: string;

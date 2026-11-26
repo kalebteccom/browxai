@@ -8,6 +8,12 @@ surface" covers.
 
 ## Unreleased
 
+**Upgrading from 0.20.2.** If you use `route`, `route_queue` or `sw_intercept_fetch` to mock a page, an iframe document, a script or a worker script, add `eval` to `BROWX_CAPABILITIES` (keep the defaults in the list: `read,navigation,action,human,eval`). Without it those requests now go to the real network. Mocks of JSON and other `fetch` / XHR responses, event streams, images, media, fonts, stylesheets, text tracks and manifests work as before.
+
+### Changed
+
+- **Behavior change: `route`, `route_queue` and `sw_intercept_fetch` answer data and static requests only, unless `eval` is enabled.** A canned response now answers a matching request when the browser gives it one of these resource types: `xhr`, `fetch`, `eventsource`, `image`, `media`, `font`, `stylesheet`, `texttrack`, `manifest`. A matching request of any other type, which covers page and iframe documents, scripts and worker scripts, goes to the real network, and in `route_queue` it consumes no queued response. A page runs a document or script it loads, so a canned one is caller-written script in the page, which is what the `eval` capability covers. The rule reads the request's resource type because the response's content type does not settle it: a browser runs a classic script served as `application/json` when the response has no `nosniff` header. With `eval` on, the three tools answer every matching request as before. Two things tell a caller which applies. A `contentType` (or, for `sw_intercept_fetch`, a `content-type` header) naming HTML, XHTML, SVG or a JavaScript type is refused at install with the standard capability refusal (`requiredCapability: "eval"`) and a `reason`. And results gain two fields: `fulfils` (`"data"` or `"all"`) on `route`, `route_queue` and `sw_intercept_fetch`, and `skippedExecutable` on `unroute`, `sw_unintercept_fetch` and an install that replaces an entry, counting the matches left to the network when that count is above zero. Both fields are additive. An app that evaluates a fetched response, or writes one into the DOM as markup, still runs what a canned `fetch` response holds; the threat model lists it. The tool reference, the threat model and the tool descriptions describe the rule. Covered by unit tests and by `test/keystone/route-fulfil.keystone.test.ts` against a real Chromium.
+
 ## [0.20.2] - 2026-11-26
 
 **Upgrading from 0.20.1.** Nothing to do. Registered secrets are masked in more places: escaped forms in text, the server log, replay archives and SDK errors.
