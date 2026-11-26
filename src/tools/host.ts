@@ -285,6 +285,10 @@ export interface ConfigHost {
   /** Resolved workspace (root dir for file-io-bound captures and archives). */
   workspace: Workspace;
 
+  /** Schemes outside the default set that the navigation tools open, from the
+   *  server environment's `BROWX_NAVIGATE_EXTRA_SCHEMES`. Read once at start. */
+  navigateExtraSchemes: ReadonlySet<string>;
+
   /** Resolved capability policy (active set + warnings). */
   caps: CapabilityConfig;
 
