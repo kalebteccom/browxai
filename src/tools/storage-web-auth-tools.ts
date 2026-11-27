@@ -1,3 +1,4 @@
+import { fileWriteGate } from "./file-write-gate.js";
 import { withDeadline } from "../util/deadline.js";
 import {
   injectStorageState,
@@ -63,13 +64,17 @@ export function registerStorageWebAuthTools(
       kind === "localStorage"
         ? 'It persists across reloads and browser restarts (until `inject_storage_state({mode:"replace"})` or a profile wipe).'
         : "It is cleared when the tab's top-level browsing context ends, and is not included in `dump_storage_state`.";
+    const attachedHold = "In an attached session the call waits for the `byob_action` approval.";
     const originScope = `${human} is origin-scoped: \`navigate\` to the target origin first, or the call is rejected with a navigation hint (about:blank, or another origin).`;
 
     register(
       `${prefix}_get`,
       {
         capability: "read",
-        description: `Read one key from ${human} of the current page's origin: \`{value: string|null, origin}\`. ${originScope}`,
+        // Held in an attached session: returns a value from the attached
+        // browser's web storage, where apps keep session tokens.
+        byobConfirm: true,
+        description: `Read one key from ${human} of the current page's origin: \`{value: string|null, origin}\`. ${originScope} ${attachedHold}`,
         inputSchema: { key: z.string().describe(`${human} key.`), ...SESSION_ARG },
       },
       async ({ key, session }) => {
@@ -95,7 +100,10 @@ export function registerStorageWebAuthTools(
       `${prefix}_list`,
       {
         capability: "read",
-        description: `List every key and value in ${human} of the current page's origin: \`{entries:[{key,value}...], origin}\`. ${originScope}`,
+        // Held in an attached session: returns every value in the attached
+        // browser's web storage for the origin.
+        byobConfirm: true,
+        description: `List every key and value in ${human} of the current page's origin: \`{entries:[{key,value}...], origin}\`. ${originScope} ${attachedHold}`,
         inputSchema: { ...SESSION_ARG },
       },
       async ({ session }) => {
@@ -210,12 +218,19 @@ export function registerStorageWebAuthTools(
   // canonical seeding path; inject_storage_state({state: <path or blob>})
   // is the in-flight reseat. NO parallel implementation.
 
+  /** `auth_save` writes the slot as a file under `.auth-states/`, so it adds
+   *  `file-io` to its `action` gate. */
+  const authSaveFileRefusal = () =>
+    fileWriteGate(gateCheck, "auth_save", "the storage state as a named slot file");
+
   register(
     "auth_save",
     {
       capability: "action",
+      // A server without `file-io` refuses before the hold asks a human.
+      byobPrecheck: () => authSaveFileRefusal(),
       description:
-        "Save the session's current storage state (cookies and per-origin localStorage) to a named slot at `$BROWX_WORKSPACE/.auth-states/<name>.json`, to reuse a login. Names are letters, digits and `._-` only, and an existing slot of the same name is overwritten. Reuse it with `open_session({authState})` for a new session, or `auth_load` for a live one. Use `cookies_set` for a single cookie and `dump_storage_state` for the blob without a slot. Cookie values may carry credentials: the slot file keeps them as the browser holds them, so treat it as sensitive.",
+        "Save the session's current storage state (cookies and per-origin localStorage) to a named slot at `$BROWX_WORKSPACE/.auth-states/<name>.json`, to reuse a login. Names are letters, digits and `._-` only, and an existing slot of the same name is overwritten. Reuse it with `open_session({authState})` for a new session, or `auth_load` for a live one. Use `cookies_set` for a single cookie and `dump_storage_state` for the blob without a slot. Cookie values may carry credentials: the slot file keeps them as the browser holds them, so treat it as sensitive. Requires the `file-io` capability (off by default), because the slot is a workspace file.",
       inputSchema: {
         name: z.string().describe("Slot name (letters/digits/`._-` only)."),
         ...SESSION_ARG,
@@ -224,6 +239,8 @@ export function registerStorageWebAuthTools(
     async ({ name, session }) => {
       const g = gateCheck("auth_save");
       if (g) return g;
+      const fg = authSaveFileRefusal();
+      if (fg) return fg;
       try {
         const e = await entryFor(session);
         const r = await withDeadline(

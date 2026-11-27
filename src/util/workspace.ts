@@ -175,7 +175,16 @@ const PROTECTED_FILES = [
 // `profile-snapshots` is restored over a profile. `browxai chrome start` now runs
 // on `profile` or `profiles/<name>`; `chrome-profile` is where releases before
 // 0.13.0 put it, and workspaces that still hold one keep it protected.
-const PROTECTED_DIRS = ["plugins", "profile", "profiles", "profile-snapshots", "chrome-profile"];
+// `extensions` is where `extensions_install` loads unpacked extensions from, so
+// only the operator puts code there.
+const PROTECTED_DIRS = [
+  "plugins",
+  "profile",
+  "profiles",
+  "profile-snapshots",
+  "chrome-profile",
+  "extensions",
+];
 
 /** Hops `realish` follows through dangling links before it stops. */
 const MAX_DANGLING_HOPS = 8;
@@ -209,8 +218,9 @@ function realish(p: string, hops = 0): string {
 const foldCase = (p: string): string =>
   process.platform === "darwin" || process.platform === "win32" ? p.toLowerCase() : p;
 
-/** True when the real path of `abs` stays inside the real workspace root. */
-function staysInsideRealRoot(workspaceRoot: string, abs: string): boolean {
+/** True when the real path of `abs` stays inside the real path of `workspaceRoot`
+ *  (or of any other directory passed as the root). */
+export function staysInsideRealRoot(workspaceRoot: string, abs: string): boolean {
   const root = foldCase(realish(resolve(workspaceRoot)));
   const target = foldCase(realish(resolve(abs)));
   return target === root || target.startsWith(root.endsWith(sep) ? root : root + sep);

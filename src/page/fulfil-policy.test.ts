@@ -57,6 +57,11 @@ describe("isExecutableContentType", () => {
     "text/livescript",
     "text/javascript1.5",
     "Text/JavaScript;charset=UTF-8",
+    // A comma-separated value: the browser takes the last valid type.
+    "application/json, text/javascript",
+    "text/javascript, application/json",
+    "application/json,TEXT/HTML; charset=utf-8",
+    "  application/json ;q=1 ,  Application/X-JavaScript  ",
   ])("is true for %s", (ct) => {
     expect(isExecutableContentType(ct)).toBe(true);
   });
@@ -70,6 +75,8 @@ describe("isExecutableContentType", () => {
     "text/event-stream",
     "application/octet-stream",
     "",
+    "application/json, text/plain",
+    " Application/JSON ,text/css ",
   ])("is false for %s", (ct) => {
     expect(isExecutableContentType(ct)).toBe(false);
   });

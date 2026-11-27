@@ -189,12 +189,14 @@ export function registerDeepCoverageTools(host: ToolHost): void {
     "heap_snapshot",
     {
       capability: "action",
-      // Not held in an attached session: Reads the heap and writes a snapshot to the workspace.
-      byobConfirm: false,
+      // Held in an attached session, as every `action` tool is: the snapshot
+      // holds the whole JS heap of the attached tab, credentials included.
+      // A server without `file-io` refuses before the hold asks a human.
+      byobPrecheck: () => fileWriteGate(gateCheck, "heap_snapshot", "a heap snapshot file"),
       batchable: true,
       deep: true,
       description:
-        "Take a V8 heap snapshot of this session's target (CDP `HeapProfiler.takeHeapSnapshot`), to diagnose memory leaks: pair it with `heap_retainers({snapshotPath, query})` to ask who still points at objects of a given name or type, which `snapshot` and `find` cannot show because leaked nodes are no longer in the DOM. One snapshot per call. Default path `<workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot`; `path` must resolve inside `$BROWX_WORKSPACE`. The file opens in DevTools' Memory panel. Snapshots are heavy (tens to hundreds of MiB on a real page): do not take them in a loop. Requires the `file-io` capability (off by default).",
+        "Take a V8 heap snapshot of this session's target (CDP `HeapProfiler.takeHeapSnapshot`), to diagnose memory leaks: pair it with `heap_retainers({snapshotPath, query})` to ask who still points at objects of a given name or type, which `snapshot` and `find` cannot show because leaked nodes are no longer in the DOM. One snapshot per call. Default path `<workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot`; `path` must resolve inside `$BROWX_WORKSPACE`. The file opens in DevTools' Memory panel. Snapshots are heavy (tens to hundreds of MiB on a real page): do not take them in a loop. Requires the `file-io` capability (off by default). In an attached session the call waits for the `byob_action` approval.",
       inputSchema: {
         path: z
           .string()

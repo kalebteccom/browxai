@@ -57,11 +57,16 @@ const SCRIPT_CONTENT_TYPE =
 
 /** True when `contentType` names a document or script type: HTML, XHTML, SVG or
  *  any JavaScript type. Parameters (`; charset=utf-8`), case and surrounding
- *  whitespace are ignored. */
+ *  whitespace are ignored. A comma-separated value (what a browser builds from
+ *  repeated `Content-Type` headers) is executable when ANY of its parts is,
+ *  because the browser takes the last valid type and the order is the
+ *  caller's to choose. */
 export function isExecutableContentType(contentType: string | undefined): boolean {
   if (contentType === undefined) return false;
-  const essence = (contentType.split(";")[0] ?? "").trim().toLowerCase();
-  return MARKUP_CONTENT_TYPES.has(essence) || SCRIPT_CONTENT_TYPE.test(essence);
+  return contentType.split(",").some((part) => {
+    const essence = (part.split(";")[0] ?? "").trim().toLowerCase();
+    return MARKUP_CONTENT_TYPES.has(essence) || SCRIPT_CONTENT_TYPE.test(essence);
+  });
 }
 
 /** The `reason` a capability refusal carries when a canned response was asked

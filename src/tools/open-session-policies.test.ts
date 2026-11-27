@@ -55,6 +55,7 @@ describe("resolveOpenSessionPolicies — state seeding", () => {
 
   it.each([
     ["storageState", { storageState: true, hars: false }],
+    ["authState", { storageState: false, authState: true, hars: false }],
     ["hars", { storageState: false, hars: true }],
   ] as const)("refuses %s without action", (_name, seeds) => {
     const { gateCheck } = gate(["read", "navigation", "human"]);
@@ -64,13 +65,13 @@ describe("resolveOpenSessionPolicies — state seeding", () => {
 
   it("allows both with action", () => {
     const { gateCheck } = gate(["read", "action"]);
-    const seeds = { storageState: true, hars: true };
+    const seeds = { storageState: true, authState: true, hars: true };
     expect(resolveOpenSessionPolicies(gateCheck, "s", undefined, { seeds }).ok).toBe(true);
   });
 
   it("asks nothing when the call seeds nothing", () => {
     const { gateCheck, asked } = gate(["read"]);
-    const seeds = { storageState: false, hars: false };
+    const seeds = { storageState: false, authState: false, hars: false };
     expect(resolveOpenSessionPolicies(gateCheck, "s", undefined, { seeds }).ok).toBe(true);
     expect(asked.flat()).not.toContain("action");
   });

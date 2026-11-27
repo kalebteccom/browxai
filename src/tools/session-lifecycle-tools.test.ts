@@ -183,3 +183,51 @@ describe("list_sessions — degrades per session, never loses the listing", () =
     expect(rows[2]).toMatchObject({ url: "https://b.test/two", pages: 1 });
   });
 });
+
+// A replayed HAR answers data and static requests only, as `route` does,
+// unless the server has `eval`. The handler decides and hands the scope to the
+// registry, which wires the guard route.
+describe("open_session — HAR replay scope", () => {
+  function captureSpec(enabled: readonly string[]): {
+    handler: CapturedHandler;
+    specs: Array<Record<string, unknown>>;
+  } {
+    const specs: Array<Record<string, unknown>> = [];
+    let handler: CapturedHandler | undefined;
+    const host = {
+      z,
+      register: (name: string, _def: CapturedDef, h: CapturedHandler) => {
+        if (name === "open_session") handler = h;
+      },
+      gateCheck: (_tool: string, extra?: readonly string[]) => {
+        const missing = (extra ?? []).find((c) => !enabled.includes(c));
+        if (!missing) return null;
+        const text = JSON.stringify({ ok: false, requiredCapability: missing });
+        return { content: [{ type: "text", text }] };
+      },
+      registry: {
+        has: () => false,
+        heldAskHuman: () => undefined,
+        get: (_id: string, spec: Record<string, unknown>) => {
+          specs.push(spec);
+          throw new Error("stop after the spec");
+        },
+      },
+    } as unknown as Parameters<typeof registerSessionLifecycleTools>[0];
+    registerSessionLifecycleTools(host);
+    if (!handler) throw new Error("open_session was not registered");
+    return { handler, specs };
+  }
+
+  it("passes data without eval", async () => {
+    const { handler, specs } = captureSpec(["read", "navigation", "action", "human"]);
+    await handler({ session: "s", mode: "incognito", hars: ["a.har"] });
+    expect(specs[0]?.harsFulfils).toBe("data");
+  });
+
+  it("passes all with eval", async () => {
+    const { handler, specs } = captureSpec(["read", "navigation", "action", "human", "eval"]);
+    await handler({ session: "s", mode: "incognito", hars: ["a.har"] });
+    expect(specs[0]?.harsFulfils).toBe("all");
+  });
+});

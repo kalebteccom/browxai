@@ -392,7 +392,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // session mode (incl. attached: the consumer's Chrome receives the
       // route handler scoped to its context; warning emitted up-stream).
       if (creationReplayHars && creationReplayHars.length && hasPlaywrightPage) {
-        await applyHarReplay(requirePage(sess).context(), creationReplayHars);
+        await applyHarReplay(requirePage(sess).context(), creationReplayHars, spec?.harsFulfils);
       }
       // per-session console buffer. The page/BiDi attach is the engine's job —
       // it runs in `postWire` (Playwright: `console.attach(page)`; Safari: the

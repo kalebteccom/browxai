@@ -21,6 +21,7 @@ import type {
   ToolResponse,
 } from "./host.js";
 import { jsonResult } from "./json-result.js";
+import type { FulfilScope } from "../page/fulfil-policy.js";
 
 /** Wrap a JSON-serialisable body as a tool text response — the shared shape the
  *  session-lifecycle handlers return. */
@@ -34,12 +35,26 @@ function lifecycleError(err: unknown): ToolResponse {
   return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
 }
 
+/** Which state-seeding arguments an `open_session` call carries. */
+function seedsOf(
+  storageState: unknown,
+  authState: string | undefined,
+  hars: string[] | undefined,
+): { storageState: boolean; authState: boolean; hars: boolean } {
+  return {
+    storageState: storageState !== undefined,
+    authState: authState !== undefined,
+    hars: (hars?.length ?? 0) > 0,
+  };
+}
+
 /** Build the optional `har` / `harsReplay` / `video` fields of the open_session
  *  result envelope from the opened entry. Pure; byte-identical to the prior inline
  *  ternaries. */
 function buildOpenSessionResultFields(
   e: SessionEntry,
   hars: string[] | undefined,
+  harsFulfils: FulfilScope,
 ): Record<string, unknown> {
   const harField = e.har.path
     ? {
@@ -52,7 +67,7 @@ function buildOpenSessionResultFields(
         },
       }
     : {};
-  const replayField = hars && hars.length ? { harsReplay: hars.length } : {};
+  const replayField = hars && hars.length ? { harsReplay: hars.length, fulfils: harsFulfils } : {};
   const videoField =
     e.video.active && e.video.targetPath
       ? {
@@ -237,7 +252,7 @@ export function registerSessionLifecycleTools(
           .string()
           .optional()
           .describe(
-            "Named-state seed: load a slot from `$BROWX_WORKSPACE/.auth-states/<name>.json` (written by `auth_save`). Mutually exclusive with `storageState`.",
+            "Named-state seed: load a slot from `$BROWX_WORKSPACE/.auth-states/<name>.json` (written by `auth_save`). Mutually exclusive with `storageState`. Needs the `action` capability.",
           ),
         har: z
           .object({
@@ -272,7 +287,7 @@ export function registerSessionLifecycleTools(
           .array(z.string())
           .optional()
           .describe(
-            'Replay HAR file(s), workspace-rooted paths. Each is wired with `context.routeFromHAR(file, {notFound:"fallback"})` right after context creation: matching requests are served from the archive and the rest go to the live network. A path outside $BROWX_WORKSPACE (including through a symlink) is rejected, and a missing file errors. A HAR recorded without bodies replays empty bodies. Several HARs layer fixtures. Needs the `action` capability.',
+            'Replay HAR file(s), workspace-rooted paths. Each is wired with `context.routeFromHAR(file, {notFound:"fallback"})` right after context creation: matching requests are served from the archive and the rest go to the live network. A path outside $BROWX_WORKSPACE (including through a symlink) is rejected, and a missing file errors. A HAR recorded without bodies replays empty bodies. Several HARs layer fixtures. Needs the `action` capability. Like `route`, the archive answers data and static requests (xhr, fetch, eventsource, image, media, font, stylesheet, texttrack, manifest); a page, iframe, script or worker request goes to the network unless the server has the `eval` capability (the result\'s `fulfils` says which applies).',
           ),
         recordVideo: z
           .object({
@@ -328,12 +343,14 @@ export function registerSessionLifecycleTools(
           notificationPolicy,
           fsPickerPolicy,
           harContent: har?.content,
-          seeds: { storageState: storageState !== undefined, hars: (hars?.length ?? 0) > 0 },
+          seeds: seedsOf(storageState, authState, hars),
           records: { har: har !== undefined, video: recordVideo !== undefined },
         },
       );
       if (!resolved.ok) return resolved.response;
       const policies = resolved.policies;
+      // A replayed HAR serves pages and scripts only with `eval`, as `route` does.
+      const harsFulfils: FulfilScope = gateCheck("open_session", ["eval"]) ? "data" : "all";
       try {
         const e = await registry.get(session, {
           mode,
@@ -348,6 +365,7 @@ export function registerSessionLifecycleTools(
           authState,
           har: har,
           hars,
+          harsFulfils,
           recordVideo: recordVideo,
         });
         return lifecycleJson({
@@ -357,7 +375,7 @@ export function registerSessionLifecycleTools(
           engine: e.session.engine,
           url: await openedUrlFor(targetFor(e)),
           openedAt: new Date(e.openedAt).toISOString(),
-          ...buildOpenSessionResultFields(e, hars),
+          ...buildOpenSessionResultFields(e, hars, harsFulfils),
         });
       } catch (err) {
         return gateRefusalFor(err) ?? lifecycleError(err);

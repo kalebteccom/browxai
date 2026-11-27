@@ -116,12 +116,12 @@ export function registerExtensionsTools(
       capability: "extensions",
       deep: true,
       description:
-        "Load an unpacked Chromium extension (an MV3 or MV2 directory containing `manifest.json`) into the session's managed-profile launch. Requires the `extensions` capability (off by default). A loaded extension can read every page the session visits and make arbitrary network requests, so it is as trusted as the agent. `path` must resolve inside `$BROWX_WORKSPACE`, symlinks resolved; a packed `.crx` must be unpacked first. Headed `persistent` sessions only: `incognito`, `attached` and headless sessions are refused with a structured error and hint. Install rebuilds the browser context (Chromium cannot add an extension to a live one): the page goes to about:blank, refs are invalidated, and console, network and WebSocket buffers reset, while profile data on disk (cookies, localStorage, IndexedDB) survives. Treat it as a session restart and call `snapshot` afterwards. Returns `{ok, session, installed:{id,name,version,path}, loaded:[…], note?, tokensEstimate}`. `id` is a stable hash of the resolved path; pass it to `extensions_reload`, `extensions_trigger` and `extensions_uninstall`.",
+        "Load an unpacked Chromium extension (an MV3 or MV2 directory containing `manifest.json`) into the session's managed-profile launch. Requires the `extensions` capability (off by default). A loaded extension can read every page the session visits and make arbitrary network requests, so it is as trusted as the agent. `path` must be a directory under the workspace `extensions/` directory (which no tool writes into), or under the operator's `BROWX_EXTENSIONS_DIR` when set, symlinks resolved; a packed `.crx` must be unpacked first. Headed `persistent` sessions only: `incognito`, `attached` and headless sessions are refused with a structured error and hint. Install rebuilds the browser context (Chromium cannot add an extension to a live one): the page goes to about:blank, refs are invalidated, and console, network and WebSocket buffers reset, while profile data on disk (cookies, localStorage, IndexedDB) survives. Treat it as a session restart and call `snapshot` afterwards. Returns `{ok, session, installed:{id,name,version,path}, loaded:[…], note?, tokensEstimate}`. `id` is a stable hash of the resolved path; pass it to `extensions_reload`, `extensions_trigger` and `extensions_uninstall`.",
       inputSchema: {
         path: z
           .string()
           .describe(
-            "Workspace-rooted directory of the unpacked extension (must contain `manifest.json`).",
+            "Directory of the unpacked extension (must contain `manifest.json`) under the workspace `extensions/` directory, such as `extensions/my-helper`, or under `BROWX_EXTENSIONS_DIR`.",
           ),
         ...SESSION_ARG,
       },

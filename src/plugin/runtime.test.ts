@@ -75,11 +75,12 @@ function makeHost(state: HostState): Parameters<typeof startPluginRuntime>[0]["h
         content: [{ type: "text", text: JSON.stringify({ ok: false, error: `unknown ${n}` }) }],
       };
     },
-    registerTool: (name, _def, handler, capability, owner) => {
+    registerTool: (name, _def, handler, capabilities, owner) => {
       const entry: { handler: PluginToolHandler; capability?: string; owner: string } = {
         handler,
         owner,
       };
+      const capability = capabilities[0];
       if (capability !== undefined) entry.capability = capability;
       state.tools.set(name, entry);
     },

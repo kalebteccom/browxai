@@ -64,7 +64,8 @@ export interface OpenSessionArgs {
   /** Inline blob from `dump_storage_state` or a workspace-rooted JSON path.
    *  Mutually exclusive with `authState`. */
   storageState?: string | Record<string, unknown>;
-  /** Named slot saved with `auth_save`. Mutually exclusive with `storageState`. */
+  /** Named slot saved with `auth_save`. Mutually exclusive with `storageState`.
+   *  Needs `action`. */
   authState?: string;
   /** Record a HAR for the session; the file is written on `close_session`. Needs the
    *  `file-io` capability (off by default). */
@@ -77,7 +78,8 @@ export interface OpenSessionArgs {
     content?: "embed" | "attach" | "omit";
     urlFilter?: string;
   };
-  /** Workspace-rooted HAR files to replay requests from. */
+  /** Workspace-rooted HAR files to replay requests from. Needs `action`. Without
+   *  `eval` only data and static requests are answered from them. */
   hars?: ReadonlyArray<string>;
 }
 export interface OpenSessionResultData {
@@ -87,6 +89,11 @@ export interface OpenSessionResultData {
   engine?: EngineKind;
   url?: string;
   openedAt?: string;
+  /** Number of HAR files replayed, when `hars` was given. */
+  harsReplay?: number;
+  /** Which requests the replayed HARs answer, when `hars` was given: `"data"`
+   *  (data and static requests) or `"all"` (the server has `eval`). */
+  fulfils?: "data" | "all";
   error?: string;
 }
 export type OpenSessionResult = OpenSessionResultData;

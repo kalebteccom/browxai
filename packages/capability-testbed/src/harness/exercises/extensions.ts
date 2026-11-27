@@ -81,7 +81,8 @@ function unique(prefix: string, ctx: ExerciseCtx): string {
 }
 
 async function writeExtension(ctx: ExerciseCtx): Promise<string> {
-  const relative = join("capability-testbed-extension", unique("extension", ctx));
+  // The operator stages extensions under the workspace `extensions/` directory.
+  const relative = join("extensions", "capability-testbed", unique("extension", ctx));
   const root = join(ctx.workspace, relative);
   await mkdir(root, { recursive: true });
   await writeFile(
