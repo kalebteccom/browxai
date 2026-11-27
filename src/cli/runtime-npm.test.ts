@@ -194,6 +194,33 @@ describe("parseView", () => {
     });
   });
 
+  it("reads the tarball, the attestations URL, the provenance type and the dist-tags", () => {
+    const full = {
+      ...doc,
+      "dist-tags": { latest: "0.22.0", next: "0.23.0-next.1" },
+      dist: {
+        integrity: "sha512-x",
+        tarball: "https://registry.npmjs.org/browxai/-/browxai-0.22.0.tgz",
+        attestations: {
+          url: "https://registry.npmjs.org/-/npm/v1/attestations/browxai@0.22.0",
+          provenance: { predicateType: "https://slsa.dev/provenance/v1" },
+        },
+      },
+    };
+    expect(parseView(done(0, JSON.stringify(full)), "latest")).toEqual({
+      ok: true,
+      info: {
+        version: "0.22.0",
+        publishedAt: "2026-11-26T16:29:27.814Z",
+        integrity: "sha512-x",
+        tarball: "https://registry.npmjs.org/browxai/-/browxai-0.22.0.tgz",
+        attestationsUrl: "https://registry.npmjs.org/-/npm/v1/attestations/browxai@0.22.0",
+        provenanceType: "https://slsa.dev/provenance/v1",
+        distTags: { latest: "0.22.0", next: "0.23.0-next.1" },
+      },
+    });
+  });
+
   it("takes the last entry of an array and reads a deprecation", () => {
     const r = parseView(
       done(0, JSON.stringify([{ version: "0.1.0" }, { ...doc, deprecated: "Use 0.23.0" }])),

@@ -49,6 +49,7 @@ function counted(registry: Registry): Registry & { contacts: number } {
       r.contacts++;
       return registry.view(spec);
     },
+    attestations: (url: string) => registry.attestations(url),
   };
   return r;
 }
@@ -483,6 +484,65 @@ describe("update --auto: held versions", () => {
       version: "0.23.0",
       state: "held",
       reason: "rolled back by user",
+    });
+  });
+});
+
+describe("update --auto: the next channel and the provenance pin", () => {
+  const nextRegistry = (publishedAt: string) =>
+    counted(
+      fakeRegistry(
+        { "0.22.0": {}, "0.23.0-next.1": { publishedAt } },
+        { latest: "0.22.0", next: "0.23.0-next.1" },
+      ),
+    );
+
+  it("applies the next prerelease once the same delay as latest has passed", async () => {
+    rt = installed();
+    const { auto } = setup({
+      env: { BROWX_RUNTIME_CHANNEL: "next" },
+      registry: nextRegistry(iso(T0 - 48 * HOUR)),
+    });
+    expect((await auto()).code).toBe(0);
+    expect(readCurrent(rt.paths)).toBe("0.23.0-next.1");
+  });
+
+  it("keeps a fresh prerelease waiting for the delay after publish", async () => {
+    rt = installed();
+    const { auto } = setup({
+      env: { BROWX_RUNTIME_CHANNEL: "next" },
+      registry: nextRegistry(iso(T0 - 2 * HOUR)),
+    });
+    expect((await auto()).code).toBe(0);
+    expect(readCurrent(rt.paths)).toBe("0.22.0");
+    expect(readState(rt.paths).pending).toMatchObject({
+      version: "0.23.0-next.1",
+      state: "waiting",
+    });
+  });
+
+  it("holds a version whose provenance names another workflow, for good", async () => {
+    rt = installed();
+    const { auto } = setup({
+      registry: counted(
+        fakeRegistry(
+          {
+            "0.23.0": {
+              publishedAt: iso(T0 - 48 * HOUR),
+              provenance: { path: ".github/workflows/ci.yml" },
+            },
+          },
+          { latest: "0.23.0" },
+        ),
+      ),
+    });
+    const r = await auto();
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("its provenance names workflow.path");
+    expect(readCurrent(rt.paths)).toBe("0.22.0");
+    expect(readState(rt.paths)).toMatchObject({
+      held: { "0.23.0": "verification failed" },
+      pending: { version: "0.23.0", state: "held", reason: "verification failed" },
     });
   });
 });

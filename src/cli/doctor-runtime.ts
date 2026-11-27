@@ -166,7 +166,12 @@ function updaterLine(f: Facts): string | undefined {
 }
 
 function summary(f: Facts, channel: string, autoOn: boolean, autoSource: string): string {
-  const parts = [`${f.current ?? "no current version"} (channel ${channel})`];
+  // A prerelease from the next channel stays after a switch back to latest: the
+  // updater never moves down, so it waits for a release newer than it.
+  const prerelease = channel === "latest" && !!f.current?.includes("-");
+  const parts = [
+    `${f.current ?? "no current version"} (channel ${channel}${prerelease ? ", a prerelease kept until latest passes it" : ""})`,
+  ];
   const last = f.state.lastCheck ? Date.parse(f.state.lastCheck) : NaN;
   parts.push(Number.isNaN(last) ? "never checked" : `checked ${span(f.now - last)} ago`);
   const next = f.state.nextCheck ? Date.parse(f.state.nextCheck) : NaN;

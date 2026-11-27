@@ -48,15 +48,28 @@ export interface VersionInfo {
   integrity?: string;
   /** `engines.node` from the version's package.json, as the registry has it. */
   enginesNode?: string;
+  /** `dist.tarball`. */
+  tarball?: string;
+  /** `dist.attestations.url`: where the registry serves the version's attestations. */
+  attestationsUrl?: string;
+  /** `dist.attestations.provenance.predicateType`. */
+  provenanceType?: string;
+  /** The package's dist-tags, `latest` and `next`, when the registry gives them. */
+  distTags?: Record<string, string>;
 }
 
 export type ViewResult =
   { ok: true; info: VersionInfo } | { ok: false; unreachable: boolean; message: string };
 
-/** The registry port: the one call an update makes before it downloads. */
+export type AttestationsResult = { ok: true; doc: unknown } | { ok: false; message: string };
+
+/** The registry port: the packument view an update starts from, and the
+ *  attestations the provenance pin reads. */
 export interface Registry {
   /** `spec` is a dist-tag (`latest`, `next`) or an exact version. */
   view(spec: string): Promise<ViewResult>;
+  /** The attestations document at `url`, a version's `dist.attestations.url`. */
+  attestations(url: string): Promise<AttestationsResult>;
 }
 
 const UNREACHABLE =
@@ -79,7 +92,26 @@ export function npmRegistry(npm: NpmContext): Registry {
       const r = await npm.run(file, args, { env: npmEnv(npm), timeoutMs: 60_000 });
       return parseView(r, spec);
     },
+    attestations: fetchAttestations,
   };
+}
+
+/** A plain GET of a public attestations document. npm has no command that
+ *  prints one, so this is the updater's one request outside npm. It sends no
+ *  credentials. */
+export async function fetchAttestations(url: string): Promise<AttestationsResult> {
+  try {
+    const res = await fetch(url, {
+      headers: { accept: "application/json" },
+      redirect: "error",
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) return { ok: false, message: `the registry answered ${res.status} for ${url}` };
+    return { ok: true, doc: await res.json() };
+  } catch (e) {
+    const why = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: `the attestations at ${url} could not be read (${why})` };
+  }
 }
 
 export function parseView(r: RunResult, spec: string): ViewResult {
@@ -128,7 +160,28 @@ export function parseView(r: RunResult, spec: string): ViewResult {
   if (typeof dist?.integrity === "string") info.integrity = dist.integrity;
   const engines = doc!.engines as Record<string, unknown> | undefined;
   if (typeof engines?.node === "string" && engines.node.trim()) info.enginesNode = engines.node;
-  return { ok: true, info };
+  return { ok: true, info: { ...info, ...distFields(dist, doc!["dist-tags"]) } };
+}
+
+/** The tarball, attestation and dist-tag fields of a version's view. */
+function distFields(
+  dist: Record<string, unknown> | undefined,
+  tags: unknown,
+): Pick<VersionInfo, "tarball" | "attestationsUrl" | "provenanceType" | "distTags"> {
+  const out: ReturnType<typeof distFields> = {};
+  if (typeof dist?.tarball === "string") out.tarball = dist.tarball;
+  const att = dist?.attestations as
+    { url?: unknown; provenance?: { predicateType?: unknown } } | undefined;
+  if (typeof att?.url === "string") out.attestationsUrl = att.url;
+  if (typeof att?.provenance?.predicateType === "string")
+    out.provenanceType = att.provenance.predicateType;
+  if (tags && typeof tags === "object" && !Array.isArray(tags)) {
+    const distTags = Object.fromEntries(
+      Object.entries(tags).filter((e): e is [string, string] => typeof e[1] === "string"),
+    );
+    if (Object.keys(distTags).length) out.distTags = distTags;
+  }
+  return out;
 }
 
 /** With `--json`, npm prints a failure as `{"error":{"code","summary"}}` on stdout. */

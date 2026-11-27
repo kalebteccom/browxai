@@ -183,7 +183,14 @@ jobs:
       - name: Restore executable bit on the bin
         run: chmod +x dist/cli.js
       - name: Publish browxai with provenance
-        run: npm publish --provenance --access public
+        # A prerelease tag (a "-" in the version) goes to the `next` dist-tag,
+        # so `latest` never moves to a prerelease.
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            npm publish --provenance --access public --tag next
+          else
+            npm publish --provenance --access public
+          fi
 
   # Plugins publish with `npm publish` (NOT `pnpm publish`): npm OIDC
   # trusted publishing needs npm >= 11.5.1, and pnpm 9's registry client

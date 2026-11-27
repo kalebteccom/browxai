@@ -1,6 +1,6 @@
 ---
 title: Keep browxai current with a runtime
-description: Install browxai into a runtime directory you own, point MCP clients at one launcher path, and let a background job or `browxai runtime update` move it to new releases. Covers what an update verifies, the versions it holds, the background job and how to turn it off, the settings and `browxai runtime config`, Upgrading notes, rollback, a daemon that moves to a new version when idle, a link on your PATH, what the commands refuse, and moving from a hand-made directory.
+description: Install browxai into a runtime directory you own, point MCP clients at one launcher path, and let a background job or `browxai runtime update` move it to new releases. Covers what an update verifies, the provenance pin, the `latest` and `next` channels, the versions it holds, the background job and how to turn it off, the settings and `browxai runtime config`, Upgrading notes, rollback, a daemon that moves to a new version when idle, a link on your PATH, what the commands refuse, and moving from a hand-made directory.
 ---
 
 An MCP client starts browxai from the path in its config. When that path names one
@@ -117,7 +117,7 @@ browxai runtime update
 ```
 
 `update` asks the npm registry in your npm config for the channel's newest version
-(`latest` by default). When it is newer than the current one, it installs it and
+(`latest` by default, see [Channels](#channels)). When it is newer than the current one, it installs it and
 switches. When it isn't, it says so and exits 0. A version the maintainers marked
 deprecated on npm is skipped, and a held version (see [Held versions](#held-versions))
 is named with its reason and left alone, with exit 0.
@@ -150,18 +150,48 @@ it was.
    checks the npm registry signature of every installed package and the provenance
    attestation where one exists. A version that fails it is recorded in `state.json`
    as failing verification.
-3. **A short self-check.** With an empty temp workspace and none of your `BROWX_*`
+3. **Provenance from the release workflow.** `npm audit signatures` checks the
+   signature on the provenance, not where the build ran. So the update also reads the
+   version's attestations from the registry (`dist.attestations.url`, on the same
+   host as the tarball) and requires its SLSA provenance to name
+   `https://github.com/kalebteccom/browxai`, the workflow `.github/workflows/release.yml`
+   and the tag `refs/tags/v<version>`, in the statement and in the signing
+   certificate, for a subject that is this package at this version with the tarball's
+   sha512. A version with no provenance, or one that names anything else, is held for
+   good as failing verification, and doctor's `runtime` row fails. An attestation
+   that can't be downloaded counts as an ordinary failed attempt.
+4. **A short self-check.** With an empty temp workspace and none of your `BROWX_*`
    settings, the staged copy must print its own version for `--version`, answer an
    MCP handshake with that version and at least one tool, show no `doctor --json`
    row failing that passes on the current version, and run its own
    `runtime status --json`, so a release whose updater can't start never becomes
    current. No browser starts.
-4. **The switch.** The checked copy moves to `versions/<version>`, and the `current`
+5. **The switch.** The checked copy moves to `versions/<version>`, and the `current`
    link is replaced in one `rename`, so a client that starts during the switch gets
    either the old version or the new one.
 
 Afterwards `update` keeps three versions (current, previous and one more) and removes
 older ones that no running process uses.
+
+## Channels
+
+`latest`, the default, follows the `latest` dist-tag, the version `npm install browxai`
+gets. `next` is for prereleases such as `0.23.0-next.1`, which the release workflow
+publishes under the `next` dist-tag. On `next`, an update takes the `next` dist-tag
+when it names a newer version than `latest`, and `latest` otherwise, so a machine on a
+prerelease moves on to the release that passes it, and `next` works before any
+prerelease exists. Everything else is the same on both channels: the 24-hour wait for
+the background job, the deprecated skip, the held versions and every check.
+
+```bash
+browxai runtime config channel next      # or BROWX_RUNTIME_CHANNEL=next
+browxai runtime config channel latest    # back to releases
+```
+
+The updater never moves to an older version on its own. A machine that goes back to
+`latest` while it runs a prerelease keeps it until `latest` passes it, and doctor's
+`runtime` row says so. `browxai runtime update --version V` installs a release before
+then.
 
 ## Held versions
 
@@ -338,7 +368,9 @@ version, a Node engines range, a Playwright bump on a machine with no Google Chr
 a rollback), also with auto-update off. It also warns about unread Upgrading notes, and about a
 current version whose updater failed on its last runs or that the previous version's
 updater stood in for. It fails doctor only when a version failed signature or
-provenance verification. Run from anywhere else it says so, with the path that won't
+provenance verification, the provenance pin included. On `latest` with a prerelease
+as the current version, the summary says the prerelease stays until `latest` passes
+it. Run from anywhere else it says so, with the path that won't
 update.
 
 ## Settings
