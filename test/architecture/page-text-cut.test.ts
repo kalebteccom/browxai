@@ -1,13 +1,13 @@
-// A head cut in `src/page/**` (`.slice(0, 120)`, `.substring(0, 80)`, and the
+// A head cut in `src/page/**`, `src/session/**` or `src/util/**` (`.slice(0, 120)`, `.substring(0, 80)`, and the
 // same with a named length: `.slice(0, NAME_READ)`, `.slice(0, ${PAGE_READ})`)
-// is how page text used to be capped before the registered-secret mask ran: the
-// cut split a value that crossed it, and the later mask, which only matches
-// whole values, left the head in the output. Page text that leaves the server
-// goes through `clipPageText` / `clipMasked` / `capMasked` in
+// is how text used to be capped before the registered-secret mask ran: the cut
+// split a value that crossed it, and the later mask, which only matches whole
+// values, left the head in the output. Page text, page-supplied values and
+// agent-supplied args that leave the server go through `clipPageText` / `clipMasked` / `capMasked` in
 // `src/util/frame-cap.ts` instead, which mask first.
 //
 // This test fails on a new head cut. Each cut that stays is listed with the
-// reason it is not page text bound for a tool result: an array, a hash, an index
+// reason it is not text bound for a tool result or a record: an array, a hash, an index
 // cut of a value, a detection-only read, a name already masked before it is cut,
 // or a page-side read of `pageReadLength(cap, slack)` characters that the server
 // masks before it cuts to the cap. Adding an entry needs that reason; a cut of
@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, relative, sep } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
-const PAGE = join(ROOT, "src/page");
+const SCANNED = ["src/page", "src/session", "src/util"].map((d) => join(ROOT, d));
 
 /** A head cut whose length is a numeric literal, an identifier or member path
  *  (`NAME_READ`, `this.max`), or an interpolated identifier in a page-script
@@ -194,6 +194,92 @@ const ALLOWED: ReadonlyArray<{ file: string; line: string; why: string }> = [
     line: "errors.slice(0, ERROR_MAX_TOTAL_ENTRIES)",
     why: "an array of errors",
   },
+  // src/session and src/util.
+  {
+    file: "src/session/device.ts",
+    line: ".slice(0, 4);",
+    why: "an array of device preset names",
+  },
+  {
+    file: "src/session/device.ts",
+    line: "Object.keys(devices).slice(0, 4)",
+    why: "an array of device preset names",
+  },
+  {
+    file: "src/session/device-emu-attach.ts",
+    line: "devices.slice(0, 1)",
+    why: "an array of catalog devices",
+  },
+  {
+    file: "src/session/fs-picker-attach.ts",
+    line: "files.slice(0, 1)",
+    why: "an array of files",
+  },
+  {
+    file: "src/session/fs-picker-attach.ts",
+    line: "payload.slice(0, 200)",
+    why: "detection only: the handle id is read to find the handle, nothing is emitted",
+  },
+  {
+    file: "src/session/chromium-sandbox-launch.ts",
+    line: "hit.slice(0, 197)",
+    why: "a Chromium launch error line, written before the browser loads any page",
+  },
+  {
+    file: "src/util/url-sanitizer.ts",
+    line: "raw.slice(0, cut)",
+    why: "an index cut: the URL before its path",
+  },
+  {
+    file: "src/util/url-sanitizer.ts",
+    line: "head.slice(0, slash)",
+    why: "an index cut: the authority",
+  },
+  {
+    file: "src/util/secret-forms.ts",
+    line: "[...forms].slice(0, MAX_FORMS_PER_SECRET)",
+    why: "an array of mask forms",
+  },
+  {
+    file: "src/util/credentials-contract.ts",
+    line: "trimmed.slice(0, eq)",
+    why: "an index cut: the key before `=` in an operator env value",
+  },
+  {
+    file: "src/util/credentials-contract.ts",
+    line: "account.slice(0, 64)",
+    why: "a refused account name echoed to the caller; `accountError` has no session registry to mask with",
+  },
+  {
+    file: "src/util/profile-name.ts",
+    line: "name.slice(0, 64)",
+    why: "a refused profile or session name echoed to the caller; `invalidNameRefusal` has no session registry to mask with",
+  },
+  {
+    file: "src/util/tokens.ts",
+    line: "lines.slice(0, kept)",
+    why: "an array of whole lines from a tree its caller already masked (actionresult-shape.ts)",
+  },
+  {
+    file: "src/util/body-cap.ts",
+    line: "return text.slice(0, end)",
+    why: "`dropLastUnits`, the mask-first body cap dropping the slack",
+  },
+  {
+    file: "src/util/frame-cap.ts",
+    line: "raw.slice(0, max), truncated: true",
+    why: "`capMasked` with no mask: nothing is registered",
+  },
+  {
+    file: "src/util/frame-cap.ts",
+    line: "mask(raw.slice(0, end))",
+    why: "`capMasked`, the window it masks before the cut",
+  },
+  {
+    file: "src/util/frame-cap.ts",
+    line: "masked.slice(0, max)",
+    why: "`capMasked`, the cut of the masked window",
+  },
 ];
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -207,7 +293,7 @@ function walk(dir: string, out: string[] = []): string[] {
 
 function headCuts(): Array<{ file: string; line: string }> {
   const found: Array<{ file: string; line: string }> = [];
-  for (const abs of walk(PAGE)) {
+  for (const abs of SCANNED.flatMap((d) => walk(d))) {
     const file = relative(ROOT, abs).split(sep).join("/");
     for (const line of readFileSync(abs, "utf8").split("\n")) {
       if (COMMENT_LINE.test(line)) continue;
@@ -218,7 +304,7 @@ function headCuts(): Array<{ file: string; line: string }> {
 }
 
 describe("page-text-cut", () => {
-  it("has no head cut in src/page outside the allowlist", () => {
+  it("has no head cut in src/page, src/session or src/util outside the allowlist", () => {
     const unlisted = headCuts().filter(
       (c) => !ALLOWED.some((a) => a.file === c.file && c.line.includes(a.line)),
     );
@@ -226,7 +312,7 @@ describe("page-text-cut", () => {
       unlisted,
       "cut page text with clipPageText / clipMasked / capMasked (src/util/frame-cap.ts), " +
         "which mask a registered value before the cut, or list the cut here with the reason " +
-        "it is not page text bound for a tool result",
+        "it is not text bound for a tool result or a record",
     ).toEqual([]);
   });
 
