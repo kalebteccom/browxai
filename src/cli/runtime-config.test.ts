@@ -50,6 +50,8 @@ describe("runtime config arguments", () => {
     [["channel", "next"], { key: "channel", value: "next" }],
     [["cooldown-hours", "0"], { key: "cooldown-hours", value: 0 }],
     [["cooldown-hours", "720"], { key: "cooldown-hours", value: 720 }],
+    [["major", "allow"], { key: "major", value: "allow" }],
+    [["major", "hold"], { key: "major", value: "hold" }],
   ])("reads %j", (args, want) => {
     expect(parseConfigArgs(args)).toEqual(want);
   });
@@ -65,7 +67,8 @@ describe("runtime config arguments", () => {
     [["cooldown-hours", "721"]],
     [["cooldown-hours", "1.5"]],
     [["cooldown-hours", "24h"]],
-    [["major", "allow"]],
+    [["major", "yes"]],
+    [["major", "Allow"]],
     [["autoUpdate", "on"]],
     [["channel", "next", "extra"]],
   ])("refuses %j", (args) => {
@@ -83,7 +86,8 @@ describe("browxai runtime config", () => {
         `runtime settings (${rt!.paths.settings})\n` +
         "  channel:        latest (default)\n" +
         "  auto-update:    on (default)\n" +
-        "  cooldown-hours: 24 (default)\n",
+        "  cooldown-hours: 24 (default)\n" +
+        "  major:          hold (default)\n",
       err: "",
     });
   });
@@ -109,11 +113,22 @@ describe("browxai runtime config", () => {
     expect(r.err).toContain("so auto-update is off");
   });
 
+  it("holds a new major version when majorPolicy isn't understood", async () => {
+    installed();
+    writeFileSync(rt!.paths.settings, JSON.stringify({ majorPolicy: "sometimes" }));
+    const r = await run([]);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("  major:          hold (default)\n");
+    expect(r.err).toContain('"majorPolicy" in runtime.json is "sometimes", not allow or hold');
+  });
+
   it.each([
     [["auto-update", "off"], { autoUpdate: "off" }],
     [["auto-update", "on"], { autoUpdate: "on" }],
     [["channel", "next"], { channel: "next" }],
     [["cooldown-hours", "48"], { cooldownHours: 48 }],
+    [["major", "allow"], { majorPolicy: "allow" }],
+    [["major", "hold"], { majorPolicy: "hold" }],
   ])("writes %j to runtime.json, mode 0600", async (args, want) => {
     installed();
     const r = await run(args);
@@ -144,6 +159,7 @@ describe("browxai runtime config", () => {
       ["auto-update", "maybe"],
       ["channel", "beta"],
       ["cooldown-hours", "x"],
+      ["major", "maybe"],
     ]) {
       const r = await run(args);
       expect(r).toEqual({ code: 2, out: "", err: RUNTIME_USAGE });

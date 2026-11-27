@@ -129,13 +129,27 @@ export interface DecideInput {
   /** `--now`: skip the delay after publish. */
   skipDelay: boolean;
   compare: (a: string, b: string) => number;
+  /** Set when a guard holds the candidate: a new major version, or a Node
+   *  engines range the runtime's node misses (runtime-guards.ts). */
+  guard?: string;
+}
+
+/** Why `v` is not applied: a hold state.json records (verification, a rollback,
+ *  a Playwright bump), three failed applies, or a guard. Undefined when none. */
+export function heldReason(v: string, state: RuntimeState, guard?: string): string | undefined {
+  const failures = state.failed?.[v] ?? 0;
+  return (
+    state.held?.[v] ??
+    (failures >= SCHEDULE.failuresBeforeHold ? `failed its checks ${failures} times` : undefined) ??
+    guard
+  );
 }
 
 /**
- * What the background job does with the channel's version, in the order of RFC
- * 0015 section 4: skip one that isn't newer, skip a deprecated one, keep a held
- * one or one that failed three times, wait out the delay after publish, then
- * respect the daily apply limit.
+ * What the background job does with the channel's version, after RFC 0015
+ * section 4: skip one that isn't newer, skip a deprecated one, keep a held one
+ * (a recorded hold, three failed applies, the major guard or the Node engines
+ * hold), wait out the delay after publish, then respect the daily apply limit.
  */
 export function decideAuto(input: DecideInput): AutoDecision {
   const { candidate: c, current, state, now } = input;
@@ -148,10 +162,7 @@ export function decideAuto(input: DecideInput): AutoDecision {
     };
   }
   if (c.deprecated) return { kind: "none", result: `${v} is deprecated, skipped` };
-  const failures = state.failed?.[v] ?? 0;
-  const held =
-    state.held?.[v] ??
-    (failures >= SCHEDULE.failuresBeforeHold ? `failed its checks ${failures} times` : undefined);
+  const held = heldReason(v, state, input.guard);
   if (held) {
     return {
       kind: "pending",

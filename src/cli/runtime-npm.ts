@@ -46,6 +46,8 @@ export interface VersionInfo {
   /** The deprecation message, when the maintainers deprecated this version. */
   deprecated?: string;
   integrity?: string;
+  /** `engines.node` from the version's package.json, as the registry has it. */
+  enginesNode?: string;
 }
 
 export type ViewResult =
@@ -124,6 +126,8 @@ export function parseView(r: RunResult, spec: string): ViewResult {
   if (typeof time?.[version] === "string") info.publishedAt = time[version];
   if (typeof doc!.deprecated === "string" && doc!.deprecated) info.deprecated = doc!.deprecated;
   if (typeof dist?.integrity === "string") info.integrity = dist.integrity;
+  const engines = doc!.engines as Record<string, unknown> | undefined;
+  if (typeof engines?.node === "string" && engines.node.trim()) info.enginesNode = engines.node;
   return { ok: true, info };
 }
 

@@ -6,6 +6,7 @@ import {
   contactGate,
   cooldownEnds,
   decideAuto,
+  heldReason,
   HOUR,
   lastDay,
   nextBackoffMs,
@@ -136,6 +137,37 @@ describe("decideAuto", () => {
       pending: { state: "held", reason: "failed its checks 3 times" },
     });
     expect(decideAuto(input({ state: { failed: { "0.23.0": 2 } } }))).toEqual({ kind: "apply" });
+  });
+
+  it("holds a version a guard holds, before its delay and even with --now", () => {
+    const guard = "a new major version (1.4.0 to 2.0.0). Run browxai runtime update --allow-major";
+    expect(
+      decideAuto(
+        input({
+          candidate: { version: "2.0.0", publishedAt: published(1) },
+          current: "1.4.0",
+          skipDelay: true,
+          guard,
+        }),
+      ),
+    ).toEqual({
+      kind: "pending",
+      pending: { version: "2.0.0", state: "held", reason: guard },
+      result: `2.0.0 held: ${guard}`,
+    });
+  });
+
+  it("names a recorded hold before a guard, and a guard after three failures", () => {
+    expect(heldReason("0.23.0", { held: { "0.23.0": "rolled back by user" } }, "guard")).toBe(
+      "rolled back by user",
+    );
+    expect(heldReason("0.23.0", { failed: { "0.23.0": 3 } }, "guard")).toBe(
+      "failed its checks 3 times",
+    );
+    expect(heldReason("0.23.0", { held: { "0.22.0": "rolled back by user" } }, "guard")).toBe(
+      "guard",
+    );
+    expect(heldReason("0.23.0", { held: { "0.22.0": "rolled back by user" } })).toBeUndefined();
   });
 
   it("waits 24 hours after publish, unless --now", () => {

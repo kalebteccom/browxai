@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { Runner } from "./runtime-exec.js";
+import { usesBundledChromium, type DoctorRow } from "./runtime-guards.js";
 
 export interface HandshakeResult {
   version?: string;
@@ -37,7 +38,10 @@ export interface SmokeDeps {
   env: NodeJS.ProcessEnv;
 }
 
-export type SmokeResult = { ok: true; notes: string[] } | { ok: false; reason: string };
+/** `bundledChromium` is set when `current`'s doctor says sessions here launch the
+ *  bundled Chromium (no Google Chrome), which the Playwright-bump hold reads. */
+export type SmokeResult =
+  { ok: true; notes: string[]; bundledChromium?: true } | { ok: false; reason: string };
 
 /** The caller's environment minus every `BROWX_*` setting, plus a temp workspace. */
 export function checkEnv(env: NodeJS.ProcessEnv, workspace: string): Record<string, string> {
@@ -121,7 +125,7 @@ async function statusStep(
   return undefined;
 }
 
-type DoctorReport = { checks: Array<{ name: string; ok: boolean }> };
+type DoctorReport = { checks: DoctorRow[] };
 
 async function doctorJson(
   cli: string,
@@ -135,7 +139,7 @@ async function doctorJson(
     const parsed = JSON.parse(r.stdout) as { checks?: unknown };
     if (!Array.isArray(parsed.checks)) throw new Error("no checks");
     const checks = parsed.checks.filter(
-      (c): c is { name: string; ok: boolean } =>
+      (c): c is DoctorRow =>
         !!c &&
         typeof (c as { name?: unknown }).name === "string" &&
         typeof (c as { ok?: unknown }).ok === "boolean",
@@ -183,7 +187,11 @@ async function doctorStep(
       reason: `doctor rows that pass on current fail on ${staged.version}: ${broken.join(", ")}`,
     };
   }
-  return { ok: true, notes: [] };
+  return {
+    ok: true,
+    notes: [],
+    ...(usesBundledChromium(before.checks) ? { bundledChromium: true as const } : {}),
+  };
 }
 
 /** The real handshake: the MCP SDK client over stdio, 20 seconds in all. */

@@ -4,6 +4,7 @@
 import { writeFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  addPackage,
   addVersion,
   fakeAgent,
   fakeNpm,
@@ -12,6 +13,7 @@ import {
   type TempRuntime,
 } from "./__fixtures__/runtime-tree.js";
 import { readJournal } from "./runtime-journal.js";
+import { versionDir } from "./runtime-layout.js";
 import type { Registry } from "./runtime-npm.js";
 import { HOUR } from "./runtime-schedule.js";
 import type { SmokeResult } from "./runtime-smoke.js";
@@ -379,5 +381,108 @@ describe("update --auto: the opt-out", () => {
         result: "auto-update off (BROWX_RUNTIME_AUTO_UPDATE)",
       }),
     ]);
+  });
+});
+
+describe("update --auto: held versions", () => {
+  /** A runtime whose `current` is `version`, with the boot already seen. */
+  function on(version: string): TempRuntime {
+    rt = tempRuntime();
+    writeFileSync(rt.paths.nodePath, NODE + "\n");
+    addVersion(rt.paths, version);
+    switchCurrent(rt.paths, version);
+    writeState(rt.paths, { bootSeen: BOOT });
+    return rt;
+  }
+
+  it("holds a new major version until runtime config major allow", async () => {
+    rt = on("1.4.0");
+    const registry = counted(
+      fakeRegistry({ "2.0.0": { publishedAt: iso(T0 - 48 * HOUR) } }, { latest: "2.0.0" }),
+    );
+    const { auto, npm, c } = setup({ registry });
+    const r = await auto();
+    expect(r.code).toBe(0);
+    expect(readCurrent(rt.paths)).toBe("1.4.0");
+    expect(npm.calls).toEqual([]);
+    expect(readState(rt.paths).pending).toEqual({
+      version: "2.0.0",
+      state: "held",
+      reason:
+        "a new major version (1.4.0 to 2.0.0). Run browxai runtime update --allow-major, " +
+        "or browxai runtime config major allow",
+    });
+    writeFileSync(rt.paths.settings, JSON.stringify({ majorPolicy: "allow" }));
+    c.advance(7 * HOUR);
+    await auto();
+    expect(readCurrent(rt.paths)).toBe("2.0.0");
+  });
+
+  it("holds a version whose engines.node the runtime's node misses", async () => {
+    rt = installed();
+    const registry = counted(
+      fakeRegistry(
+        { "0.23.0": { publishedAt: iso(T0 - 48 * HOUR), enginesNode: ">=24" } },
+        { latest: "0.23.0" },
+      ),
+    );
+    const { auto, npm } = setup({ registry, npm: fakeNpm({ nodeVersion: "22.11.0" }) });
+    await auto();
+    expect(readCurrent(rt.paths)).toBe("0.22.0");
+    expect(npm.calls).toEqual([]);
+    expect(readState(rt.paths).pending).toEqual({
+      version: "0.23.0",
+      state: "held",
+      reason: `needs Node >=24, and the runtime's node at ${NODE} is 22.11.0`,
+    });
+  });
+
+  it("applies it once the node satisfies the range", async () => {
+    rt = installed();
+    const registry = counted(
+      fakeRegistry(
+        { "0.23.0": { publishedAt: iso(T0 - 48 * HOUR), enginesNode: ">=24" } },
+        { latest: "0.23.0" },
+      ),
+    );
+    const { auto } = setup({ registry, npm: fakeNpm({ nodeVersion: "24.1.0" }) });
+    await auto();
+    expect(readCurrent(rt.paths)).toBe("0.23.0");
+  });
+
+  it("holds a Playwright bump where sessions use the bundled Chromium, without a retry", async () => {
+    rt = installed();
+    addPackage(versionDir(rt.paths, "0.22.0"), "playwright-core", "1.65.1");
+    const npm = fakeNpm({ playwright: "1.66.0" });
+    const { auto, c } = setup({
+      npm,
+      smoke: () => Promise.resolve<SmokeResult>({ ok: true, notes: [], bundledChromium: true }),
+    });
+    const r = await auto();
+    expect(r.code).toBe(0);
+    expect(readCurrent(rt.paths)).toBe("0.22.0");
+    const state = readState(rt.paths);
+    expect(state.held?.["0.23.0"]).toMatch(/^needs a Chromium download: it moves playwright-core/);
+    expect(state.failed?.["0.23.0"]).toBeUndefined();
+    expect(state.pending).toMatchObject({ version: "0.23.0", state: "held" });
+    expect(readJournal(rt.paths).at(-1)).toMatchObject({ event: "apply", result: "held" });
+    const installs = npm.calls.filter((x) => x.args.includes("install")).length;
+    c.advance(7 * HOUR);
+    await auto();
+    expect(npm.calls.filter((x) => x.args.includes("install")).length).toBe(installs);
+    expect(readCurrent(rt.paths)).toBe("0.22.0");
+  });
+
+  it("does not apply a version a rollback left", async () => {
+    rt = installed();
+    writeState(rt.paths, { bootSeen: BOOT, held: { "0.23.0": "rolled back by user" } });
+    const { auto, npm } = setup();
+    await auto();
+    expect(npm.calls).toEqual([]);
+    expect(readState(rt.paths).pending).toEqual({
+      version: "0.23.0",
+      state: "held",
+      reason: "rolled back by user",
+    });
   });
 });

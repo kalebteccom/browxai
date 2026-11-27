@@ -4,6 +4,7 @@
 
 import type { AgentPort } from "./runtime-agent.js";
 import { applyVersion, selectVersion, type ApplyDeps } from "./runtime-apply.js";
+import { enginesCheck } from "./runtime-guards.js";
 import { clientInstructions, detectClients, type ClientSystem } from "./init-clients.js";
 import {
   activeTargets,
@@ -29,7 +30,13 @@ import {
   writeFileAtomic,
   type RuntimeState,
 } from "./runtime-store.js";
-import { writeSettingsFile, type Channel } from "./runtime-settings.js";
+import { linkLauncher } from "./runtime-link.js";
+import {
+  readSettingsFile,
+  resolveMajorPolicy,
+  writeSettingsFile,
+  type Channel,
+} from "./runtime-settings.js";
 
 export interface FlowIo {
   out: (text: string) => void;
@@ -74,6 +81,8 @@ export interface UpdateWant {
   channel: Channel;
   version?: string;
   check?: boolean;
+  /** `--allow-major`: a new major version is applied this once (D7). */
+  allowMajor?: boolean;
 }
 
 /** Select, then apply. Exit 0 applied or nothing to do, 1 a failed check, 3 the
@@ -138,7 +147,12 @@ async function manualUpdate(
     return 2;
   }
   const registry = (deps.registry ?? npmRegistry)(npm);
-  const selected = await selectVersion(paths, registry, want);
+  const major = resolveMajorPolicy(readSettingsFile(paths).file);
+  if (major.warning) io.err(`warning: ${major.warning}\n`);
+  const selected = await selectVersion(paths, registry, want, {
+    allowMajor: want.allowMajor === true || major.allow,
+    engines: enginesCheck(npm),
+  });
   if (selected.kind === "error") {
     journalManual(paths, deps, {
       event: selected.code === 3 ? "offline" : "error",
@@ -150,6 +164,17 @@ async function manualUpdate(
   if (selected.kind === "none") {
     recordManualCheck(paths, deps, selected.message);
     journalManual(paths, deps, { event: "check", result: selected.message });
+    io.out(`${selected.message}\n`);
+    return 0;
+  }
+  if (selected.kind === "held") {
+    const v = selected.info.version;
+    recordManualCheck(paths, deps, `${v} held: ${selected.reason}`);
+    updateState(paths, (s) => ({
+      ...s,
+      pending: { version: v, state: "held", reason: selected.reason },
+    }));
+    journalManual(paths, deps, { event: "check", version: v, result: `held: ${selected.reason}` });
     io.out(`${selected.message}\n`);
     return 0;
   }
@@ -168,8 +193,24 @@ async function manualUpdate(
     npm,
     ...(deps.verify ? { verify: deps.verify } : {}),
     ...(deps.smoke ? { smoke: deps.smoke } : {}),
+    named: want.version !== undefined,
     out: io.out,
   });
+  if (!applied.ok && applied.held) {
+    journalManual(paths, deps, {
+      event: "apply",
+      version: v,
+      result: "held",
+      reason: applied.held,
+    });
+    updateState(paths, (s) => ({
+      ...s,
+      lastResult: `${v} held: ${applied.held}`,
+      pending: { version: v, state: "held", reason: applied.held! },
+    }));
+    io.out(`${v} is held: ${applied.held}. current stays ${readCurrent(paths) ?? "unset"}.\n`);
+    return 0;
+  }
   if (!applied.ok) {
     journalManual(paths, deps, {
       event: "apply",
@@ -215,6 +256,8 @@ export interface InstallWant {
   profileDirs: string[];
   /** Install the background job. */
   agent: boolean;
+  /** `--link`: the home directory whose ~/.local/bin gets a link to the launcher. */
+  linkHome?: string;
 }
 
 export async function installFlow(
@@ -241,6 +284,7 @@ export async function installFlow(
   if (readCurrent(paths) === undefined) return code === 0 ? 1 : code;
   if (want.agent) await installAgent(paths, deps, io);
   else await removeAgent(deps, io);
+  if (want.linkHome !== undefined) linkLauncher(paths, { home: want.linkHome, env: deps.env }, io);
   io.out(clientEntries(paths, deps.system));
   if (!want.writeClientConfig) return code;
   const targets: ClientTarget[] = [

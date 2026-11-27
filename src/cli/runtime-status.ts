@@ -42,6 +42,8 @@ export interface RuntimeStatus {
   nextCheck?: string;
   lastResult?: string;
   pending?: PendingUpdate;
+  /** Versions the updater doesn't apply, with the reason. */
+  held?: Record<string, string>;
 }
 
 export interface StatusDeps {
@@ -75,7 +77,7 @@ export async function runtimeStatus(
   };
   if (found.kind !== "managed") return base;
   const current = readCurrent(paths);
-  const { previous, lastCheck, nextCheck, lastResult, pending } = readState(paths);
+  const { previous, lastCheck, nextCheck, lastResult, pending, held } = readState(paths);
   const node = readNodePath(paths);
   const use = await versionsInUse(paths, deps.list);
   return {
@@ -95,6 +97,7 @@ export async function runtimeStatus(
     ...(nextCheck ? { nextCheck } : {}),
     ...(lastResult ? { lastResult } : {}),
     ...(pending ? { pending } : {}),
+    ...(held && Object.keys(held).length ? { held } : {}),
   };
 }
 
@@ -173,5 +176,7 @@ function scheduleLines(s: RuntimeStatus): string[] {
         : `${p.state}${p.reason ? `: ${p.reason}` : ""}`;
     lines.push(`  pending:      ${p.version}, ${why}`);
   }
+  for (const [v, reason] of Object.entries(s.held ?? {}))
+    lines.push(`  held:         ${v}, ${reason}`);
   return lines;
 }

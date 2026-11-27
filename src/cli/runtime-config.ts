@@ -8,19 +8,23 @@
 import type { RuntimePaths } from "./runtime-layout.js";
 import {
   CHANNELS,
+  MAJOR_POLICIES,
   MAX_COOLDOWN_HOURS,
   readSettingsFile,
   resolveAutoUpdate,
   resolveChannel,
   resolveCooldown,
+  resolveMajorPolicy,
   writeSettingsFile,
   type Channel,
+  type MajorPolicy,
 } from "./runtime-settings.js";
 
 /** One setting `runtime config` writes. */
 export type ConfigChange =
   | { key: "auto-update"; value: "on" | "off" }
   | { key: "channel"; value: Channel }
+  | { key: "major"; value: MajorPolicy }
   | { key: "cooldown-hours"; value: number };
 
 /** `runtime config` arguments: none to read, or a key and its value. */
@@ -31,6 +35,9 @@ export function parseConfigArgs(rest: readonly string[]): ConfigChange | null | 
   if (key === "auto-update" && (value === "on" || value === "off")) return { key, value };
   if (key === "channel" && (CHANNELS as readonly string[]).includes(value)) {
     return { key, value: value as Channel };
+  }
+  if (key === "major" && (MAJOR_POLICIES as readonly string[]).includes(value)) {
+    return { key, value: value as MajorPolicy };
   }
   if (key === "cooldown-hours" && /^\d+$/.test(value)) {
     const hours = Number(value);
@@ -50,11 +57,13 @@ function show(paths: RuntimePaths, env: NodeJS.ProcessEnv, io: ConfigIo): number
   const channel = resolveChannel(env, file);
   const auto = resolveAutoUpdate(env, file, error);
   const cooldown = resolveCooldown(file);
+  const major = resolveMajorPolicy(file);
   const lines = [
     `runtime settings (${paths.settings})`,
     `  channel:        ${channel.ok ? `${channel.value} (${channel.source})` : "not usable"}`,
     `  auto-update:    ${auto.on ? "on" : "off"} (${auto.source})`,
     `  cooldown-hours: ${cooldown.hours} (${cooldown.source})`,
+    `  major:          ${major.value} (${major.source})`,
   ];
   io.out(lines.join("\n") + "\n");
   const problems = [
@@ -62,6 +71,7 @@ function show(paths: RuntimePaths, env: NodeJS.ProcessEnv, io: ConfigIo): number
     channel.ok ? undefined : channel.error,
     auto.warning,
     cooldown.warning,
+    major.warning,
   ].filter((p): p is string => !!p);
   for (const p of problems) io.err(`warning: ${p}\n`);
   return problems.length ? 1 : 0;
@@ -97,6 +107,7 @@ export function runConfig(
   if (change.key === "auto-update") writeSettingsFile(paths, { autoUpdate: change.value });
   if (change.key === "channel") writeSettingsFile(paths, { channel: change.value });
   if (change.key === "cooldown-hours") writeSettingsFile(paths, { cooldownHours: change.value });
+  if (change.key === "major") writeSettingsFile(paths, { majorPolicy: change.value });
   io.out(`✓ ${change.key} is ${change.value} in ${paths.settings}\n`);
   const override = envOverride(change, env);
   if (override) {

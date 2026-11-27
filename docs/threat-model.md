@@ -713,6 +713,13 @@ signatures` for good, and makes at most 6 registry contacts and 2 applies a day.
   know counts as off. When the current version's updater exits 1 on three runs in a
   row, the launcher runs the previous version's updater once: a version the runtime
   already ran, from `versions/`, with no download.
+- **Held versions.** A newer version waits for the owner when, from 1.0 on, it starts
+  a new major version (`update --allow-major` or `runtime config major allow`
+  releases it), when its `engines.node` excludes the runtime's node, when it moves
+  `playwright-core` on a machine with no Google Chrome (the updater never downloads
+  a browser, so it never contacts a host other than the npm registry), and when a
+  `rollback` left it. `update --version V` names a held version explicitly. The major
+  policy, like the other settings, comes only from `runtime.json`.
 - **The signed macOS app** never runs runtime code: every `runtime` command exits 2
   inside it.
 

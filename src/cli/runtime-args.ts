@@ -7,7 +7,8 @@ import { isChannel, type Channel } from "./runtime-settings.js";
 
 export type RuntimeArgs =
   | { verb: "status"; json: boolean }
-  | { verb: "rollback" }
+  /** `rollback [--to V]`: back to `previous`, or to the kept version V. */
+  | { verb: "rollback"; to?: string }
   | { verb: "gc" }
   | {
       verb: "install";
@@ -17,9 +18,20 @@ export type RuntimeArgs =
       profileDirs: string[];
       /** `--no-agent`: install no background job. */
       noAgent: boolean;
+      /** `--link`: symlink the launcher into ~/.local/bin. */
+      link: boolean;
     }
-  | { verb: "update"; check: boolean; version?: string; auto: boolean; now: boolean }
-  | { verb: "uninstall"; yes: boolean }
+  | {
+      verb: "update";
+      check: boolean;
+      version?: string;
+      auto: boolean;
+      now: boolean;
+      /** `--allow-major`: apply a new major version this once (D7). */
+      allowMajor: boolean;
+    }
+  /** `--keep-versions`: remove everything but `versions/` and `layout.json`. */
+  | { verb: "uninstall"; yes: boolean; keepVersions: boolean }
   /** `notes [V]`: the Upgrading notes of V, or the unread ones. */
   | { verb: "notes"; version?: string }
   /** `config`: null reads every setting, a change writes one. */
@@ -27,38 +39,50 @@ export type RuntimeArgs =
 
 export const RUNTIME_USAGE =
   "usage: browxai runtime <install|update|status|notes|config|rollback|gc|uninstall> [flags]\n" +
-  "  install [--dir PATH] [--channel latest|next] [--no-agent] [--write-client-config]\n" +
+  "  install [--dir PATH] [--channel latest|next] [--no-agent] [--link] [--write-client-config]\n" +
   "          [--profile-dir DIR]...\n" +
   "                    create the runtime directory, record this node, write the\n" +
   "                    launcher <runtime>/bin/browxai, install the channel's version\n" +
   "                    as update does, then install the background job that runs\n" +
   "                    update --auto every hour (launchd on macOS, a systemd user\n" +
   "                    timer on Linux). --no-agent skips the job. Prints the client entries.\n" +
+  "                    --link symlinks the launcher as ~/.local/bin/browxai. It never\n" +
+  "                    replaces a file there that isn't a link to this launcher.\n" +
   "                    --write-client-config rewrites entries that run an installed\n" +
   "                    browxai or npx browxai in the active config of each client.\n" +
   "                    --profile-dir DIR adds one more config directory, once per DIR.\n" +
-  "  update [--check] [--version V] [--now] [--auto]\n" +
+  "  update [--check] [--version V] [--allow-major] [--now] [--auto]\n" +
   "                    install the channel's newest version, or V, into staging, check\n" +
   "                    its npm signatures, run it once (--version, MCP handshake,\n" +
   "                    doctor, runtime status), then switch current to it. --check\n" +
-  "                    downloads nothing. --auto is the background job's mode: a\n" +
-  "                    check every 6 hours, a 24-hour delay after publish, limits,\n" +
-  "                    backoff when offline, and exit 0 unless an internal error.\n" +
-  "                    --now skips the delay.\n" +
+  "                    downloads nothing. A held version (a new major version, a Node\n" +
+  "                    engines range this node misses, a Playwright bump on a machine\n" +
+  "                    with no Google Chrome, or one a rollback left) is applied only\n" +
+  "                    when named with --version. --allow-major applies a new major\n" +
+  "                    version. --auto is the background job's mode: a check every 6\n" +
+  "                    hours, a 24-hour delay after publish, limits, backoff when\n" +
+  "                    offline, and exit 0 unless an internal error. --now skips the delay.\n" +
   "  status [--json]   the runtime directory, the version `current` names, the kept\n" +
   "                    versions and the processes that use them. No network.\n" +
   "  notes [V]         the Upgrading notes of version V, or of every version after\n" +
   "                    this one (or the previous one) up to current. No network.\n" +
-  "  config [auto-update on|off | channel latest|next | cooldown-hours N]\n" +
+  "  config [auto-update on|off | channel latest|next | major allow|hold | cooldown-hours N]\n" +
   "                    with no setting, print each setting and where it comes from.\n" +
   "                    With one, write it to runtime.json. BROWX_RUNTIME_CHANNEL and\n" +
   "                    BROWX_RUNTIME_AUTO_UPDATE win over the file, and off in either wins.\n" +
+  "                    major allow lets the background job apply a new major version.\n" +
   "                    cooldown-hours is the delay after publish, 0 to 720.\n" +
-  "  rollback          switch `current` back to the previous version. No network.\n" +
+  "  rollback [--to V] switch `current` back to the previous version, or to the kept\n" +
+  "                    version V. The version it leaves is held until a newer one\n" +
+  "                    appears or update --version names it. No network.\n" +
   "  gc                keep three versions (current, previous and one more) and\n" +
   "                    remove older ones that no running process uses\n" +
-  "  uninstall [--yes] remove the background job and the runtime directory. Refuses\n" +
-  "                    while a process uses a version, unless --yes.\n" +
+  "  uninstall [--keep-versions] [--yes]\n" +
+  "                    remove the background job, the ~/.local/bin link to this\n" +
+  "                    launcher and the runtime directory. Refuses while a process\n" +
+  "                    uses a version, unless --yes. --keep-versions keeps versions/\n" +
+  "                    and layout.json, so servers keep running and a later install\n" +
+  "                    reuses them.\n" +
   "The runtime directory is $BROWX_RUNTIME_DIR, or ~/.browxai-runtime.\n" +
   "Exit 0 ok, 1 a failed check or an internal error, 2 usage or a refused context,\n" +
   "3 the npm registry could not be reached.\n";
@@ -103,6 +127,7 @@ function parseInstall(rest: readonly string[]): RuntimeArgs | undefined {
     "--write-client-config": "bool",
     "--profile-dir": "value",
     "--no-agent": "bool",
+    "--link": "bool",
   });
   if (!r) return undefined;
   const channel = str(r.flags, "--channel");
@@ -118,6 +143,7 @@ function parseInstall(rest: readonly string[]): RuntimeArgs | undefined {
     writeClientConfig,
     profileDirs: r.profileDirs,
     noAgent: r.flags.has("--no-agent"),
+    link: r.flags.has("--link"),
   };
 }
 
@@ -128,19 +154,23 @@ function parseUpdate(rest: readonly string[]): RuntimeArgs | undefined {
     "--version": "value",
     "--now": "bool",
     "--auto": "bool",
+    "--allow-major": "bool",
   });
   if (!r) return undefined;
   const version = str(r.flags, "--version");
   if (version !== undefined && !isVersion(version)) return undefined;
   const auto = r.flags.has("--auto");
-  // The background job applies the channel's version; it never checks only or pins one.
-  if (auto && (version !== undefined || r.flags.has("--check"))) return undefined;
+  const allowMajor = r.flags.has("--allow-major");
+  // The background job applies the channel's version; it never checks only or pins
+  // one, and it crosses a major version only through `runtime config major allow`.
+  if (auto && (version !== undefined || r.flags.has("--check") || allowMajor)) return undefined;
   return {
     verb: "update",
     check: r.flags.has("--check"),
     ...(version !== undefined ? { version } : {}),
     auto,
     now: r.flags.has("--now"),
+    allowMajor,
   };
 }
 
@@ -150,7 +180,13 @@ export function parseRuntimeArgs(args: readonly string[]): RuntimeArgs | undefin
     case "status":
       if (rest.length === 0) return { verb, json: false };
       return rest.length === 1 && rest[0] === "--json" ? { verb, json: true } : undefined;
-    case "rollback":
+    case "rollback": {
+      if (rest.length === 0) return { verb };
+      const to = rest[1];
+      return rest.length === 2 && rest[0] === "--to" && isVersion(to!)
+        ? { verb, to: to! }
+        : undefined;
+    }
     case "gc":
       return rest.length === 0 ? { verb } : undefined;
     case "install":
@@ -165,8 +201,10 @@ export function parseRuntimeArgs(args: readonly string[]): RuntimeArgs | undefin
       return change === undefined ? undefined : { verb, change };
     }
     case "uninstall": {
-      const r = readFlags(rest, { "--yes": "bool" });
-      return r ? { verb, yes: r.flags.has("--yes") } : undefined;
+      const r = readFlags(rest, { "--yes": "bool", "--keep-versions": "bool" });
+      return r
+        ? { verb, yes: r.flags.has("--yes"), keepVersions: r.flags.has("--keep-versions") }
+        : undefined;
     }
     default:
       return undefined;
