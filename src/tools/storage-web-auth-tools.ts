@@ -63,13 +63,17 @@ export function registerStorageWebAuthTools(
       kind === "localStorage"
         ? 'It persists across reloads and browser restarts (until `inject_storage_state({mode:"replace"})` or a profile wipe).'
         : "It is cleared when the tab's top-level browsing context ends, and is not included in `dump_storage_state`.";
+    const attachedHold = "In an attached session the call waits for the `byob_action` approval.";
     const originScope = `${human} is origin-scoped: \`navigate\` to the target origin first, or the call is rejected with a navigation hint (about:blank, or another origin).`;
 
     register(
       `${prefix}_get`,
       {
         capability: "read",
-        description: `Read one key from ${human} of the current page's origin: \`{value: string|null, origin}\`. ${originScope}`,
+        // Held in an attached session: returns a value from the attached
+        // browser's web storage, where apps keep session tokens.
+        byobConfirm: true,
+        description: `Read one key from ${human} of the current page's origin: \`{value: string|null, origin}\`. ${originScope} ${attachedHold}`,
         inputSchema: { key: z.string().describe(`${human} key.`), ...SESSION_ARG },
       },
       async ({ key, session }) => {
@@ -95,7 +99,10 @@ export function registerStorageWebAuthTools(
       `${prefix}_list`,
       {
         capability: "read",
-        description: `List every key and value in ${human} of the current page's origin: \`{entries:[{key,value}...], origin}\`. ${originScope}`,
+        // Held in an attached session: returns every value in the attached
+        // browser's web storage for the origin.
+        byobConfirm: true,
+        description: `List every key and value in ${human} of the current page's origin: \`{entries:[{key,value}...], origin}\`. ${originScope} ${attachedHold}`,
         inputSchema: { ...SESSION_ARG },
       },
       async ({ session }) => {

@@ -28,7 +28,6 @@ const PINNED_NOT_HELD: Record<string, string> = {
   flake_check: "runs other tools, and each inner call is held on its own",
   get_video: "reads a recorded video file, which an attached session cannot have",
   heap_retainers: "queries a heap snapshot",
-  heap_snapshot: "reads the heap and writes a snapshot to the workspace",
   page_archive: "reads the page and writes the archive to the workspace",
   pdf_save: "renders the page to a workspace PDF",
   perf_insights: "reads a trace already recorded",
@@ -46,11 +45,17 @@ const PINNED_NOT_HELD: Record<string, string> = {
 
 /** Tools outside the held capabilities that opt in with `byobConfirm: true`, and
  *  why. Each is a `read` tool whose result carries the attached browser's cookie
- *  values, so the person is asked before they leave it. */
+ *  values or stored app data, where sites keep session tokens, so the person is
+ *  asked before they leave it. */
 const PINNED_OPTED_IN: Record<string, string> = {
   cookies_get: "returns a cookie value from the attached browser's jar",
   cookies_list: "returns the cookie values in the attached browser's jar",
   dump_storage_state: "returns every cookie value and the localStorage of the attached browser",
+  localstorage_get: "returns a localStorage value, where apps keep session tokens",
+  localstorage_list: "returns every localStorage value for the origin",
+  sessionstorage_get: "returns a sessionStorage value, where apps keep session tokens",
+  sessionstorage_list: "returns every sessionStorage value for the origin",
+  idb_get: "returns a stored IndexedDB value, where apps keep tokens and user data",
 };
 
 /** A sample of tools that must be held, written out so a change to the
@@ -87,6 +92,10 @@ const MUST_HOLD = [
   "cookies_get",
   "cookies_list",
   "dump_storage_state",
+  "localstorage_get",
+  "sessionstorage_list",
+  "idb_get",
+  "heap_snapshot",
 ];
 
 /** Tools that must never be held: the ones that lift or answer the hold, and
@@ -163,7 +172,7 @@ describe("attached-session hold: every registration is held or pinned", () => {
     }
   });
 
-  it("holds the named action, navigation, eval, file, device and cookie-read tools", async () => {
+  it("holds the named action, navigation, eval, file, device and storage-read tools", async () => {
     const table = await toolRegistrations();
     const notHeld = MUST_HOLD.filter((name) => {
       const reg = table.get(name);

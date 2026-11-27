@@ -1763,9 +1763,11 @@ implementations.
 for the file; without `path` it needs only `read`.
 
 **Attached sessions**: `cookies_get`, `cookies_list` and `dump_storage_state`
-return the cookie values of the person's own browser, so in an attached
-session each one waits for the `byob_action` approval, as the tools that
-change the browser do. Managed sessions are not held.
+return the cookie values of the person's own browser, and `localstorage_get`,
+`localstorage_list`, `sessionstorage_get`, `sessionstorage_list` and `idb_get`
+return what its apps stored, session tokens included. In an attached session
+each one waits for the `byob_action` approval, as the tools that change the
+browser do. Managed sessions are not held.
 
 **Sensitive data**: cookie _values_ may carry credentials. With the `secrets`
 capability on, registered values are masked in tool results (`cookies_get`,

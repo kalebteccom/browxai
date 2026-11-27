@@ -699,7 +699,7 @@ the same gate refusal and hint.
 
 - `read`, default **on**. Tools: `snapshot`, `find`, `text_search`, `inspect`, `screenshot`, `console_read`, `network_read`, `ws_read`, `list_named_refs`, `profile_status`.
 
-  Read-only; can't change page state. Always safe to enable. `cookies_get`, `cookies_list` and `dump_storage_state` return cookie values, which can carry credentials, so in an attached session they wait for the `byob_action` approval (see "What `byob_action` holds").
+  Read-only; can't change page state. Always safe to enable. `cookies_get`, `cookies_list` and `dump_storage_state` return cookie values, and `localstorage_get`, `localstorage_list`, `sessionstorage_get`, `sessionstorage_list` and `idb_get` return stored app data; both can carry credentials, so in an attached session these tools wait for the `byob_action` approval (see "What `byob_action` holds"). In a managed session they run without asking.
 
   `profile_status` is the one workspace-introspection member: it enumerates the managed profile directories under `$BROWX_WORKSPACE/profiles`, reporting each one's name, workspace-rooted path, size, file count, and last-modified time, plus the ids of any live session open on it. It launches nothing and contacts no page. Disclosure is bounded to two origin-ish surfaces, both strictly narrower than what `cookies_list` already returns under this same capability: cookie **domains** (never names, never values) of a context that is **already open**, and the domains/origins recorded in a same-named `auth_save` slot. It does NOT decrypt a closed profile's cookie store and does not claim authentication state. See `docs/tool-reference.md` for the per-field provenance table. Profile names are workspace-rooted through `resolveWorkspacePath`, so a name that escapes the profiles directory is refused; symlinks inside a profile directory are skipped, never followed out of the workspace; and the directory walk carries an entry budget so a pathological workspace cannot stall the agent loop.
 
@@ -1020,13 +1020,16 @@ handler. A tool added under one of those capabilities is held with no code of it
 not held themselves, and each tool they dispatch is.
 
 Tools under those capabilities that change nothing in the browser are not held:
-`wait_for`, `unroute`, `ws_unintercept`, `sw_unintercept_fetch`, `stop_har`, `perf_start`, `perf_stop`, `perf_insights`, `coverage_start`, `heap_snapshot`, `heap_retainers`, `artifact_save`, `auth_delete`, `pdf_save`, `flake_check`, `downloads_capture`, `download_get`, `get_video`, `stop_video`, `asset_export`, `dom_export`, `element_export`, `page_archive`, `screenshot_on`, `screenshot_schedule` and `extensions_list`. Each one says why at its registration, and
+`wait_for`, `unroute`, `ws_unintercept`, `sw_unintercept_fetch`, `stop_har`, `perf_start`, `perf_stop`, `perf_insights`, `coverage_start`, `heap_retainers`, `artifact_save`, `auth_delete`, `pdf_save`, `flake_check`, `downloads_capture`, `download_get`, `get_video`, `stop_video`, `asset_export`, `dom_export`, `element_export`, `page_archive`, `screenshot_on`, `screenshot_schedule` and `extensions_list`. Each one says why at its registration, and
 `test/architecture/byob-hold-completeness.test.ts` pins the list, so adding one is a
 visible change. `read` tools, `await_human`, `approve_actions` and the session and config
-tools are not held, with three exceptions: `cookies_get`, `cookies_list` and
-`dump_storage_state` return the attached browser's cookie values, so each opts in with
+tools are not held, with eight exceptions. `cookies_get`, `cookies_list` and
+`dump_storage_state` return the attached browser's cookie values, and `localstorage_get`,
+`localstorage_list`, `sessionstorage_get`, `sessionstorage_list` and `idb_get` return the
+values apps keep in web storage and IndexedDB, session tokens among them. Each opts in with
 `byobConfirm: true` and is held like a tool that changes the browser. The same test pins
-those three.
+those eight. `heap_snapshot` is held too: it is an `action` tool, and the snapshot holds
+the attached tab's whole JS heap. A server without `file-io` refuses it before the prompt.
 
 A refused call returns `error: "policy: …"`. The ways through are the operator's: answer
 the prompt, remove `byob_action` from `BROWX_CONFIRM_REQUIRED`, or enable `self-approval`

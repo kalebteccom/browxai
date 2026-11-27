@@ -4,8 +4,10 @@
 // `byob_action` confirm hook is set. Which tools are held is derived from the
 // capability each one declares at `host.register`, so a new tool under a held
 // capability is held without its handler doing anything. A tool that changes
-// nothing in the browser opts out with `byobConfirm: false` at its registration,
-// and `test/architecture/byob-hold-completeness.test.ts` pins that list.
+// nothing in the browser opts out with `byobConfirm: false` at its registration.
+// A `read` tool whose result carries the attached browser's cookie values or
+// stored app data (web storage, IndexedDB) opts in with `byobConfirm: true`.
+// `test/architecture/byob-hold-completeness.test.ts` pins both lists.
 
 import { confirmByobAction, type ConfirmContext } from "../policy/confirm.js";
 import type { SessionEntry } from "../session/registry.js";
