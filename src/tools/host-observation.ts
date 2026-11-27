@@ -1,6 +1,7 @@
 import { DEFAULT_SESSION_ID, type SessionRegistry } from "../session/registry.js";
 import { type DispatchOutcome } from "../session/metrics.js";
 import { withDeadline } from "../util/deadline.js";
+import { textCutFor } from "../util/frame-cap.js";
 import {
   buildEvalJsCapture,
   redactArgs,
@@ -220,6 +221,7 @@ export function buildObservation(deps: ObservationDeps): Observation {
     // JSONL store.
     const recordable = recordableArgs(toolName, args);
     const maskedArgsIn = entry?.secrets ? entry.secrets.applyMaskDeep(recordable) : recordable;
+    const mask = textCutFor(entry?.secrets).mask;
     const parsed = firstJsonResult(res);
     const sizeBytes = res.content.reduce((n, item) => {
       if (item.type === "text") return n + Buffer.byteLength(item.text, "utf8");
@@ -248,7 +250,7 @@ export function buildObservation(deps: ObservationDeps): Observation {
       ts: new Date(startedAt).toISOString(),
       tool: toolName,
       sessionId,
-      argsRedacted: redactArgs(maskedArgsIn),
+      argsRedacted: redactArgs(maskedArgsIn, mask),
       resultMeta: {
         ok,
         sizeBytes,
@@ -258,7 +260,7 @@ export function buildObservation(deps: ObservationDeps): Observation {
       durationMs: Date.now() - startedAt,
       capabilityDenials: diagnostics.denialsCount(),
     };
-    const evalCap = buildEvalJsCapture(toolName, maskedArgsIn, obj);
+    const evalCap = buildEvalJsCapture(toolName, maskedArgsIn, obj, mask);
     if (evalCap) record.evalJs = evalCap;
     diagnostics.write(record);
   };

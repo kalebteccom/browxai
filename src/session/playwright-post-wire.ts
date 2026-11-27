@@ -154,7 +154,7 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
 
   // Per-session device-emulation: attach the synthetic Web Bluetooth/USB/HID
   // catalogs + the per-page reapply of locale/timezone/UA overrides.
-  await attachDeviceEmulation(ctx, entry.webDeviceEmulation).catch(() => undefined);
+  await attachDeviceEmulation(ctx, entry.webDeviceEmulation, entry.secrets).catch(() => undefined);
   ctx.on("page", (newPage) => {
     // Best-effort: a new tab fires here. Create its own CDP session to route
     // locale/timezone/UA overrides. Errors swallowed — re-apply never breaks a

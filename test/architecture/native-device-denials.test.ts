@@ -9,7 +9,7 @@
 // in the default `pnpm test` lane against a real `createServer`.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
@@ -34,12 +34,14 @@ const NATIVE_TOOLS: Readonly<Record<string, Record<string, unknown>>> = {
 };
 
 let server: Server;
+let workspace: string | undefined;
 
 async function defaultServer(): Promise<Server> {
   const prevCaps = process.env.BROWX_CAPABILITIES;
   const prevWs = process.env.BROWX_WORKSPACE;
   process.env.BROWX_CAPABILITIES = DEFAULT_SET;
-  process.env.BROWX_WORKSPACE = mkdtempSync(join(tmpdir(), "browxai-native-denials-"));
+  workspace = mkdtempSync(join(tmpdir(), "browxai-native-denials-"));
+  process.env.BROWX_WORKSPACE = workspace;
   try {
     return await createServer({ headless: true });
   } finally {
@@ -56,6 +58,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await server.shutdown().catch(() => undefined);
+  if (workspace) rmSync(workspace, { recursive: true, force: true });
 });
 
 function parse(res: { content: Array<{ type: string; text?: string }> }): Record<string, unknown> {

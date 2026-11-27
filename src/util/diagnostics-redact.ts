@@ -9,6 +9,7 @@
 // neither is imported back, so there is no cycle.
 
 import { createHash } from "node:crypto";
+import { capMasked, type Mask } from "./frame-cap.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -97,18 +98,25 @@ const BIG_BLOB_FIELDS = new Set([
  *  sha256 + byteLength. Below this, the standard truncation path applies. */
 const BIG_BLOB_REDACT_BYTES = 512;
 
+/** The most characters of a string arg a record keeps. */
+const ARG_MAX_CHARS = 256;
+
 /** Structural redaction — keep keys + types + sizes, drop raw values for
- *  known large / sensitive fields. Bounded depth. The output is small,
- *  diff-friendly, and never includes a registered secret value (the
- *  recorder applies the secrets mask on top of this before writing). */
-export function redactArgs(args: unknown, depth = 0): RedactedArgs {
+ *  known large / sensitive fields. Bounded depth. The output is small and
+ *  diff-friendly.
+ *
+ *  `mask` is the session's secrets mask. Each string is masked whole before
+ *  it is hashed or cut, so a registered value that crosses the cut is
+ *  replaced by its alias and no head of it is kept. */
+export function redactArgs(args: unknown, mask: Mask | null = null, depth = 0): RedactedArgs {
   if (depth > 6) return { __truncated: true };
   if (args == null) return {};
   if (typeof args !== "object" || Array.isArray(args)) {
     return { __scalar: typeof args, __value: args };
   }
   const out: RedactedArgs = {};
-  for (const [k, v] of Object.entries(args as Record<string, unknown>)) {
+  for (const [k, raw] of Object.entries(args as Record<string, unknown>)) {
+    const v = typeof raw === "string" && mask ? mask(raw) : raw;
     if (BIG_BLOB_FIELDS.has(k) && typeof v === "string") {
       const byteLen = Buffer.byteLength(v, "utf8");
       // Only redact when the payload is genuinely large — small strings
@@ -124,7 +132,9 @@ export function redactArgs(args: unknown, depth = 0): RedactedArgs {
       }
     }
     if (typeof v === "string") {
-      out[k] = v.length > 256 ? `${v.slice(0, 256)}…[+${v.length - 256}]` : v;
+      // Already masked above: the cut only drops characters.
+      const { payload, truncated } = capMasked(v, ARG_MAX_CHARS, null);
+      out[k] = truncated ? `${payload}…[+${v.length - ARG_MAX_CHARS}]` : payload;
       continue;
     }
     if (typeof v === "number" || typeof v === "boolean" || v === null) {
@@ -136,7 +146,7 @@ export function redactArgs(args: unknown, depth = 0): RedactedArgs {
       continue;
     }
     if (typeof v === "object") {
-      out[k] = redactArgs(v, depth + 1);
+      out[k] = redactArgs(v, mask, depth + 1);
       continue;
     }
     out[k] = { __type: typeof v };
@@ -226,11 +236,14 @@ export function buildResultMeta(
 const EVAL_HEAD_LEN = 80;
 
 /** Build the eval_js-specific deep-capture envelope from a tool call's
- *  args + result. Returns undefined when the tool isn't eval_js. */
+ *  args + result. Returns undefined when the tool isn't eval_js. `mask` is
+ *  the session's secrets mask; the expression head is masked before it is
+ *  cut to `EVAL_HEAD_LEN`. */
 export function buildEvalJsCapture(
   toolName: string,
   args: unknown,
   firstJsonObj: Record<string, unknown> | null,
+  mask: Mask | null = null,
 ): CallRecord["evalJs"] | undefined {
   if (toolName !== "eval_js" && toolName !== "poll_eval") return undefined;
   const expr =
@@ -238,7 +251,7 @@ export function buildEvalJsCapture(
       ? ((args as Record<string, unknown>).expr ?? (args as Record<string, unknown>).expression)
       : undefined;
   if (typeof expr !== "string") return undefined;
-  const exprHead = expr.slice(0, EVAL_HEAD_LEN);
+  const exprHead = capMasked(expr, EVAL_HEAD_LEN, mask).payload;
   const exprSha = createHash("sha256").update(expr, "utf8").digest("hex");
   const taxonomy = classifyEvalExpr(exprHead);
   let returnType = "unknown";

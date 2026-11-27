@@ -230,6 +230,49 @@ describe("buildEvalJsCapture", () => {
   });
 });
 
+describe("redactArgs and buildEvalJsCapture mask before they cut", () => {
+  const A = "alphaSecretValue0123456789abcd";
+  const B = "bravoSecretValue0123456789wxyz";
+  function registry(): SecretRegistry {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "A", value: A });
+    secrets.register({ name: "B", value: B });
+    return secrets;
+  }
+
+  it("masks a value that crosses the 256-character cut", () => {
+    const secrets = registry();
+    // B starts at 240 and crosses the cut at 256.
+    const v = "x".repeat(240) + B + "y".repeat(100);
+    const out = redactArgs({ selector: v }, (s) => secrets.applyMaskInText(s));
+    const kept = out.selector as string;
+    expect(kept).not.toContain(B.slice(0, 8));
+    expect(kept).toContain("<B>");
+  });
+
+  it("keeps no head of a second value that the first one's mask pulls inside the cut", () => {
+    const secrets = registry();
+    // A shrinks to `<A>`, so B, which starts past the cut in the raw text,
+    // sits across it in the masked text.
+    const v = A + "x".repeat(220) + B + "y".repeat(100);
+    const out = redactArgs({ nested: { selector: v } }, (s) => secrets.applyMaskInText(s));
+    const kept = (out.nested as Record<string, unknown>).selector as string;
+    expect(kept).not.toContain(A.slice(0, 8));
+    expect(kept).not.toContain(B.slice(0, 8));
+    expect(kept).toContain("<A>");
+    expect(kept).toContain("<B>");
+  });
+
+  it("masks the eval_js expression head before cutting it", () => {
+    const secrets = registry();
+    const expr = A + "x".repeat(40) + B + ".length";
+    const cap = buildEvalJsCapture("eval_js", { expr }, null, (s) => secrets.applyMaskInText(s));
+    expect(cap?.exprHead).not.toContain(A.slice(0, 8));
+    expect(cap?.exprHead).not.toContain(B.slice(0, 8));
+    expect(cap?.exprHead).toBe(`<A>${"x".repeat(40)}<B>.length`);
+  });
+});
+
 describe("retention sweep", () => {
   it("removes session dirs whose newest file is older than the window", () => {
     const root = join(workspace, "diagnostics");
