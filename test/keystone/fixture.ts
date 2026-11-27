@@ -1247,6 +1247,8 @@ export async function waitFor(
 
 export interface Fixture {
   url: string;
+  /** Requests served so far, keyed `METHOD /path` (query string dropped). */
+  hits: Record<string, number>;
   close: () => Promise<void>;
 }
 
@@ -1372,8 +1374,11 @@ function handleUpgrade(
  *   WS  /ws               → RFC 6455 echo (text frames only)
  */
 export async function startFixture(): Promise<Fixture> {
+  const hits: Record<string, number> = {};
   const server: Server = createServer((req, res) => {
     const u = new URL(req.url ?? "/", "http://localhost");
+    const hitKey = `${req.method ?? "GET"} ${u.pathname}`;
+    hits[hitKey] = (hits[hitKey] ?? 0) + 1;
     if (u.pathname === "/echo") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(echoPage(req.headers.cookie ?? ""));
@@ -1535,6 +1540,7 @@ export async function startFixture(): Promise<Fixture> {
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}`,
+    hits,
     close: () =>
       new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
   };
