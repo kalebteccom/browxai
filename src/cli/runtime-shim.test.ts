@@ -8,7 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { addVersion, tempRuntime, type TempRuntime } from "./__fixtures__/runtime-tree.js";
 import { SHIM_TEXT, writeShim } from "./runtime-shim.js";
@@ -68,8 +68,8 @@ describe("the launcher text", () => {
   });
 
   it("makes no network call and avoids readlink -f", () => {
-    expect(SHIM_TEXT).not.toMatch(/curl|wget|npm|readlink/);
-    expect(SHIM_TEXT.split("\n").length).toBeLessThanOrEqual(30);
+    expect(SHIM_TEXT).not.toMatch(/curl|wget|npm|readlink -f|readlink -e|realpath/);
+    expect(SHIM_TEXT.split("\n").length).toBeLessThanOrEqual(45);
   });
 });
 
@@ -134,6 +134,35 @@ describe.each(SHELLS)("the launcher under $name", ({ argv: shell }) => {
       expect(r.stderr).toBe("browxai: no node found. Set BROWX_RUNTIME_NODE.\n");
     },
   );
+
+  it.each([
+    ["an absolute symlink", (shim: string) => shim],
+    ["a relative symlink", (shim: string, dir: string) => relative(dir, shim)],
+  ])("runs the runtime's version when started through %s to the launcher", (_label, target) => {
+    const { paths, home } = layout("run time with spaces");
+    const bin = join(home, "user bin");
+    mkdirSync(bin);
+    const link = join(bin, "browxai");
+    symlinkSync(target(paths.shim, bin), link);
+    const r = launch(shell, link, ["a b", ""]);
+    expect(r.stderr).toBe("");
+    expect(r.status).toBe(0);
+    const out = JSON.parse(r.stdout) as { argv: string[]; dir: string; version: string };
+    expect(out.argv).toEqual(["a b", ""]);
+    expect(out.dir).toBe(realpathSync(paths.root));
+    expect(out.version).toBe("1.2.3");
+  });
+
+  it("follows a chain of symlinks to the launcher", () => {
+    const { paths, home } = layout();
+    const first = join(home, "first");
+    const second = join(home, "second");
+    symlinkSync(paths.shim, first);
+    symlinkSync(first, second);
+    const r = launch(shell, second, []);
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ dir: realpathSync(paths.root) });
+  });
 
   it("says so when there is no current version", () => {
     rt = tempRuntime();

@@ -132,3 +132,31 @@ export function resolveAutoUpdate(
   }
   return { on: true, source: raw?.trim() ? "BROWX_RUNTIME_AUTO_UPDATE" : "default" };
 }
+
+export const DEFAULT_COOLDOWN_HOURS = 24;
+const MAX_COOLDOWN_HOURS = 24 * 30;
+
+export interface CooldownSetting {
+  hours: number;
+  source: SettingSource;
+  /** Set when `cooldownHours` was not understood and the default applies. */
+  warning?: string;
+}
+
+/**
+ * The delay after publish the background job waits before it applies a version:
+ * `cooldownHours` in `runtime.json`, else 24. A value that isn't a number from 0
+ * to 720 keeps the 24-hour delay, with a warning.
+ */
+export function resolveCooldown(file: SettingsFile): CooldownSetting {
+  const raw = file.cooldownHours;
+  if (raw === undefined) return { hours: DEFAULT_COOLDOWN_HOURS, source: "default" };
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw <= MAX_COOLDOWN_HOURS) {
+    return { hours: raw, source: "runtime.json" };
+  }
+  return {
+    hours: DEFAULT_COOLDOWN_HOURS,
+    source: "default",
+    warning: `"cooldownHours" in runtime.json is ${JSON.stringify(raw)}, not a number of hours from 0 to ${MAX_COOLDOWN_HOURS}, so the delay is ${DEFAULT_COOLDOWN_HOURS} hours`,
+  };
+}

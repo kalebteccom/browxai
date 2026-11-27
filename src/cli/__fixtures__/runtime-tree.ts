@@ -13,6 +13,7 @@ import {
 import { createLayout } from "../runtime-store.js";
 import type { RunResult, Runner } from "../runtime-exec.js";
 import type { Registry } from "../runtime-npm.js";
+import type { AgentKind, AgentPort } from "../runtime-agent.js";
 
 export interface TempRuntime {
   /** A fresh temp directory that stands in for the home directory. */
@@ -125,5 +126,34 @@ export function fakeRegistry(
         },
       });
     },
+  };
+}
+
+/** A background job that records what it was asked to do and touches no launchd
+ *  or systemd. `installed()` reports a job once `install` ran and until `remove`. */
+export function fakeAgent(
+  opts: { kind?: AgentKind | undefined; installOk?: boolean } = {},
+): AgentPort & { calls: string[] } {
+  const calls: string[] = [];
+  let present = false;
+  const kind = "kind" in opts ? opts.kind : "systemd";
+  return {
+    kind,
+    calls,
+    install: (paths, node) => {
+      calls.push(`install ${paths.shim} ${node}`);
+      present = opts.installOk !== false;
+      return Promise.resolve(
+        present
+          ? { ok: true, detail: "fake job loaded" }
+          : { ok: false, detail: "systemctl --user daemon-reload failed (no user bus)" },
+      );
+    },
+    remove: () => {
+      calls.push("remove");
+      present = false;
+      return Promise.resolve({ ok: true, detail: "removed the fake job" });
+    },
+    installed: () => (present ? ["/fake/browxai-runtime-update.timer"] : []),
   };
 }

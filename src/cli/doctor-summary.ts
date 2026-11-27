@@ -10,6 +10,7 @@ const AREAS: ReadonlyArray<readonly [label: string, rows: readonly string[]]> = 
   ["node", ["node"]],
   ["install", ["build"]],
   ["macos-app", ["macos-app"]],
+  ["runtime", ["runtime"]],
   ["workspace", ["workspace"]],
   ["browser", ["chrome", "chromium", "chromium-sandbox"]],
   ["capabilities", ["capabilities", "byob-attach"]],

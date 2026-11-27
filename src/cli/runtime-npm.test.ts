@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { dirname, join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fakeNpm } from "./__fixtures__/runtime-tree.js";
 import type { RunResult } from "./runtime-exec.js";
 import {
@@ -37,6 +37,83 @@ describe("findNpmCli", () => {
 
   it("is undefined when there is none", () => {
     expect(findNpmCli(NODE, () => false)).toBeUndefined();
+  });
+});
+
+describe("findNpmCli on fake install layouts", () => {
+  // Real directories and symlinks under a temp root, shaped like each node
+  // installer lays them out. Each `node` is an empty file: findNpmCli reads paths only.
+  let root: string;
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), "bx-node-layout-")));
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  function file(path: string): string {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "");
+    return path;
+  }
+  const npmCliUnder = (prefix: string) =>
+    join(prefix, "lib", "node_modules", "npm", "bin", "npm-cli.js");
+
+  it("Homebrew formula: bin/node links into the Cellar, npm sits in the prefix's lib", () => {
+    const brew = join(root, "homebrew");
+    const cellar = join(brew, "Cellar", "node", "23.3.0");
+    file(join(cellar, "bin", "node"));
+    mkdirSync(join(brew, "bin"), { recursive: true });
+    symlinkSync("../Cellar/node/23.3.0/bin/node", join(brew, "bin", "node"));
+    const cli = file(npmCliUnder(brew));
+    expect(findNpmCli(join(brew, "bin", "node"))).toBe(cli);
+  });
+
+  it("Homebrew formula: npm only in the keg's libexec, found through the node link's real path", () => {
+    const brew = join(root, "homebrew");
+    const cellar = join(brew, "Cellar", "node", "23.3.0");
+    file(join(cellar, "bin", "node"));
+    mkdirSync(join(brew, "bin"), { recursive: true });
+    symlinkSync("../Cellar/node/23.3.0/bin/node", join(brew, "bin", "node"));
+    const cli = file(join(cellar, "libexec", "lib", "node_modules", "npm", "bin", "npm-cli.js"));
+    expect(findNpmCli(join(brew, "bin", "node"))).toBe(cli);
+  });
+
+  it("Homebrew keg-only node@22: opt/node@22 links to the keg", () => {
+    const brew = join(root, "homebrew");
+    const keg = join(brew, "Cellar", "node@22", "22.11.0");
+    file(join(keg, "bin", "node"));
+    const cli = file(npmCliUnder(keg));
+    mkdirSync(join(brew, "opt"), { recursive: true });
+    symlinkSync("../Cellar/node@22/22.11.0", join(brew, "opt", "node@22"));
+    expect(realpathSync(findNpmCli(join(brew, "opt", "node@22", "bin", "node"))!)).toBe(cli);
+  });
+
+  it("mise: the install directory of the version, also through a version alias link", () => {
+    const installs = join(root, "mise", "installs", "node");
+    const prefix = join(installs, "22.11.0");
+    file(join(prefix, "bin", "node"));
+    const cli = file(npmCliUnder(prefix));
+    expect(findNpmCli(join(prefix, "bin", "node"))).toBe(cli);
+    symlinkSync("22.11.0", join(installs, "22"));
+    expect(realpathSync(findNpmCli(join(installs, "22", "bin", "node"))!)).toBe(cli);
+  });
+
+  it("mise shim: a link to the mise binary has no npm beside it, so install asks for a real node", () => {
+    const miseBin = file(join(root, "bin", "mise"));
+    const shims = join(root, "mise", "shims");
+    mkdirSync(shims, { recursive: true });
+    symlinkSync(miseBin, join(shims, "node"));
+    expect(findNpmCli(join(shims, "node"))).toBeUndefined();
+  });
+
+  it("nvm: the version directory", () => {
+    const prefix = join(root, "nvm", "versions", "node", "v22.11.0");
+    file(join(prefix, "bin", "node"));
+    const cli = file(npmCliUnder(prefix));
+    expect(findNpmCli(join(prefix, "bin", "node"))).toBe(cli);
+  });
+
+  it("a recorded node that a version manager pruned", () => {
+    expect(findNpmCli(join(root, "gone", "bin", "node"))).toBeUndefined();
   });
 });
 

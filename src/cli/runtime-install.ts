@@ -1,6 +1,8 @@
-// `browxai runtime install` and `browxai runtime update`, the manual path. No
-// background job: S1 of RFC 0015 updates only when the user runs one of these.
+// `browxai runtime install` and `browxai runtime update`, the manual path.
+// `install` also installs the background job that runs `update --auto` (see
+// runtime-agent.ts and runtime-auto.ts), unless `--no-agent`.
 
+import type { AgentPort } from "./runtime-agent.js";
 import { applyVersion, selectVersion, type ApplyDeps } from "./runtime-apply.js";
 import { clientInstructions, detectClients, type ClientSystem } from "./init-clients.js";
 import {
@@ -10,6 +12,9 @@ import {
   type ClientTarget,
 } from "./runtime-clients.js";
 import { collectGarbage, renderGc, type ProcessLister } from "./runtime-gc.js";
+import { appendJournal } from "./runtime-journal.js";
+import { acquireLock } from "./runtime-lock.js";
+import { nextCheckAfter, type Random } from "./runtime-schedule.js";
 import type { RuntimePaths } from "./runtime-layout.js";
 import { findNpmCli, npmRegistry, type NpmContext, type Registry } from "./runtime-npm.js";
 import type { Runner } from "./runtime-exec.js";
@@ -19,7 +24,9 @@ import {
   readCurrent,
   readNodePath,
   readState,
+  updateState,
   writeFileAtomic,
+  type RuntimeState,
 } from "./runtime-store.js";
 import { writeSettingsFile, type Channel } from "./runtime-settings.js";
 
@@ -41,6 +48,10 @@ export interface FlowDeps {
   findNpm?: (node: string) => string | undefined;
   system?: ClientSystem;
   clientWrite?: Parameters<typeof writeClientConfigs>[2]["apply"];
+  /** The background job. Undefined where none can be installed. */
+  agent?: AgentPort;
+  now?: () => number;
+  random?: Random;
 }
 
 /** The node for npm and the checks: BROWX_RUNTIME_NODE, then the recorded one,
@@ -72,6 +83,54 @@ export async function updateFlow(
   deps: FlowDeps,
   io: FlowIo,
 ): Promise<number> {
+  const lock = acquireLock(paths, deps.now ? { now: deps.now } : {});
+  if (!lock.ok) {
+    io.err(
+      `browxai runtime: another update run (pid ${lock.pid}, started ${lock.startedAt}) holds ${paths.lock}. current is unchanged.\n`,
+    );
+    return 1;
+  }
+  try {
+    // The launcher is this version's text, so a launcher fix reaches a runtime
+    // with the first update that runs the fixed code.
+    writeShim(paths);
+    return await manualUpdate(paths, want, deps, io);
+  } finally {
+    lock.release();
+  }
+}
+
+/** A manual check counts as a check: the background job's next contact moves 6 hours on. */
+function recordManualCheck(paths: RuntimePaths, deps: FlowDeps, result: string): void {
+  const now = (deps.now ?? Date.now)();
+  updateState(paths, (s) => {
+    const next: RuntimeState = {
+      ...s,
+      lastCheck: new Date(now).toISOString(),
+      nextCheck: nextCheckAfter(now, deps.random ?? Math.random),
+      lastResult: result,
+    };
+    delete next.backoffUntil;
+    delete next.backoffMs;
+    return next;
+  });
+}
+
+function journalManual(
+  paths: RuntimePaths,
+  deps: FlowDeps,
+  entry: Omit<Parameters<typeof appendJournal>[1], "at" | "mode">,
+): void {
+  const at = new Date((deps.now ?? Date.now)()).toISOString();
+  appendJournal(paths, { at, mode: "manual", ...entry });
+}
+
+async function manualUpdate(
+  paths: RuntimePaths,
+  want: UpdateWant,
+  deps: FlowDeps,
+  io: FlowIo,
+): Promise<number> {
   const npm = npmContext(paths, deps);
   if ("error" in npm) {
     io.err(`browxai runtime: ${npm.error}\n`);
@@ -80,13 +139,20 @@ export async function updateFlow(
   const registry = (deps.registry ?? npmRegistry)(npm);
   const selected = await selectVersion(paths, registry, want);
   if (selected.kind === "error") {
+    journalManual(paths, deps, {
+      event: selected.code === 3 ? "offline" : "error",
+      reason: selected.message,
+    });
     io.err(`browxai runtime: ${selected.message}. current is unchanged.\n`);
     return selected.code;
   }
   if (selected.kind === "none") {
+    recordManualCheck(paths, deps, selected.message);
+    journalManual(paths, deps, { event: "check", result: selected.message });
     io.out(`${selected.message}\n`);
     return 0;
   }
+  recordManualCheck(paths, deps, `${selected.info.version} found`);
   for (const w of selected.warnings) io.err(`warning: ${w}\n`);
   const v = selected.info.version;
   if (want.check) {
@@ -104,11 +170,31 @@ export async function updateFlow(
     out: io.out,
   });
   if (!applied.ok) {
+    journalManual(paths, deps, {
+      event: "apply",
+      version: v,
+      result: "failed",
+      reason: applied.reason,
+    });
+    updateState(paths, (s) => ({ ...s, lastResult: `${v} failed: ${applied.reason}` }));
     io.err(
       `✗ ${v} was not applied: ${applied.reason}. current is ${readCurrent(paths) ?? "not set"}.\n`,
     );
     return 1;
   }
+  journalManual(paths, deps, {
+    event: "apply",
+    version: v,
+    ...(applied.previous ? { from: applied.previous } : {}),
+    ...(selected.info.integrity ? { integrity: selected.info.integrity } : {}),
+    result: "applied",
+  });
+  updateState(paths, (s) => {
+    const next: RuntimeState = { ...s, lastResult: `applied ${v}` };
+    if (next.pending && next.pending.version === v) delete next.pending;
+    delete next.currentDeprecated;
+    return next;
+  });
   io.out(
     `✓ current is ${v}${applied.previous ? `, was ${applied.previous}` : ""}. ` +
       "Each MCP client runs it from its next start. Servers already running keep their version.\n",
@@ -124,6 +210,8 @@ export interface InstallWant {
   channelFlag?: Channel;
   writeClientConfig: boolean;
   profileDirs: string[];
+  /** Install the background job. */
+  agent: boolean;
 }
 
 export async function installFlow(
@@ -148,6 +236,8 @@ export async function installFlow(
   );
   const code = await updateFlow(paths, { channel: want.channel }, deps, io);
   if (readCurrent(paths) === undefined) return code === 0 ? 1 : code;
+  if (want.agent) await installAgent(paths, deps, io);
+  else await removeAgent(deps, io);
   io.out(clientEntries(paths, deps.system));
   if (!want.writeClientConfig) return code;
   const targets: ClientTarget[] = [
@@ -160,6 +250,34 @@ export async function installFlow(
     ...(deps.clientWrite ? { apply: deps.clientWrite } : {}),
   });
   return ok ? code : 1;
+}
+
+/** Install the background job. A job that can't be loaded leaves the install
+ *  in place and says how to update by hand. */
+async function installAgent(paths: RuntimePaths, deps: FlowDeps, io: FlowIo): Promise<void> {
+  const node = readNodePath(paths) ?? deps.execPath;
+  if (!deps.agent?.kind) {
+    io.out("No background job on this platform. Run browxai runtime update to update.\n");
+    return;
+  }
+  const r = await deps.agent.install(paths, node);
+  if (r.ok) {
+    io.out(`✓ background job: ${r.detail}. It runs browxai runtime update --auto every hour.\n`);
+    io.out(
+      `  Turn it off: set "autoUpdate": "off" in ${paths.settings}, or run install again with --no-agent.\n`,
+    );
+  } else {
+    io.err(
+      `warning: the background job was not installed: ${r.detail}. Run browxai runtime update to update.\n`,
+    );
+  }
+}
+
+/** `--no-agent` on a runtime that has a job removes it. */
+async function removeAgent(deps: FlowDeps, io: FlowIo): Promise<void> {
+  if (!deps.agent || deps.agent.installed().length === 0) return;
+  const r = await deps.agent.remove();
+  io.out(`background job: ${r.detail}\n`);
 }
 
 function clientEntries(paths: RuntimePaths, system: ClientSystem | undefined): string {

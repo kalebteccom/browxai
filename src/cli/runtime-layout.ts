@@ -46,6 +46,10 @@ export interface RuntimePaths {
   versions: string;
   staging: string;
   state: string;
+  journal: string;
+  lock: string;
+  /** Where the background job's standard output and error go. */
+  agentLog: string;
 }
 
 export function runtimePaths(root: string): RuntimePaths {
@@ -60,6 +64,9 @@ export function runtimePaths(root: string): RuntimePaths {
     versions: join(root, "versions"),
     staging: join(root, "staging"),
     state: join(root, "state.json"),
+    journal: join(root, "journal.jsonl"),
+    lock: join(root, "lock"),
+    agentLog: join(root, "agent.log"),
   };
 }
 

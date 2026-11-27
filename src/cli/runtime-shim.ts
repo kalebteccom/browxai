@@ -4,6 +4,11 @@
 // is not), then execs node on that version's `cli.js`. The PID, standard input and
 // output, signals and exit code are the server's. It reads one file and makes no
 // network call. See docs/rfcs/0015-runtime-updates.md, section 2.
+//
+// `$0` can be a symlink to the launcher, such as a link in a bin directory on
+// PATH. The launcher follows it with plain `readlink` (no `-f`, which older macOS
+// lacks) before it finds the runtime, so a link anywhere still runs the runtime
+// the launcher belongs to.
 
 import { existsSync, readFileSync } from "node:fs";
 import { writeFileAtomic } from "./runtime-store.js";
@@ -13,7 +18,19 @@ import type { RuntimePaths } from "./runtime-layout.js";
  *  it, and `--` guards `cd`, `dirname` and `cat` against a leading `-`. */
 export const SHIM_TEXT = `#!/bin/sh
 # browxai runtime launcher: runs the version \`current\` points at, resolved once.
-rt=$(cd -P -- "$(dirname -- "$0")/.." && pwd -P) || exit 127
+# $0 may be a symlink to this file (a link in a bin directory on PATH): follow it,
+# at most 40 links, so the runtime is the directory this file sits in.
+self=$0
+n=0
+while [ -L "$self" ] && [ "$n" -lt 40 ]; do
+  link=$(readlink -- "$self") || exit 127
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname -- "$self")/$link ;;
+  esac
+  n=$((n + 1))
+done
+rt=$(cd -P -- "$(dirname -- "$self")/.." && pwd -P) || exit 127
 # Up to three tries: on APFS a lookup that races the switch of \`current\` can fail.
 target=
 for _ in 1 2 3; do

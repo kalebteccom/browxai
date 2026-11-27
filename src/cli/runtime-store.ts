@@ -134,7 +134,19 @@ export function listVersions(paths: RuntimePaths): string[] {
   return names.filter(isVersion).sort((a, b) => compareVersions(b, a));
 }
 
-/** What the runtime remembers between commands. */
+/** A version the updater found and has not applied yet, and why. */
+export interface PendingUpdate {
+  version: string;
+  /** `waiting`: the delay after publish runs until `until`. `held`: not applied
+   *  again until a newer version appears. `failed`: the last apply failed and is
+   *  retried. `limit`: the daily apply limit was reached. */
+  state: "waiting" | "held" | "failed" | "limit";
+  reason?: string;
+  /** ISO time the delay after publish ends, for `waiting`. */
+  until?: string;
+}
+
+/** What the runtime remembers between commands. Times are ISO strings. */
 export interface RuntimeState {
   /** The version `current` named before the last switch. */
   previous?: string;
@@ -142,22 +154,106 @@ export interface RuntimeState {
   failed?: Record<string, number>;
   /** Versions that are not applied again, with the reason. */
   held?: Record<string, string>;
+  /** The last registry check that got an answer. */
+  lastCheck?: string;
+  /** The background job contacts the registry again from this time. */
+  nextCheck?: string;
+  /** One line on how the last check or apply ended. */
+  lastResult?: string;
+  pending?: PendingUpdate;
+  /** After a failed registry contact, no contact until this time. */
+  backoffUntil?: string;
+  /** The last backoff in ms; the next one doubles it. Cleared by a check that answers. */
+  backoffMs?: number;
+  /** Registry contacts of the background job in the last 24 hours. */
+  contacts?: string[];
+  /** Versions applied by the background job in the last 24 hours. */
+  applies?: string[];
+  /** The boot time the background job last saw, in ms since the epoch. */
+  bootSeen?: number;
+  /** The registry's deprecation message for `current`, from the last check. */
+  currentDeprecated?: string;
+}
+
+const STRING_FIELDS = [
+  "lastCheck",
+  "nextCheck",
+  "lastResult",
+  "backoffUntil",
+  "currentDeprecated",
+] as const;
+const PENDING_STATES: ReadonlyArray<PendingUpdate["state"]> = [
+  "waiting",
+  "held",
+  "failed",
+  "limit",
+];
+
+const nonEmpty = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
+const finite = (v: unknown): number | undefined =>
+  typeof v === "number" && Number.isFinite(v) ? v : undefined;
+const strings = (v: unknown): string[] | undefined =>
+  Array.isArray(v) && v.every((x) => typeof x === "string") ? v : undefined;
+
+function readPending(v: unknown): PendingUpdate | undefined {
+  if (!isRecord(v)) return undefined;
+  const p = v as Record<string, unknown>;
+  if (typeof p.version !== "string" || !isVersion(p.version)) return undefined;
+  const state = PENDING_STATES.find((s) => s === p.state);
+  if (!state) return undefined;
+  const reason = nonEmpty(p.reason);
+  const until = nonEmpty(p.until);
+  return {
+    version: p.version,
+    state,
+    ...(reason ? { reason } : {}),
+    ...(until ? { until } : {}),
+  };
+}
+
+/** The fields of a parsed `state.json` that have the expected type. */
+function parseState(s: Record<string, unknown>): RuntimeState {
+  const out: RuntimeState = {
+    ...(typeof s.previous === "string" && isVersion(s.previous) ? { previous: s.previous } : {}),
+    ...(isRecord(s.failed) ? { failed: s.failed as Record<string, number> } : {}),
+    ...(isRecord(s.held) ? { held: s.held as Record<string, string> } : {}),
+  };
+  for (const k of STRING_FIELDS) {
+    const v = nonEmpty(s[k]);
+    if (v) out[k] = v;
+  }
+  const pending = readPending(s.pending);
+  if (pending) out.pending = pending;
+  const backoffMs = finite(s.backoffMs);
+  if (backoffMs !== undefined) out.backoffMs = backoffMs;
+  const bootSeen = finite(s.bootSeen);
+  if (bootSeen !== undefined) out.bootSeen = bootSeen;
+  const contacts = strings(s.contacts);
+  if (contacts) out.contacts = contacts;
+  const applies = strings(s.applies);
+  if (applies) out.applies = applies;
+  return out;
 }
 
 /** `state.json`, or an empty state when it is missing or unreadable. */
 export function readState(paths: RuntimePaths): RuntimeState {
   try {
     const parsed: unknown = JSON.parse(readFileSync(paths.state, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const s = parsed as Record<string, unknown>;
-    return {
-      ...(typeof s.previous === "string" && isVersion(s.previous) ? { previous: s.previous } : {}),
-      ...(isRecord(s.failed) ? { failed: s.failed as Record<string, number> } : {}),
-      ...(isRecord(s.held) ? { held: s.held as Record<string, string> } : {}),
-    };
+    return isRecord(parsed) ? parseState(parsed as Record<string, unknown>) : {};
   } catch {
     return {};
   }
+}
+
+/** Read `state.json`, apply `change` and write the result. Fields `change`
+ *  leaves alone keep what an earlier step wrote. */
+export function updateState(
+  paths: RuntimePaths,
+  change: (state: RuntimeState) => RuntimeState,
+): RuntimeState {
+  const next = change(readState(paths));
+  writeState(paths, next);
+  return next;
 }
 
 function isRecord(value: unknown): boolean {
