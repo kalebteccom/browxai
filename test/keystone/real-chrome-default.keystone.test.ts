@@ -27,6 +27,15 @@ interface Opened {
   error?: string;
 }
 
+interface NavigateResult {
+  ok: boolean;
+  error?: string | null;
+  failure?: { source: string; hint?: string };
+  warnings?: ReadonlyArray<string>;
+  navigation?: Record<string, unknown>;
+  network?: { summary?: unknown };
+}
+
 async function callJson<T>(server: Server, name: string, args: Record<string, unknown>) {
   const fn = server.handlers[name];
   if (!fn) throw new Error(`keystone: no handler "${name}"`);
@@ -162,11 +171,21 @@ gatedDescribe(engineGate("chromium"))("BROWX_CHANNEL=chromium — the bundled bu
         mode: "persistent",
       });
       expect(opened.ok, opened.error).toBe(true);
-      const nav = await callJson<{ ok: boolean }>(server, "navigate", {
+      const nav = await callJson<NavigateResult>(server, "navigate", {
         session: "ks-real-a",
         url: `${fixture.url}/`,
       });
-      expect(nav.ok).toBe(true);
+      expect(
+        nav.ok,
+        JSON.stringify({
+          error: nav.error,
+          failure: nav.failure,
+          warnings: nav.warnings,
+          navigation: nav.navigation,
+          network: nav.network?.summary,
+          fixtureHitsGetRoot: fixture.hits["GET /"] ?? 0,
+        }),
+      ).toBe(true);
     },
     KEYSTONE_TIMEOUT,
   );
