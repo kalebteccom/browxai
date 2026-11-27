@@ -125,15 +125,14 @@ export async function startPluginRuntime(opts: RuntimeStartOptions): Promise<Run
             `plugin "${name}": tool "${toolName}" is already registered. Tool names are globally unique.`,
           );
         }
-        // The plugin's capability is the gate for ALL its tools. The
-        // simple v1 contract — fine-grained per-tool capabilities can
-        // be layered on top later without breaking this signature.
-        // If the plugin declared more than one capability, the gate is
-        // the FIRST one (semantic: "this tool needs at least these
-        // caps"; declaring multiple is an additive claim). We pass it
-        // through to the host's gate so an MCP call against the tool
-        // refuses cleanly when the capability isn't on.
-        const cap = m.browxai.capabilities[0];
+        // The plugin's capabilities gate ALL its tools. The simple v1
+        // contract — fine-grained per-tool capabilities can be layered on
+        // top later without breaking this signature. Every declared
+        // capability is passed to the host's gate, so a call refuses
+        // cleanly when any one of them is off. The record keeps the first
+        // as the tool's listed capability.
+        const caps = m.browxai.capabilities;
+        const cap = caps[0];
         const record: PluginToolRecord = {
           name: toolName,
           ownerPlugin: name,
@@ -143,7 +142,7 @@ export async function startPluginRuntime(opts: RuntimeStartOptions): Promise<Run
         };
         liveTools.set(toolName, record);
         myToolNames.push(toolName);
-        opts.host.registerTool(toolName, def, handler, cap, name);
+        opts.host.registerTool(toolName, def, handler, caps, name);
       },
       callTool,
       log: {
