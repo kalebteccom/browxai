@@ -711,7 +711,7 @@ the same gate refusal and hint.
 
   The core agentic surface. Confirmation hook gates the irreversible sub-cases (see policy).
 
-  `open_session` itself needs no capability, so a read-only server can open sessions. Three of its arguments need `action`: `storageState` and `authState` write cookies and storage into the new session, as `inject_storage_state` and `auth_load` do, and `hars` answers the new session's requests from recorded responses, as `route` does. Without `action` each one returns the standard refusal before anything launches.
+  `open_session` itself needs no capability, so a read-only server can open sessions. Three of its arguments need `action`: `storageState` and `authState` write cookies and storage into the new session, as `inject_storage_state` and `auth_load` do, and `hars` answers the new session's requests from recorded responses, as `route` does. Without `action` each one returns the standard refusal before anything launches. A replayed HAR follows the `route` rule below: without `eval` it answers data and static requests only, and a page, iframe, script or worker request goes to the network (a guard route registered after the HAR routes sends it there). The `open_session` result carries `fulfils: "data"` or `"all"`.
 
   `route` and `route_queue` answer a matching request with a body the caller wrote, and `sw_intercept_fetch` does the same for the requests it pauses. Under `action` alone they answer data and static requests only: the resource types `xhr`, `fetch`, `eventsource`, `image`, `media`, `font`, `stylesheet`, `texttrack` and `manifest`. A matching document, script or worker request, or one of any other type, goes to the real network, so the page runs what its own server sent. The check reads the resource type the browser gives the request. The response's content type does not decide it, because a browser runs a classic script whatever its content type when the response has no `nosniff` header. Answering those requests is part of `eval` (below). Each result carries `fulfils: "data"` or `"all"`, and `unroute`, `sw_unintercept_fetch` and a replacing install report `skippedExecutable`, the number of matches left to the network. Pinned by `test/keystone/route-fulfil.keystone.test.ts`.
 
@@ -741,7 +741,7 @@ the same gate refusal and hint.
 
 - `eval`, default **off**. Tools: `eval_js`, `poll_eval`.
 
-  Arbitrary page-side JS execution. `poll_eval` re-runs an expression until it is truthy and is gated by `eval` alone. Off by default; loud warning when enabled.
+  Arbitrary page-side JS execution. `poll_eval` re-runs an expression until it is truthy and is gated by `eval` alone. It also lets `route`, `route_queue`, `sw_intercept_fetch` and the HARs `open_session({hars})` replays answer document, script and worker requests (see `action` above). Off by default; loud warning when enabled.
 
   `eval` also gates one branch of `route`, `route_queue` and `sw_intercept_fetch`: answering a document, script or worker request with a canned body. A page runs such a response, so a body the caller wrote is caller-written script in the page, the same thing `eval_js` gives. With `eval` on, the three tools answer every matching request and report `fulfils: "all"`. Without it they answer data and static requests only (see `action`), and a canned response whose content type is HTML, XHTML, SVG or a JavaScript type is refused at install with the standard gate refusal (`requiredCapability: "eval"`) and a `reason`, before any route is installed.
 

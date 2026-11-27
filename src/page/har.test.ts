@@ -18,6 +18,7 @@ import {
   resolveHarReplayPaths,
   buildRecordHarOption,
   applyHarReplay,
+  harReplayGuard,
   readHarIfSmall,
   harWritesBodies,
   HAR_INLINE_CAP_BYTES,
@@ -40,6 +41,9 @@ function fakeContext() {
     }),
     unrouteAll: vi.fn(async (...args: unknown[]) => {
       calls.push({ method: "unrouteAll", args });
+    }),
+    route: vi.fn(async (...args: unknown[]) => {
+      calls.push({ method: "route", args });
     }),
   } as unknown as import("playwright-core").BrowserContext;
   return { ctx, calls };
@@ -294,12 +298,72 @@ describe("applyHarReplay", () => {
     writeFileSync(join(ws, "captures/a.har"), "{}");
     writeFileSync(join(ws, "captures/b.har"), "{}");
     await applyHarReplay(ctx, [join(ws, "captures/a.har"), join(ws, "captures/b.har")]);
-    expect(calls.filter((c) => c.method === "routeFromHAR")).toHaveLength(2);
-    for (const c of calls) {
+    const har = calls.filter((c) => c.method === "routeFromHAR");
+    expect(har).toHaveLength(2);
+    for (const c of har) {
       const [, options] = c.args as [string, Record<string, unknown>];
       expect(options.notFound).toBe("fallback");
     }
   });
+
+  it("registers the data guard after the HAR routes by default", async () => {
+    const { ctx, calls } = fakeContext();
+    await applyHarReplay(ctx, [join(ws, "a.har")]);
+    expect(calls.map((c) => c.method)).toEqual(["routeFromHAR", "route"]);
+    expect(calls[1]!.args).toEqual(["**/*", harReplayGuard]);
+  });
+
+  it("registers no guard for scope all", async () => {
+    const { ctx, calls } = fakeContext();
+    await applyHarReplay(ctx, [join(ws, "a.har")], "all");
+    expect(calls.map((c) => c.method)).toEqual(["routeFromHAR"]);
+  });
+
+  it("registers nothing for no files", async () => {
+    const { ctx, calls } = fakeContext();
+    await applyHarReplay(ctx, []);
+    expect(calls).toEqual([]);
+  });
+});
+
+// The guard runs before the HAR routes. A data or static request falls back
+// into them; a page, iframe, script or worker request goes to the network.
+describe("harReplayGuard", () => {
+  function fakeRoute(resourceType: string) {
+    const route = {
+      request: () => ({ resourceType: () => resourceType }),
+      fallback: vi.fn(async () => undefined),
+      continue: vi.fn(async () => undefined),
+    };
+    return route;
+  }
+
+  it.each([
+    "xhr",
+    "fetch",
+    "eventsource",
+    "image",
+    "media",
+    "font",
+    "stylesheet",
+    "texttrack",
+    "manifest",
+  ])("falls back into the HAR for %s", async (type) => {
+    const route = fakeRoute(type);
+    await harReplayGuard(route as never);
+    expect(route.fallback).toHaveBeenCalledTimes(1);
+    expect(route.continue).not.toHaveBeenCalled();
+  });
+
+  it.each(["document", "script", "other", "websocket", "ping", ""])(
+    "sends %s to the network",
+    async (type) => {
+      const route = fakeRoute(type);
+      await harReplayGuard(route as never);
+      expect(route.continue).toHaveBeenCalledTimes(1);
+      expect(route.fallback).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("buildRecordHarOption (open_session({har}))", () => {
