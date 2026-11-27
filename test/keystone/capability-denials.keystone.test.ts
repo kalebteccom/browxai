@@ -725,6 +725,7 @@ describe("the same surfaces with their capabilities on", () => {
     async () => {
       const denied = await call<{ ok: boolean; error: string }>("asset_export", {
         session,
+        filter: {},
         intoDir: "extensions/ks-written",
       });
       expect(denied.ok).toBe(false);
