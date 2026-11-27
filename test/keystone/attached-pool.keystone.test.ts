@@ -185,8 +185,9 @@ describePool("byob-attach capability gate — real Chrome, capability unset", ()
 
 describePool("attached-target pool — two sessions, one Chrome", () => {
   it(
-    "leases two distinct targets and keeps each session's writes on its own page",
+    "opens a fresh tab per session, keeps writes apart and leaves the operator's tab alone",
     async () => {
+      const before = await openPageUrls();
       const a = await attachByobDesktop({ attachCdp: endpoint, sessionId: "pool-a" });
       const b = await attachByobDesktop({ attachCdp: endpoint, sessionId: "pool-b" });
 
@@ -194,6 +195,8 @@ describePool("attached-target pool — two sessions, one Chrome", () => {
       expect(b.targetId?.()).toBeTruthy();
       expect(a.targetId?.()).not.toBe(b.targetId?.());
       expect(a.page()).not.toBe(b.page());
+      // Neither session claimed the tab that was already open: each created one.
+      expect((await openPageUrls()).length).toBe(before.length + 2);
 
       await a.page().goto(`${fixture.url}/`);
       await b.page().goto(`${fixture.url}/`);
@@ -202,15 +205,33 @@ describePool("attached-target pool — two sessions, one Chrome", () => {
       expect(await a.page().inputValue(TASK_INPUT)).toBe("FROM-A");
       expect(await b.page().inputValue(TASK_INPUT)).toBe("");
 
-      // b found no free target, so it created one and owns it; a claimed the
-      // tab the operator already had open and must leave it behind.
-      const claimedUrl = a.page().url();
+      // Both sessions own the tabs they created and close them; the operator's
+      // tab is exactly where it was.
       await b.close();
       await a.close();
+      expect(await openPageUrls()).toEqual(before);
+    },
+    KEYSTONE_TIMEOUT,
+  );
 
-      const remaining = await openPageUrls();
-      expect(remaining).toContain(claimedUrl);
-      expect(remaining.length).toBe(1);
+  it(
+    "claims the pre-existing tab only under BROWX_ATTACH_CLAIM_EXISTING=1, and leaves it open",
+    async () => {
+      const before = await openPageUrls();
+      process.env.BROWX_ATTACH_CLAIM_EXISTING = "1";
+      try {
+        const c = await attachByobDesktop({ attachCdp: endpoint, sessionId: "pool-claim" });
+        // No tab was created: the session took the one that was open.
+        expect((await openPageUrls()).length).toBe(before.length);
+        await c.page().goto(`${fixture.url}/`);
+        const claimedUrl = c.page().url();
+        await c.close();
+        const remaining = await openPageUrls();
+        expect(remaining.length).toBe(before.length);
+        expect(remaining).toContain(claimedUrl);
+      } finally {
+        delete process.env.BROWX_ATTACH_CLAIM_EXISTING;
+      }
     },
     KEYSTONE_TIMEOUT,
   );

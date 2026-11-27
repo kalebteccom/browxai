@@ -131,6 +131,7 @@ not config.
 
 - `BROWX_WORKSPACE`, default `~/.browxai/`. Workspace root. All transient state lives here. Never `cwd`.
 - `BROWX_ATTACH_CDP`, unset. Attach to an externally launched Chrome over CDP (BYOB). Loopback hostnames only. Needs `byob-attach`.
+- `BROWX_ATTACH_CLAIM_EXISTING`, unset. By default each attached session opens its own tab. `1` or `true` lets a session claim a tab that was already open in the attached Chrome. Use it only when one browxai server is attached to that Chrome. Environment only, so `set_config` cannot change it.
 - `BROWX_HEADLESS`, default `0`. Managed mode only. `1` or `true` launches headless.
 - `BROWX_TEST_ATTRIBUTES`, default `data-testid,data-test,data-cy,data-qa`. Selector-anchor attributes, order-sensitive.
 - `BROWX_CAPABILITIES`, default `read,navigation,action,human`. The full capability set at server start. It replaces the default set, so list the defaults too.

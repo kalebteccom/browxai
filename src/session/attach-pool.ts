@@ -23,6 +23,19 @@ export function attachPoolMax(): number {
   return positiveIntEnv("BROWX_ATTACH_POOL_MAX", DEFAULT_ATTACH_POOL_MAX);
 }
 
+/** Operator opt-in to claim a tab that was already open in the attached
+ *  browser. Read from the process env only, never from the config store, so no
+ *  tool call (`set_config` included) can turn it on.
+ *
+ *  Off by default because the lease table below lives in one process. Two
+ *  browxai servers attached to one Chrome each see the other's leased tab as
+ *  free, so claiming pre-existing tabs lets both bind the same one. A tab this
+ *  session creates is its own whatever other servers do. */
+export function attachClaimExisting(): boolean {
+  const v = process.env.BROWX_ATTACH_CLAIM_EXISTING?.trim().toLowerCase();
+  return v === "1" || v === "true";
+}
+
 export interface AttachLease {
   readonly sessionId: string;
   readonly targetId: string;
@@ -152,7 +165,9 @@ export class AttachLeaseTable {
 
 /** Process-wide, not per-server: the pool protects the operator's browser from
  *  every session in this process, and two servers in one process attached to the
- *  same Chrome must not hand each other's tabs out twice. */
+ *  same Chrome must not hand each other's tabs out twice. A server in another
+ *  process has its own table and cannot see these leases, which is why claiming
+ *  a pre-existing tab is opt-in (`attachClaimExisting`). */
 export const attachLeases = new AttachLeaseTable();
 
 /** Renew the lease of a session that holds one, or refuse the call because the
@@ -236,8 +251,13 @@ export function acquireTarget(
     const ceiling = attachPoolMax();
     if (held.length >= ceiling) throw attachPoolExhausted(spec.endpoint, ceiling, held);
 
+    // A source that cannot create targets (an attached Electron app) has only
+    // its pre-existing windows to offer, so it claims them whatever the opt-in.
+    const claimExisting = attachClaimExisting() || source.create === undefined;
     const taken = new Set(held.map((l) => l.targetId));
-    const free = (await source.list()).find((t) => !taken.has(t.targetId) && !t.page.isClosed());
+    const free = claimExisting
+      ? (await source.list()).find((t) => !taken.has(t.targetId) && !t.page.isClosed())
+      : undefined;
     const target = free ?? (await createTarget(source, spec.endpoint, held));
     if (target.page.isClosed()) throw attachTargetGone(spec.sessionId, target.targetId);
     const created = free === undefined;
