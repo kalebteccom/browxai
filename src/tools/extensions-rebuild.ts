@@ -224,7 +224,7 @@ export async function rebuildPersistentForExtensions(
   // the rebuilt context. The state's wired-contexts WeakSet treats the new
   // context as fresh — binding + init script reinstall, current catalog is
   // re-served verbatim on the next page-side requestDevice.
-  await attachDeviceEmulation(requirePage(sess).context(), e.webDeviceEmulation).catch(
+  await attachDeviceEmulation(requirePage(sess).context(), e.webDeviceEmulation, e.secrets).catch(
     () => undefined,
   );
   requirePage(sess)

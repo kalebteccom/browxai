@@ -9,7 +9,9 @@
 // file imports directly — never via the `device-emu.ts` barrel — so no cycle.
 
 import type { BrowserContext, Page } from "playwright-core";
+import { capMasked, PLAIN_CUT, textCutFor, type TextCut } from "../util/frame-cap.js";
 import { log } from "../util/logging.js";
+import type { SecretRegistry } from "../util/secrets.js";
 import { bindingGuard } from "./binding-guard.js";
 import {
   SUPPORTED_DEVICE_APIS,
@@ -19,15 +21,21 @@ import {
 } from "./device-emu-state.js";
 import { DEVICE_EMU_PAGE_SCRIPT } from "./device-emu-page-script.js";
 
-/** Capture-safe stringify with a 4KB ceiling. Filters from a Web Bluetooth
- *  `requestDevice` call are typically a few hundred bytes (filter array
- *  with a couple of service UUIDs); we truncate aggressively only to defend
- *  the buffer from a chatty page composing absurd filters. */
-function safeFilters(raw: unknown): unknown {
+/** The most characters of serialised filters a request record keeps. */
+const FILTERS_MAX_CHARS = 4096;
+
+/** The filters a `requestDevice` call passed, for the request record.
+ *  Filters are usually a few hundred characters (a couple of service UUIDs).
+ *  Filters longer than `FILTERS_MAX_CHARS` once serialised are masked, then
+ *  cut, and kept only when the cut text still parses with a `"…"` tail; a
+ *  registered value that crosses the cut is masked before it, so no head of
+ *  it is kept. */
+export function safeFilters(raw: unknown, cut: TextCut = PLAIN_CUT): unknown {
   try {
     const s = JSON.stringify(raw);
-    if (s.length <= 4096) return raw;
-    return JSON.parse(s.slice(0, 4096) + '"…"}'); // best-effort
+    if (s.length <= FILTERS_MAX_CHARS) return raw;
+    const { payload, truncated } = capMasked(s, FILTERS_MAX_CHARS, cut.mask, cut.slack);
+    return JSON.parse(truncated ? payload + '"…"}' : payload); // best-effort
   } catch {
     return undefined;
   }
@@ -46,10 +54,15 @@ function safeFilters(raw: unknown): unknown {
  *  swallowed — the page-side wrapper falls back to "decision: refused,
  *  devices: []" when the binding is missing, so a page calling
  *  requestDevice never deadlocks.
+ *
+ *  `secrets` is the session's registry. Long filters are masked with it
+ *  before they are cut; it is read on each call, so a value registered after
+ *  the attach is masked too.
  */
 export async function attachDeviceEmulation(
   context: BrowserContext,
   state: DeviceEmulationState,
+  secrets?: SecretRegistry | null,
 ): Promise<void> {
   if (state.hasContext(context)) return;
   state.markContext(context);
@@ -69,7 +82,7 @@ export async function attachDeviceEmulation(
               return JSON.stringify({ decision: "refused", devices: [] });
             }
             const ts = Date.now();
-            const filters = safeFilters(o.filters ?? null);
+            const filters = safeFilters(o.filters ?? null, textCutFor(secrets));
             // Capability is off → refuse: page-side wrapper still resolves
             // to the user-dismissed shape (Bluetooth/USB reject; HID returns
             // []), but we record the call so `device_requests` shows "the
