@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -167,6 +168,57 @@ describe("browxai init", () => {
         expect(line).not.toContain("BROWX_WORKSPACE");
       } finally {
         rmSync(home, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("run from a browxai runtime", () => {
+    const LAUNCHER = "/home/u/.browxai-runtime/bin/browxai";
+    const runtimeLauncher = () => LAUNCHER;
+
+    it("names the runtime's launcher in every entry, so updates need no edit", async () => {
+      const home = mkdtempSync(join(tmpdir(), "browxai-home-"));
+      const system = homeSystem(home);
+      try {
+        const code = await runInit(
+          [dir, "--test-attrs", "data-testid", "--no-smoke", "--write-user-config", "cursor"],
+          { system, runtimeLauncher, appBundle: () => undefined },
+        );
+        expect(code).toBe(0);
+        const servers = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf8")).mcpServers;
+        for (const entry of Object.values<{ command: string; args: string[] }>(servers)) {
+          expect(entry).toMatchObject({ command: LAUNCHER, args: [] });
+        }
+        const written = JSON.parse(readFileSync(join(home, ".cursor", "mcp.json"), "utf8"))
+          .mcpServers.browxai;
+        expect(written).toMatchObject({ command: LAUNCHER, args: [] });
+        expect(out).toContain(`the entries name its launcher ${LAUNCHER}`);
+        expect(out).not.toContain('{ "command": "npx", "args": ["-y", "browxai"] }');
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
+
+    it("finds the launcher from BROWX_RUNTIME_DIR or the real path of cli.js", async () => {
+      const { runtimeLauncherFor } = await import("./runtime-layout.js");
+      const rt = realpathSync(mkdtempSync(join(tmpdir(), "browxai-rt-")));
+      try {
+        const cli = join(rt, "versions", "1.0.0", "node_modules", "browxai", "dist", "cli.js");
+        mkdirSync(join(rt, "bin"), { recursive: true });
+        mkdirSync(join(cli, ".."), { recursive: true });
+        writeFileSync(cli, "");
+        expect(runtimeLauncherFor(cli, {})).toBeUndefined();
+        writeFileSync(join(rt, "layout.json"), '{"schemaVersion":1}');
+        writeFileSync(join(rt, "bin", "browxai"), "");
+        expect(runtimeLauncherFor(cli, {})).toBe(join(rt, "bin", "browxai"));
+        expect(
+          runtimeLauncherFor("/usr/lib/node_modules/browxai/dist/cli.js", {
+            BROWX_RUNTIME_DIR: rt,
+          }),
+        ).toBe(join(rt, "bin", "browxai"));
+        expect(runtimeLauncherFor("/usr/lib/node_modules/browxai/dist/cli.js", {})).toBeUndefined();
+      } finally {
+        rmSync(rt, { recursive: true, force: true });
       }
     });
   });

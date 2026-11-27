@@ -21,6 +21,7 @@ async function run(args: string[], deps: RuntimeDeps = {}) {
     appBundle: () => undefined,
     list: async () => [],
     selfCli: "/elsewhere/dist/cli.js",
+    system: { platform: "linux", home: rt!.home, env: {}, exists: () => false },
     out: (t) => (out += t),
     err: (t) => (err += t),
     ...deps,

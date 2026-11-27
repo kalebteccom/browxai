@@ -41,7 +41,7 @@ steps:
       - corepack enable
       - bash scripts/gate-slot.sh pnpm exec playwright-core install chromium firefox webkit
   # OS libraries live in the container, not in the browser cache, so each shard installs them itself.
-  # SHARDS: the shard number is the digit in the step name and the shard count is the `/4` below, so adding or removing a keystone-N step means changing that denominator in the same commit (a step count below the denominator leaves a slice of test/keystone unrun, and the workflow still passes). Vitest sorts the files by the sha1 of their path and gives shard N the Nth contiguous slice: floor(files / 4) files each, and the first (files mod 4) shards get one more (vitest 4.1.12). 53 files make slices of 14/13/13/13.
+  # SHARDS: the shard number is the digit in the step name and the shard count is the `/4` below, so adding or removing a keystone-N step means changing that denominator in the same commit (a step count below the denominator leaves a slice of test/keystone unrun, and the workflow still passes). Vitest sorts the files by the sha1 of their path and gives shard N the Nth contiguous slice: floor(files / 4) files each, and the first (files mod 4) shards get one more (vitest 4.1.12). 54 files make slices of 14/14/13/13.
   - &shard
     <<: *step
     name: keystone-1

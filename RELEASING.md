@@ -41,6 +41,13 @@ a version bump.
    the release or retry the publish before then. Then verify
    `npm install browxai@X.Y.Z` from a clean machine and run
    `npm audit signatures`.
+   `browxai runtime update` requires that same check to exit 0 before a
+   version becomes current, so also run it the way the runtime does, for
+   this version and the one before: in an empty directory,
+   `npm install --prefix . browxai@<v> --save-exact --omit=dev --ignore-scripts --no-audit --no-fund --before <publish time + 1 hour>`,
+   then `npm audit signatures --json --prefix .`. Both must exit 0 with
+   empty `invalid` and `missing` lists. CI can't run this check: the
+   integration test uses a loopback registry, which can't sign packages.
 9. Check the GitHub Release. The workflow creates it from the tag with the
    tag's `CHANGELOG.md` section as its body
    (`scripts/changelog-section.mjs`) and attaches `sbom.cdx.json`. A missing

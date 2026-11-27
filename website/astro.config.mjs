@@ -190,6 +190,7 @@ export default defineConfig({
             { label: "Recipes", slug: "guides/recipes" },
             { label: "Drive browxai from a shell", slug: "guides/shell-route" },
             { label: "Connect MCP clients to one daemon", slug: "guides/bridge" },
+            { label: "Keep browxai current with a runtime", slug: "guides/runtime-updates" },
             { label: "Containers and CI", slug: "guides/containers-and-ci" },
             { label: "Sites behind bot protection", slug: "guides/sites-behind-bot-protection" },
           ],
