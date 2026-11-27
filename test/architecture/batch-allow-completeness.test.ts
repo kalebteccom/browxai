@@ -11,6 +11,8 @@
 // proving the derivation, which is what let the hand-list disappear. The 71-entry
 // size stays the behaviour-preservation oracle against the P0 snapshot.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { registeredToolNames, batchAllowedTools, toolRegistrations } from "./_surface.js";
 
@@ -30,5 +32,27 @@ describe("L2 — the batch allow-set is derived from the registrations", () => {
     const onlyFlagged = [...flagged].filter((t) => !batch.has(t));
     expect(onlyInSet, "in the batch set but not flagged batchable").toEqual([]);
     expect(onlyFlagged, "flagged batchable but missing from the batch set").toEqual([]);
+  });
+});
+
+describe("the tool reference names the batch allow-set", () => {
+  const TOOL_REFERENCE = join(__dirname, "..", "..", "docs", "tool-reference.md");
+  const MARKER = "Allowed inner tools, every tool registered `batchable`:";
+
+  it("the `batch` section lists exactly the batchable tools", async () => {
+    const line = readFileSync(TOOL_REFERENCE, "utf8")
+      .split("\n")
+      .find((l) => l.startsWith(MARKER));
+    expect(line, `docs/tool-reference.md has no line starting "${MARKER}"`).toBeDefined();
+    const listed = line!
+      .slice(MARKER.length)
+      .split("Excluded:")[0]!
+      .match(/`[a-z_]+`/g)!
+      .map((t) => t.slice(1, -1));
+    const batch = [...(await batchAllowedTools())].sort();
+    expect(listed, "the doc list is sorted and has no duplicate").toEqual(
+      [...new Set(listed)].sort(),
+    );
+    expect(listed).toEqual(batch);
   });
 });
