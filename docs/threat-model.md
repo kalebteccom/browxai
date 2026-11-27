@@ -696,6 +696,16 @@ check, so client entries that name the launcher follow updates with no edit.
 - **No new network from servers.** The launcher reads one link and one file and
   execs. Only `install` and `update` contact the npm registry, through npm and the
   registry in the user's npm config. No MCP tool, capability or default changes.
+- **The background job runs as the user.** `install` adds a launchd user agent or a
+  systemd user timer that runs `update --auto` hourly, in the user's own launchd
+  domain or `systemctl --user`, with no administrator rights. Its `PATH` names the
+  recorded node's directory, then `/usr/bin:/bin`. It applies a release only 24
+  hours after its publish time, so a release the maintainers deprecate in that
+  window never reaches the machine, holds a version that fails `npm audit
+signatures` for good, and makes at most 6 registry contacts and 2 applies a day.
+  `"autoUpdate": "off"` in `runtime.json`, `BROWX_RUNTIME_AUTO_UPDATE=off` in the
+  job's environment, or `install --no-agent` turns it off, and a value it doesn't
+  know counts as off.
 - **The signed macOS app** never runs runtime code: every `runtime` command exits 2
   inside it.
 

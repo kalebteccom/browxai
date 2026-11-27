@@ -48,6 +48,11 @@ a version bump.
    then `npm audit signatures --json --prefix .`. Both must exit 0 with
    empty `invalid` and `missing` lists. CI can't run this check: the
    integration test uses a loopback registry, which can't sign packages.
+   Machines with a runtime's background job apply a release 24 hours after
+   it was published. To stop a bad release from reaching them, run
+   `npm deprecate browxai@X.Y.Z "<what to use instead>"` within that window:
+   the job skips a deprecated version, and `browxai doctor` warns on machines
+   that already run it.
 9. Check the GitHub Release. The workflow creates it from the tag with the
    tag's `CHANGELOG.md` section as its body
    (`scripts/changelog-section.mjs`) and attaches `sbom.cdx.json`. A missing

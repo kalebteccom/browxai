@@ -9,6 +9,7 @@
 // provenance verification is a ✗, because that points at the supply chain.
 
 import { existsSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { PACKAGE_VERSION } from "../util/version.js";
 import type { Check } from "./doctor.js";
@@ -184,7 +185,7 @@ export function runtimeRow(deps: RuntimeRowDeps = {}): Check {
       fix: `current stays ${facts.current ?? "unset"}. See browxai runtime status and ${paths.journal}`,
     };
   }
-  const home = deps.home ?? env.HOME ?? "";
+  const home = deps.home ?? homedir();
   const agentInstalled =
     deps.agentInstalled ??
     (() =>

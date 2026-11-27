@@ -58,13 +58,13 @@ export async function autoUpdateFlow(
   const { file, error } = readSettingsFile(paths);
   const auto = resolveAutoUpdate(deps.env, file, error);
   if (auto.warning) io.err(`warning: ${auto.warning}\n`);
-  if (!auto.on) return off(paths, `auto-update off (${auto.source})`, now, io);
   const lock = acquireLock(paths, { now: deps.clock.now });
   if (!lock.ok) {
     io.out(`another update run (pid ${lock.pid}) holds ${paths.lock}. Nothing to do.\n`);
     return 0;
   }
   try {
+    if (!auto.on) return off(paths, `auto-update off (${auto.source})`, now, io);
     writeShim(paths);
     return await autoRun(paths, opts, deps, io);
   } catch (e) {

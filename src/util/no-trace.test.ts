@@ -95,11 +95,16 @@ describe("no-trace contract — static source guard", () => {
     // cli/shell-out.ts writes the file `browxai call --out FILE` names: the explicit path
     // the caller chose, which can be anywhere, the workspace included. The contract covers
     // the artifacts the server itself leaves behind, and this is the client's own output.
+    // cli/runtime-agent.ts runs in `browxai runtime install` and writes the background
+    // job's launchd plist or systemd units where launchd and systemd read them
+    // (~/Library/LaunchAgents, ~/.config/systemd/user). No server writes there, and the
+    // runtime directory it serves is refused when it overlaps the workspace.
     const ALLOWED_FILES = new Set([
       "util/workspace.ts",
       "util/config-store.ts",
       "cli/init-user-config.ts",
       "cli/shell-out.ts",
+      "cli/runtime-agent.ts",
     ]);
     const files = tsFilesUnder(SRC);
     const offenders: Array<{ file: string; line: string }> = [];
