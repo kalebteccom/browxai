@@ -37,31 +37,42 @@
 // the rebuild seam.
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { isAbsolute, join, resolve, sep } from "node:path";
-import { assertReadableWorkspacePath, workspaceDirContaining } from "../util/workspace.js";
+import { isAbsolute, join, resolve } from "node:path";
+import {
+  assertReadableWorkspacePath,
+  staysInsideRealRoot,
+  workspaceDirContaining,
+} from "../util/workspace.js";
 
-/** Workspace directories browxai tools write into by default: downloads and
- *  exports carry page content, `.artifacts` carries what the agent saved. An
- *  extension loaded from one of them would run code the page or the agent
- *  wrote, so the operator stages extensions somewhere else. */
-export const TOOL_OUTPUT_DIRS: readonly string[] = [
-  ".artifacts",
-  ".auth-states",
-  ".downloads",
-  "archives",
-  "assets",
-  "diagnostics",
-  "dom-dumps",
-  "elements",
-  "har",
-  "heap-snapshots",
-  "pdfs",
-  "perf",
-  "perf-traces",
-  "replays",
-  "screenshots",
-  "videos",
-];
+/** The workspace directory `extensions_install` loads from. It is write-
+ *  protected (`PROTECTED_DIRS` in `src/util/workspace.ts`), so no tool can put
+ *  an extension there: only the operator stages one. */
+export const WORKSPACE_EXTENSIONS_DIR = "extensions";
+
+/** The operator's extension directory outside the workspace, from the server
+ *  environment's `BROWX_EXTENSIONS_DIR`, or null when unset. It is env-only:
+ *  no config layer or tool sets it. Throws when it is not absolute or when it
+ *  overlaps the workspace, because a tool could then write into it. */
+export function operatorExtensionsDir(
+  workspaceRoot: string,
+  tool: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const raw = env.BROWX_EXTENSIONS_DIR?.trim();
+  if (!raw) return null;
+  if (!isAbsolute(raw)) {
+    throw new Error(`${tool}: BROWX_EXTENSIONS_DIR must be an absolute path, got "${raw}".`);
+  }
+  const dir = resolve(raw);
+  if (staysInsideRealRoot(dir, workspaceRoot) || staysInsideRealRoot(workspaceRoot, dir)) {
+    throw new Error(
+      `${tool}: BROWX_EXTENSIONS_DIR "${raw}" overlaps $BROWX_WORKSPACE, where tools write ` +
+        `files. Point it at a directory outside the workspace, or unset it and stage ` +
+        `extensions under the workspace ${WORKSPACE_EXTENSIONS_DIR}/ directory.`,
+    );
+  }
+  return dir;
+}
 
 /**
  * Loaded-extension record. `id` is the Chrome-computed extension id (a 32-char
@@ -90,44 +101,54 @@ export function newExtensionRegistry(): ExtensionRegistry {
 }
 
 /**
- * Resolve a caller-supplied `path` to an absolute workspace-rooted directory
- * containing an MV3 (or MV2) manifest. Rejects:
+ * Resolve a caller-supplied `path` to an absolute directory containing an MV3
+ * (or MV2) manifest. The directory must sit under the workspace `extensions/`
+ * directory or, when the operator set `BROWX_EXTENSIONS_DIR`, under that
+ * directory. Both are places no tool writes. A relative path is resolved
+ * against the workspace. Rejects:
  *   - empty / whitespace
- *   - traversal segments (`..`) that escape the workspace
- *   - absolute paths pointing outside the workspace
+ *   - a path outside both staging directories, real paths compared
  *   - non-existent paths
  *   - paths that are files (not a directory)
  *   - directories missing `manifest.json`
- *   - paths under a directory tools write into (`TOOL_OUTPUT_DIRS`)
  *
  * Returns the resolved absolute path. Throws `Error` with a structured message
  * on any rejection — the tool handler converts that to the `ok:false` envelope.
  */
-export function resolveExtensionPath(workspaceRoot: string, p: string, tool: string): string {
+export function resolveExtensionPath(
+  workspaceRoot: string,
+  p: string,
+  tool: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
   const raw = (p ?? "").trim();
   if (!raw) {
     throw new Error(
       `${tool}: \`path\` is required (workspace-rooted directory containing manifest.json)`,
     );
   }
-  // Resolve under the workspace root. An absolute path outside the workspace
-  // is detected by the post-resolve prefix check below — `resolve()` on an
-  // absolute path ignores the workspace base, so we don't need a separate
-  // branch for it.
   const resolved = isAbsolute(raw) ? resolve(raw) : resolve(workspaceRoot, raw);
-  if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
+  const external = operatorExtensionsDir(workspaceRoot, tool, env);
+  if (external !== null && staysInsideRealRoot(external, resolved)) {
+    if (resolved === external) {
+      throw new Error(
+        `${tool}: pass the extension's own directory under BROWX_EXTENSIONS_DIR, not the directory itself.`,
+      );
+    }
+  } else if (
+    workspaceDirContaining(workspaceRoot, resolved, [WORKSPACE_EXTENSIONS_DIR]) !== null &&
+    staysInsideRealRoot(workspaceRoot, resolved)
+  ) {
+    assertReadableWorkspacePath(workspaceRoot, resolved, tool);
+  } else {
+    const where = external
+      ? `the workspace ${WORKSPACE_EXTENSIONS_DIR}/ directory or BROWX_EXTENSIONS_DIR`
+      : `the workspace ${WORKSPACE_EXTENSIONS_DIR}/ directory`;
     throw new Error(
-      `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE, got "${p}". ` +
-        `Stage the unpacked extension directory under the workspace.`,
-    );
-  }
-  assertReadableWorkspacePath(workspaceRoot, resolved, tool);
-  const toolDir = workspaceDirContaining(workspaceRoot, resolved, TOOL_OUTPUT_DIRS);
-  if (toolDir !== null) {
-    throw new Error(
-      `${tool}: refusing to load an extension from "${p}": it is under the workspace ` +
-        `${toolDir}/ directory, where browxai tools write page content and agent-supplied ` +
-        "files. Stage the unpacked extension in a directory of its own.",
+      `${tool}: refusing to load an extension from "${p}": unpacked extensions load only from ` +
+        `${where}, where no tool writes. Stage it there (for example ` +
+        `\`${WORKSPACE_EXTENSIONS_DIR}/my-helper\`), or set BROWX_EXTENSIONS_DIR in the server's ` +
+        "environment to a directory outside the workspace.",
     );
   }
   if (!existsSync(resolved)) {

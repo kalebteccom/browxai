@@ -32,7 +32,8 @@
 //                    engine check runs first, so they read the session), and
 //                    `open_session` with `har` or `recordVideo`
 //   secrets          `get_credential` on a server with `credentials` alone
-//   extensions       `extensions_install` from a directory tools write into
+//   extensions       `extensions_install` from outside the workspace `extensions/`
+//                    directory, and a tool writing into that directory
 // Not table-driven, because the gate is a behaviour branch and not a tool gate:
 //   clipboard        `shortcut` copy/cut/paste leaves the OS clipboard and the
 //                    per-session buffer alone
@@ -720,6 +721,20 @@ describe("the same surfaces with their capabilities on", () => {
   );
 
   it(
+    "extensions: no tool writes into the workspace extensions/ directory",
+    async () => {
+      const denied = await call<{ ok: boolean; error: string }>("asset_export", {
+        session,
+        intoDir: "extensions/ks-written",
+      });
+      expect(denied.ok).toBe(false);
+      expect(denied.error).toMatch(/refusing to write/);
+      expect(existsSync(join(workspace, "extensions", "ks-written"))).toBe(false);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
     "extensions: an extension staged under .artifacts is refused",
     async () => {
       const dir = join(workspace, ".artifacts", "ks-ext");
@@ -741,8 +756,8 @@ describe("the same surfaces with their capabilities on", () => {
         });
         expect(denied.ok).toBe(false);
         // The session is headless, so the headed-session check refuses first. The
-        // tool-output directory guard has its own unit test in extensions.test.ts.
-        expect(denied.error).toMatch(/where browxai tools write|requires a headed session/);
+        // staging-directory rule has its own unit test in extensions.test.ts.
+        expect(denied.error).toMatch(/load only from|requires a headed session/);
       } finally {
         await call("close_session", { session: "ks-ext-persistent" });
       }

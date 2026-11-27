@@ -162,6 +162,8 @@ describe("protected workspace paths", () => {
       "Profile-Snapshots/s1",
       "chrome-profile/Default/Cookies",
       ".browx-snapshot-key",
+      "extensions/helper/background.js",
+      "Extensions/helper/manifest.json",
     ])
       expect(() => resolveWorkspaceWritePath(root, p, "t"), p).toThrow(/refusing to write/);
     expect(resolveWorkspaceWritePath(root, "dumps/config.json", "t")).toBe(
@@ -169,6 +171,9 @@ describe("protected workspace paths", () => {
     );
     expect(resolveWorkspaceWritePath(root, "profile-notes.txt", "t")).toBe(
       join(root, "profile-notes.txt"),
+    );
+    expect(resolveWorkspaceWritePath(root, "extensions-notes/a.txt", "t")).toBe(
+      join(root, "extensions-notes", "a.txt"),
     );
   });
 
