@@ -30,11 +30,11 @@ export interface OpenSessionPolicyArgs {
   /** `har.content`: `embed` / `attach` write bodies to disk and need
    *  `network-body`, as on `start_har`. */
   harContent?: "embed" | "attach" | "omit";
-  /** Set when the call seeds the new session's state (`storageState`) or
-   *  answers its requests from recorded HARs (`hars`). Both change what the
-   *  page sees, as `inject_storage_state` and `route` do, so they need
-   *  `action`. */
-  seeds?: { storageState: boolean; hars: boolean };
+  /** Set when the call seeds the new session's state (`storageState`, or a
+   *  saved `authState` slot) or answers its requests from recorded HARs
+   *  (`hars`). Each changes what the page sees, as `inject_storage_state`,
+   *  `auth_load` and `route` do, so each needs `action`. */
+  seeds?: { storageState: boolean; authState?: boolean; hars: boolean };
   /** Set when the new session records to a workspace file for its lifetime: a
    *  HAR (`har`) or a video (`recordVideo`). Both need `file-io`. */
   records?: { har: boolean; video: boolean };
@@ -47,6 +47,11 @@ function seedingRefusal(
 ): ToolResponse | null {
   if (seeds?.storageState) {
     const reason = "`storageState` writes cookies and storage into the new session";
+    const refused = gateCheck("open_session", ["action"], reason);
+    if (refused) return refused;
+  }
+  if (seeds?.authState) {
+    const reason = "`authState` writes a saved slot's cookies and storage into the new session";
     const refused = gateCheck("open_session", ["action"], reason);
     if (refused) return refused;
   }

@@ -24,7 +24,8 @@
 // Not table-driven, because the gate is an argument or a result field:
 //   network-body     `open_session({har:{content:"embed"}})`, and the body of a
 //                    `caches_get` entry, which is left out with `bodyOmitted`
-//   action           `open_session` `storageState` / `hars` on a server without it
+//   action           `open_session` `storageState` / `authState` / `hars`, and
+//                    `profile_restore`, on a server without it
 //   file-io          `pdf_save`, `heap_snapshot`, `perf_start`, `perf_stop`,
 //                    `perf_audit`, `layout_thrash_trace` on an open session (the
 //                    engine check runs first, so they read the session), and
@@ -509,13 +510,14 @@ describe("capability denials with the default capability set", () => {
 // here is refused before a browser starts.
 describe("arguments gated on a capability the server lacks", () => {
   it(
-    "open_session refuses storageState and hars on a server without action",
+    "open_session refuses storageState, authState and hars on a server without action",
     async () => {
       const server = await boot("read,navigation,human");
       try {
         const call = callerFor(server);
         for (const seed of [
           { storageState: { cookies: [], origins: [] } },
+          { authState: "ks-missing" },
           { hars: ["ks-missing.har"] },
         ]) {
           const denied = await call<Denied & { reason: string }>("open_session", {
@@ -525,10 +527,28 @@ describe("arguments gated on a capability the server lacks", () => {
           });
           expect(denied.ok, JSON.stringify(seed)).toBe(false);
           expect(denied.requiredCapability).toBe("action");
-          expect(denied.reason).toMatch(/storageState|hars/);
+          expect(denied.reason).toMatch(/storageState|authState|hars/);
         }
         const listed = await call<{ sessions: unknown[] }>("list_sessions", {});
         expect(listed.sessions).toEqual([]);
+      } finally {
+        await server.shutdown().catch(() => undefined);
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "profile_restore refuses on a server without action",
+    async () => {
+      const server = await boot("read,navigation,human");
+      try {
+        const denied = await callerFor(server)<Denied & { reason: string }>("profile_restore", {
+          snapshot: "ks-missing",
+        });
+        expect(denied.ok).toBe(false);
+        expect(denied.requiredCapability).toBe("action");
+        expect(denied.reason).toMatch(/profile_restore replaces/);
       } finally {
         await server.shutdown().catch(() => undefined);
       }

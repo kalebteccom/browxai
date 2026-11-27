@@ -711,13 +711,13 @@ the same gate refusal and hint.
 
   The core agentic surface. Confirmation hook gates the irreversible sub-cases (see policy).
 
-  `open_session` itself needs no capability, so a read-only server can open sessions. Two of its arguments need `action`: `storageState` writes cookies and storage into the new session, as `inject_storage_state` does, and `hars` answers the new session's requests from recorded responses, as `route` does. Without `action` either one returns the standard refusal before anything launches.
+  `open_session` itself needs no capability, so a read-only server can open sessions. Three of its arguments need `action`: `storageState` and `authState` write cookies and storage into the new session, as `inject_storage_state` and `auth_load` do, and `hars` answers the new session's requests from recorded responses, as `route` does. Without `action` each one returns the standard refusal before anything launches.
 
   `route` and `route_queue` answer a matching request with a body the caller wrote, and `sw_intercept_fetch` does the same for the requests it pauses. Under `action` alone they answer data and static requests only: the resource types `xhr`, `fetch`, `eventsource`, `image`, `media`, `font`, `stylesheet`, `texttrack` and `manifest`. A matching document, script or worker request, or one of any other type, goes to the real network, so the page runs what its own server sent. The check reads the resource type the browser gives the request. The response's content type does not decide it, because a browser runs a classic script whatever its content type when the response has no `nosniff` header. Answering those requests is part of `eval` (below). Each result carries `fulfils: "data"` or `"all"`, and `unroute`, `sw_unintercept_fetch` and a replacing install report `skippedExecutable`, the number of matches left to the network. Pinned by `test/keystone/route-fulfil.keystone.test.ts`.
 
-- `human`, default **on**. Tools: `await_human`, `name_ref`.
+- `human`, default **on**. Tools: `await_human`, `name_ref`, `profile_snapshot`, `profile_restore`.
 
-  Pure coordination primitives. The human's answer comes only from the `browxai` isolated world (section 7 above); page scripts cannot produce it.
+  Pure coordination primitives. The human's answer comes only from the `browxai` isolated world (section 7 above); page scripts cannot produce it. `profile_restore` replaces a profile's cookies and storage with a snapshot's, the same seeding `open_session({storageState})` does, so it also needs `action` and returns the standard refusal without it.
 
 - Service-worker tooling, no capability of its own. Tools: `workers_list` (`read`), `worker_message_send` (`action`), `worker_messages_read` (`read`), `sw_intercept_fetch` (`action`), plus `sw_unintercept_fetch` (`action`).
 

@@ -34,6 +34,19 @@ function lifecycleError(err: unknown): ToolResponse {
   return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
 }
 
+/** Which state-seeding arguments an `open_session` call carries. */
+function seedsOf(
+  storageState: unknown,
+  authState: string | undefined,
+  hars: string[] | undefined,
+): { storageState: boolean; authState: boolean; hars: boolean } {
+  return {
+    storageState: storageState !== undefined,
+    authState: authState !== undefined,
+    hars: (hars?.length ?? 0) > 0,
+  };
+}
+
 /** Build the optional `har` / `harsReplay` / `video` fields of the open_session
  *  result envelope from the opened entry. Pure; byte-identical to the prior inline
  *  ternaries. */
@@ -237,7 +250,7 @@ export function registerSessionLifecycleTools(
           .string()
           .optional()
           .describe(
-            "Named-state seed: load a slot from `$BROWX_WORKSPACE/.auth-states/<name>.json` (written by `auth_save`). Mutually exclusive with `storageState`.",
+            "Named-state seed: load a slot from `$BROWX_WORKSPACE/.auth-states/<name>.json` (written by `auth_save`). Mutually exclusive with `storageState`. Needs the `action` capability.",
           ),
         har: z
           .object({
@@ -328,7 +341,7 @@ export function registerSessionLifecycleTools(
           notificationPolicy,
           fsPickerPolicy,
           harContent: har?.content,
-          seeds: { storageState: storageState !== undefined, hars: (hars?.length ?? 0) > 0 },
+          seeds: seedsOf(storageState, authState, hars),
           records: { har: har !== undefined, video: recordVideo !== undefined },
         },
       );

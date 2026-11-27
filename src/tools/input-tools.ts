@@ -3,10 +3,24 @@ import { mouseAction } from "../page/gestures.js";
 import { snapshotProfile, restoreProfile } from "../session/profile-snapshot.js";
 import { SESSION_ARG } from "./schemas.js";
 import { gestureErrorResponse, gestureResponse } from "./gesture-envelope.js";
-import type { ToolHost } from "./host.js";
+import type { GateHost, ToolHost, ToolResponse } from "./host.js";
 import type { TouchPhase } from "../page/action-substrate.js";
 import { requirePage } from "../engine/index.js";
 import { errorResult, jsonResult } from "./json-result.js";
+
+/** The second capability a profile checkpoint tool needs beyond `human`, or
+ *  null. `profile_restore` replaces a profile's cookies and storage, as
+ *  `open_session({storageState})` seeds them, so it needs `action`. */
+function profileArmRefusal(
+  gateCheck: GateHost["gateCheck"],
+  tool: "profile_snapshot" | "profile_restore",
+): ToolResponse | null {
+  if (tool === "profile_restore") {
+    const reason = "profile_restore replaces a profile's cookies and storage with a snapshot's";
+    return gateCheck(tool, ["action"], reason);
+  }
+  return null;
+}
 
 /**
  * Low-level input primitives: the raw mouse pipeline (mouse_down / mouse_move /
@@ -136,12 +150,13 @@ export function registerInputTools(host: ToolHost): void {
     register(
       action,
       {
-        // profile_snapshot / profile_restore — human coordination primitives.
+        // profile_snapshot / profile_restore: human coordination primitives.
+        // Each adds a second capability in the handler (`profileArmRefusal`).
         capability: "human",
         description:
           action === "profile_snapshot"
             ? 'Copy a persistent profile directory into a named snapshot under `<workspace>/profile-snapshots/`, to checkpoint a clean authenticated state before a destructive test. Restore it with `profile_restore`. `profile` defaults to "default". Every session must be closed first (use `list_sessions` and `close_sessions`), because copying a live profile directory corrupts it.'
-            : "Restore a named profile snapshot over a profile directory, to reset to a clean checkpoint between destructive runs. Every session must be closed first (use `list_sessions` and `close_sessions`). A snapshot that `profile_snapshot` did not write, or whose files changed since, is refused: each snapshot carries a signed manifest.",
+            : "Restore a named profile snapshot over a profile directory, to reset to a clean checkpoint between destructive runs. Every session must be closed first (use `list_sessions` and `close_sessions`). A snapshot that `profile_snapshot` did not write, or whose files changed since, is refused: each snapshot carries a signed manifest. Needs the `action` capability.",
         inputSchema: {
           snapshot: z.string().describe("Snapshot name (letters/digits/._- only)."),
           profile: z
@@ -155,6 +170,8 @@ export function registerInputTools(host: ToolHost): void {
       async ({ snapshot, profile }) => {
         const g = gateCheck(action);
         if (g) return g;
+        const arm = profileArmRefusal(gateCheck, action);
+        if (arm) return arm;
         if (registry.list().length > 0) {
           return jsonResult({
             ok: false,

@@ -1882,7 +1882,7 @@ writes under `action`. No synthetic IDs; each entry is keyed by its
 - `storageState`: inline blob (as returned by `dump_storage_state`) OR a workspace-rooted JSON path.
 - `authState`: name of a slot from `auth_save`.
 
-`storageState` needs the `action` capability, as `inject_storage_state` does. On a server whose `BROWX_CAPABILITIES` leaves `action` out, `open_session` with `storageState` returns the standard refusal with `requiredCapability: "action"` before anything launches.
+`storageState` and `authState` need the `action` capability, as `inject_storage_state` and `auth_load` do. On a server whose `BROWX_CAPABILITIES` leaves `action` out, `open_session` with either one returns the standard refusal with `requiredCapability: "action"` before anything launches.
 
 Per-mode semantics:
 
@@ -2743,7 +2743,7 @@ open_session({ session: "mail", mode: "persistent", profile: "job-search-live" }
 Checkpoint and reset a persistent session's profile directory for repeatable destructive authenticated-SPA tests.
 
 - `profile_snapshot({ snapshot, profile? })`: copy the profile dir into `<workspace>/profile-snapshots/<snapshot>`. `profile` defaults to `"default"`.
-- `profile_restore({ snapshot, profile? })`: copy a named snapshot back over the profile dir. Refuses a snapshot `profile_snapshot` did not write, or whose files changed after it was taken: each snapshot carries a manifest with a digest of its files, MACed with a workspace key. Snapshots from earlier versions have no manifest and must be taken again. `profile-snapshots/` is write-protected against every other tool.
+- `profile_restore({ snapshot, profile? })`: copy a named snapshot back over the profile dir. Needs the `action` capability as well as `human`, because it replaces the profile's cookies and storage, as `open_session({storageState})` does; without it the call returns the standard refusal with `requiredCapability: "action"`. Refuses a snapshot `profile_snapshot` did not write, or whose files changed after it was taken: each snapshot carries a manifest with a digest of its files, MACed with a workspace key. Snapshots from earlier versions have no manifest and must be taken again. `profile-snapshots/` is write-protected against every other tool.
 - **All sessions must be closed first** (`close_sessions({all:true})`): copying a profile dir while Chromium has it open corrupts it; both tools refuse while any session is live. Names are letters/digits/`._-` only (no path separators).
 
 **Example (repeatable destructive test).**
