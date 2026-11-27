@@ -19,6 +19,43 @@ describe("cachePutHeaders", () => {
     expect(cachePutHeaders({ "Content-Type": ct }, false)).toEqual({ executable: ct });
   });
 
+  it.each([
+    [{ "content-type": "application/json", "Content-Type": "text/javascript" }, "text/javascript"],
+    [{ "Content-Type": "text/javascript", "content-type": "application/json" }, "text/javascript"],
+    [{ " CONTENT-TYPE ": "text/html" }, "text/html"],
+    [{ "content-type": "application/json, text/javascript" }, "application/json, text/javascript"],
+    [{ "content-type": "text/javascript, application/json" }, "text/javascript, application/json"],
+    [
+      { "content-type": " Application/JSON ,TEXT/HTML ;charset=utf-8" },
+      " Application/JSON ,TEXT/HTML ;charset=utf-8",
+    ],
+  ] as Array<[Record<string, string>, string]>)(
+    "checks every Content-Type key and every comma-separated part: %o",
+    (headers, executable) => {
+      expect(cachePutHeaders(headers, false)).toEqual({ executable });
+    },
+  );
+
+  it("replaces an x-content-type-options key whatever its casing or spacing", () => {
+    expect(
+      cachePutHeaders(
+        { "content-type": "application/json", " X-Content-Type-Options ": "x" },
+        false,
+      ),
+    ).toEqual({
+      headers: { "content-type": "application/json", "x-content-type-options": "nosniff" },
+    });
+  });
+
+  it("keeps a non-executable comma-separated value and adds nosniff", () => {
+    expect(cachePutHeaders({ "content-type": "application/json, text/plain" }, false)).toEqual({
+      headers: {
+        "content-type": "application/json, text/plain",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  });
+
   it("adds nosniff to every other response, replacing a caller's value", () => {
     expect(cachePutHeaders(undefined, false)).toEqual({
       headers: { "x-content-type-options": "nosniff" },
@@ -85,6 +122,29 @@ describe("caches_put", () => {
     const body = bodyOf(await put(args("text/javascript")));
     expect(body.requiredCapability).toBe("eval");
     expect(body.reason).toMatch(/service worker could hand the page/);
+    expect(stored).toEqual([]);
+  });
+
+  it("refuses duplicate Content-Type keys when any one is executable, and stores nothing", async () => {
+    const { put, stored } = caching(["read", "action"]);
+    const body = bodyOf(
+      await put({
+        cacheName: "app",
+        url: "https://app.example/app.js",
+        response: {
+          headers: { "content-type": "application/json", "Content-Type": "text/javascript" },
+          body: "x",
+        },
+      }),
+    );
+    expect(body.requiredCapability).toBe("eval");
+    expect(stored).toEqual([]);
+  });
+
+  it("refuses a comma-separated value with an executable part", async () => {
+    const { put, stored } = caching(["read", "action"]);
+    const body = bodyOf(await put(args("application/json, text/javascript")));
+    expect(body.requiredCapability).toBe("eval");
     expect(stored).toEqual([]);
   });
 

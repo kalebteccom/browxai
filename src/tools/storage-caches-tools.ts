@@ -49,11 +49,14 @@ export function cachePutHeaders(
 ): { executable: string } | { headers: Record<string, string> } {
   const given = headers ?? {};
   if (allowExecutable) return { headers: { ...given } };
-  const contentType = Object.entries(given).find(([k]) => k.toLowerCase() === "content-type");
-  if (contentType && isExecutableContentType(contentType[1])) {
-    return { executable: contentType[1] };
-  }
-  const kept = Object.entries(given).filter(([k]) => k.toLowerCase() !== "x-content-type-options");
+  const named = (k: string, name: string) => k.trim().toLowerCase() === name;
+  // Every key that names Content-Type: the browser joins repeated headers into
+  // one comma-separated value and takes the last valid type.
+  const executable = Object.entries(given).find(
+    ([k, v]) => named(k, "content-type") && isExecutableContentType(v),
+  );
+  if (executable) return { executable: executable[1] };
+  const kept = Object.entries(given).filter(([k]) => !named(k, "x-content-type-options"));
   return { headers: { ...Object.fromEntries(kept), "x-content-type-options": "nosniff" } };
 }
 
