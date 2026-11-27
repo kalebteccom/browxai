@@ -47,8 +47,8 @@ That is the whole of the host reach: three capabilities and adb. browxai has no 
 - **Drive a native app on an emulator.** With `native-device` on, open an `android-app` or `ios-app` session and the agent taps, types and swipes through the same `find` / `click` / `fill` it uses on a page. Ten `device_*` and `app_*` tools cover boot, install, launch and reset. A verb the platform has no primitive for refuses and names what is missing, so `gesture_pinch` works on iOS and refuses on Android.
 - **Drive the desktop app you already have open.** Start VS Code or Slack with `--remote-debugging-port`, point `BROWX_ATTACH_CDP` at it, grant `byob-attach`, and `snapshot` / `find` / `click` read and drive the app's own UI. browxai names the engine `electron` off `Browser.getVersion` without being told, so an agent is never told it is driving a plain Chromium tab.
 - **Run in CI without wedging.** Stand the server up headless in a pipeline; every call has a hard anti-wedge deadline, so a stuck page never hangs the run. See [Run browxai in a container and in CI](https://browxai.com/guides/containers-and-ci/).
-- **Share one browser across agents.** Run `browxai serve --socket` and attach multiple SDK clients to one long-running server (one Chromium), say a parent agent plus a helper script.
-- **Point several MCP clients at one server.** `browxai bridge` is an MCP server on stdio that relays to a `browxai serve --socket` daemon, so Claude Code, Codex, Cursor and Claude Desktop share one session registry and one set of browsers. See [Connect MCP clients to one daemon](https://browxai.com/guides/bridge/).
+- **Share one server across agents.** Run `browxai serve --socket` and attach several SDK clients to one long-running server, say a parent agent plus a helper script. They share its sessions and its settings. Each session the server launches is still its own browser process.
+- **Point several MCP clients at one server.** `browxai bridge` is an MCP server on stdio that relays to a `browxai serve --socket` daemon, so Claude Code, Codex, Cursor and Claude Desktop share one session registry and the browsers its sessions launched. See [Connect MCP clients to one daemon](https://browxai.com/guides/bridge/).
 - **Drive it from a shell.** An agent with a shell tool and no MCP client runs `browxai call <tool> '<json>'` against a `browxai serve --socket` daemon and reads one JSON document back, with exit codes to branch on. `browxai tools` lists the tools. See [Drive browxai from a shell](https://browxai.com/guides/shell-route/).
 
 ## Why browxai
@@ -90,7 +90,11 @@ browxai init .                                # one command: writes .mcp.json an
 
 `browxai doctor` checks the machine and prints one line per area, with the next step under anything that fails. `browxai doctor --verbose` prints every check.
 
-browxai launches the Google Chrome already installed on the machine, on one default profile per workspace (`<workspace>/profile`), so logins carry over between sessions. When there is no Chrome it falls back to Playwright's bundled Chromium. `browxai doctor` fails only when neither browser is present. Firefox and WebKit sessions use their own Playwright builds (`npx playwright-core@1.65.1 install firefox webkit`).
+browxai launches the Google Chrome already installed on the machine (the default since 0.13.0), on one default profile per workspace (`<workspace>/profile`), so logins carry over between sessions. It launches Playwright's bundled Chromium in three cases: there is no Chrome (it logs a warning), the launch loads extensions and names no channel (branded Chrome ignores `--load-extension`), or the session asks for it with `channel: "chromium"` or `BROWX_CHANNEL=chromium`. `browxai doctor` fails only when neither browser is present. Firefox and WebKit sessions use their own Playwright builds (`npx playwright-core@1.65.1 install firefox webkit`).
+
+Every session browxai launches itself (`persistent` or `incognito`) is its own browser process, with a window of its own unless `BROWX_HEADLESS` is set. That holds under `browxai serve --socket` too: the daemon shares its session list between clients, and each session in it still launches a browser. To put sessions in a Chrome you already run, start it with `browxai chrome start` and attach (see [Running several clients](#running-several-clients)).
+
+If a session opens a window titled "Google Chrome for Testing" on a machine that has Google Chrome, the MCP client is starting an install older than 0.13.0, which launched the bundled build by default. Point the client entry at a current version, for example `npx -y browxai@latest`, and restart the client.
 
 Wire it into an MCP client over the stdio transport, e.g. in an `.mcp.json`:
 
@@ -107,6 +111,14 @@ No global install? Use `{ "command": "npx", "args": ["-y", "browxai"] }` as the 
 Restart the client, then ask your agent to open a page and describe it. A Chrome window opens (set `BROWX_HEADLESS=1` or `true` for none) and the agent works through `navigate`, `snapshot`, `find` and `click`. Tools that need an off-by-default capability, such as `eval_js`, answer with an error that names the capability until you enable it. `BROWX_CAPABILITIES` replaces the default set, so list the defaults too: `read,navigation,action,human,eval`.
 
 browxai does not defeat or spoof bot detection, and it cannot clear a challenge page for you. `browxai chrome login` opens the same Chrome profile with nothing attached, so you can clear the challenge and sign in by hand: see [Sites behind bot protection](https://browxai.com/guides/sites-behind-bot-protection/). For drop-in setup per harness, see [Harness setup](#harness-setup) below.
+
+## Running several clients
+
+Each MCP client entry starts its own browxai server, and each server launches its own browsers. Three ways to run several clients on one machine:
+
+- **Separate servers, one workspace.** The first server to open its `default` session holds the workspace default profile. A second client's `default` session is then refused with `profile-in-use`, which names the profile and the holder. Have the second agent call `open_session` with `mode: "incognito"` for a throwaway session, or with its own `profile: "name"`. Each is one more browser and window. Giving each client its own `BROWX_WORKSPACE` also avoids the refusal.
+- **One daemon, many clients.** Run `browxai serve --socket PATH` once and give every client `browxai bridge --socket PATH`. The clients share one server: its sessions, capabilities and config. Two clients that leave out `session` drive the same `default` session, so give each client its own session ids. Sessions in the daemon still launch one browser each. See [Connect MCP clients to one daemon](https://browxai.com/guides/bridge/).
+- **One Chrome you started.** `browxai chrome start` opens your installed Chrome with a debugging port, and a server with `BROWX_ATTACH_CDP` and the `byob-attach` capability drives it. Every attached session gets its own tab in that one Chrome and shares its logins. Actions wait for a person's confirmation by default. A server tracks the tabs its own sessions hold, so prefer one attached server per Chrome. See [Sessions and lifecycle](https://browxai.com/concepts/sessions-and-lifecycle/).
 
 ## SDK (programmatic surface)
 
@@ -135,7 +147,7 @@ Three transports:
 
 - **In-process** (default). One Node process, with the SDK driving the server inside it. `close()` shuts the embedded server.
 - **Stdio child** (`transport: "stdio-child"`). Spawns the `browxai` bin as a subprocess and speaks MCP-over-stdio. `close()` ends the child.
-- **Socket-attached** (`endpoint: "unix:///tmp/foo.sock"`). Connects to a long-running `browxai serve --socket /tmp/foo.sock` process. Multiple clients can attach to ONE server (e.g. a parent agent plus a child script sharing one Chromium). `close()` ends only the local connection.
+- **Socket-attached** (`endpoint: "unix:///tmp/foo.sock"`). Connects to a long-running `browxai serve --socket /tmp/foo.sock` process. Several clients can attach to one server, for example a parent agent plus a child script that drive the same session ids. Each session on that server launches its own browser. `close()` ends only the local connection.
 
 The same safety gates apply as on the MCP path. Tools that broaden the security posture (`eval_js`, `network_body`, `register_secret`, `upload_file`, …) are **off by default** and only appear once their capability is named in `createBrowxai({ capabilities })`, and in the server's own capability set (`BROWX_CAPABILITIES`), which gates the same tool independently. Calling a non-exposed tool, even via `client.callTool("eval_js", …)`, fails with a `BROWXAI_SDK_NOT_EXPOSED` error before anything hits the wire; a name no tool registers fails with `BROWXAI_SDK_UNKNOWN_TOOL`.
 
@@ -153,7 +165,7 @@ Every SDK call resolves to the tool's own result. A result that is one JSON text
 - **`find`** turns a natural-language query into ranked candidate locators with `selectorHint`, `stability`, a visible-rect `bbox`, and an `actionable` verdict.
 - **action tools** (`click` / `fill` / `navigate` / `select` / `wait_for` / …) each return a structured `ActionResult`: what navigated, what structure changed, a console/network slice, and a post-action element probe.
 - **read tools** cover `text_search`, `inspect`, `console_read`, `network_read`, `ws_read` and `screenshot`.
-- **sessions** each get an isolated context (own cookie jar and refs), come in `persistent`, `incognito` or `attached` (BYOB) flavours, and are configured over MCP.
+- **sessions** each get their own refs and buffers, come in `persistent`, `incognito` or `attached` (BYOB) flavours, and are configured over MCP. An `incognito` session has its own cookie jar, a `persistent` session's cookie jar is its profile, and every `attached` session uses the attached Chrome's.
 - **capabilities**: `read`, `navigation`, `action` and `human` are on by default; `eval`, `network-body`, `clipboard`, `file-io`, `byob-attach`, `secrets`, `extensions`, `native-device`, … are explicit opt-ins.
 - **native sessions** (`android-app`, `ios-app`) answer `snapshot` and `find` from a view hierarchy and have no DOM, and add `device_*` and `app_*` lifecycle tools.
 - **an `electron` session** is Chromium over CDP, with `navigate` refused and no second page target to open.

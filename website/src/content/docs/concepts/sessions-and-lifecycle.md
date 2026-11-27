@@ -74,6 +74,12 @@ letter or digit, at most 128 characters. Anything else is refused with
 | `incognito`  | own ephemeral context and browser           | nothing persisted, all state discarded on close | one-off driving with no profile trace        |
 | `attached`   | the externally launched Chrome (not owned)  | that Chrome's own profile                       | BYOB, attach to a Chrome you already control |
 
+Each `persistent` or `incognito` session is its own browser process, with its own
+window unless the server runs headless (`BROWX_HEADLESS=1`). Ten sessions are ten
+browsers. That is also true in a `browxai serve --socket` daemon: the daemon shares
+one session list between its clients, and every session in it launches its own
+browser. Only `attached` sessions share a browser, the Chrome you attach to.
+
 `incognito` ids are always isolated contexts. With `persistent`, a session that
 names no `profile` runs on the workspace's default profile, whatever its id, and
 `profile: "name"` uses `<workspace>/profiles/name`. A profile is open in one
@@ -90,8 +96,12 @@ config edit, a code reload, or any other reason, that Chrome child dies with
 it and any live page state is gone. A stored ref that pointed at a now-dead
 page resolves to `about:blank` or a fresh document.
 
-If you need page state to survive server restarts, run Chrome yourself and
-attach to it. `browxai chrome start` opens the installed Chrome on the
+Two ways keep page state across a client restart. One is a daemon: run
+`browxai serve --socket PATH` once and point the client at it with
+`browxai bridge --socket PATH`. The daemon owns the browsers, so a client restart
+leaves them running. See [Connect MCP clients to one daemon](/guides/bridge/).
+
+The other is to run Chrome yourself and attach to it. `browxai chrome start` opens the installed Chrome on the
 workspace's default profile with a debugging port (9222 unless `--port` says
 otherwise):
 
@@ -145,8 +155,10 @@ server's `env`, and only when one browxai server is attached to that Chrome.
 Two launch-time knobs on a chromium session:
 
 - A chromium session with no `channel` launches the installed Google Chrome,
-  without Playwright's `--enable-automation` switch, and falls back to the
-  bundled Chromium with a logged warning when Chrome is not installed.
+  without Playwright's `--enable-automation` switch. That has been the default
+  since 0.13.0. It launches the bundled Chromium instead when Chrome is not
+  installed (with a logged warning), and when the launch loads extensions and
+  names no channel, because branded Chrome ignores `--load-extension`.
   `open_session({ channel: "chromium" })` pins the bundled build, and any other
   channel (`"msedge"`, `"chrome-beta"`) launches that installed browser. The
   browser version follows the install. Server-wide default via the `channel`
@@ -162,6 +174,36 @@ Two launch-time knobs on a chromium session:
 
 Both are launch-time, so an attached session ignores them. Pass
 `--disable-background-throttling` to `browxai chrome start` instead.
+
+A window titled "Google Chrome for Testing" on a machine with Google Chrome
+installed usually means the MCP client starts a browxai older than 0.13.0, which
+launched the bundled build by default. Point the client entry at a current
+version, for example `npx -y browxai@latest`, and restart the client.
+
+## Running several clients
+
+Each MCP client entry starts its own browxai server, with its own sessions and
+its own browsers. What happens when two of them run at once depends on how you
+set them up.
+
+- **Two servers on one workspace.** A profile is open in one browser at a time.
+  The first server to open its `default` session holds the workspace default
+  profile, and the second server's `default` session is refused with
+  `profile-in-use`, naming the profile and the holder. Open the second agent's
+  session with `mode: "incognito"` for an ephemeral context that keeps nothing,
+  or with its own `profile: "name"`. Each one is another browser and window. A
+  separate `BROWX_WORKSPACE` per client also avoids the refusal.
+- **One daemon for every client.** Run `browxai serve --socket PATH` and give
+  each client `browxai bridge --socket PATH`. The clients share the daemon's
+  sessions, capabilities and config, so give each client its own session ids.
+  Each session still launches its own browser. See
+  [Connect MCP clients to one daemon](/guides/bridge/).
+- **Servers attached to one Chrome.** Start Chrome with `browxai chrome start`
+  and set `BROWX_ATTACH_CDP` on the server. Every attached session leases its own
+  tab in that Chrome and uses its logins, and actions wait for a person's
+  confirmation by default. A server knows only the tabs its own sessions lease,
+  so run one attached server per Chrome, and use the daemon when several clients
+  need it.
 
 ## Device and viewport
 
