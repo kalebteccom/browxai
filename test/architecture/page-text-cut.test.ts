@@ -1,14 +1,18 @@
-// A literal head cut in `src/page/**` (`.slice(0, 120)`, `.substring(0, 80)`)
+// A head cut in `src/page/**` (`.slice(0, 120)`, `.substring(0, 80)`, and the
+// same with a named length: `.slice(0, NAME_READ)`, `.slice(0, ${PAGE_READ})`)
 // is how page text used to be capped before the registered-secret mask ran: the
 // cut split a value that crossed it, and the later mask, which only matches
 // whole values, left the head in the output. Page text that leaves the server
 // goes through `clipPageText` / `clipMasked` / `capMasked` in
 // `src/util/frame-cap.ts` instead, which mask first.
 //
-// This test fails on a new literal head cut. Each cut that stays is listed with
-// the reason it is not page text bound for a tool result: an array, a hash, a
-// detection-only read, or a name already masked before it is cut. Adding an
-// entry needs that reason; a cut of page text needs the helpers.
+// This test fails on a new head cut. Each cut that stays is listed with the
+// reason it is not page text bound for a tool result: an array, a hash, an index
+// cut of a value, a detection-only read, a name already masked before it is cut,
+// or a page-side read of `pageReadLength(cap, slack)` characters that the server
+// masks before it cuts to the cap. Adding an entry needs that reason; a cut of
+// page text needs the helpers. A length that is an expression (`max - 1`) is not
+// matched, and neither is a comment line.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -18,8 +22,17 @@ import { dirname, join, relative, sep } from "node:path";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const PAGE = join(ROOT, "src/page");
 
-/** A head cut with a numeric literal length, in code or in a page-script string. */
-const HEAD_CUT = /\.(?:slice|substring)\(\s*0\s*,\s*[0-9][0-9_]*\s*\)/g;
+/** A head cut whose length is a numeric literal, an identifier or member path
+ *  (`NAME_READ`, `this.max`), or an interpolated identifier in a page-script
+ *  template (`${PAGE_READ}`), in code or in a page-script string. */
+const HEAD_CUT =
+  /\.(?:slice|substring)\(\s*0\s*,\s*(?:[0-9][0-9_]*|[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*|\$\{\s*[A-Za-z_$][\w$]*\s*\})\s*\)/g;
+
+/** A line that is only a comment. */
+const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/;
+
+const SLACK_READ =
+  "a page-side read of pageReadLength(cap, slack) characters; the server masks it, then cuts it to the cap";
 
 /** Allowed cuts: the file, a fragment of the line that holds the cut, and why
  *  the cut is not page text bound for a tool result. */
@@ -65,6 +78,122 @@ const ALLOWED: ReadonlyArray<{ file: string; line: string; why: string }> = [
     line: "name = name.slice(0, 200)",
     why: "the download name, masked before `sanitiseFilename` runs",
   },
+  // Named lengths.
+  { file: "src/page/actions-probe.ts", line: "t.slice(0, read)", why: SLACK_READ },
+  { file: "src/page/actions-probe.ts", line: "txt.slice(0, TEXT_READ)", why: SLACK_READ },
+  { file: "src/page/actions-probe.ts", line: "rowText.slice(0, TEXT_READ)", why: SLACK_READ },
+  { file: "src/page/actions-probe.ts", line: "t.slice(0, KEY_READ)", why: SLACK_READ },
+  { file: "src/page/point_probe.ts", line: "el.className.slice(0, CLASS_READ)", why: SLACK_READ },
+  { file: "src/page/point_probe.ts", line: "trim().slice(0, NAME_READ)", why: SLACK_READ },
+  { file: "src/page/dom-walk.ts", line: "aria.trim().slice(0, nameRead)", why: SLACK_READ },
+  { file: "src/page/dom-walk.ts", line: "return s.slice(0, nameRead)", why: SLACK_READ },
+  {
+    file: "src/page/dom-walk.ts",
+    line: "el.placeholder.trim().slice(0, nameRead)",
+    why: SLACK_READ,
+  },
+  {
+    file: "src/page/dom-walk.ts",
+    line: "String(el.value).trim().slice(0, nameRead)",
+    why: SLACK_READ,
+  },
+  { file: "src/page/dom-walk.ts", line: "title.trim().slice(0, nameRead)", why: SLACK_READ },
+  { file: "src/page/shadow-trees.ts", line: "t.slice(0, textRead)", why: SLACK_READ },
+  { file: "src/page/shortcut.ts", line: "trim().slice(0, ${nameRead})", why: SLACK_READ },
+  { file: "src/page/workers-page.ts", line: "data.slice(0, ${PAGE_READ})", why: SLACK_READ },
+  {
+    file: "src/page/snapshot-text.ts",
+    line: "return text.slice(0, end)",
+    why: "`sliceUnits`, the surrogate-safe cut the mask-first helpers call",
+  },
+  {
+    file: "src/page/overflow-detect-page.ts",
+    line: "fullText.slice(0, cutoff)",
+    why: "`visibleText`, which the server recuts from the masked `fullText` (overflow-detect.ts)",
+  },
+  {
+    file: "src/page/challenge-page.ts",
+    line: ".slice(0, bodyTextScanChars)",
+    why: "detection only: the body text is matched against fixed phrases, nothing is emitted",
+  },
+  {
+    file: "src/page/actionresult-shape.ts",
+    line: "slice(0, ERROR_MAX_CHARS_PER)",
+    why: "console errors, masked when the console buffer hands them out (console.ts)",
+  },
+  {
+    file: "src/page/asset-export-naming.ts",
+    line: "name.slice(0, FILENAME_MAX_CHARS)",
+    why: "a file name from a URL, masked in `filenameFromUrl` before it is sanitised",
+  },
+  {
+    file: "src/page/asset-export-naming.ts",
+    line: "name.slice(0, dot)",
+    why: "an index cut: the stem before the extension",
+  },
+  {
+    file: "src/page/native-hierarchy.ts",
+    line: "raw.slice(0, slash)",
+    why: "an index cut: the resource-id package qualifier",
+  },
+  {
+    file: "src/page/ios-hierarchy.ts",
+    line: "entry.path.slice(0, cut)",
+    why: "an index cut: the parent's tree path",
+  },
+  { file: "src/page/perf-audit.ts", line: "sortedIssues.slice(0, n)", why: "an array of issues" },
+  { file: "src/page/find.ts", line: "scored.slice(0, max)", why: "an array of candidates" },
+  {
+    file: "src/page/layout-thrash.ts",
+    line: "eventsByOrigin.slice(0, MAX_ORIGINS)",
+    why: "an array of origins",
+  },
+  {
+    file: "src/page/extract-resolve.ts",
+    line: ".slice(0, MAX_UNMATCHED_WARNINGS)",
+    why: "an array of warnings",
+  },
+  {
+    file: "src/page/perf-insights.ts",
+    line: "arr.slice(0, MAX_LIST_ENTRIES)",
+    why: "an array of entries",
+  },
+  {
+    file: "src/page/heap-parse.ts",
+    line: "rows.slice(0, MAX_RETAINER_RESULTS)",
+    why: "an array of rows",
+  },
+  {
+    file: "src/page/overflow-detect-types.ts",
+    line: "findings.slice(0, limit)",
+    why: "an array of findings",
+  },
+  { file: "src/page/point_probe.ts", line: ": []).slice(0, MAX)", why: "an array of elements" },
+  {
+    file: "src/page/network-types.ts",
+    line: "Object.keys(parsed).slice(0, MAX_RESPONSE_SHAPE_KEYS)",
+    why: "an array of keys",
+  },
+  {
+    file: "src/page/network-types.ts",
+    line: ".slice(0, MAX_RESPONSE_SHAPE_KEYS)",
+    why: "an array of keys",
+  },
+  {
+    file: "src/page/coverage.ts",
+    line: ".slice(0, MAX_DEAD_RANGES_PER_SCRIPT)",
+    why: "an array of ranges",
+  },
+  {
+    file: "src/page/memory-diff.ts",
+    line: "rows.slice(0, MAX_GROWTH_ROWS)",
+    why: "an array of rows",
+  },
+  {
+    file: "src/page/actionresult-shape.ts",
+    line: "errors.slice(0, ERROR_MAX_TOTAL_ENTRIES)",
+    why: "an array of errors",
+  },
 ];
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -81,6 +210,7 @@ function headCuts(): Array<{ file: string; line: string }> {
   for (const abs of walk(PAGE)) {
     const file = relative(ROOT, abs).split(sep).join("/");
     for (const line of readFileSync(abs, "utf8").split("\n")) {
+      if (COMMENT_LINE.test(line)) continue;
       for (const _ of line.matchAll(HEAD_CUT)) found.push({ file, line: line.trim() });
     }
   }
@@ -88,7 +218,7 @@ function headCuts(): Array<{ file: string; line: string }> {
 }
 
 describe("page-text-cut", () => {
-  it("has no literal head cut in src/page outside the allowlist", () => {
+  it("has no head cut in src/page outside the allowlist", () => {
     const unlisted = headCuts().filter(
       (c) => !ALLOWED.some((a) => a.file === c.file && c.line.includes(a.line)),
     );
@@ -112,6 +242,19 @@ describe("page-text-cut", () => {
     expect("x.slice(0, 120)".match(HEAD_CUT)).toHaveLength(1);
     expect("return t.slice(0, 79) + '…';".match(HEAD_CUT)).toHaveLength(1);
     expect("s.substring(0,40)".match(HEAD_CUT)).toHaveLength(1);
-    expect("t.slice(0, nameRead)".match(HEAD_CUT)).toBeNull();
+    expect("t.slice(0, nameRead)".match(HEAD_CUT)).toHaveLength(1);
+    expect("t.slice(0, ERROR_MAX_CHARS_PER)".match(HEAD_CUT)).toHaveLength(1);
+    expect("t.slice(0, this.max)".match(HEAD_CUT)).toHaveLength(1);
+    expect("data.slice(0, ${PAGE_READ});".match(HEAD_CUT)).toHaveLength(1);
+  });
+
+  it("leaves a tail cut, an expression length and a comment alone", () => {
+    expect("t.slice(1, 4)".match(HEAD_CUT)).toBeNull();
+    expect("t.slice(-40)".match(HEAD_CUT)).toBeNull();
+    expect("t.slice(0, max - 1)".match(HEAD_CUT)).toBeNull();
+    expect("t.slice(0, s.indexOf(':'))".match(HEAD_CUT)).toBeNull();
+    expect(COMMENT_LINE.test(" *  `const top = scored.slice(0, max)`")).toBe(true);
+    expect(COMMENT_LINE.test("  // x.slice(0, 10)")).toBe(true);
+    expect(COMMENT_LINE.test("  return x.slice(0, 10); // cut")).toBe(false);
   });
 });
