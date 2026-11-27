@@ -22,6 +22,8 @@ The typed SDK (`createBrowxai`) wraps the tools above. Every call resolves to th
 - **One plain-text item**: the string. `snapshot` resolves to the serialised tree, and a tool that failed on the server resolves to its message. Text that parses to a bare number, boolean or `null` stays a string.
 - **An image item, several items, or none**: `{ content, data? }`, where `content` is the raw MCP array and `data` is the first text item when it is a JSON object. An inline `screenshot` (and `screenshot_marks`, `screenshot_region`) resolves this way. `screenshot` with `path` set resolves to its JSON result.
 
+**`capabilities` narrows the client only.** `createBrowxai({ capabilities })` decides which tools the client exposes and calls; a tool outside it throws `BROWXAI_SDK_NOT_EXPOSED` before any call. It turns nothing on in the server: an in-process server reads `BROWX_CAPABILITIES` from the process environment, and a socket daemon uses the set it started with. To use an off-by-default tool, enable it on the server and name it here.
+
 Errors are unchanged. The SDK throws for a gated tool (`BROWXAI_SDK_NOT_EXPOSED`), an unknown tool (`BROWXAI_SDK_UNKNOWN_TOOL`) and a closed client. A tool failure on the server is returned as the result, and `isError` is not surfaced.
 
 **Arguments are checked against the tool's input schema.** The in-process SDK, the socket daemon and `browxai call` check a call's arguments the way the MCP SDK checks them for an MCP client. A wrong-typed, missing or out-of-range argument resolves to `{ ok: false, error }`, where `error` starts with `<tool>: the arguments do not match the tool's input schema.` and names each argument; the tool does not run. Keys the schema does not name are dropped. A tool whose capability is off on the server returns its capability refusal whatever the arguments. Up to 0.20.2 these transports passed the arguments to the tool unchecked.
@@ -1551,7 +1553,7 @@ Print the current page to a workspace-rooted PDF via Playwright `page.pdf()` (CD
 
 Defaults are what an agent reaching for "save the page as a PDF" expects without reading the docs: `format:"A4"`, `scale:1`, `printBackground:false` (matches browser-print's default; opt in when background colour / imagery matters for the artefact). `path` is resolved **inside `$BROWX_WORKSPACE` only**. A path escaping the workspace is rejected; omit it for a default `pdfs/<sessionId>-<ts>.pdf`. `format` accepts every Playwright paper preset (`Letter`/`Legal`/`Tabloid`/`Ledger`/`A0` to `A6`). `scale` is bounded `[0.1, 2.0]` (Playwright's CDP-layer clamp; out-of-band values are rejected up-front with a clearer error). Returns `{ ok, path, bytes, format, scale, printBackground }`.
 
-**Chromium constraint.** `page.pdf()` is Chromium-only, and every browxai session is Chromium so that's fine. The tool layer **refuses cleanly on `attached` (BYOB) sessions**: driving PrintToPDF on a human's own Chrome would surface a print dialog / mutate the human's window state, so refusal lands before any Playwright call is made. Open a managed session (`open_session({mode:"persistent"})` or `{mode:"incognito"}`) and re-run `pdf_save` against that. Capability `action`, plus `file-io` (off by default) for the file it writes. On an engine that cannot print, the engine refusal comes first.
+**Chromium constraint.** `page.pdf()` is Chromium-only. The tool layer **refuses cleanly on `attached` (BYOB) sessions**: driving PrintToPDF on a human's own Chrome would surface a print dialog / mutate the human's window state, so refusal lands before any Playwright call is made. Open a managed session (`open_session({mode:"persistent"})` or `{mode:"incognito"}`) and re-run `pdf_save` against that. Capability `action`, plus `file-io` (off by default) for the file it writes. On an engine that cannot print, the engine refusal comes first.
 
 **Example (canonical for the file-export family; `page_archive` / `element_export` / `dom_export` differ in format knobs and default dirs, same workspace-rooted `path` contract):**
 
@@ -2147,7 +2149,7 @@ Returns `{ completed, failedAt, results }`:
 
 Each inner call's `args` are checked against that tool's input schema, as a top-level call's are. An inner call with a wrong-typed, missing or out-of-range argument fails with `{ ok: false, error }` naming the arguments, the tool does not run, and `stopOnError` applies. Keys the inner tool's schema does not name are dropped. `flake_check` and the `act_and_*` tools check their inner call the same way.
 
-Whitelist (allowed inner tools): `navigate`, `click`, `fill`, `fill_form`, `press`, `hover`, `select`, `choose_option`, `scroll`, `wait_for`, `go_back`, `go_forward`, `snapshot`, `find`, `text_search`, `screenshot`, `console_read`, `network_read`, `eval_js`, `list_named_refs`, `name_ref`, `find_feedback`, `approve_actions`, `list_approvals`, `get_config`, `list_sessions`. Excluded: `batch` (no nesting), `await_human` (would block the whole batch), recording-control tools.
+Allowed inner tools, every tool registered `batchable`: `approve_actions`, `choose_option`, `click`, `clock`, `console_read`, `coverage_start`, `coverage_stop`, `cpu_emulate`, `eval_js`, `execute`, `fill`, `fill_form`, `find`, `find_feedback`, `frames_list`, `generate_locator`, `get_config`, `get_video`, `go_back`, `go_forward`, `grant_permissions`, `heap_retainers`, `heap_snapshot`, `hover`, `inspect`, `layout_thrash_trace`, `list_approvals`, `list_named_refs`, `list_sessions`, `memory_diff`, `name_ref`, `navigate`, `network_body`, `network_emulate`, `network_read`, `overflow_detect`, `perf_audit`, `perf_insights`, `perf_start`, `perf_stop`, `plan`, `press`, `sample`, `screenshot`, `screenshot_marks`, `scroll`, `seed_random`, `select`, `session_metrics`, `set_color_scheme`, `set_geolocation`, `set_locale`, `set_reduced_motion`, `set_timezone`, `set_user_agent`, `set_viewport`, `shadow_trees`, `snapshot`, `start_har`, `stop_har`, `stop_video`, `text_search`, `verify_attribute`, `verify_count`, `verify_predicate`, `verify_text`, `verify_value`, `verify_visible`, `wait_for`, `watch`, `ws_read`. Excluded: `batch` (no nesting), `await_human` (would block the whole batch), recording-control tools.
 
 **Example.**
 
@@ -3452,7 +3454,7 @@ Extract framebuffer or 2D ImageData from a `<canvas>` element. Three formats:
 
 ### `canvas_diff({ beforeBase64, afterBase64, width?, height?, region?, inputFormat?, session? })`
 
-Pure function: pixel/region delta over two RGBA captures. Returns `{ ok, changedPixelCount, changedBytes, percentageChanged, bboxOfChanges:{x,y,w,h}|null, warnings[] }`.
+Pure function: pixel/region delta over two RGBA captures. Capability `read`: it reads no page and does not need `canvas`. Returns `{ ok, changedPixelCount, changedBytes, percentageChanged, bboxOfChanges:{x,y,w,h}|null, warnings[] }`.
 
 - RGBA inputs require `width` + `height` (the byte buffer alone does not carry dimensions). Over-flow `region` rectangles clamp to image bounds and do not throw.
 - `changedBytes` is the sum of absolute per-channel deltas. Useful for "how much changed" as well as "did anything".
@@ -3770,7 +3772,7 @@ browxai to daemon:
 
 ## Native app control (`ios-app`, `android-app`) _(gated)_
 
-**Requires the off-by-default `native-device` capability.** `open_session({ engine: "ios-app" })` and `open_session({ engine: "android-app" })` both refuse without it with the standard capability refusal (`requiredCapability: "native-device"`), so the gate sits at session creation and no native tool can be reached around it. See [`docs/threat-model.md`](./threat-model.md) for what the capability grants.
+**Requires the off-by-default `native-device` capability.** `open_session({ engine: "ios-app" })` and `open_session({ engine: "android-app" })` both refuse without it with the standard capability refusal (`requiredCapability: "native-device"`), so the gate sits at session creation and no native tool can be reached around it. The ten device and app tools below (`device_list`, `device_boot`, `device_shutdown` and the seven `app_*` tools) are gated on `native-device` too, and refuse the same way before any device is touched. See [`docs/threat-model.md`](./threat-model.md) for what the capability grants.
 
 browxai drives two native engines. `ios-app` drives a native application on the **iOS Simulator** through its XCUITest accessibility hierarchy. `android-app` drives an app on an **Android emulator** over `adb`, UiAutomator for the view hierarchy, the OS input pipeline for taps, swipes and keys, `screencap` for frames. Neither is a browser: there is no `Page`, no DOM, no URL and no `Locator`. What each has instead is a view hierarchy that composes into the **same `A11yNode` tree** `snapshot` already returns, with the same `[ref=eN]` refs, so an agent skill written for web transfers and one CI verifier reads every kind of session.
 
