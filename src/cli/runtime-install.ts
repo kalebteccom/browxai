@@ -14,6 +14,7 @@ import {
 import { collectGarbage, renderGc, type ProcessLister } from "./runtime-gc.js";
 import { appendJournal } from "./runtime-journal.js";
 import { acquireLock } from "./runtime-lock.js";
+import { recordNotes } from "./runtime-notes.js";
 import { nextCheckAfter, type Random } from "./runtime-schedule.js";
 import type { RuntimePaths } from "./runtime-layout.js";
 import { findNpmCli, npmRegistry, type NpmContext, type Registry } from "./runtime-npm.js";
@@ -199,6 +200,8 @@ async function manualUpdate(
     `✓ current is ${v}${applied.previous ? `, was ${applied.previous}` : ""}. ` +
       "Each MCP client runs it from its next start. Servers already running keep their version.\n",
   );
+  const notes = recordNotes(paths, applied.previous, v, (deps.now ?? Date.now)(), "manual");
+  if (notes.length) io.out(`Upgrading notes for ${notes.join(", ")}: browxai runtime notes\n`);
   const gc = await collectGarbage(paths, readState(paths), { list: deps.list });
   if (gc.removed.length || gc.inUse.length || gc.unknown) io.out(renderGc(gc));
   return 0;
@@ -264,7 +267,7 @@ async function installAgent(paths: RuntimePaths, deps: FlowDeps, io: FlowIo): Pr
   if (r.ok) {
     io.out(`✓ background job: ${r.detail}. It runs browxai runtime update --auto every hour.\n`);
     io.out(
-      `  Turn it off: set "autoUpdate": "off" in ${paths.settings}, or run install again with --no-agent.\n`,
+      "  Turn it off: browxai runtime config auto-update off, or run install again with --no-agent.\n",
     );
   } else {
     io.err(

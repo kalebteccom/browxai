@@ -17,6 +17,7 @@ import { createServer } from "./server.js";
 import "./cli/register-commands.js";
 import { commandFor, registeredCommands, usageFor } from "./cli/command-registry.js";
 import { helpTarget, wantsHelp } from "./cli/help.js";
+import { firstStartLine } from "./cli/runtime-notes.js";
 import { log } from "./util/logging.js";
 import { redactUrlForLog } from "./util/url-sanitizer.js";
 import { resolveConfig } from "./util/config.js";
@@ -217,6 +218,11 @@ async function main(): Promise<void> {
         '  Add it to your client\'s MCP config (command: "browxai"), or run `browxai doctor` to check this machine and `browxai --help` for the other commands. Ctrl+C quits.\n',
     );
   }
+
+  // Under the runtime launcher, the first start of a version with unread
+  // Upgrading notes says so once. stderr only: stdout is the MCP wire.
+  const notes = firstStartLine(process.env);
+  if (notes) process.stderr.write(notes);
 
   const server = await createServer({ attachCdp, headless, browserType });
 

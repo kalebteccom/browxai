@@ -14,6 +14,7 @@ import { npmContext, type FlowDeps, type FlowIo } from "./runtime-install.js";
 import { appendJournal, type JournalEntry } from "./runtime-journal.js";
 import { compareVersions, type RuntimePaths } from "./runtime-layout.js";
 import { acquireLock } from "./runtime-lock.js";
+import { recordNotes } from "./runtime-notes.js";
 import { npmRegistry, type VersionInfo } from "./runtime-npm.js";
 import {
   bootDelayUntil,
@@ -32,7 +33,13 @@ import {
   resolveCooldown,
 } from "./runtime-settings.js";
 import { writeShim } from "./runtime-shim.js";
-import { readCurrent, readState, updateState, type RuntimeState } from "./runtime-store.js";
+import {
+  readCurrent,
+  readState,
+  syncPreviousVersion,
+  updateState,
+  type RuntimeState,
+} from "./runtime-store.js";
 
 /** The clock, random source and boot time the job reads. Tests pass fakes. */
 export interface AutoClock {
@@ -66,6 +73,9 @@ export async function autoUpdateFlow(
   try {
     if (!auto.on) return off(paths, `auto-update off (${auto.source})`, now, io);
     writeShim(paths);
+    // The launcher reads `previous-version` for its fallback; a runtime switched
+    // by an older browxai has none yet.
+    syncPreviousVersion(paths, readState(paths).previous);
     return await autoRun(paths, opts, deps, io);
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
@@ -262,6 +272,8 @@ async function apply(
     ms,
   });
   io.out(`✓ current is ${v}${current ? `, was ${current}` : ""}.\n`);
+  const notes = recordNotes(paths, applied.previous, v, now, "auto");
+  if (notes.length) io.out(`  Upgrading notes for ${notes.join(", ")}: browxai runtime notes\n`);
   await collectGarbage(paths, readState(paths), { list: deps.list });
   return 0;
 }

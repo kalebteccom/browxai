@@ -1,6 +1,6 @@
 ---
 title: Keep browxai current with a runtime
-description: Install browxai into a runtime directory you own, point MCP clients at one launcher path, and let a background job or `browxai runtime update` move it to new releases. Covers what an update verifies, the background job and how to turn it off, the settings, what the commands refuse, and moving from a hand-made directory.
+description: Install browxai into a runtime directory you own, point MCP clients at one launcher path, and let a background job or `browxai runtime update` move it to new releases. Covers what an update verifies, the background job and how to turn it off, the settings and `browxai runtime config`, Upgrading notes, a daemon that moves to a new version when idle, what the commands refuse, and moving from a hand-made directory.
 ---
 
 An MCP client starts browxai from the path in its config. When that path names one
@@ -14,6 +14,8 @@ the launcher at it. The next time a client starts browxai, it gets the new versi
 browxai runtime install  [--dir PATH] [--channel latest|next] [--no-agent] [--write-client-config] [--profile-dir DIR]...
 browxai runtime update   [--check] [--version V] [--now] [--auto]
 browxai runtime status   [--json]
+browxai runtime notes    [V]
+browxai runtime config   [auto-update on|off | channel latest|next | cooldown-hours N]
 browxai runtime rollback
 browxai runtime gc
 browxai runtime uninstall [--yes]
@@ -49,8 +51,11 @@ The directory looks like this:
   current             a link to the version clients run
   versions/0.22.0/    one npm install per version, never changed after it is used
   staging/            installs in progress
-  state.json          the previous version, failed attempts, and the job's schedule
-  journal.jsonl       one line per check, apply, rollback and gc, mode 0600
+  state.json          the previous version, failed attempts, unread notes, and the job's schedule
+  previous-version    the previous version again, as one line the launcher reads
+  updater-errors      runs in a row where the current version's updater failed
+  notes/0.22.0.md     Upgrading notes of a version an update crossed
+  journal.jsonl       one line per check, apply, rollback, gc, Upgrading note and fallback, mode 0600
   agent.log           the background job's output on macOS, mode 0600
   lock                held by the update that is running
 ```
@@ -189,16 +194,28 @@ The job exits 0 for all of these, so an offline machine never shows a failing jo
 It exits 1 only for an internal error, which the journal records. A manual
 `browxai runtime update` counts as a check too, and moves the next one 6 hours on.
 
+### When the current version's updater fails
+
+The job runs the updater of the current version. When that updater exits with an
+internal error on three hourly runs in a row, the next run uses the previous
+version's updater once, then goes back to the current one. The launcher counts the
+runs in `<runtime>/updater-errors`, writes a `fallback` line to the journal, and the
+`runtime` row of `browxai doctor` says so until the current version's updater
+succeeds again. With the self-check that runs each release's own
+`runtime status --json`, a release with a broken updater can't keep a machine from
+taking the next release.
+
 `browxai runtime status` and the `runtime` row of `browxai doctor` show the last
 check, the next one, and a version that waits or is held, with the reason.
-`<runtime>/journal.jsonl` keeps one line per check, apply, rollback and gc, with
+`<runtime>/journal.jsonl` keeps one line per check, apply, rollback, gc, Upgrading
+note and updater fallback, with
 versions, integrity hashes, reasons and timings. It records no npm config value. At
 1 MB it moves to `journal.jsonl.1`, replacing the one before.
 
 ### Turn it off
 
-- Set `"autoUpdate": "off"` in `<runtime>/runtime.json`. The job reads that file on
-  every run.
+- Run `browxai runtime config auto-update off`, which sets `"autoUpdate": "off"` in
+  `<runtime>/runtime.json`. The job reads that file on every run.
 - Or set `BROWX_RUNTIME_AUTO_UPDATE=off` in the job's own environment. The job
   doesn't read your shell's variables, so a value set in your shell profile doesn't
   reach it.
@@ -207,6 +224,40 @@ versions, integrity hashes, reasons and timings. It records no npm config value.
 
 Off in either place wins, and a value other than `on`, `1`, `true`, `yes`, `off`, `0`,
 `false` or `no` counts as off.
+
+## Upgrading notes
+
+Before 1.0 a minor release can change a default, and the CHANGELOG says what to do in
+its Upgrading notes. The npm package carries no CHANGELOG, so each build ships the
+notes as `dist/upgrading.json`. After an update switches versions, it copies the
+notes of every version it crossed to `<runtime>/notes/<version>.md` and to the
+journal. A release whose note is "Nothing to do." adds none.
+
+```bash
+browxai runtime notes          # notes you haven't read, and every version after yours up to current
+browxai runtime notes 0.22.0   # the notes of one version
+```
+
+Until you run `browxai runtime notes`, the `runtime` row of `browxai doctor` warns
+about the unread notes, and the first server that starts on the new version prints
+one line to standard error naming the command. Standard error reaches only your MCP
+client's log, so doctor is the place to look.
+
+## A daemon you run yourself
+
+A `browxai serve --socket` daemon that your own launchd job or systemd unit starts
+through the launcher moves to a new version by itself. Every 5 minutes it reads
+`current`, a local file read with no network. Once `current` names another version
+and the daemon has had no socket client and no open session for 15 minutes, it logs
+one line and exits with code 75. A launchd job with `KeepAlive` and
+`SuccessfulExit` set to false, or a systemd unit with `Restart=on-failure`, starts it
+again through the launcher on the new version, and a connected `browxai bridge`
+reconnects. A job that doesn't restart on a non-zero exit leaves the daemon stopped.
+
+Set `BROWX_RUNTIME_DAEMON_RESTART=off` in the daemon's environment to keep it on its
+version until you restart it. The default under the launcher is `idle`, and any other
+value keeps the daemon running and logs a warning. A daemon started without the
+launcher never exits this way.
 
 ## Roll back
 
@@ -239,22 +290,37 @@ runtime it shows the current version, the channel, when the last check ran, when
 the next one is due, and whether auto-update is on and where that came from. It
 warns about a version that waits or is held, a server older than `current`, a
 `current` the maintainers deprecated, a recorded node that is gone, and auto-update
-on with no background job. It fails doctor only when a version failed signature or
+on with no background job. It also warns about unread Upgrading notes, and about a
+current version whose updater failed on its last runs or that the previous version's
+updater stood in for. It fails doctor only when a version failed signature or
 provenance verification. Run from anywhere else it says so, with the path that won't
 update.
 
 ## Settings
 
-| Setting                     | Where                                        | What it does                                                                                                                                                      |
-| --------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BROWX_RUNTIME_DIR`         | environment                                  | The runtime directory, an absolute path. The launcher sets it for the server it starts.                                                                           |
-| `BROWX_RUNTIME_CHANNEL`     | environment, or `channel` in runtime.json    | `latest` (the default) or `next`. Any other value is refused.                                                                                                     |
-| `BROWX_RUNTIME_AUTO_UPDATE` | environment, or `autoUpdate` in runtime.json | Whether the background job applies updates. Off in either place wins, and a value other than `on`, `1`, `true`, `yes`, `off`, `0`, `false` or `no` counts as off. |
-| `cooldownHours`             | runtime.json                                 | Hours the background job waits after a release is published, 24 by default, 0 to 720. Another value keeps 24, with a warning.                                     |
-| `BROWX_RUNTIME_NODE`        | environment                                  | The node the launcher and npm run, before the recorded one. The background job sets it to the recorded node.                                                      |
+| Setting                        | Where                                        | What it does                                                                                                                                                      |
+| ------------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BROWX_RUNTIME_DIR`            | environment                                  | The runtime directory, an absolute path. The launcher sets it for the server it starts.                                                                           |
+| `BROWX_RUNTIME_CHANNEL`        | environment, or `channel` in runtime.json    | `latest` (the default) or `next`. Any other value is refused.                                                                                                     |
+| `BROWX_RUNTIME_AUTO_UPDATE`    | environment, or `autoUpdate` in runtime.json | Whether the background job applies updates. Off in either place wins, and a value other than `on`, `1`, `true`, `yes`, `off`, `0`, `false` or `no` counts as off. |
+| `cooldownHours`                | runtime.json                                 | Hours the background job waits after a release is published, 24 by default, 0 to 720. Another value keeps 24, with a warning.                                     |
+| `BROWX_RUNTIME_NODE`           | environment                                  | The node the launcher and npm run, before the recorded one. The background job sets it to the recorded node.                                                      |
+| `BROWX_RUNTIME_DAEMON_RESTART` | a daemon's environment                       | `idle` (the default under the launcher) lets a `serve --socket` daemon exit 75 to move to a new version; `off` keeps it running. Another value counts as `off`.   |
 
-`install --channel` writes the channel to `runtime.json`. Edit the file by hand for
-`autoUpdate` and `cooldownHours`. These settings come only
+`browxai runtime config` prints each setting and where its value comes from. With a
+setting it writes `runtime.json`, mode 0600:
+
+```bash
+browxai runtime config                    # print the settings
+browxai runtime config auto-update off    # or on
+browxai runtime config channel next       # or latest
+browxai runtime config cooldown-hours 48  # 0 to 720
+```
+
+A value outside these words is a usage error and writes nothing, and a `runtime.json`
+that doesn't parse is left alone. When a variable in the current environment
+overrides the value you set, the command says so. `install --channel` writes the
+channel too. These settings come only
 from the environment and `runtime.json`. The workspace config, `set_config` and MCP
 tools can't change them. The launcher also sets `BROWX_RUNTIME_VERSION` for the
 server it starts, for information only.

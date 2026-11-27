@@ -55,8 +55,9 @@
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
     "prepublishOnly": "node scripts/audit-package-contents.mjs && pnpm typecheck && pnpm test && pnpm build",
-    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli.js && pnpm --filter './packages/plugins/*' build && pnpm build:player",
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli.js && pnpm --filter './packages/plugins/*' build && pnpm build:player && pnpm build:upgrading",
     "build:player": "tsx scripts/build-replay-player.ts",
+    "build:upgrading": "node scripts/upgrading-notes.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:keystone": "vitest run --config vitest.keystone.config.ts",

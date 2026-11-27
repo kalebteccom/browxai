@@ -32,7 +32,10 @@ import {
   type RuntimeContext,
   type RuntimePaths,
 } from "./runtime-layout.js";
+import { runConfig } from "./runtime-config.js";
+import { runNotes, type NotesDeps } from "./runtime-notes.js";
 import { readSettingsFile, resolveChannel, type Channel } from "./runtime-settings.js";
+import { PACKAGE_VERSION } from "../util/version.js";
 import { renderStatus, runtimeStatus } from "./runtime-status.js";
 import { readCurrent, readState, switchCurrent, writeState } from "./runtime-store.js";
 
@@ -50,6 +53,10 @@ export interface RuntimeDeps extends Partial<Omit<FlowDeps, "env" | "list" | "ag
   appBundle?: () => string | undefined;
   /** The real path of the `cli.js` this process runs. */
   selfCli?: string;
+  /** The browxai version this process runs, for `notes`. */
+  version?: string;
+  /** This build's own Upgrading notes, for `notes` when `current` ships none. */
+  ownNotes?: NotesDeps["ownTable"];
   out?: (text: string) => void;
   err?: (text: string) => void;
 }
@@ -98,7 +105,7 @@ export async function runRuntime(args: readonly string[], deps: RuntimeDeps = {}
     io.out(parsed.json ? JSON.stringify(status, null, 2) + "\n" : renderStatus(status));
     return 0;
   }
-  const flow: FlowDeps & { clock: AutoClock } = {
+  const flow: FlowDeps & { clock: AutoClock } & Pick<RuntimeDeps, "version" | "ownNotes"> = {
     ...deps,
     env: ctx.env,
     run,
@@ -124,9 +131,17 @@ export async function runRuntime(args: readonly string[], deps: RuntimeDeps = {}
 function managedVerb(
   paths: RuntimePaths,
   parsed: RuntimeArgs,
-  flow: FlowDeps & { clock: AutoClock },
+  flow: FlowDeps & { clock: AutoClock } & Pick<RuntimeDeps, "version" | "ownNotes">,
   io: Io,
 ): Promise<number> | number {
+  if (parsed.verb === "config") return runConfig(paths, parsed.change, flow.env, io);
+  if (parsed.verb === "notes") {
+    return runNotes(paths, parsed.version, {
+      version: flow.version ?? PACKAGE_VERSION,
+      ...(flow.ownNotes ? { ownTable: flow.ownNotes } : {}),
+      out: io.out,
+    });
+  }
   if (parsed.verb === "rollback") return rollback(paths, io);
   if (parsed.verb === "gc") return gc(paths, flow.list, io);
   if (parsed.verb === "uninstall") return uninstall(paths, parsed.yes, flow, io);

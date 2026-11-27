@@ -1,6 +1,7 @@
 // `browxai runtime`: the argument grammar of each verb. Anything else is a usage
 // error, exit 2.
 
+import { parseConfigArgs, type ConfigChange } from "./runtime-config.js";
 import { isVersion } from "./runtime-layout.js";
 import { isChannel, type Channel } from "./runtime-settings.js";
 
@@ -18,10 +19,14 @@ export type RuntimeArgs =
       noAgent: boolean;
     }
   | { verb: "update"; check: boolean; version?: string; auto: boolean; now: boolean }
-  | { verb: "uninstall"; yes: boolean };
+  | { verb: "uninstall"; yes: boolean }
+  /** `notes [V]`: the Upgrading notes of V, or the unread ones. */
+  | { verb: "notes"; version?: string }
+  /** `config`: null reads every setting, a change writes one. */
+  | { verb: "config"; change: ConfigChange | null };
 
 export const RUNTIME_USAGE =
-  "usage: browxai runtime <install|update|status|rollback|gc|uninstall> [flags]\n" +
+  "usage: browxai runtime <install|update|status|notes|config|rollback|gc|uninstall> [flags]\n" +
   "  install [--dir PATH] [--channel latest|next] [--no-agent] [--write-client-config]\n" +
   "          [--profile-dir DIR]...\n" +
   "                    create the runtime directory, record this node, write the\n" +
@@ -42,6 +47,13 @@ export const RUNTIME_USAGE =
   "                    --now skips the delay.\n" +
   "  status [--json]   the runtime directory, the version `current` names, the kept\n" +
   "                    versions and the processes that use them. No network.\n" +
+  "  notes [V]         the Upgrading notes of version V, or of every version after\n" +
+  "                    this one (or the previous one) up to current. No network.\n" +
+  "  config [auto-update on|off | channel latest|next | cooldown-hours N]\n" +
+  "                    with no setting, print each setting and where it comes from.\n" +
+  "                    With one, write it to runtime.json. BROWX_RUNTIME_CHANNEL and\n" +
+  "                    BROWX_RUNTIME_AUTO_UPDATE win over the file, and off in either wins.\n" +
+  "                    cooldown-hours is the delay after publish, 0 to 720.\n" +
   "  rollback          switch `current` back to the previous version. No network.\n" +
   "  gc                keep three versions (current, previous and one more) and\n" +
   "                    remove older ones that no running process uses\n" +
@@ -145,6 +157,13 @@ export function parseRuntimeArgs(args: readonly string[]): RuntimeArgs | undefin
       return parseInstall(rest);
     case "update":
       return parseUpdate(rest);
+    case "notes":
+      if (rest.length === 0) return { verb };
+      return rest.length === 1 && isVersion(rest[0]!) ? { verb, version: rest[0]! } : undefined;
+    case "config": {
+      const change = parseConfigArgs(rest);
+      return change === undefined ? undefined : { verb, change };
+    }
     case "uninstall": {
       const r = readFlags(rest, { "--yes": "bool" });
       return r ? { verb, yes: r.flags.has("--yes") } : undefined;
