@@ -1,4 +1,5 @@
 import { withDeadline } from "../util/deadline.js";
+import { isExecutableContentType } from "../page/fulfil-policy.js";
 import { SESSION_ARG } from "./schemas.js";
 import type {
   RegisterHost,
@@ -34,6 +35,37 @@ export function cacheEntryForCaps(entryIn: object, bodyAllowed: boolean): Record
   };
 }
 
+/** The headers `caches_put` stores, or the executable content type that makes
+ *  it refuse. A service worker can answer a page's request from CacheStorage,
+ *  so a stored response reaches the page the way a `route` answer does. With
+ *  `allowExecutable` (the server has `eval`) the caller's headers are stored as
+ *  given. Without it an HTML, XHTML, SVG or JavaScript content type is refused,
+ *  and every other response is stored with `X-Content-Type-Options: nosniff`,
+ *  so the browser runs none of them as a script. Header names compare without
+ *  case. */
+export function cachePutHeaders(
+  headers: Readonly<Record<string, string>> | undefined,
+  allowExecutable: boolean,
+): { executable: string } | { headers: Record<string, string> } {
+  const given = headers ?? {};
+  if (allowExecutable) return { headers: { ...given } };
+  const contentType = Object.entries(given).find(([k]) => k.toLowerCase() === "content-type");
+  if (contentType && isExecutableContentType(contentType[1])) {
+    return { executable: contentType[1] };
+  }
+  const kept = Object.entries(given).filter(([k]) => k.toLowerCase() !== "x-content-type-options");
+  return { headers: { ...Object.fromEntries(kept), "x-content-type-options": "nosniff" } };
+}
+
+/** The `reason` on the `eval` refusal for an executable `caches_put`. */
+function cachedExecutableReason(contentType: string): string {
+  return (
+    `caches_put stores a response with content type "${contentType}", a document or script a ` +
+    "service worker could hand the page to run, which needs the `eval` capability. Without it, " +
+    "caches_put stores other content types with `X-Content-Type-Options: nosniff`."
+  );
+}
+
 /**
  * Cache API tools: `caches_*` (list_storages / list / get / put / delete / clear /
  * delete_storage). Split out of `storage-tools` by cohesive family (RFC 0004 P3 /
@@ -66,6 +98,14 @@ export function registerStorageCachesTools(
     storageFor,
     cfgActionTimeout,
   } = host;
+
+  /** The `eval` refusal for a `caches_put` whose content type is executable,
+   *  or null. */
+  const cachePutRefusal = (headers: Readonly<Record<string, string>> | undefined) => {
+    const policy = cachePutHeaders(headers, gateCheck("caches_put", ["eval"]) === null);
+    if (!("executable" in policy)) return null;
+    return gateCheck("caches_put", ["eval"], cachedExecutableReason(policy.executable));
+  };
 
   // ---- Cache API -------------------------------------------------------------
 
@@ -168,8 +208,10 @@ export function registerStorageCachesTools(
     "caches_put",
     {
       capability: "action",
+      // An executable content type without `eval` is refused before the hold asks.
+      byobPrecheck: ({ response }) => cachePutRefusal(response.headers),
       description:
-        "Put one entry in a cache, opening (creating) the named storage if needed. `response.body` is a UTF-8 string; for binary pass `response.contentBase64` instead, exactly one of the two. `response.status` defaults to 200; `response.headers` is optional. Origin-scoped: navigate first.",
+        "Put one entry in a cache, opening (creating) the named storage if needed. `response.body` is a UTF-8 string; for binary pass `response.contentBase64` instead, exactly one of the two. `response.status` defaults to 200; `response.headers` is optional. A service worker may answer the page from this cache, so without the `eval` capability an HTML, XHTML, SVG or JavaScript `content-type` is refused and every other entry is stored with `X-Content-Type-Options: nosniff`. Origin-scoped: navigate first.",
       inputSchema: {
         cacheName: z.string().describe("Cache storage name (auto-created)."),
         url: z.string().describe("Entry URL key."),
@@ -193,12 +235,19 @@ export function registerStorageCachesTools(
     async ({ cacheName, url, response, session }) => {
       const g = gateCheck("caches_put");
       if (g) return g;
+      const refused = cachePutRefusal(response.headers);
+      if (refused) return refused;
+      const policy = cachePutHeaders(response.headers, gateCheck("caches_put", ["eval"]) === null);
+      const headers = "headers" in policy ? policy.headers : {};
       try {
         const e = await entryFor(session);
         const sg = subInterfaceGate("caches_put", "storage", e);
         if (sg) return sg;
         const r = await withDeadline(
-          storageFor(e).cachesPut({ cacheName, url, response }, "caches_put"),
+          storageFor(e).cachesPut(
+            { cacheName, url, response: { ...response, headers } },
+            "caches_put",
+          ),
           cfgActionTimeout(),
           "caches_put",
         );

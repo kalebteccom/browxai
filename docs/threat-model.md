@@ -715,6 +715,8 @@ the same gate refusal and hint.
 
   `route` and `route_queue` answer a matching request with a body the caller wrote, and `sw_intercept_fetch` does the same for the requests it pauses. Under `action` alone they answer data and static requests only: the resource types `xhr`, `fetch`, `eventsource`, `image`, `media`, `font`, `stylesheet`, `texttrack` and `manifest`. A matching document, script or worker request, or one of any other type, goes to the real network, so the page runs what its own server sent. The check reads the resource type the browser gives the request. The response's content type does not decide it, because a browser runs a classic script whatever its content type when the response has no `nosniff` header. Answering those requests is part of `eval` (below). Each result carries `fulfils: "data"` or `"all"`, and `unroute`, `sw_unintercept_fetch` and a replacing install report `skippedExecutable`, the number of matches left to the network. Pinned by `test/keystone/route-fulfil.keystone.test.ts`.
 
+  `caches_put` stores a response the caller wrote in the page's CacheStorage, and an app whose service worker answers from that cache hands it to the page. Under `action` alone it refuses an HTML, XHTML, SVG or JavaScript content type with the standard `eval` refusal, and stores every other response with `X-Content-Type-Options: nosniff`, so the browser runs none of them as a script. With `eval` the headers are stored as given. Pinned by `test/keystone/caches-put-sw.keystone.test.ts`.
+
 - `human`, default **on**. Tools: `await_human`, `name_ref`, `profile_snapshot`, `profile_restore`.
 
   Pure coordination primitives. The human's answer comes only from the `browxai` isolated world (section 7 above); page scripts cannot produce it. `profile_restore` replaces a profile's cookies and storage with a snapshot's, the same seeding `open_session({storageState})` does, so it also needs `action` and returns the standard refusal without it.
@@ -741,7 +743,7 @@ the same gate refusal and hint.
 
 - `eval`, default **off**. Tools: `eval_js`, `poll_eval`.
 
-  Arbitrary page-side JS execution. `poll_eval` re-runs an expression until it is truthy and is gated by `eval` alone. It also lets `route`, `route_queue`, `sw_intercept_fetch` and the HARs `open_session({hars})` replays answer document, script and worker requests (see `action` above). Off by default; loud warning when enabled.
+  Arbitrary page-side JS execution. `poll_eval` re-runs an expression until it is truthy and is gated by `eval` alone. It also lets `route`, `route_queue`, `sw_intercept_fetch` and the HARs `open_session({hars})` replays answer document, script and worker requests, and `caches_put` store a document or script response (see `action` above). Off by default; loud warning when enabled.
 
   `eval` also gates one branch of `route`, `route_queue` and `sw_intercept_fetch`: answering a document, script or worker request with a canned body. A page runs such a response, so a body the caller wrote is caller-written script in the page, the same thing `eval_js` gives. With `eval` on, the three tools answer every matching request and report `fulfils: "all"`. Without it they answer data and static requests only (see `action`), and a canned response whose content type is HTML, XHTML, SVG or a JavaScript type is refused at install with the standard gate refusal (`requiredCapability: "eval"`) and a `reason`, before any route is installed.
 

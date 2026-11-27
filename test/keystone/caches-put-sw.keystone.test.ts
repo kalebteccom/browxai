@@ -8,10 +8,11 @@
 // what it ran as one paragraph per source (`doc=`, `script=`, `sw=`), so each
 // case reads the result with an exact `text_search` and needs no `eval_js`.
 //
-// This file records what a default server allows today: a stored script, typed
-// as JavaScript or as JSON, runs in the page once the worker controls it. Only
-// a real Chromium shows that, because the worker, the cache lookup and the
-// script MIME check are the browser's own.
+// Without `eval`, `caches_put` refuses a JavaScript content type and stores a
+// JSON-typed body with `X-Content-Type-Options: nosniff`, so the worker hands
+// the page a response the browser will not run as a script. With `eval` the
+// stored script runs. Only a real Chromium shows that, because the worker, the
+// cache lookup and the script MIME check are the browser's own.
 
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -68,14 +69,14 @@ const RESPONSES: Record<string, { type: string; body: string }> = {
 let workspace: string;
 let site: HttpServer;
 let base: string;
-let server: Booted;
+let server: Booted | undefined;
 const savedEnv: Record<string, string | undefined> = {};
 
 async function call<T = Record<string, unknown>>(
   name: string,
   args: Record<string, unknown>,
 ): Promise<T> {
-  const fn = server.handlers[name];
+  const fn = server?.handlers[name];
   if (!fn) throw new Error(`caches-put-sw keystone: no handler "${name}"`);
   const res = await fn(args);
   return JSON.parse((res.content[0] as { text: string }).text) as T;
@@ -135,35 +136,106 @@ beforeAll(async () => {
   });
   await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${(site.address() as AddressInfo).port}`;
-  server = await createServer({ headless: true });
 }, KEYSTONE_TIMEOUT);
 
 afterAll(async () => {
-  await server?.shutdown().catch(() => undefined);
   await new Promise<void>((resolve) => (site ? site.close(() => resolve()) : resolve()));
   for (const k of Object.keys(process.env)) if (k.startsWith("BROWX_")) delete process.env[k];
   for (const [k, v] of Object.entries(savedEnv)) if (v !== undefined) process.env[k] = v;
   if (workspace) rmSync(workspace, { recursive: true, force: true });
 }, KEYSTONE_TIMEOUT);
 
+/** Boot a server with `capabilities` for one describe block. */
+function serverFor(capabilities?: string): void {
+  beforeAll(async () => {
+    if (!chromeGate.run) return;
+    if (capabilities) process.env.BROWX_CAPABILITIES = capabilities;
+    else delete process.env.BROWX_CAPABILITIES;
+    server = await createServer({ headless: true });
+  }, KEYSTONE_TIMEOUT);
+  afterAll(async () => {
+    await server?.shutdown().catch(() => undefined);
+    server = undefined;
+  }, KEYSTONE_TIMEOUT);
+}
+
 describeChromium("caches_put behind a cache-first service worker, default capabilities", () => {
-  it.each([
-    ["text/javascript", "ks-sw-js"],
-    ["application/json", "ks-sw-json"],
-  ])(
-    "a stored %s body for /app.js runs in the page",
-    async (contentType, session) => {
+  serverFor();
+
+  it(
+    "refuses a JavaScript content type and stores nothing",
+    async () => {
+      const session = "ks-sw-js";
       await controlledSession(session);
-      const put = await call<{ ok: boolean; requiredCapability?: string }>("caches_put", {
+      const put = await call<{ ok: boolean; requiredCapability?: string; reason?: string }>(
+        "caches_put",
+        {
+          session,
+          cacheName: "app",
+          url: `${base}/app.js`,
+          response: { headers: { "content-type": "text/javascript" }, body: say("script=cached") },
+        },
+      );
+      expect(put.ok).toBe(false);
+      expect(put.requiredCapability).toBe("eval");
+      expect(put.reason).toContain("text/javascript");
+
+      await call("navigate", { session, url: `${base}/page` });
+      expect(await appears(session, "script=real")).toBe(true);
+      expect(await has(session, "script=cached")).toBe(false);
+      await call("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "stores a JSON-typed body with nosniff, and the page does not run it",
+    async () => {
+      const session = "ks-sw-json";
+      await controlledSession(session);
+      const put = await call<{ ok: boolean }>("caches_put", {
         session,
         cacheName: "app",
         url: `${base}/app.js`,
-        response: { headers: { "content-type": contentType }, body: say("script=cached") },
+        response: { headers: { "content-type": "application/json" }, body: say("script=cached") },
+      });
+      expect(put.ok, JSON.stringify(put)).toBe(true);
+      const got = await call<{ found: boolean; headers: Record<string, string> }>("caches_get", {
+        session,
+        cacheName: "app",
+        url: `${base}/app.js`,
+      });
+      expect(got.found).toBe(true);
+      expect(got.headers["x-content-type-options"]).toBe("nosniff");
+
+      await call("navigate", { session, url: `${base}/page` });
+      expect(await appears(session, "sw=controlling")).toBe(true);
+      // Give the script tag time to load and be refused.
+      await appears(session, "script=cached");
+      expect(await has(session, "script=cached")).toBe(false);
+      await call("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
+describeChromium("caches_put behind a cache-first service worker, with eval", () => {
+  serverFor("read,navigation,action,human,eval");
+
+  it(
+    "stores a JavaScript body as given, and the page runs it",
+    async () => {
+      const session = "ks-sw-eval";
+      await controlledSession(session);
+      const put = await call<{ ok: boolean }>("caches_put", {
+        session,
+        cacheName: "app",
+        url: `${base}/app.js`,
+        response: { headers: { "content-type": "text/javascript" }, body: say("script=cached") },
       });
       expect(put.ok, JSON.stringify(put)).toBe(true);
 
       await call("navigate", { session, url: `${base}/page` });
-      expect(await appears(session, "sw=controlling")).toBe(true);
       expect(await appears(session, "script=cached")).toBe(true);
       expect(await has(session, "script=real")).toBe(false);
       await call("close_session", { session });
