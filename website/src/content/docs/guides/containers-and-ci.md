@@ -133,7 +133,8 @@ policy. That makes the non-root user and the security section below matter.
 ## One server, several containers
 
 `browxai serve --socket PATH` runs one long-lived server on a Unix socket. Every
-client that connects shares its one Chromium and its sessions. Put the socket
+client that connects shares its sessions, its config and its capability set. Each
+session still launches its own browser process. Put the socket
 on the workspace volume and a second container can reach it.
 
 ```bash
@@ -331,9 +332,10 @@ each run unless you cache it. The Docker version above builds an image instead.
   is about 300 MB to download and about 700 MB on disk, per the
   [getting started](/getting-started/) page. The reference image already holds the
   browser, so a container run downloads nothing.
-- **One daemon, one Chromium.** Clients that attach to the same
-  `serve --socket` server share one browser. Give each client its own session id,
-  and run calls on a single session one at a time.
+- **One daemon, one browser per session.** Clients that attach to the same
+  `serve --socket` server share its sessions, and each session is its own
+  browser process. Give each client its own session id, run calls on a single
+  session one at a time, and close sessions when a job is done.
 - **The workspace.** Profiles, screenshots, downloads and diagnostics all land in
   `BROWX_WORKSPACE`. Use a fresh directory or volume per job, and delete it
   afterwards.

@@ -19,6 +19,19 @@ npx playwright-core@1.65.1 install chromium
 On a machine with no display, such as a server or a container, the first
 headed session fails. Set `BROWX_HEADLESS=1` in the server's environment.
 
+## A "Google Chrome for Testing" window opens
+
+browxai launches the installed Google Chrome by default since 0.13.0. A window
+titled "Google Chrome for Testing" is Playwright's bundled build, which browxai
+launches when Chrome is not installed, when a launch loads extensions, or when
+the session sets `channel: "chromium"`. If none of those applies, the MCP client
+is probably starting a browxai older than 0.13.0. Point the client entry at a
+current version and restart the client:
+
+```json
+{ "command": "npx", "args": ["-y", "browxai@latest"] }
+```
+
 ## A tool is disabled
 
 ```text
