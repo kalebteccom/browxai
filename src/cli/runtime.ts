@@ -1,18 +1,24 @@
 // `browxai runtime <verb>`: manage a runtime directory that keeps browxai
 // releases side by side under one launcher path. See
 // docs/rfcs/0015-runtime-updates.md. Exit codes follow the shell route: 0 ok,
-// 1 a failed check or an internal error, 2 usage or a refused context.
+// 1 a failed check or an internal error, 2 usage or a refused context, 3 the
+// npm registry could not be reached.
 
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { realSystem, type ClientSystem } from "./init-clients.js";
 import { runningAppBundle } from "./macos-app.js";
-import { runProgram, type Runner } from "./runtime-exec.js";
+import { parseRuntimeArgs, RUNTIME_USAGE, type RuntimeArgs } from "./runtime-args.js";
+import { activeTargets } from "./runtime-clients.js";
+import { runProgram } from "./runtime-exec.js";
 import {
   collectGarbage,
+  renderGc,
   systemProcessLister,
-  type GcResult,
+  versionsInUse,
   type ProcessLister,
 } from "./runtime-gc.js";
+import { installFlow, updateFlow, type FlowDeps } from "./runtime-install.js";
 import {
   cliOf,
   inspectRuntime,
@@ -23,29 +29,20 @@ import {
   type RuntimeContext,
   type RuntimePaths,
 } from "./runtime-layout.js";
+import { readSettingsFile, resolveChannel, type Channel } from "./runtime-settings.js";
 import { renderStatus, runtimeStatus } from "./runtime-status.js";
 import { readCurrent, readState, switchCurrent, writeState } from "./runtime-store.js";
 
-export const RUNTIME_USAGE =
-  "usage: browxai runtime <status|rollback|gc> [flags]\n" +
-  "  status [--json]   the runtime directory, the version `current` names, the kept\n" +
-  "                    versions and the processes that use them. No network.\n" +
-  "  rollback          switch `current` back to the previous version. No network.\n" +
-  "  gc                keep three versions (current, previous and one more) and\n" +
-  "                    remove older ones that no running process uses\n" +
-  "The runtime directory is $BROWX_RUNTIME_DIR, or ~/.browxai-runtime.\n" +
-  "Exit 0 ok, 1 a failed check or an internal error, 2 usage or a refused context.\n";
+export { RUNTIME_USAGE } from "./runtime-args.js";
 
 /** Seams a test can replace. */
-export interface RuntimeDeps {
+export interface RuntimeDeps extends Partial<Omit<FlowDeps, "env" | "list">> {
   ctx?: RuntimeContext;
-  run?: Runner;
   list?: ProcessLister;
   /** The Browxai app this process runs from, or undefined outside it. */
   appBundle?: () => string | undefined;
   /** The real path of the `cli.js` this process runs. */
   selfCli?: string;
-  now?: () => number;
   out?: (text: string) => void;
   err?: (text: string) => void;
 }
@@ -57,19 +54,6 @@ interface Io {
 
 const APP_MESSAGE =
   "browxai runtime: this browxai is the signed Browxai app, which updates through Homebrew: brew upgrade --cask browxai\n";
-
-type Verb = "status" | "rollback" | "gc";
-
-function parseRuntimeArgs(args: readonly string[]): { verb: Verb; json: boolean } | undefined {
-  const [verb, ...rest] = args;
-  if (verb === "status") {
-    if (rest.length === 0) return { verb, json: false };
-    if (rest.length === 1 && rest[0] === "--json") return { verb, json: true };
-    return undefined;
-  }
-  if ((verb === "rollback" || verb === "gc") && rest.length === 0) return { verb, json: false };
-  return undefined;
-}
 
 export async function runRuntime(args: readonly string[], deps: RuntimeDeps = {}): Promise<number> {
   const io: Io = {
@@ -87,18 +71,13 @@ export async function runRuntime(args: readonly string[], deps: RuntimeDeps = {}
     return 2;
   }
   const ctx = deps.ctx ?? realContext();
-  const dir = resolveRuntimeDir(ctx);
-  if ("error" in dir) {
-    io.err(`browxai runtime: ${dir.error}\n`);
-    return 2;
-  }
+  const dir = resolveRuntimeDir(ctx, parsed.verb === "install" ? parsed.dir : undefined);
+  if ("error" in dir) return refuse(io, dir.error);
   const checked = inspectRuntime(dir.dir, ctx, parsed.verb !== "status");
-  if (!checked.ok) {
-    io.err(`browxai runtime: ${checked.reason}${checked.reason.endsWith("\n") ? "" : "\n"}`);
-    return 2;
-  }
+  if (!checked.ok) return refuse(io, checked.reason);
   const paths = runtimePaths(dir.dir);
-  const list = deps.list ?? systemProcessLister(deps.run ?? runProgram, ctx.platform);
+  const run = deps.run ?? runProgram;
+  const list = deps.list ?? systemProcessLister(run, ctx.platform);
   if (parsed.verb === "status") {
     const status = await runtimeStatus(paths, checked.found, {
       env: ctx.env,
@@ -108,12 +87,77 @@ export async function runRuntime(args: readonly string[], deps: RuntimeDeps = {}
     io.out(parsed.json ? JSON.stringify(status, null, 2) + "\n" : renderStatus(status));
     return 0;
   }
+  const flow: FlowDeps = {
+    ...deps,
+    env: ctx.env,
+    run,
+    list,
+    execPath: deps.execPath ?? process.execPath,
+    system: deps.system ?? realSystem(),
+  };
+  if (parsed.verb === "install") return install(paths, parsed, flow, io);
   if (checked.found.kind !== "managed") {
-    io.err(`browxai runtime: no browxai runtime at ${dir.dir}. Run: browxai runtime install\n`);
-    return 2;
+    return refuse(io, `no browxai runtime at ${dir.dir}. Run: browxai runtime install`);
   }
+  return managedVerb(paths, parsed, flow, io);
+}
+
+function managedVerb(
+  paths: RuntimePaths,
+  parsed: RuntimeArgs,
+  flow: FlowDeps,
+  io: Io,
+): Promise<number> | number {
   if (parsed.verb === "rollback") return rollback(paths, io);
-  return gc(paths, { list, now: deps.now }, io);
+  if (parsed.verb === "gc") return gc(paths, flow.list, io);
+  if (parsed.verb === "uninstall") return uninstall(paths, parsed.yes, flow, io);
+  if (parsed.verb !== "update") return refuse(io, RUNTIME_USAGE);
+  const channel = channelOf(paths, flow.env, io);
+  if (!channel) return 2;
+  const want = {
+    channel,
+    check: parsed.check,
+    ...(parsed.version ? { version: parsed.version } : {}),
+  };
+  return updateFlow(paths, want, flow, io);
+}
+
+function refuse(io: Io, reason: string): number {
+  io.err(`browxai runtime: ${reason}${reason.endsWith("\n") ? "" : "\n"}`);
+  return 2;
+}
+
+/** The channel from BROWX_RUNTIME_CHANNEL or runtime.json; undefined after
+ *  printing why it can't be used. */
+function channelOf(paths: RuntimePaths, env: NodeJS.ProcessEnv, io: Io): Channel | undefined {
+  const { file, error } = readSettingsFile(paths);
+  if (error) {
+    refuse(io, `${error}. Fix it or remove it.`);
+    return undefined;
+  }
+  const channel = resolveChannel(env, file);
+  if (!channel.ok) {
+    refuse(io, channel.error);
+    return undefined;
+  }
+  return channel.value;
+}
+
+function install(
+  paths: RuntimePaths,
+  parsed: Extract<RuntimeArgs, { verb: "install" }>,
+  flow: FlowDeps,
+  io: Io,
+): Promise<number> | number {
+  const channel = parsed.channel ?? channelOf(paths, flow.env, io);
+  if (!channel) return 2;
+  const want = {
+    channel,
+    ...(parsed.channel ? { channelFlag: parsed.channel } : {}),
+    writeClientConfig: parsed.writeClientConfig,
+    profileDirs: parsed.profileDirs,
+  };
+  return installFlow(paths, want, flow, io);
 }
 
 /** Switch `current` to the previous version and remember the one it left, so a
@@ -141,15 +185,8 @@ function rollback(paths: RuntimePaths, io: Io): number {
   return 0;
 }
 
-async function gc(
-  paths: RuntimePaths,
-  deps: { list: ProcessLister; now?: () => number },
-  io: Io,
-): Promise<number> {
-  const result = await collectGarbage(paths, readState(paths), {
-    list: deps.list,
-    ...(deps.now ? { now: deps.now } : {}),
-  });
+async function gc(paths: RuntimePaths, list: ProcessLister, io: Io): Promise<number> {
+  const result = await collectGarbage(paths, readState(paths), { list });
   io.out(renderGc(result));
   if (result.unknown) {
     io.err("browxai runtime: the process list could not be read, so no version was removed.\n");
@@ -158,12 +195,51 @@ async function gc(
   return 0;
 }
 
-export function renderGc(r: GcResult): string {
-  const lines = [`kept: ${r.kept.join(", ") || "none"}`];
-  if (r.removed.length) lines.push(`removed: ${r.removed.join(", ")}`);
-  for (const u of r.inUse) lines.push(`kept ${u.version}: in use by pid ${u.pids.join(", ")}`);
-  if (r.stagingRemoved.length) lines.push(`removed from staging: ${r.stagingRemoved.join(", ")}`);
-  return lines.join("\n") + "\n";
+/** Remove the runtime directory, unless a running process uses one of its
+ *  versions. Names the client configs that still point at the launcher. */
+async function uninstall(
+  paths: RuntimePaths,
+  yes: boolean,
+  flow: FlowDeps,
+  io: Io,
+): Promise<number> {
+  const use = await versionsInUse(paths, flow.list);
+  if (!yes && !use) {
+    return refuse(
+      io,
+      "the process list could not be read, so it is unknown whether a server runs from this runtime. Pass --yes to remove it anyway.",
+    );
+  }
+  if (!yes && use && use.size > 0) {
+    const pids = [...use.values()].flat().join(", ");
+    return refuse(
+      io,
+      `pid ${pids} runs from ${paths.root}. Stop those servers first, or pass --yes. Nothing was changed.`,
+    );
+  }
+  rmSync(paths.root, { recursive: true, force: true });
+  io.out(`✓ removed ${paths.root}\n`);
+  const still = leftoverConfigs(paths, flow.system);
+  if (still.length) {
+    io.out(
+      `These client configs still name ${paths.shim}. Point their entries at another browxai:\n`,
+    );
+    for (const p of still) io.out(`  ${p}\n`);
+  }
+  return 0;
+}
+
+function leftoverConfigs(paths: RuntimePaths, system: ClientSystem | undefined): string[] {
+  if (!system) return [];
+  return activeTargets(system)
+    .map((t) => t.path)
+    .filter((p) => {
+      try {
+        return readFileSync(p, "utf8").includes(paths.shim);
+      } catch {
+        return false;
+      }
+    });
 }
 
 /** The real path of the `cli.js` this module belongs to. */

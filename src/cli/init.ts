@@ -27,6 +27,7 @@ import {
 import { runSmoke, smokeChannel, type SmokeOptions, type SmokeResult } from "./init-smoke.js";
 import { appWrapperOf, runningAppBundle } from "./macos-app.js";
 import { findInstalledChrome } from "./chrome-launch.js";
+import { runtimeLauncherFor } from "./runtime-layout.js";
 import {
   applyUserConfig,
   lineDiff,
@@ -59,6 +60,8 @@ export interface InitDeps {
   appBundle?: () => string | undefined;
   /** Picks the test attributes when `--test-attrs` is absent. */
   sniffAttrs?: (workspace: string) => { attrs: string[]; note: string };
+  /** The runtime launcher to name when init runs from a runtime, or undefined. */
+  runtimeLauncher?: (distCli: string, env: NodeJS.ProcessEnv) => string | undefined;
 }
 
 /** Printed to stdout for `--help` (exit 0, from `cli.ts`) and to stderr when
@@ -110,20 +113,22 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   // Resolve the browxai dist/cli.js path (this script's repo).
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const distCli = resolve(__dirname, "../cli.js");
+  // Run from a runtime, every entry names its launcher, which follows updates.
+  // The path of this version's cli.js would pin the entry to it.
+  const launcher = (deps.runtimeLauncher ?? runtimeLauncherFor)(distCli, process.env);
+  const server = launcher ? { command: launcher, args: [] } : { command: "node", args: [distCli] };
 
   const mcpJson = {
     mcpServers: {
       browxai: {
-        command: "node",
-        args: [distCli],
+        ...server,
         env: {
           BROWX_WORKSPACE: browxDir,
           BROWX_TEST_ATTRIBUTES: testAttrs,
         },
       },
       "browxai-attached": {
-        command: "node",
-        args: [distCli],
+        ...server,
         env: {
           BROWX_WORKSPACE: browxDir,
           BROWX_ATTACH_CDP: "http://127.0.0.1:9222",
@@ -162,10 +167,16 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   process.stdout.write(
     `\n.mcp.json snippet (workspace-scope; pair with \`claude mcp add-json -s user\` for user-scope):\n\n${mcpJsonText}\n\n`,
   );
-  process.stdout.write(
-    'Portable alternative to the absolute path above, which breaks when node or the global prefix moves: { "command": "npx", "args": ["-y", "browxai"] }\n\n',
-  );
-  if (/[\\/]_npx[\\/]/.test(distCli)) {
+  if (launcher) {
+    process.stdout.write(
+      `browxai runs from a runtime, so the entries name its launcher ${launcher}. They start the version \`current\` names, and follow \`browxai runtime update\` with no edit.\n\n`,
+    );
+  } else {
+    process.stdout.write(
+      'Portable alternative to the absolute path above, which breaks when node or the global prefix moves: { "command": "npx", "args": ["-y", "browxai"] }\n\n',
+    );
+  }
+  if (!launcher && /[\\/]_npx[\\/]/.test(distCli)) {
     process.stdout.write(
       `⚠  the snippet points at ${distCli}, inside the npx cache, which npm can delete. ` +
         "Run `npm install -g browxai` and run `browxai init` again so the path stays put.\n\n",
@@ -186,9 +197,11 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
     app !== undefined
       ? bridgeEntry(app)
       : {
-          ...(inNpxCache
-            ? { command: "npx", args: ["-y", "browxai"] }
-            : { command: process.execPath, args: [distCli] }),
+          ...(launcher
+            ? server
+            : inNpxCache
+              ? { command: "npx", args: ["-y", "browxai"] }
+              : { command: process.execPath, args: [distCli] }),
           env: { BROWX_WORKSPACE: browxDir, BROWX_TEST_ATTRIBUTES: testAttrs },
         };
   if (app !== undefined) process.stdout.write(BRIDGE_ENTRY_NOTE);

@@ -64,7 +64,9 @@ export interface Check {
 /** Printed to stdout for `--help` (exit 0, from `cli.ts`) and to stderr when
  *  the arguments are wrong (exit 2). */
 export const DOCTOR_USAGE =
-  "usage: browxai doctor [--verbose]\n  --verbose   print every check, including the opt-in engines (on macOS, also where browxai runs from)\n";
+  "usage: browxai doctor [--verbose] [--json]\n" +
+  "  --verbose   print every check, including the opt-in engines (on macOS, also where browxai runs from)\n" +
+  "  --json      print every check as one JSON document: { version, ok, checks }. Same exit code\n";
 
 export async function runDoctor(args: readonly string[] = []): Promise<number> {
   const opts = parseDoctorArgs(args);
@@ -333,19 +335,26 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
 
   // Print + exit.
   const { text, allOk } = formatDoctor(checks, { verbose: opts.verbose, version: PACKAGE_VERSION });
-  process.stdout.write(text);
+  // `--json` is what `browxai runtime` compares between two versions, row by row.
+  process.stdout.write(
+    opts.json
+      ? JSON.stringify({ version: PACKAGE_VERSION, ok: allOk, checks }, null, 2) + "\n"
+      : text,
+  );
   return allOk ? 0 : 1;
 }
 
 interface DoctorOpts {
   verbose: boolean;
+  json: boolean;
 }
 
 function parseDoctorArgs(args: readonly string[]): DoctorOpts | null {
-  let verbose = false;
+  const opts: DoctorOpts = { verbose: false, json: false };
   for (const a of args) {
-    if (a === "--verbose") verbose = true;
+    if (a === "--verbose" && !opts.verbose) opts.verbose = true;
+    else if (a === "--json" && !opts.json) opts.json = true;
     else return null;
   }
-  return { verbose };
+  return opts;
 }

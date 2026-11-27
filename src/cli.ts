@@ -90,7 +90,8 @@ Usage: browxai [subcommand]
                                 Exit 0 the client closed, 1 internal error,
                                 2 usage, 3 no daemon.
   browxai runtime <verb>        keep browxai releases side by side under one
-                                launcher path: status, rollback, gc.
+                                launcher path that MCP clients name: install,
+                                update, status, rollback, gc, uninstall.
                                 \`browxai runtime --help\` lists them.
   browxai plugin <sub>          install, remove, list, info, upgrade or sync
                                 plugins. Everything stays in the workspace.

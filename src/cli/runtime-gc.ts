@@ -220,3 +220,12 @@ function isAlive(pid: number): boolean {
     return (e as NodeJS.ErrnoException).code === "EPERM";
   }
 }
+
+export function renderGc(r: GcResult): string {
+  const lines = [`kept: ${r.kept.join(", ") || "none"}`];
+  if (r.removed.length) lines.push(`removed: ${r.removed.join(", ")}`);
+  for (const u of r.inUse) lines.push(`kept ${u.version}: in use by pid ${u.pids.join(", ")}`);
+  if (r.stagingRemoved.length) lines.push(`removed from staging: ${r.stagingRemoved.join(", ")}`);
+  if (r.unknown) lines.push("the process list could not be read, so no version was removed");
+  return lines.join("\n") + "\n";
+}
