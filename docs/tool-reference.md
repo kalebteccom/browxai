@@ -1760,7 +1760,9 @@ implementations.
 `auth_list`) under `read`; writes (`*_set`, `*_delete`, `*_clear`,
 `inject_storage_state`, `auth_save`, `auth_load`, `auth_delete`) under
 `action`. `dump_storage_state({path})` also needs `file-io` (off by default)
-for the file; without `path` it needs only `read`.
+for the file; without `path` it needs only `read`. `auth_save` also needs
+`file-io`, because the slot is a workspace file. Reading a slot (`auth_load`,
+`open_session({authState})`) needs no `file-io`.
 
 **Attached sessions**: `cookies_get`, `cookies_list` and `dump_storage_state`
 return the cookie values of the person's own browser, and `localstorage_get`,
@@ -2745,7 +2747,7 @@ open_session({ session: "mail", mode: "persistent", profile: "job-search-live" }
 
 Checkpoint and reset a persistent session's profile directory for repeatable destructive authenticated-SPA tests.
 
-- `profile_snapshot({ snapshot, profile? })`: copy the profile dir into `<workspace>/profile-snapshots/<snapshot>`. `profile` defaults to `"default"`.
+- `profile_snapshot({ snapshot, profile? })`: copy the profile dir into `<workspace>/profile-snapshots/<snapshot>`. `profile` defaults to `"default"`. Needs the `file-io` capability (off by default) as well as `human`, because the copy is a workspace file.
 - `profile_restore({ snapshot, profile? })`: copy a named snapshot back over the profile dir. Needs the `action` capability as well as `human`, because it replaces the profile's cookies and storage, as `open_session({storageState})` does; without it the call returns the standard refusal with `requiredCapability: "action"`. Refuses a snapshot `profile_snapshot` did not write, or whose files changed after it was taken: each snapshot carries a manifest with a digest of its files, MACed with a workspace key. Snapshots from earlier versions have no manifest and must be taken again. `profile-snapshots/` is write-protected against every other tool.
 - **All sessions must be closed first** (`close_sessions({all:true})`): copying a profile dir while Chromium has it open corrupts it; both tools refuse while any session is live. Names are letters/digits/`._-` only (no path separators).
 

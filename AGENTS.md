@@ -73,7 +73,7 @@ Safe by default — no auto-broadening. Every off-by-default capability has a pe
 | OFF + loud-warn | `network-body`        | `network_body`, `caches_get` bodies, `start_har` `embed`/`attach`: full response bodies                                                                               |
 | OFF + loud-warn | `byob-attach`         | attach to user's existing Chrome (desktop or Android), or a running desktop Electron app (no managed profile)                                                         |
 | OFF             | `clipboard`           | `shortcut` copy/cut/paste writes the OS clipboard (write-only, never read back)                                                                                       |
-| OFF             | `file-io`             | `upload_file`, downloads, every workspace file a tool writes (screenshots, exports, PDFs, traces, HAR, video, artifacts), `navigate` to `file:`, all workspace-rooted |
+| OFF             | `file-io`             | `upload_file`, downloads, workspace files tools write (screenshots, exports, traces, HAR, video, artifacts, auth slots, profile snapshots), `navigate` to `file:`     |
 | OFF + loud-warn | `secrets`             | `register_secret`, secret materialization at egress                                                                                                                   |
 | OFF + loud-warn | `extensions`          | install/inspect Chrome extensions                                                                                                                                     |
 | OFF + loud-warn | `stealth`             | anti-fingerprint posture tweaks                                                                                                                                       |
@@ -88,6 +88,8 @@ Safe by default — no auto-broadening. Every off-by-default capability has a pe
 | OFF + loud-warn | `human-gate-override` | `set_*_policy` may move a policy off `ask-human`; `grant_permissions` may grant what it holds                                                                         |
 | OFF + loud-warn | `operator-channel`    | `await_human` and the confirm hooks go to the host daemon's Unix socket, and only its answer counts                                                                   |
 | OFF + loud-warn | `live-view`           | the socket's daemon can stream browser pixels to the operator (needs `operator-channel`)                                                                              |
+
+Two writers ride their own capability: the `.browx` archive (`replay`) and the diagnostics JSONL (`diagnostics`). Reading a workspace file needs no `file-io`.
 
 Per-capability rationale, ActionResult shape, and threat-model rows live in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/ai-context/architecture/capability-posture-map.md`](docs/ai-context/architecture/capability-posture-map.md).
 

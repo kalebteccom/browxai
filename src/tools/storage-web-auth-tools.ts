@@ -1,3 +1,4 @@
+import { fileWriteGate } from "./file-write-gate.js";
 import { withDeadline } from "../util/deadline.js";
 import {
   injectStorageState,
@@ -217,12 +218,19 @@ export function registerStorageWebAuthTools(
   // canonical seeding path; inject_storage_state({state: <path or blob>})
   // is the in-flight reseat. NO parallel implementation.
 
+  /** `auth_save` writes the slot as a file under `.auth-states/`, so it adds
+   *  `file-io` to its `action` gate. */
+  const authSaveFileRefusal = () =>
+    fileWriteGate(gateCheck, "auth_save", "the storage state as a named slot file");
+
   register(
     "auth_save",
     {
       capability: "action",
+      // A server without `file-io` refuses before the hold asks a human.
+      byobPrecheck: () => authSaveFileRefusal(),
       description:
-        "Save the session's current storage state (cookies and per-origin localStorage) to a named slot at `$BROWX_WORKSPACE/.auth-states/<name>.json`, to reuse a login. Names are letters, digits and `._-` only, and an existing slot of the same name is overwritten. Reuse it with `open_session({authState})` for a new session, or `auth_load` for a live one. Use `cookies_set` for a single cookie and `dump_storage_state` for the blob without a slot. Cookie values may carry credentials: the slot file keeps them as the browser holds them, so treat it as sensitive.",
+        "Save the session's current storage state (cookies and per-origin localStorage) to a named slot at `$BROWX_WORKSPACE/.auth-states/<name>.json`, to reuse a login. Names are letters, digits and `._-` only, and an existing slot of the same name is overwritten. Reuse it with `open_session({authState})` for a new session, or `auth_load` for a live one. Use `cookies_set` for a single cookie and `dump_storage_state` for the blob without a slot. Cookie values may carry credentials: the slot file keeps them as the browser holds them, so treat it as sensitive. Requires the `file-io` capability (off by default), because the slot is a workspace file.",
       inputSchema: {
         name: z.string().describe("Slot name (letters/digits/`._-` only)."),
         ...SESSION_ARG,
@@ -231,6 +239,8 @@ export function registerStorageWebAuthTools(
     async ({ name, session }) => {
       const g = gateCheck("auth_save");
       if (g) return g;
+      const fg = authSaveFileRefusal();
+      if (fg) return fg;
       try {
         const e = await entryFor(session);
         const r = await withDeadline(

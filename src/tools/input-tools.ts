@@ -7,19 +7,21 @@ import type { GateHost, ToolHost, ToolResponse } from "./host.js";
 import type { TouchPhase } from "../page/action-substrate.js";
 import { requirePage } from "../engine/index.js";
 import { errorResult, jsonResult } from "./json-result.js";
+import { fileWriteGate } from "./file-write-gate.js";
 
 /** The second capability a profile checkpoint tool needs beyond `human`, or
- *  null. `profile_restore` replaces a profile's cookies and storage, as
+ *  null. `profile_snapshot` copies a profile into the workspace, so it needs
+ *  `file-io`. `profile_restore` replaces a profile's cookies and storage, as
  *  `open_session({storageState})` seeds them, so it needs `action`. */
 function profileArmRefusal(
   gateCheck: GateHost["gateCheck"],
   tool: "profile_snapshot" | "profile_restore",
 ): ToolResponse | null {
-  if (tool === "profile_restore") {
-    const reason = "profile_restore replaces a profile's cookies and storage with a snapshot's";
-    return gateCheck(tool, ["action"], reason);
+  if (tool === "profile_snapshot") {
+    return fileWriteGate(gateCheck, tool, "a copy of the profile directory");
   }
-  return null;
+  const reason = "profile_restore replaces a profile's cookies and storage with a snapshot's";
+  return gateCheck(tool, ["action"], reason);
 }
 
 /**
@@ -155,7 +157,7 @@ export function registerInputTools(host: ToolHost): void {
         capability: "human",
         description:
           action === "profile_snapshot"
-            ? 'Copy a persistent profile directory into a named snapshot under `<workspace>/profile-snapshots/`, to checkpoint a clean authenticated state before a destructive test. Restore it with `profile_restore`. `profile` defaults to "default". Every session must be closed first (use `list_sessions` and `close_sessions`), because copying a live profile directory corrupts it.'
+            ? 'Copy a persistent profile directory into a named snapshot under `<workspace>/profile-snapshots/`, to checkpoint a clean authenticated state before a destructive test. Restore it with `profile_restore`. `profile` defaults to "default". Every session must be closed first (use `list_sessions` and `close_sessions`), because copying a live profile directory corrupts it. Requires the `file-io` capability (off by default).'
             : "Restore a named profile snapshot over a profile directory, to reset to a clean checkpoint between destructive runs. Every session must be closed first (use `list_sessions` and `close_sessions`). A snapshot that `profile_snapshot` did not write, or whose files changed since, is refused: each snapshot carries a signed manifest. Needs the `action` capability.",
         inputSchema: {
           snapshot: z.string().describe("Snapshot name (letters/digits/._- only)."),

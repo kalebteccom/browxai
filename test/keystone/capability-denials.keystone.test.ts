@@ -13,8 +13,9 @@
 //   extensions       extensions_install / _list / _reload / _trigger / _uninstall
 //   canvas           canvas_capture, gesture_chain, canvas_world_to_screen,
 //                    canvas_screen_to_world, canvas_query
-//   file-io          the 13 tool-gated tools, the `action` and `read` tools that
-//                    write a workspace file (`artifact_save`, `start_har`, and
+//   file-io          the 13 tool-gated tools, the `action`, `read` and `human`
+//                    tools that write a workspace file (`artifact_save`,
+//                    `start_har`, `auth_save`, `profile_snapshot`, and
 //                    `dump_storage_state` / `export_playwright_script` with `path`),
 //                    plus the `screenshot({path})` branch and `navigate` to a `file:` URL
 //   diagnostics      diagnostics_note
@@ -120,6 +121,8 @@ const DENIALS: readonly Case[] = [
   { capability: "file-io", tool: "stop_video", args: {} },
   { capability: "file-io", tool: "get_video", args: {} },
   { capability: "file-io", tool: "artifact_save", args: { name: "ks-denied", content: "x" } },
+  { capability: "file-io", tool: "auth_save", args: { name: "ks-denied" } },
+  { capability: "file-io", tool: "profile_snapshot", args: { snapshot: "ks-denied" } },
   { capability: "file-io", tool: "start_har", args: { path: "ks-file-io-denials/x.har" } },
   {
     capability: "file-io",
@@ -641,6 +644,21 @@ describe("the same surfaces with their capabilities on", () => {
       expect(pdf.requiredCapability).toBeUndefined();
       expect(pdf.ok).toBe(true);
       expect(pdf.bytes).toBeGreaterThan(0);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "file-io: auth_save writes its slot file",
+    async () => {
+      await call("navigate", { session, url: `${fixture.url}/` });
+      const saved = await call<{ ok: boolean; requiredCapability?: string }>("auth_save", {
+        session,
+        name: "ks-enabled",
+      });
+      expect(saved.requiredCapability).toBeUndefined();
+      expect(saved.ok).toBe(true);
+      expect(existsSync(join(workspace, ".auth-states", "ks-enabled.json"))).toBe(true);
     },
     KEYSTONE_TIMEOUT,
   );

@@ -1,8 +1,9 @@
 // `profile_snapshot` and `profile_restore` run under `human` and add a second
-// capability for what they change: `profile_restore` replaces a profile's
-// cookies and storage, so it needs `action`. Browser-free: the handlers run
-// against a stub host whose gate refuses every extra capability not enabled,
-// and nothing is copied when the gate refuses.
+// capability for what they change: `profile_snapshot` writes a copy of the
+// profile into the workspace, so it needs `file-io`; `profile_restore` replaces
+// a profile's cookies and storage, so it needs `action`. Browser-free: the
+// handlers run against a stub host whose gate refuses every extra capability
+// not enabled, and nothing is copied when the gate refuses.
 
 import { afterAll, describe, expect, it } from "vitest";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -64,5 +65,24 @@ describe("profile_restore", () => {
     expect(body.requiredCapability).toBeUndefined();
     expect(body.openSessions).toEqual(["open"]);
     expect(asked).toContainEqual(["profile_restore", ["action"]]);
+  });
+});
+
+describe("profile_snapshot", () => {
+  it("refuses without file-io and copies nothing", async () => {
+    const { h } = handlers(["read", "navigation", "action", "human"]);
+    const body = bodyOf(await h.profile_snapshot!({ snapshot: "s" }));
+    expect(body.ok).toBe(false);
+    expect(body.requiredCapability).toBe("file-io");
+    expect(body.reason).toMatch(/^profile_snapshot writes a copy of the profile directory/);
+    expect(readdirSync(root)).toEqual([]);
+  });
+
+  it("passes the gate with file-io", async () => {
+    const { h, asked } = handlers(["read", "human", "file-io"]);
+    const body = bodyOf(await h.profile_snapshot!({ snapshot: "s" }));
+    expect(body.requiredCapability).toBeUndefined();
+    expect(body.openSessions).toEqual(["open"]);
+    expect(asked).toContainEqual(["profile_snapshot", ["file-io"]]);
   });
 });
