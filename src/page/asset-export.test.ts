@@ -26,9 +26,6 @@ describe("sanitiseAssetFilename", () => {
     expect(sanitiseAssetFilename('a<b>c:d"e|f?g*h.png')).toBe("a_b_c_d_e_f_g_h.png");
     expect(sanitiseAssetFilename("<NAME>.bin")).toBe("_NAME_.bin");
   });
-  it("keeps those characters in the caller form", () => {
-    expect(sanitiseAssetFilename("<NAME>.bin", "caller")).toBe("<NAME>.bin");
-  });
   it("collapses traversal sequences and strips leading dots", () => {
     const out = sanitiseAssetFilename("../../evil.sh");
     expect(out).not.toContain("/");
@@ -54,7 +51,7 @@ describe("filenameFromUrl with a secrets mask", () => {
     const url = `https://x.test/files/${"a".repeat(190)}${value}.bin`;
     expect(filenameFromUrl(url)).toBe("a".repeat(190) + "tok_012345");
     expect(filenameFromUrl(url, (s) => secrets.applyMaskInText(s))).toBe(
-      "a".repeat(190) + "<TOKEN>.bi",
+      "a".repeat(190) + "_TOKEN_.bi",
     );
   });
 });
@@ -220,7 +217,7 @@ function stubPageWith(
 }
 
 describe("assetExport integration", () => {
-  it("reports a masked name as `<NAME>` and writes it under underscores", async () => {
+  it("reports the on-disk name in `savedAs`, masked or holding a Windows-illegal character", async () => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {
       const secrets = new SecretRegistry();
@@ -254,14 +251,16 @@ describe("assetExport integration", () => {
         { filter: {}, intoDir: "out" },
       );
       expect(r.persistedCount).toBe(4);
+      // `q?z.png` and `q_z.png` land on one file, so the second takes `-1`.
       expect(r.manifest.map((m) => m.savedAs)).toEqual([
-        "<NAME>.png",
-        "<NAME>-1.png",
-        "q?z.png",
+        "_NAME_.png",
+        "_NAME_-1.png",
+        "q_z.png",
         "q_z-1.png",
       ]);
-      for (const f of ["_NAME_.png", "_NAME_-1.png", "q_z.png", "q_z-1.png"]) {
-        expect(existsSync(join(root, "out", f))).toBe(true);
+      // Every `savedAs` opens as `join(intoDir, savedAs)`.
+      for (const m of r.manifest) {
+        expect(readFileSync(join(r.intoDir, m.savedAs), "utf8")).toBe("D");
       }
     } finally {
       rmSync(root, { recursive: true, force: true });

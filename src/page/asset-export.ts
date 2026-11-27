@@ -25,7 +25,6 @@ import { join, resolve, sep } from "node:path";
 import type { CDPSession, Page } from "playwright-core";
 import type { SessionNetworkRing, NetworkEntry } from "./network.js";
 import { log } from "../util/logging.js";
-import { toDiskName } from "../util/filename-chars.js";
 import { filenameFromUrl, resolveCollision, timestampForDir } from "./asset-export-naming.js";
 import { assertWritableWorkspacePath } from "../util/workspace.js";
 
@@ -299,13 +298,11 @@ function writeAssetFile(
 ): { ok: true; name: string; path: string } | { ok: false; warning: string } {
   const base = filenameFromUrl(url, st.mask);
   for (let attempt = 0; attempt < MAX_NAME_ATTEMPTS; attempt++) {
-    // `name` is the form the manifest reports; `used` and the file hold the
-    // on-disk form.
-    const name = resolveCollision(base, st.used, toDiskName);
-    st.used.add(toDiskName(name));
+    const name = resolveCollision(base, st.used);
+    st.used.add(name);
     // Defence in depth — the sanitised name has no separators, so the join
     // can't leave `intoDir`; verify anyway ($BROWX_WORKSPACE-rooted by construction).
-    const path = resolve(join(st.intoDir, toDiskName(name)));
+    const path = resolve(join(st.intoDir, name));
     if (path !== st.intoDir && !path.startsWith(st.intoDir + sep)) {
       return { ok: false, warning: `refused to write outside intoDir: ${url}` };
     }
