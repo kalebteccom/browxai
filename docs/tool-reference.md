@@ -1646,7 +1646,10 @@ Captured artifacts live at `$BROWX_WORKSPACE/.downloads/<sessionId>/<prefix>-<sa
 (per-session subdir, prefix disambiguates concurrent downloads). The
 page-supplied filename is **sanitised** before composing the on-disk name:
 path separators stripped, leading dots stripped, NUL/control bytes stripped,
-length-capped, all-stripped names fall back to `"download"`. The raw
+length-capped, all-stripped names fall back to `"download"`. Each of the
+characters Windows refuses in a file name, `<>:"|?*`, becomes `_` in the file on
+disk, so a masked name `<NAME>` is saved as `_NAME_`. `suggestedFilename`
+keeps those characters, and `path` is the real on-disk path. The raw
 page-supplied filename is preserved on the entry as `rawSuggestedFilename` when
 sanitisation diverged.
 
@@ -1718,9 +1721,11 @@ through `eval_js`.
 
 Filenames are derived from the URL path basename, percent-decoded, and
 **sanitised**: no path separators, no NUL/control bytes, no leading dots,
-length-capped, all-stripped names fall back to `"asset"`. Two responses with
+length-capped, all-stripped names fall back to `"asset"`. Each of `<>:"|?*`
+becomes `_`, so a masked name `<NAME>.png` is saved as `_NAME_.png`. `savedAs`
+is that on-disk name: `join(intoDir, savedAs)` opens the file. Two responses with
 the same basename are collision-resolved with a `-N` suffix
-(`logo.png`, `logo-1.png`, …). Files are created exclusively: a name that
+(`logo.png`, `logo-1.png`, …), judged on the on-disk name. Files are created exclusively: a name that
 already exists in `intoDir`, from an earlier export or anything else, is never
 replaced and moves on to the next free `-N` name.
 

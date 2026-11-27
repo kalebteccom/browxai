@@ -26,6 +26,7 @@ import { log } from "../util/logging.js";
 import { assertWriteStaysInside } from "../util/workspace.js";
 import type { Mask } from "../util/frame-cap.js";
 import type { SecretRegistry } from "../util/secrets.js";
+import { toDiskName } from "../util/filename-chars.js";
 
 /** What lands on `ActionResult.downloads[]` and `download_get`. Workspace-rooted
  *  paths only; never absolute outside `$BROWX_WORKSPACE`. */
@@ -75,10 +76,13 @@ export class DownloadsRegistry {
     this.nameMask = (s) => secrets.applyMaskInText(s);
   }
 
-  /** A page-supplied name, masked, then made safe for disk. */
-  safeName(raw: string): { name: string; masked: string } {
+  /** A page-supplied name, masked, then made safe for disk. `name` is the form
+   *  the caller sees, `disk` the form the file is written under (`<>:"|?*`
+   *  become `_`). */
+  safeName(raw: string): { name: string; disk: string; masked: string } {
     const masked = this.nameMask ? this.nameMask(raw) : raw;
-    return { name: sanitiseFilename(masked), masked };
+    const name = sanitiseFilename(masked, "caller");
+    return { name, disk: toDiskName(name), masked };
   }
 
   constructor(
@@ -155,8 +159,11 @@ export class DownloadsRegistry {
  *    - cap at 200 chars (leaves room for the `<id>-` prefix on filesystems
  *      with 255-byte name limits).
  *    - empty / all-stripped → fall back to `"download"`.
+ *    - for `"disk"` (the default), replace the characters Windows refuses in a
+ *      file name (`<>:"|?*`) with `_`. `"caller"` keeps them, for the name
+ *      returned to the agent.
  *  Exported for unit tests. */
-export function sanitiseFilename(raw: string): string {
+export function sanitiseFilename(raw: string, form: "disk" | "caller" = "disk"): string {
   if (typeof raw !== "string") return "download";
   // strip NUL + control bytes (0x00-0x1f, 0x7f) and path separators.
   // eslint-disable-next-line no-control-regex
@@ -176,7 +183,7 @@ export function sanitiseFilename(raw: string): string {
   // cap length.
   if (name.length > 200) name = name.slice(0, 200);
   if (!name) return "download";
-  return name;
+  return form === "disk" ? toDiskName(name) : name;
 }
 
 /** Best-effort MIME type from a filename extension. Tiny built-in table; this
@@ -243,7 +250,11 @@ async function handleDownload(download: Download, registry: DownloadsRegistry): 
   // The name is masked before the rewrite and the cut: the rewrite changes a
   // value holding `/` or `..` so it no longer matches, and the cut can split
   // one. `raw` from here on is the masked name.
-  const { name: safe, masked: raw } = registry.safeName(download.suggestedFilename() ?? "download");
+  const {
+    name: safe,
+    disk,
+    masked: raw,
+  } = registry.safeName(download.suggestedFilename() ?? "download");
   // Ensure storage dir exists (created lazily; sessions that never opt in
   // never create it). The dir is workspace-rooted (BROWX_WORKSPACE/.downloads
   // via the SessionEntry factory in server.ts — never cwd).
@@ -255,7 +266,7 @@ async function handleDownload(download: Download, registry: DownloadsRegistry): 
   // it on `record`); use a millisecond+random prefix to disambiguate
   // simultaneous downloads, then we'll record once persisted.
   const prefix = `${Date.now()}-${Math.floor(Math.random() * 1e6).toString(36)}`;
-  const target = join(registry.storageDir, `${prefix}-${safe}`);
+  const target = join(registry.storageDir, `${prefix}-${disk}`);
   // Reject any composed path that doesn't resolve INSIDE storageDir. Defence
   // in depth — sanitiseFilename already strips separators, but if a future
   // change loosens it the workspace-escape guard catches it.

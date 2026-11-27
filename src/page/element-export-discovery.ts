@@ -6,6 +6,7 @@
 
 import { extname, sep } from "node:path";
 import { statSync, readdirSync } from "node:fs";
+import { toDiskName } from "../util/filename-chars.js";
 
 /** One resource the element subtree references. Same shape as
  *  `archive.ts`'s `DiscoveredResource`. */
@@ -208,7 +209,8 @@ export function assetFilename(
     stem = "asset";
   }
   const hash = simpleHash(url);
-  const ext = urlExt || guessExtFromContentType(contentType) || guessExtFromKind(kind);
+  // The extension is the one part of the name the allowlist above never sees.
+  const ext = toDiskName(urlExt) || guessExtFromContentType(contentType) || guessExtFromKind(kind);
   return `${stem}-${hash}${ext}`;
 }
 

@@ -12,6 +12,16 @@ import {
 import { SecretRegistry } from "../util/secrets.js";
 
 describe("sanitiseFilename", () => {
+  it("replaces each character Windows refuses with an underscore on disk", () => {
+    expect(sanitiseFilename('a<b>c:d"e|f?g*h.txt')).toBe("a_b_c_d_e_f_g_h.txt");
+    expect(sanitiseFilename("<NAME>")).toBe("_NAME_");
+    expect(sanitiseFilename("<<NAME>>.csv")).toBe("__NAME__.csv");
+    expect(sanitiseFilename("???")).toBe("___");
+  });
+  it("keeps those characters in the caller form", () => {
+    expect(sanitiseFilename("<NAME>", "caller")).toBe("<NAME>");
+    expect(sanitiseFilename('a<b>c:d"e|f?g*h/i.txt', "caller")).toBe('a<b>c:d"e|f?g*h_i.txt');
+  });
   it("strips path separators (forward + back)", () => {
     expect(sanitiseFilename("a/b/c.pdf")).toBe("a_b_c.pdf");
     expect(sanitiseFilename("a\\b\\c.pdf")).toBe("a_b_c.pdf");
@@ -271,8 +281,30 @@ describe("attachDownloadCapture", () => {
       const [entry] = reg.list();
       expect(entry!.suggestedFilename).toBe("r".repeat(189) + "<TOKEN>.csv");
       expect(entry!.rawSuggestedFilename).toBeUndefined();
-      expect(entry!.path.endsWith("-" + "r".repeat(189) + "<TOKEN>.csv")).toBe(true);
+      expect(entry!.path.endsWith("-" + "r".repeat(189) + "_TOKEN_.csv")).toBe(true);
+      expect(existsSync(entry!.path)).toBe(true);
       expect(JSON.stringify(entry)).not.toContain("tok");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes an unmasked name with Windows-illegal characters under underscores", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "brx-dl-"));
+    try {
+      const reg = new DownloadsRegistry(dir);
+      reg.captureOn = true;
+      const f = fakeContextAndDownload('q1: "draft"?.csv');
+
+      attachDownloadCapture(f.context as any, reg);
+      f.listener()!(f.download);
+      await new Promise((r) => setTimeout(r, 10));
+      const [entry] = reg.list();
+      expect(entry!.suggestedFilename).toBe('q1: "draft"?.csv');
+      expect(entry!.rawSuggestedFilename).toBeUndefined();
+      expect(entry!.mimeType).toBe("text/csv");
+      expect(entry!.path.endsWith("-q1_ _draft__.csv")).toBe(true);
+      expect(existsSync(entry!.path)).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

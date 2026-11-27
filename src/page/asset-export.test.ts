@@ -22,6 +22,10 @@ describe("sanitiseAssetFilename", () => {
     expect(sanitiseAssetFilename("a/b/c.png")).toBe("a_b_c.png");
     expect(sanitiseAssetFilename("a\\b\\c.png")).toBe("a_b_c.png");
   });
+  it("replaces each character Windows refuses with an underscore on disk", () => {
+    expect(sanitiseAssetFilename('a<b>c:d"e|f?g*h.png')).toBe("a_b_c_d_e_f_g_h.png");
+    expect(sanitiseAssetFilename("<NAME>.bin")).toBe("_NAME_.bin");
+  });
   it("collapses traversal sequences and strips leading dots", () => {
     const out = sanitiseAssetFilename("../../evil.sh");
     expect(out).not.toContain("/");
@@ -47,7 +51,7 @@ describe("filenameFromUrl with a secrets mask", () => {
     const url = `https://x.test/files/${"a".repeat(190)}${value}.bin`;
     expect(filenameFromUrl(url)).toBe("a".repeat(190) + "tok_012345");
     expect(filenameFromUrl(url, (s) => secrets.applyMaskInText(s))).toBe(
-      "a".repeat(190) + "<TOKEN>.bi",
+      "a".repeat(190) + "_TOKEN_.bi",
     );
   });
 });
@@ -213,6 +217,56 @@ function stubPageWith(
 }
 
 describe("assetExport integration", () => {
+  it("reports the on-disk name in `savedAs`, masked or holding a Windows-illegal character", async () => {
+    const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
+    try {
+      const secrets = new SecretRegistry();
+      secrets.register({ name: "NAME", value: "hunter2hunter2" });
+      const png = (url: string, requestId: string): NetworkEntry => ({
+        method: "GET",
+        url,
+        type: "Image",
+        status: 200,
+        mimeType: "image/png",
+        bytes: 10,
+        requestId,
+      });
+      // `q?z.png` and `q_z.png` land on one file, so the second takes `-1`.
+      const buf = bufferWith([
+        png("https://x.test/a/hunter2hunter2.png", "r1"),
+        png("https://x.test/b/hunter2hunter2.png", "r2"),
+        png("https://x.test/c/q%3Fz.png", "r3"),
+        png("https://x.test/d/q_z.png", "r4"),
+      ]);
+      const page = stubPageWith(() => ({ ok: true, base64: Buffer.from("D").toString("base64") }));
+      const r = await assetExport(
+        {
+          cdp: stubCdpNoBody(),
+          page,
+          buffer: buf,
+          workspaceRoot: root,
+          sessionId: "sess",
+          mask: (s) => secrets.applyMaskInText(s),
+        },
+        { filter: {}, intoDir: "out" },
+      );
+      expect(r.persistedCount).toBe(4);
+      // `q?z.png` and `q_z.png` land on one file, so the second takes `-1`.
+      expect(r.manifest.map((m) => m.savedAs)).toEqual([
+        "_NAME_.png",
+        "_NAME_-1.png",
+        "q_z.png",
+        "q_z-1.png",
+      ]);
+      // Every `savedAs` opens as `join(intoDir, savedAs)`.
+      for (const m of r.manifest) {
+        expect(readFileSync(join(r.intoDir, m.savedAs), "utf8")).toBe("D");
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("filters by mime + urlPattern, persists, writes _manifest.json", async () => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {

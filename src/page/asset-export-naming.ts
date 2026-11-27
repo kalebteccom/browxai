@@ -8,6 +8,7 @@
 
 import { basename } from "node:path";
 import type { Mask } from "../util/frame-cap.js";
+import { toDiskName } from "../util/filename-chars.js";
 
 /** Cap on the on-disk filename length, accounting for the `-N` collision
  *  suffix room and 255-byte filesystem name limits. */
@@ -21,6 +22,9 @@ const FILENAME_MAX_CHARS = 200;
  *    - strip leading dots so we don't write a hidden file.
  *    - cap length (leaves room for a `-N` collision suffix).
  *    - empty / all-stripped → fall back to `"asset"`.
+ *    - replace the characters Windows refuses in a file name (`<>:"|?*`) with
+ *      `_`, so a masked name `<NAME>` is written as `_NAME_`. The manifest's
+ *      `savedAs` is this on-disk name; the masked form stays in `url`.
  *  Exported for unit tests. */
 export function sanitiseAssetFilename(raw: string): string {
   if (typeof raw !== "string") return "asset";
@@ -40,7 +44,7 @@ export function sanitiseAssetFilename(raw: string): string {
   name = name.replace(/^[._\s]+|[._\s]+$/g, "");
   if (name.length > FILENAME_MAX_CHARS) name = name.slice(0, FILENAME_MAX_CHARS);
   if (!name) return "asset";
-  return name;
+  return toDiskName(name);
 }
 
 /** Derive a base filename from a URL: take the last path segment, decode
