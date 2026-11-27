@@ -7,6 +7,7 @@ import type { ConfigHost, ServerServicesHost } from "./host.js";
 import { requirePage } from "../engine/index.js";
 import { checkLanding, requestedUrlRefusal } from "./navigation-gate.js";
 import { errorResult, jsonResult } from "./json-result.js";
+import { textCutFor } from "../util/frame-cap.js";
 
 /**
  * Core action verbs: navigate / click / fill / press / shortcut. Split out of
@@ -208,6 +209,7 @@ export function registerActionCoreTools(
             {
               clipboardEnabled: host.caps.enabled.has("clipboard"),
               clipboard: e.clipboard,
+              cut: textCutFor(host.caps.enabled.has("secrets") ? e.secrets : null),
             },
           ),
           td.ms,

@@ -19,7 +19,8 @@
 
 import type { BrowserContext, Page, Request, Response, WebSocket } from "playwright-core";
 import type { SecretRegistry } from "../util/secrets.js";
-import { capFramePayload, type CappedPayload } from "../util/frame-cap.js";
+import { capBodyBytes } from "../util/body-cap.js";
+import { capFramePayload, textCutFor, type CappedPayload } from "../util/frame-cap.js";
 import {
   type MutationDetail,
   type MutationEntry,
@@ -334,28 +335,10 @@ export class PlaywrightNetworkBuffer {
         error: `response body not available for "${requestId}" — the browser no longer holds it (a redirect, or a navigation since).`,
       };
     }
-    // The declared size bounds the read. A decoded body can still run past the cap.
-    const truncated = buf.length > this.maxBodyBytes;
-    const stored = truncated ? buf.subarray(0, this.maxBodyBytes) : buf;
-    // Decide text-vs-base64: a body that round-trips through utf-8 cleanly is
-    // text; otherwise base64 (the agent decodes + re-masks on its side).
-    const utf8 = stored.toString("utf-8");
-    const isText = Buffer.from(utf8, "utf-8").equals(stored);
-    if (isText) {
-      const out = secrets ? secrets.applyMaskInText(utf8) : utf8;
-      return {
-        ok: true,
-        body: out,
-        base64Encoded: false,
-        ...(truncated ? { truncated: true } : {}),
-      };
-    }
-    return {
-      ok: true,
-      body: stored.toString("base64"),
-      base64Encoded: true,
-      ...(truncated ? { truncated: true } : {}),
-    };
+    // The declared size bounds the read. A decoded body can still run past the
+    // cap; it is masked before it is cut, and a cut inside a multi-byte
+    // character keeps a text body as text.
+    return { ok: true, ...capBodyBytes(buf, this.maxBodyBytes, textCutFor(secrets)) };
   }
 }
 

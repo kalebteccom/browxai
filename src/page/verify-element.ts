@@ -21,9 +21,13 @@
 // count and the reading in one request, which is what the single `probe` member
 // exists for.
 
+import { clipMasked, type Mask } from "../util/frame-cap.js";
 import type { ActionTarget } from "./actions-types.js";
 import type { ElementSubstrate } from "./element-substrate-types.js";
 import { refusalFailure, resolveOrFail, type VerifyResult } from "./verify-types.js";
+
+/** Longest `failure.actual` a text or value verify returns, in characters. */
+const ACTUAL_MAX = 200;
 
 /** Verify that the targeted element is visible (non-zero box, not
  *  display:none/visibility:hidden, opacity > 0). `source:"app"` on miss. */
@@ -71,6 +75,7 @@ export async function verifyText(
   target: ActionTarget,
   text: string,
   exact: boolean,
+  mask: Mask | null = null,
 ): Promise<VerifyResult> {
   const expected = exact
     ? `text === ${JSON.stringify(text)}`
@@ -92,7 +97,8 @@ export async function verifyText(
       source: "app",
       kind: "text",
       expected,
-      actual: trimmed.slice(0, 200),
+      // Masked before the cut, so a registered value across it leaves no head.
+      actual: clipMasked(trimmed, ACTUAL_MAX, mask),
       evidence: { exact, length: trimmed.length },
     },
   };
@@ -105,6 +111,7 @@ export async function verifyValue(
   elements: ElementSubstrate,
   target: ActionTarget,
   value: string,
+  mask: Mask | null = null,
 ): Promise<VerifyResult> {
   const expected = `value === ${JSON.stringify(value)}`;
   const resolved = await resolveOrFail(elements, target, "value", expected);
@@ -126,7 +133,12 @@ export async function verifyValue(
   if (String(actual) === value) return { ok: true };
   return {
     ok: false,
-    failure: { source: "app", kind: "value", expected, actual: String(actual).slice(0, 200) },
+    failure: {
+      source: "app",
+      kind: "value",
+      expected,
+      actual: clipMasked(String(actual), ACTUAL_MAX, mask),
+    },
   };
 }
 

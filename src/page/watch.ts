@@ -9,6 +9,7 @@
 // Console / network / WS are time-stamped buffers already — sliced over the
 // same window.
 
+import { textCutFor } from "../util/frame-cap.js";
 import { walk } from "./a11y.js";
 import { type NetworkEntry, type NetworkSummary, type WsFrame } from "./network.js";
 import type { ActionContext } from "./actionresult.js";
@@ -71,7 +72,9 @@ export async function watchWindow(
   let samples = 0;
 
   const sampleOnce = async (): Promise<void> => {
-    const tree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
+    const tree = await ctx.snapshot
+      .a11yTree(ctx.refs, ctx.testAttributes, textCutFor(ctx.secrets))
+      .catch(() => null);
     if (!tree) return;
     const nowMs = Date.now() - tStart;
     samples++;

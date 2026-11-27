@@ -10,6 +10,7 @@
 // the off-Chromium Playwright twin produces byte-identical egress without a cycle.
 
 import type { CDPSession } from "playwright-core";
+import { capMasked, textCutFor } from "../util/frame-cap.js";
 import { invariant } from "../util/invariant.js";
 import type { SecretRegistry } from "../util/secrets.js";
 import {
@@ -174,13 +175,17 @@ export async function fetchResponseBody(
 }> {
   try {
     const { body, base64Encoded } = await cdp.send("Network.getResponseBody", { requestId });
-    const sliced = body.length > maxBytes ? body.slice(0, maxBytes) : body;
-    const truncated = body.length > maxBytes;
     // egress masking. Base64 bodies are not masked here: masking the encoded
     // text would corrupt the body. The tool result pass still replaces a
     // value's own base64 where it appears; anything else is "decode then
-    // re-mask on your side", as docs/tool-reference.md states.
-    const out = !base64Encoded && secrets ? secrets.applyMaskInText(sliced) : sliced;
+    // re-mask on your side", as docs/tool-reference.md states. A text body
+    // over the cap is masked before it is cut, so a value that crosses the
+    // cut leaves no head.
+    // A body within the cap is masked whole (the mask is idempotent).
+    const mask = base64Encoded ? null : textCutFor(secrets).mask;
+    const capped = capMasked(body, maxBytes, mask, secrets?.maskSlack() ?? 0);
+    const truncated = capped.truncated === true;
+    const out = mask && !truncated ? mask(capped.payload) : capped.payload;
     return { ok: true, body: out, base64Encoded, ...(truncated ? { truncated: true } : {}) };
   } catch (e) {
     return {

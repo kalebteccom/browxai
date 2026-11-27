@@ -158,9 +158,13 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       try {
         composed = await withDeadline(
           isMainFrame
-            ? e.snapshotSubstrate.compose(e.refs, config.testAttributes, { pierce: includeShadow })
+            ? e.snapshotSubstrate.compose(e.refs, config.testAttributes, {
+                pierce: includeShadow,
+                textCut: egressFor(e).textCut(),
+              })
             : composeSnapshotForFrame(targetFrame!, e.refs, config.testAttributes, frame, {
                 pierce: includeShadow,
+                textCut: egressFor(e).textCut(),
               }),
           cfgActionTimeout(),
           "snapshot",
@@ -286,6 +290,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
               visibleOnly,
               pierce,
               testAttributes: config.testAttributes,
+              textCut: egressFor(e).textCut(),
               feedback: e.feedback,
               // capability-aware fallback hints — only name a tool the agent can call.
               fallbackHints: {
@@ -418,6 +423,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
               includeHidden,
               maxMatches,
               testAttributes: config.testAttributes,
+              textCut: egressFor(e).textCut(),
             },
             e.session.cdp ? e.session.cdp() : undefined,
           ),

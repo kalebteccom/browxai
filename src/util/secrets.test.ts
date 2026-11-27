@@ -530,3 +530,27 @@ describe("composeUrlAndSecretsInText — sanitiser composition (URL + secrets)",
     );
   });
 });
+
+describe("SecretRegistry.maskSlack", () => {
+  it("is 0 when nothing is registered", () => {
+    expect(new SecretRegistry().maskSlack()).toBe(0);
+  });
+
+  it("tracks the longest form, which can be longer than the value", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "SHORT", value: "abc" });
+    expect(r.maskSlack()).toBe(2);
+    // An HTML-escaped form of `a&b<c>d` is longer than the value itself.
+    r.register({ name: "MARKUP", value: "a&b<c>d" });
+    expect(r.maskSlack()).toBeGreaterThan("a&b<c>d".length - 1);
+  });
+
+  it("follows a re-registration", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "TOKEN", value: "x".repeat(10) });
+    const before = r.maskSlack();
+    r.register({ name: "TOKEN", value: "y".repeat(4) });
+    expect(r.maskSlack()).toBeLessThan(before);
+    expect(r.maskSlack()).toBe(3);
+  });
+});

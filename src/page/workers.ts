@@ -25,7 +25,8 @@
 // pays zero overhead.
 
 import type { CDPSession, Page } from "playwright-core";
-import { WORKERS_PAGE_SCRIPT, WorkersPageChannel } from "./workers-page.js";
+import { PLAIN_CUT, type TextCut } from "../util/frame-cap.js";
+import { clipWorkerData, WORKERS_PAGE_SCRIPT, WorkersPageChannel } from "./workers-page.js";
 import { WorkersSwChannel } from "./workers-sw.js";
 import type {
   ServiceWorkerAccess,
@@ -131,21 +132,25 @@ export class WorkersRegistry {
     };
   }
 
+  /** Drain messages. `cut` masks each message's data before it is cut to
+   *  `WORKER_DATA_MAX` characters (the page keeps a fixed slack past it). */
   async readMessages(
     page: Page,
     args: { workerId?: string },
     sw: Pick<ServiceWorkerAccess, "originPolicy"> = {},
+    cut: TextCut = PLAIN_CUT,
   ): Promise<WorkerMessage[]> {
     await this.installPageWrapper(page);
     const out: WorkerMessage[] = [];
     // Web Worker messages — drain from the page ring.
     if (!args.workerId || args.workerId.startsWith("ww-")) {
-      out.push(...(await this.page.drain(page, args.workerId)));
+      const drained = await this.page.drain(page, args.workerId);
+      out.push(...drained.map((m) => ({ ...m, data: clipWorkerData(m.data, cut) })));
     }
     // Service Worker messages — move what the page received into the
     // server-side ring, then drain that.
     if (!args.workerId || args.workerId.startsWith("sw-")) {
-      this.sw.ingestPageMessages(await this.page.drainSw(page), sw.originPolicy);
+      this.sw.ingestPageMessages(await this.page.drainSw(page), sw.originPolicy, cut);
       out.push(...this.sw.drainMessages(args.workerId));
     }
     return out;

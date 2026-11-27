@@ -14,7 +14,7 @@ import { requirePage } from "../engine/index.js";
  * diagnosis). Registered through the shared `ToolHost` seam.
  */
 export function registerCaptureReportElementExportTools(host: ToolHost): void {
-  const { z, register, gateCheck, entryFor, cfgActionTimeout, workspace } = host;
+  const { z, register, gateCheck, entryFor, cfgActionTimeout, workspace, egressFor } = host;
 
   // `element_export` — save the subtree under one ref as a self-contained
   // HTML snippet plus its rendered CSS + linked resources. Sibling to
@@ -181,6 +181,7 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
             scope: args.scope,
             types: args.types,
             limit: args.limit,
+            mask: egressFor(e).textCut().mask,
           }),
           cfgActionTimeout(),
           "overflow_detect",

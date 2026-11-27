@@ -16,7 +16,12 @@
 // (`__browxWorkers.drainSw()`), tagged with the SW's script URL. The page ring
 // is the only buffer a flooding page can fill: no binding is involved, so there
 // is no per-call CDP traffic for `binding-guard` to meter, and the ring is
-// capped at 500 entries of 4 KiB each.
+// capped at 500 entries of about 8 KiB each.
+//
+// A message is cut to 4,000 characters, but the server does the cut: the page
+// keeps `WORKER_PAGE_SLACK` characters past it, so the server masks a
+// registered value that crosses the cut before cutting (`clipWorkerData`). The
+// script is installed before any secret is registered, so that slack is fixed.
 //
 // This is the same trade-off `ws-interactive.ts` made: CDP attach-to-worker
 // adds a separate session per worker for a feature (postMessage IPC) that's
@@ -28,6 +33,7 @@
 // page, so there is nothing to dispose here.
 
 import type { Page } from "playwright-core";
+import { clipPageText, pageReadLength, type TextCut } from "../util/frame-cap.js";
 import type { WorkerListing, WorkerMessage } from "./workers-types.js";
 
 // ---------------------------------------------------------------------------
@@ -35,6 +41,26 @@ import type { WorkerListing, WorkerMessage } from "./workers-types.js";
 // shape of `WS_PAGE_SCRIPT` in `ws-interactive.ts`. Browser-only JS, no
 // TS-only syntax — this string is shipped verbatim into the page via
 // `Page.addInitScript`.
+
+/** Longest message data a reader gets, in characters, before the "…" marker. */
+export const WORKER_DATA_MAX = 4000;
+/** Characters the page keeps past `WORKER_DATA_MAX`. A registered value longer
+ *  than this that crosses the cut leaves its head. */
+export const WORKER_PAGE_SLACK = 4096;
+const PAGE_READ = pageReadLength(WORKER_DATA_MAX, WORKER_PAGE_SLACK);
+
+/** Mask a message's data with `cut.mask`, then cut it to `WORKER_DATA_MAX`
+ *  characters plus "…". `data` came from the page ring, which kept at most
+ *  `WORKER_DATA_MAX + WORKER_PAGE_SLACK + 1` characters; with no secret
+ *  registered the result is the cut the page used to make. */
+export function clipWorkerData(data: string, cut: TextCut): string {
+  return clipPageText(
+    data,
+    WORKER_DATA_MAX,
+    { mask: cut.mask, slack: WORKER_PAGE_SLACK },
+    { marker: "…", keep: WORKER_DATA_MAX },
+  );
+}
 
 export const WORKERS_PAGE_SCRIPT = `(() => {
   if (window.__browxWorkers) return;
@@ -55,7 +81,7 @@ export const WORKERS_PAGE_SCRIPT = `(() => {
       data = "[unserialisable]";
     }
     if (typeof data !== "string") data = "[unserialisable]";
-    if (data.length > 4000) data = data.slice(0, 4000) + "…";
+    if (data.length > ${PAGE_READ}) data = data.slice(0, ${PAGE_READ});
     return data;
   }
 

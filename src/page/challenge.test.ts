@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { challengeDeadlineFailure, classifyChallenge } from "./challenge.js";
 import type { ChallengeMarkers } from "./challenge-types.js";
+import { SecretRegistry } from "../util/secrets.js";
 
 const CLEAN: ChallengeMarkers = {
   title: "Records — Example App",
@@ -127,5 +128,19 @@ describe("challengeDeadlineFailure", () => {
     expect(error).toContain("does not solve");
     expect(failure.source).toBe("app");
     expect(failure.hint).toContain("await_human");
+  });
+});
+
+describe("challenge title evidence over the cap", () => {
+  it("masks a registered value across the 120-character cut", () => {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "TOKEN", value: "tok_0123456789abcdef" });
+    const title = "Just a moment... " + "x".repeat(95) + "tok_0123456789abcdef";
+    const plain = classifyChallenge(markers({ title }), {});
+    expect(plain?.evidence[0]).toContain("tok_0123…");
+    const r = classifyChallenge(markers({ title }), {}, (s) => secrets.applyMaskInText(s));
+    expect(r?.evidence[0]).toBe(
+      `document title ${JSON.stringify(title.slice(0, 112) + "<TOKEN>")}`,
+    );
   });
 });

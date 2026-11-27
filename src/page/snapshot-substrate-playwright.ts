@@ -27,6 +27,7 @@ import type { ComposedSnapshot, ComposeOptions } from "./compose.js";
 import { runDomWalkOnFrame, mergeDomWalkIntoTree } from "./dom-walk.js";
 import { annotateStructuralContext } from "./structural.js";
 import type { SnapshotSubstrate } from "./snapshot-substrate-types.js";
+import type { TextCut } from "../util/frame-cap.js";
 
 /** Firefox / WebKit substrate — the page-side ARIA/DOM walker over
  *  `frame.evaluate`. No CDP. It runs the SAME PAGE_SCRIPT as the (already
@@ -66,6 +67,7 @@ export class PlaywrightSnapshotSubstrate implements SnapshotSubstrate {
     const entries = await runDomWalkOnFrame(this.page.mainFrame(), {
       testAttributes,
       pierce: opts.pierce,
+      textCut: opts.textCut,
     });
     const merge = mergeDomWalkIntoTree(root, entries, refs);
     annotateStructuralContext(root);
@@ -97,12 +99,16 @@ export class PlaywrightSnapshotSubstrate implements SnapshotSubstrate {
     };
   }
 
-  async a11yTree(refs: RefRegistry, testAttributes: string[]): Promise<A11yNode | null> {
+  async a11yTree(
+    refs: RefRegistry,
+    testAttributes: string[],
+    textCut?: TextCut,
+  ): Promise<A11yNode | null> {
     // The pre/post action delta + watch sampling want the structural tree; off
     // Chromium that is the same walker-sourced tree compose() builds (without
     // the find-ranking warnings, which the delta path doesn't surface).
     const root = this.makeRoot(refs);
-    const entries = await runDomWalkOnFrame(this.page.mainFrame(), { testAttributes });
+    const entries = await runDomWalkOnFrame(this.page.mainFrame(), { testAttributes, textCut });
     mergeDomWalkIntoTree(root, entries, refs);
     annotateStructuralContext(root);
     return root;

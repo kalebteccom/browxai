@@ -9,6 +9,7 @@ import {
   verifyPredicate,
 } from "./verify.js";
 import { PlaywrightElementSubstrate } from "./element-substrate.js";
+import { SecretRegistry } from "../util/secrets.js";
 import { evaluatePredicate, type Predicate } from "../util/predicates.js";
 import { evaluateExpect, type BatchExpect } from "../util/batch.js";
 
@@ -119,6 +120,30 @@ describe("verifyText", () => {
     const page = mockPage({ "role:button[name=Banner]": { count: 1, innerText } });
     const r = await verifyText(elementsOver(page, refs), { ref }, expected, exact);
     expect(r).toMatchObject(result);
+  });
+});
+
+describe("verify failure.actual over the cap", () => {
+  const VALUE = "tok_" + "0123456789".repeat(30); // 304 characters
+  const secrets = new SecretRegistry();
+  secrets.register({ name: "TOKEN", value: VALUE });
+  const mask = (s: string): string => secrets.applyMaskInText(s);
+
+  it("masks a long registered value before the 200-character cut in verify_text", async () => {
+    const refs = new RefRegistry();
+    const ref = refForButton(refs, "Banner");
+    const page = mockPage({ "role:button[name=Banner]": { count: 1, innerText: VALUE } });
+    const r = await verifyText(elementsOver(page, refs), { ref }, "Saved", false, mask);
+    expect(r).toMatchObject({ ok: false, failure: { actual: "<TOKEN>" } });
+  });
+
+  it("masks a long registered value before the 200-character cut in verify_value", async () => {
+    const refs = new RefRegistry();
+    const ref = refForButton(refs, "Field");
+    const page = mockPage({ "role:button[name=Field]": { count: 1, evaluatedValue: VALUE } });
+    const r = await verifyValue(elementsOver(page, refs), { ref }, "wrong", mask);
+    expect(r).toMatchObject({ ok: false, failure: { actual: "<TOKEN>" } });
+    expect(JSON.stringify(r)).not.toContain("tok_");
   });
 });
 

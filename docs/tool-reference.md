@@ -926,7 +926,7 @@ watch({ durationMs: 5000 })
 
 ### `network_body` _(gated)_
 
-Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default**: requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast, so fetch right after the request; not retained across navigations. On Firefox and WebKit the body is read when you ask for it, and only if its size is known and within the cap: a response whose `content-length` (or finished transfer size) is over 256 KB, or unknown, comes back as `{ ok:false, truncated:true, error }` and is not read. A compressed response must be under 32 KB on the wire.
+Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default**: requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast, so fetch right after the request; not retained across navigations. On Firefox and WebKit the body is read when you ask for it, and only if its size is known and within the cap: a response whose `content-length` (or finished transfer size) is over 256 KB, or unknown, comes back as `{ ok:false, truncated:true, error }` and is not read. A compressed response must be under 32 KB on the wire. A text body over the cap is cut on a character boundary and stays text, and a registered value that crosses the cut is masked before it (see the secrets limitations below). With a value registered, masking can bring a body that was over the cap under it, and then `truncated` is not set.
 
 Why gated: full bodies routinely carry PII / auth tokens. The `responseShape` (top-level keys only) is the safe default for "did the mutation write back the right shape"; `network_body` is the higher-risk debugging escape hatch for "assert this exact field value" (e.g. a realtime broadcast payload, paired with `ws_read`).
 
@@ -2920,6 +2920,22 @@ identifier-shaped path segments as `:id`.
    substituted into a `fill` in a frame on another origin (refused with a
    clear error), but if a registered value reaches a sink for any reason,
    it's masked regardless of scope.
+6. **Text over a cap is masked before it is cut, within bounds.** A
+   response body, WebSocket or SSE frame, console message, worker message,
+   verify failure and page-text field over its cap is masked first, so a
+   value that crosses the cut leaves no head. Three bounds remain. Frames,
+   console and page-error messages and service-worker messages are cut when
+   they are captured, with the registry as it stands then; a value
+   registered later that crosses the cut of an earlier entry is not masked
+   there. Page text read with a cap (snapshot and `find` names, ActionResult
+   target and hit evidence, `point_probe`, `shortcut`, `shadow_trees`) is
+   read the length of the longest registered form past the cap, and worker
+   messages a fixed 4,096 characters past it, so a longer value that crosses
+   the cut leaves its head. When such a read hit its bound, the characters
+   that could hold the head of a value crossing it are dropped, so the field
+   can come back shorter than its cap. The `.browx` replay capture masks each
+   part of a request's `postDataEntries` on its own, so a value split across
+   two parts is not masked in the parts; `postData` is masked whole.
 
 **Capability gate.** Off by default. Add `secrets` to
 `BROWX_CAPABILITIES` to enable. A one-time loud warning fires at server

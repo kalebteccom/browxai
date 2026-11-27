@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { BrowserContext, Request, Response } from "playwright-core";
+import { SecretRegistry } from "../util/secrets.js";
 import { PlaywrightNetworkBuffer, bodyReadDecision } from "./network-playwright.js";
 
 describe("bodyReadDecision", () => {
@@ -72,6 +73,46 @@ function harness(maxBodyBytes = 1000) {
   const lastId = () => buffer.iter().at(-1)?.requestId ?? "";
   return { buffer, respond, lastId };
 }
+
+describe("PlaywrightNetworkBuffer body cap", () => {
+  // The declared (compressed) size is within the cap; the decoded body is not.
+  const overCap = async (body: Buffer, secrets: SecretRegistry | null) => {
+    const h = harness(100);
+    await h.buffer.attach();
+    h.respond({ "content-length": "50" }, body);
+    return h.buffer.fetchBody(h.lastId(), secrets);
+  };
+
+  it("masks a value that crosses the cut before cutting", async () => {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "TOKEN", value: "tok_0123456789abcdef" });
+    const r = await overCap(
+      Buffer.from("x".repeat(94) + "tok_0123456789abcdef" + "y".repeat(50)),
+      secrets,
+    );
+    expect(r.base64Encoded).toBe(false);
+    expect(r.truncated).toBe(true);
+    expect(r.body).not.toContain("tok_");
+    expect(r.body).toBe(("x".repeat(94) + "<TOKEN>" + "y".repeat(50)).slice(0, 100));
+  });
+
+  it("keeps a text body as text when the cut lands inside a multi-byte character", async () => {
+    // 99 ASCII bytes, then "é" (2 bytes) across the 100-byte cut.
+    const r = await overCap(Buffer.from("a".repeat(99) + "é" + "b".repeat(20)), null);
+    expect(r).toEqual({ ok: true, body: "a".repeat(99), base64Encoded: false, truncated: true });
+  });
+
+  it("returns a binary body as base64 of its first bytes, as before", async () => {
+    const bin = Buffer.alloc(150, 0xff);
+    const r = await overCap(bin, null);
+    expect(r).toEqual({
+      ok: true,
+      body: bin.subarray(0, 100).toString("base64"),
+      base64Encoded: true,
+      truncated: true,
+    });
+  });
+});
 
 describe("PlaywrightNetworkBuffer response bodies", () => {
   it("reads no body when nothing asks for one", async () => {

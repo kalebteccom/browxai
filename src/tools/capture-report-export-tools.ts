@@ -104,6 +104,7 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
               buffer: e.network,
               workspaceRoot: workspace.root,
               sessionId: e.id,
+              mask: host.egressFor(e).textCut().mask,
             },
             {
               filter: args.filter ?? {},

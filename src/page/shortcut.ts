@@ -17,6 +17,7 @@ import type { RefRegistry } from "./refs.js";
 import { locatorFor, type ActionTarget } from "./locator.js";
 import { ClipboardBuffer, osClipboardWrite, type ClipOp } from "./clipboard.js";
 import { capabilitiesAssignment } from "../util/capabilities.js";
+import { clipPageText, pageReadLength, PLAIN_CUT, type TextCut } from "../util/frame-cap.js";
 
 type ChordKind = "copy" | "cut" | "paste" | "other";
 
@@ -34,20 +35,34 @@ export function classifyChord(chord: string): ChordKind {
   return "other";
 }
 
-const ELSUMM = `function (el) {
+/** Longest element `name` read from text content, in characters. The page
+ *  reads `NAME_MAX + slack + 1` characters and marks the name `nameFromText`;
+ *  the server masks it, then cuts it (`clipSumm`). */
+const NAME_MAX = 40;
+
+const elSumm = (nameRead: number): string => `function (el) {
   if (!el || !el.tagName) return null;
+  var aria = el.getAttribute && el.getAttribute('aria-label');
   return {
     tag: el.tagName.toLowerCase(),
     id: el.id || undefined,
     testId: el.getAttribute ? (el.getAttribute('data-testid') || undefined) : undefined,
     role: el.getAttribute ? (el.getAttribute('role') || undefined) : undefined,
-    name: (el.getAttribute && el.getAttribute('aria-label')) ||
-          (el.textContent ? el.textContent.trim().slice(0, 40) : undefined) || undefined,
+    name: aria || (el.textContent ? el.textContent.trim().slice(0, ${nameRead}) : undefined) || undefined,
+    nameFromText: !aria,
   };
 }`;
 
-const INSTALL_TRACE = `(() => {
-  var summ = ${ELSUMM};
+/** Mask an element summary's text-content name, then cut it to `NAME_MAX`. */
+function clipSumm(el: (ElSumm & { nameFromText?: boolean }) | null, cut: TextCut): ElSumm | null {
+  if (!el) return el;
+  const { nameFromText, ...out } = el;
+  if (nameFromText && out.name !== undefined) out.name = clipPageText(out.name, NAME_MAX, cut);
+  return out;
+}
+
+const installTrace = (slack: number): string => `(() => {
+  var summ = ${elSumm(pageReadLength(NAME_MAX, slack))};
   var W = window;
   var st = { events: [], active: summ(document.activeElement) };
   W.__browx_kbt = st;
@@ -135,8 +150,9 @@ export async function runShortcut(
   page: Page,
   refs: RefRegistry,
   args: ShortcutArgs,
-  opts: { clipboardEnabled: boolean; clipboard: ClipboardBuffer },
+  opts: { clipboardEnabled: boolean; clipboard: ClipboardBuffer; cut?: TextCut },
 ): Promise<ShortcutResult> {
+  const cut = opts.cut ?? PLAIN_CUT;
   const chords = Array.isArray(args.keys) ? args.keys : [args.keys];
 
   if (args.target) {
@@ -147,7 +163,7 @@ export async function runShortcut(
     }
   }
 
-  await page.evaluate(INSTALL_TRACE).catch(() => undefined);
+  await page.evaluate(installTrace(cut.slack)).catch(() => undefined);
 
   let clip: ShortcutResult["clipboard"] | undefined;
   for (const chord of chords) {
@@ -200,8 +216,8 @@ export async function runShortcut(
   return {
     ok: true,
     keys: chords,
-    activeElement: trace.active,
-    events: trace.events,
+    activeElement: clipSumm(trace.active, cut),
+    events: trace.events.map((ev) => ({ ...ev, target: clipSumm(ev.target, cut) })),
     handled,
     ...(clip ? { clipboard: clip } : {}),
     ...(opts.clipboardEnabled || !chords.some((c) => classifyChord(c) !== "other")

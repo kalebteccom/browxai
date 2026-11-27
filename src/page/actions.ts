@@ -22,6 +22,7 @@ import {
 import { directClick } from "./actions-direct-dispatch.js";
 import { gotoWithCommitResend, resentWarning } from "./navigate-commit.js";
 import { invariant } from "../util/invariant.js";
+import { textCutFor } from "../util/frame-cap.js";
 // The eleven verb argument shapes live on the vendor-free leaf
 // `actions-types.ts`, above both this Playwright adapter and the Safari one, so
 // the ActionSubstrate port can name them without reaching playwright-core
@@ -66,16 +67,17 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
   const opts = warning
     ? { ...args, extraWarnings: [...(args.extraWarnings ?? []), warning] }
     : args;
+  const cut = textCutFor(ctx.secrets);
   return runInActionWindow(ctx, descriptor, opts, async () => {
     if (resolved.kind === "coords") {
-      const hitBefore = await captureHit(ctx.page, resolved.x, resolved.y);
+      const hitBefore = await captureHit(ctx.page, resolved.x, resolved.y, cut);
       const focusBefore = await captureFocusedRef(ctx.page);
       await ctx.page.mouse.click(
         resolved.x,
         resolved.y,
         args.button ? { button: args.button } : undefined,
       );
-      const hitAfter = await captureHit(ctx.page, resolved.x, resolved.y);
+      const hitAfter = await captureHit(ctx.page, resolved.x, resolved.y, cut);
       const focusAfter = await captureFocusedRef(ctx.page);
       return {
         stillAttached: true,
@@ -99,9 +101,10 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
         target: args.target,
         refs: ctx.refs,
         button: args.button,
+        cut: cut,
       });
     }
-    const pre = await preProbe(resolved.loc);
+    const pre = await preProbe(resolved.loc, cut);
     // Click strategy: try the standard actionability path first with a
     // SHORTER budget than the outer action deadline, so the auto-recovery
     // pass with `force: true` has headroom. The recovery surfaces a
@@ -118,7 +121,7 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
     const fullTimeout = args.deadlineMs ?? DEFAULT_TIMEOUT_MS;
     if (args.force) {
       await resolved.loc.click({ timeout: fullTimeout, button: args.button, force: true });
-      return probe(resolved.loc, args.target, undefined, pre);
+      return probe(resolved.loc, args.target, undefined, pre, cut);
     }
     // Reserve ~30% of the deadline for the recovery click; the rest is
     // the actionability budget. Floor at 500ms each so neither path is
@@ -140,7 +143,7 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
       // element IS clickable. Surface the recovery via an extra warning so
       // the caller doesn't silently get a force-click they didn't opt into.
       await resolved.loc.click({ timeout: recoveryMs, button: args.button, force: true });
-      const probed = await probe(resolved.loc, args.target, undefined, pre);
+      const probed = await probe(resolved.loc, args.target, undefined, pre, cut);
       // Stamp the recovery warning on the probe — `runInActionWindow`
       // splices probe.warnings[] onto the result's top-level warnings.
       probed.warnings = [
@@ -148,7 +151,7 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
       ];
       return probed;
     }
-    return probe(resolved.loc, args.target, undefined, pre);
+    return probe(resolved.loc, args.target, undefined, pre, cut);
   });
 }
 
@@ -174,12 +177,12 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
   try {
     return await runInActionWindow(ctx, descriptor, args, async () => {
       const loc = locatorFor(ctx.page, ctx.refs, args.target);
-      const pre = await preProbe(loc);
+      const pre = await preProbe(loc, textCutFor(ctx.secrets));
       // A scoped secret fills through the element its scope was checked on.
       await fillChecked(loc, mat, args.deadlineMs ?? DEFAULT_TIMEOUT_MS);
       // pass the alias as `valueRequested` so `value === valueRequested`
       // comparison still works without the real secret reaching the probe.
-      const probed = await probe(loc, args.target, descriptorValue, pre);
+      const probed = await probe(loc, args.target, descriptorValue, pre, textCutFor(ctx.secrets));
       // Defence-in-depth: the field's DOM value reflects what we typed, so
       // `probed.value` carries the secret. Mask before returning — the
       // action-window will surface it on the ActionResult otherwise.
@@ -228,9 +231,9 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
     return await runInActionWindow(ctx, descriptor, args, async () => {
       if (!args.target) return pressChecked(ctx.page, undefined, mat, timeout);
       const loc = locatorFor(ctx.page, ctx.refs, args.target);
-      const pre = await preProbe(loc);
+      const pre = await preProbe(loc, textCutFor(ctx.secrets));
       await pressChecked(ctx.page, loc, mat, timeout);
-      return maskProbe(await probe(loc, args.target, undefined, pre), ctx);
+      return maskProbe(await probe(loc, args.target, undefined, pre, textCutFor(ctx.secrets)), ctx);
     });
   } finally {
     await mat.bound?.dispose();
@@ -245,14 +248,14 @@ export async function hover(ctx: ActionContext, args: HoverArgs): Promise<Action
     : args;
   return runInActionWindow(ctx, descriptor, opts, async () => {
     if (resolved.kind === "coords") {
-      const hitBefore = await captureHit(ctx.page, resolved.x, resolved.y);
+      const hitBefore = await captureHit(ctx.page, resolved.x, resolved.y, textCutFor(ctx.secrets));
       await ctx.page.mouse.move(resolved.x, resolved.y);
-      const hitAfter = await captureHit(ctx.page, resolved.x, resolved.y);
+      const hitAfter = await captureHit(ctx.page, resolved.x, resolved.y, textCutFor(ctx.secrets));
       return { stillAttached: true, hit: { before: hitBefore, after: hitAfter } };
     }
-    const pre = await preProbe(resolved.loc);
+    const pre = await preProbe(resolved.loc, textCutFor(ctx.secrets));
     await resolved.loc.hover({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
-    return probe(resolved.loc, args.target, undefined, pre);
+    return probe(resolved.loc, args.target, undefined, pre, textCutFor(ctx.secrets));
   });
 }
 
@@ -264,9 +267,9 @@ export async function select(ctx: ActionContext, args: SelectArgs): Promise<Acti
   };
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, args.target);
-    const pre = await preProbe(loc);
+    const pre = await preProbe(loc, textCutFor(ctx.secrets));
     await loc.selectOption(args.values, { timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
-    return probe(loc, args.target, undefined, pre);
+    return probe(loc, args.target, undefined, pre, textCutFor(ctx.secrets));
   });
 }
 
@@ -294,7 +297,7 @@ export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<Ac
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, target);
     await loc.waitFor({ state: "visible", timeout });
-    return probe(loc, target);
+    return probe(loc, target, undefined, undefined, textCutFor(ctx.secrets));
   });
 }
 
@@ -346,7 +349,7 @@ export async function chooseOption(
       );
     }
     const trigger = locatorFor(ctx.page, ctx.refs, args.target);
-    const pre = await preProbe(trigger);
+    const pre = await preProbe(trigger, textCutFor(ctx.secrets));
 
     // Open the control if not already expanded. `aria-expanded` is the strongest
     // signal; absence isn't proof it's closed, so we still click if false-or-missing.
@@ -363,7 +366,7 @@ export async function chooseOption(
     const optionLoc = await resolveOption(ctx.page, args.option, args.exact ?? true);
     await optionLoc.click({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
 
-    return probe(trigger, args.target, undefined, pre);
+    return probe(trigger, args.target, undefined, pre, textCutFor(ctx.secrets));
   });
 }
 

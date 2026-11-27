@@ -10,6 +10,7 @@
 // here, composition there; `compose.ts` re-exports both names so existing
 // importers are unchanged. (RFC 0009 P1.)
 
+import type { TextCut } from "../util/frame-cap.js";
 import type { A11yNode } from "./a11y-types.js";
 
 /**
@@ -61,4 +62,7 @@ export interface ComposeOptions {
    *  - `false` — neither path recurses into shadow content. The DOM-walk
    *    sticks to the top document. */
   pierce?: "open" | "closed" | false;
+  /** Secrets mask for page text a read cuts (DOM-walk and closed-shadow
+   *  names): masked before the cut. Absent: cut as read. */
+  textCut?: TextCut;
 }

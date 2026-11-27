@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { probe, preProbe, scrollMode, waitFor, type PreProbeData } from "./actions.js";
+import { captureHit } from "./actions-probe.js";
+import { textCutFor } from "../util/frame-cap.js";
+import { SecretRegistry } from "../util/secrets.js";
 
 // Minimal per-call mock. The `probe()` helper calls in order:
 //   1. count()
@@ -258,5 +261,63 @@ describe("waitFor — text predicate", () => {
       testAttributes: [],
     } as never;
     await expect(waitFor(ctx, {})).rejects.toThrow(/pass a `target`.*or `text`/);
+  });
+});
+
+describe("probe text over the cap is masked before it is cut", () => {
+  const VALUE = "tok_" + "0123456789".repeat(30); // 304 characters, longer than every cap
+  const secrets = new SecretRegistry();
+  secrets.register({ name: "TOKEN", value: VALUE });
+  const cut = textCutFor(secrets);
+  const page = (text: string, cap: number): string => text.slice(0, cap + cut.slack + 1);
+
+  it("masks displayText, owner text and row context read past their caps", async () => {
+    const full = VALUE + " and the rest of the row";
+    const loc = locator({
+      inputValue: "x",
+      evaluateReturns: [
+        false, // focused
+        undefined, // checked
+        page(full, 200), // displayText
+        {
+          ownerText: page(full, 200),
+          container: { kind: "row", rowKey: page(full, 80), rowText: page(full, 200) },
+        },
+      ],
+    });
+    const r = await probe(loc, { ref: "e9" }, undefined, {}, cut);
+    expect(JSON.stringify(r)).not.toContain("tok_");
+    expect(r.displayText).toBe("<TOKEN> and the rest of the row");
+    expect(r.container?.rowKey).toBe("<TOKEN> and the rest of the row");
+  });
+
+  it("cuts as before with no secret registered", async () => {
+    const long = "w".repeat(300);
+    const loc = locator({
+      inputValue: "x",
+      evaluateReturns: [
+        false,
+        undefined,
+        long.slice(0, 201),
+        { container: { kind: "row", rowKey: long.slice(0, 81), rowText: long.slice(0, 201) } },
+      ],
+    });
+    const r = await probe(loc, { ref: "e9" });
+    expect(r.displayText).toBe("w".repeat(200));
+    expect(r.container?.rowKey).toBe("w".repeat(79) + "…");
+    expect(r.container?.rowText).toBe("w".repeat(199) + "…");
+  });
+
+  it("masks coord-action hit text read past its caps", async () => {
+    const full = VALUE + " tail";
+    const fake = {
+      evaluate: async (_fn: unknown, arg: { slack: number }) => ({
+        tag: "div",
+        text: full.slice(0, 121 + arg.slack),
+        ancestorText: full.slice(0, 201 + arg.slack),
+      }),
+    } as never;
+    const hit = await captureHit(fake, 1, 2, cut);
+    expect(hit).toEqual({ tag: "div", text: "<TOKEN> tail", ancestorText: "<TOKEN> tail" });
   });
 });

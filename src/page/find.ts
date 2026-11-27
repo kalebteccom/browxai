@@ -11,6 +11,8 @@ import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import type { ElementScope, ElementSubstrate, ElementToken } from "./element-substrate-types.js";
 import { visibleRect, type VisibleRect } from "./bbox.js";
 import { findByRef } from "./snapshot.js";
+import { withMaskedContexts } from "./structural.js";
+import type { TextCut } from "../util/frame-cap.js";
 import { effectiveAriaRole } from "./aria-role.js";
 import type { FeedbackMemory } from "./learning.js";
 import type { Actionability, SelectorStability } from "../util/action-descriptor.js";
@@ -97,6 +99,8 @@ export interface FindOptions {
    *    main frame; in a frame-scoped find, `"closed"` degrades to `"open"`.
    *  - `false` — neither path recurses into shadow content. */
   pierce?: "open" | "closed" | false;
+  /** Secrets mask for page text a read cut (names, row context). */
+  textCut?: TextCut;
 }
 
 export interface FindResult {
@@ -308,8 +312,12 @@ export async function find(
     opts.frame && opts.frameId
       ? await composeSnapshotForFrame(opts.frame, refs, opts.testAttributes, opts.frameId, {
           pierce: opts.pierce,
+          textCut: opts.textCut,
         })
-      : await substrate.compose(refs, opts.testAttributes, { pierce: opts.pierce });
+      : await substrate.compose(refs, opts.testAttributes, {
+          pierce: opts.pierce,
+          textCut: opts.textCut,
+        });
   const { tree } = composed;
   if (!tree) {
     return { candidates: [], warnings: pierceWarnings(composed.warnings, opts.pierce) };
@@ -359,7 +367,7 @@ export async function find(
   // non-actionable ones, preserving score order within each tier.
   const { ranked, visibleCount } = rankByVisibility(candidates, opts.visibleOnly === true);
   appendRankingWarnings(warnings, ranked, candidates, visibleCount, opts);
-  return { candidates: ranked, warnings };
+  return { candidates: withMaskedContexts(ranked, opts.textCut), warnings };
 }
 
 /** Append the confidence-floor + no-visible-candidate diagnostic warnings. */

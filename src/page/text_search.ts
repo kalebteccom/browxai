@@ -11,6 +11,8 @@ import type { RefRegistry } from "./refs.js";
 import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import { visibleRect, type VisibleRect } from "./bbox.js";
 import { findByRef } from "./snapshot.js";
+import { withMaskedContexts } from "./structural.js";
+import type { TextCut } from "../util/frame-cap.js";
 
 export interface TextSearchOptions {
   text: string;
@@ -24,6 +26,8 @@ export interface TextSearchOptions {
   /** Default 20; hard cap 200. */
   maxMatches?: number;
   testAttributes: string[];
+  /** Secrets mask for page text a read cut (names, row context). */
+  textCut?: TextCut;
 }
 
 export interface TextSearchMatch {
@@ -50,7 +54,7 @@ export async function textSearch(
    *  hidden/visible classification rides the bbox being null (clipped). */
   cdp?: CDPSession,
 ): Promise<TextSearchResult> {
-  const { tree } = await substrate.compose(refs, opts.testAttributes);
+  const { tree } = await substrate.compose(refs, opts.testAttributes, { textCut: opts.textCut });
   if (!tree) return { count: 0, matches: [], warnings: [] };
 
   const warnings: string[] = [];
@@ -72,7 +76,7 @@ export async function textSearch(
     if (match) matches.push(match);
   }
 
-  return { count: matches.length, matches, warnings };
+  return { count: matches.length, matches: withMaskedContexts(matches, opts.textCut), warnings };
 }
 
 /** Resolve one candidate node to a match, applying the visible-only filter.

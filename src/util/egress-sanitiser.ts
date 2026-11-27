@@ -14,6 +14,7 @@
 // order (URL pass first, then secrets) — so the masking behaviour is byte-identical
 // to the prior hand-calls; only the *who-decides-and-when* moves.
 
+import { textCutFor, type TextCut } from "./frame-cap.js";
 import type { SecretRegistry } from "./secrets.js";
 import { sanitizeUrlsInText } from "./url-sanitizer.js";
 
@@ -38,6 +39,13 @@ export class EgressSanitiser {
   maskText(text: string): string {
     const afterUrl = sanitizeUrlsInText(text);
     return this.secrets ? this.secrets.applyMaskInText(afterUrl) : afterUrl;
+  }
+
+  /** The secrets mask and slack for a sink that cuts text: `PLAIN_CUT` when no
+   *  registry is attached or nothing is registered. No URL pass, so a cut with
+   *  no secret registered is the cut it always was. */
+  textCut(): TextCut {
+    return textCutFor(this.secrets);
   }
 
   /** Deep-mask the string leaves of a structured payload (secrets only — the

@@ -437,6 +437,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // it. The context listener attach lives in the engine's `postWire`.
       const downloadsDir = workspace.sub(`.downloads/${id}`);
       const downloadsReg = new DownloadsRegistry(downloadsDir, workspace.root);
+      downloadsReg.setSecrets(secretsReg);
       // Per-session artifact KV. Storage dir is workspace-rooted +
       // per-session; the dir itself is created lazily on first save, and
       // wiped on session teardown (see `teardown` below). Capacity-bounded

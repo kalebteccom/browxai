@@ -25,6 +25,7 @@ export type {
   ChallengeDocumentSignal,
   ChallengeMarkers,
 } from "./challenge-types.js";
+import { clipMasked, type Mask } from "../util/frame-cap.js";
 
 /** Bound on the in-page probe. A challenge is most interesting exactly when the
  *  page is misbehaving, so the probe must never become the new hang. */
@@ -44,29 +45,36 @@ const VENDOR_LABEL: Record<ChallengeBlock["vendor"], string> = {
   unknown: "An unidentified bot-protection",
 };
 
-function titleEvidence(title: string): string {
-  const clipped = title.length > TITLE_MAX_CHARS ? `${title.slice(0, TITLE_MAX_CHARS)}…` : title;
+/** The title as evidence, masked before it is cut to `TITLE_MAX_CHARS`. */
+function titleEvidence(title: string, mask: Mask | null): string {
+  const clipped = clipMasked(title, TITLE_MAX_CHARS, mask, { marker: "…", keep: TITLE_MAX_CHARS });
   return `document title ${JSON.stringify(clipped)}`;
 }
 
 function cloudflareInterstitial(
   markers: ChallengeMarkers | null,
   signal: ChallengeDocumentSignal,
+  mask: Mask | null,
 ): ChallengeBlock | undefined {
   const evidence: string[] = [];
   if (signal.cfMitigated === "challenge")
     evidence.push('response header "cf-mitigated: challenge"');
   if (markers?.cfChallengeScript) evidence.push('script src contains "cdn-cgi/challenge-platform"');
-  if (markers && CLOUDFLARE_TITLE.test(markers.title)) evidence.push(titleEvidence(markers.title));
+  if (markers && CLOUDFLARE_TITLE.test(markers.title)) {
+    evidence.push(titleEvidence(markers.title, mask));
+  }
   if (evidence.length === 0) return undefined;
   return { kind: "interstitial", vendor: "cloudflare", evidence };
 }
 
-function anubisInterstitial(markers: ChallengeMarkers | null): ChallengeBlock | undefined {
+function anubisInterstitial(
+  markers: ChallengeMarkers | null,
+  mask: Mask | null,
+): ChallengeBlock | undefined {
   if (!markers) return undefined;
   const evidence: string[] = [];
   if (markers.anubisAsset) evidence.push('asset path contains "/.within.website/x/cmd/anubis/"');
-  if (ANUBIS_TITLE.test(markers.title)) evidence.push(titleEvidence(markers.title));
+  if (ANUBIS_TITLE.test(markers.title)) evidence.push(titleEvidence(markers.title, mask));
   if (evidence.length === 0) return undefined;
   return { kind: "interstitial", vendor: "anubis", evidence };
 }
@@ -80,10 +88,13 @@ function turnstileWidget(markers: ChallengeMarkers | null): ChallengeBlock | und
   };
 }
 
-function genericInterstitial(markers: ChallengeMarkers | null): ChallengeBlock | undefined {
+function genericInterstitial(
+  markers: ChallengeMarkers | null,
+  mask: Mask | null,
+): ChallengeBlock | undefined {
   if (!markers) return undefined;
   const evidence: string[] = [];
-  if (GENERIC_TITLE.test(markers.title)) evidence.push(titleEvidence(markers.title));
+  if (GENERIC_TITLE.test(markers.title)) evidence.push(titleEvidence(markers.title, mask));
   if (markers.verificationPhrase) {
     evidence.push(`page text contains ${JSON.stringify(markers.verificationPhrase)}`);
   }
@@ -104,12 +115,13 @@ function genericInterstitial(markers: ChallengeMarkers | null): ChallengeBlock |
 export function classifyChallenge(
   markers: ChallengeMarkers | null,
   signal: ChallengeDocumentSignal,
+  mask: Mask | null = null,
 ): ChallengeBlock | undefined {
   const block =
-    cloudflareInterstitial(markers, signal) ??
-    anubisInterstitial(markers) ??
+    cloudflareInterstitial(markers, signal, mask) ??
+    anubisInterstitial(markers, mask) ??
     turnstileWidget(markers) ??
-    genericInterstitial(markers);
+    genericInterstitial(markers, mask);
   if (!block) return undefined;
   const status = signal.status;
   if (block.kind === "interstitial" && status !== undefined && GATE_STATUSES.includes(status)) {
@@ -159,7 +171,7 @@ export interface ChallengeWatch {
 
 /** Watch the main-frame document response for the duration of an action window,
  *  then probe the settled page. */
-export function watchForChallenge(page: Page): ChallengeWatch {
+export function watchForChallenge(page: Page, mask: Mask | null = null): ChallengeWatch {
   const signal: ChallengeDocumentSignal = {};
   const onResponse = (res: Response): void => {
     if (res.frame() !== page.mainFrame()) return;
@@ -172,7 +184,7 @@ export function watchForChallenge(page: Page): ChallengeWatch {
   return {
     detect: async () => {
       page.off("response", onResponse);
-      return classifyChallenge(await probeMarkers(page), signal);
+      return classifyChallenge(await probeMarkers(page), signal, mask);
     },
   };
 }

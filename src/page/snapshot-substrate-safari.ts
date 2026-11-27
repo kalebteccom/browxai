@@ -20,6 +20,7 @@ import { runDomWalkViaExecute, mergeDomWalkIntoTree } from "./dom-walk.js";
 import { annotateStructuralContext } from "./structural.js";
 import type { ComposedSnapshot, ComposeOptions } from "./compose.js";
 import type { SnapshotSubstrate } from "./snapshot-substrate.js";
+import type { TextCut } from "../util/frame-cap.js";
 
 /** The minimal IO the Safari substrate needs — run a page-context script
  *  (`execute/sync` body + args → value) and read the current document URL. The
@@ -52,6 +53,7 @@ export class SafariClassicSnapshotSubstrate implements SnapshotSubstrate {
     const entries = await runDomWalkViaExecute((script, args) => this.io.exec(script, args), {
       testAttributes,
       pierce: opts.pierce,
+      textCut: opts.textCut,
     });
     const merge = mergeDomWalkIntoTree(root, entries, refs);
     annotateStructuralContext(root);
@@ -84,11 +86,16 @@ export class SafariClassicSnapshotSubstrate implements SnapshotSubstrate {
     };
   }
 
-  async a11yTree(refs: RefRegistry, testAttributes: string[]): Promise<A11yNode | null> {
+  async a11yTree(
+    refs: RefRegistry,
+    testAttributes: string[],
+    textCut?: TextCut,
+  ): Promise<A11yNode | null> {
     const url = await this.io.currentUrl().catch(() => "");
     const root = this.makeRoot(refs, url);
     const entries = await runDomWalkViaExecute((script, args) => this.io.exec(script, args), {
       testAttributes,
+      textCut,
     });
     mergeDomWalkIntoTree(root, entries, refs);
     annotateStructuralContext(root);
