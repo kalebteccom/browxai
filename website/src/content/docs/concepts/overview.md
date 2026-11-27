@@ -80,7 +80,9 @@ app and its version.
 Chromium sessions launch the installed Google Chrome, or the bundled Chromium
 when Chrome is missing, on one default profile per workspace. Sessions are
 isolated contexts: persistent, incognito, or attached to a Chrome you already
-have open, on your desktop or on a plugged-in Android phone. Headed and
+have open, on your desktop or on a plugged-in Android phone. Each persistent or
+incognito session is its own browser process with its own window, and attached
+sessions share the Chrome they attach to. Headed and
 headless. Pick the engine per session, so one server can hold a Chromium page
 and an emulator app at once.
 

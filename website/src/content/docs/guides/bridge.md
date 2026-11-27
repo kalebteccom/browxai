@@ -88,6 +88,8 @@ daemon and is shared.
   the same `default` session. Give each client its own session ids when they
   should stay apart. `list_sessions` shows every client's sessions, and
   `close_session` can close another client's.
+- **Each session is its own browser.** The daemon launches one browser process
+  per `persistent` or `incognito` session, the same as a stdio server.
 - **A persistent profile has one live session.** A second persistent session on
   the same profile is refused with `profile-in-use`, whichever client asks.
 - **Capabilities and config are the daemon's.** The capability set is the one the
