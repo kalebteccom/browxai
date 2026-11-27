@@ -172,3 +172,56 @@ describe("span", () => {
     expect(span(72 * HOUR)).toBe("3d");
   });
 });
+
+describe("the runtime row: notes and the updater fallback", () => {
+  it("warns about unread Upgrading notes", () => {
+    installed({ notesUnseen: ["0.22.0"] });
+    expect(row()).toMatchObject({
+      ok: true,
+      warn: true,
+      detail: expect.stringMatching(
+        /^Upgrading notes for 0\.22\.0: browxai runtime notes\. 0\.22\.0/,
+      ),
+    });
+  });
+
+  it.each([
+    [
+      "1",
+      "the updater in 0.22.0 exited with an error on its last run. After 3 in a row the background job runs the previous version's updater once",
+    ],
+    [
+      "2",
+      "the updater in 0.22.0 exited with an error on its last 2 runs. After 3 in a row the background job runs the previous version's updater once",
+    ],
+    [
+      "3",
+      "the updater in 0.22.0 exited with an error on its last 3 runs. The next run uses the previous version's updater",
+    ],
+  ])("warns after %s failed background runs", (count, line) => {
+    installed({ previous: "0.21.0" });
+    writeFileSync(rt!.paths.updaterErrors, `${count}\n`);
+    expect(row()).toMatchObject({ ok: true, warn: true, detail: expect.stringContaining(line) });
+  });
+
+  it("says when the previous version's updater ran", () => {
+    installed({ previous: "0.21.0" });
+    writeFileSync(rt!.paths.updaterErrors, "0\n");
+    expect(row().detail).toContain(
+      "the updater in 0.22.0 exited with an error 3 runs in a row, so the background job ran the previous version's updater once",
+    );
+  });
+
+  it("says there is nothing to fall back to without a previous version", () => {
+    installed();
+    writeFileSync(rt!.paths.updaterErrors, "3\n");
+    expect(row().detail).toContain("There is no previous version to fall back to");
+  });
+
+  it("ignores a count it can't read", () => {
+    installed({ lastCheck: iso(NOW - 2 * HOUR), nextCheck: iso(NOW + 4 * HOUR) });
+    writeFileSync(rt!.paths.updaterErrors, "x\n");
+    expect(row()).toMatchObject({ ok: true });
+    expect(row().warn).toBeUndefined();
+  });
+});

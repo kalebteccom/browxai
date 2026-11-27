@@ -134,7 +134,7 @@ export function resolveAutoUpdate(
 }
 
 export const DEFAULT_COOLDOWN_HOURS = 24;
-const MAX_COOLDOWN_HOURS = 24 * 30;
+export const MAX_COOLDOWN_HOURS = 24 * 30;
 
 export interface CooldownSetting {
   hours: number;

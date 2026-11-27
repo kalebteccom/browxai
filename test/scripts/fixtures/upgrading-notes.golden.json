@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "notes": {
+    "0.24.0": "**Upgrading from 0.23.0.** Set `BROWX_X=1` to keep the old default. A script\nthat reads the old shape drops one `.data`:\n\n```ts\nres.data.data.title; // 0.23.0\nres.data.title; // 0.24.0\n```\n\n**Upgrading: sessions open their own tab.** Set `BROWX_Y=1` to claim one.\n\n**Upgrading.** Add `eval` to `BROWX_CAPABILITIES`.\n\nUpgrading: if you rely on it, set `all`.",
+    "0.22.0": "**Upgrading.** Move the file into `extensions/`."
+  }
+}

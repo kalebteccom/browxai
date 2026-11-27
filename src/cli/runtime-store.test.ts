@@ -174,3 +174,26 @@ describe("writeFileAtomic", () => {
     expect(existsSync(join(rt.paths.root, `.f.tmp-${process.pid}`))).toBe(false);
   });
 });
+
+describe("previous-version", () => {
+  it("follows previous in state.json, for the launcher to read", () => {
+    rt = tempRuntime();
+    writeState(rt.paths, { previous: "0.21.0" });
+    expect(readFileSync(rt.paths.previousVersion, "utf8")).toBe("0.21.0\n");
+    expect(statSync(rt.paths.previousVersion).mode & 0o777).toBe(0o600);
+    writeState(rt.paths, { previous: "0.22.0", lastResult: "x" });
+    expect(readFileSync(rt.paths.previousVersion, "utf8")).toBe("0.22.0\n");
+    writeState(rt.paths, {});
+    expect(existsSync(rt.paths.previousVersion)).toBe(false);
+  });
+});
+
+describe("notesUnseen", () => {
+  it("keeps only version names", () => {
+    rt = tempRuntime();
+    writeFileSync(rt.paths.state, JSON.stringify({ notesUnseen: ["0.22.0", "../x", "0.23.0"] }));
+    expect(readState(rt.paths).notesUnseen).toEqual(["0.22.0", "0.23.0"]);
+    writeFileSync(rt.paths.state, JSON.stringify({ notesUnseen: "0.22.0" }));
+    expect(readState(rt.paths).notesUnseen).toBeUndefined();
+  });
+});

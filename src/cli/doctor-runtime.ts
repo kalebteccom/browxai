@@ -1,14 +1,16 @@
 // `browxai doctor` runtime row: whether this browxai runs from a runtime
 // directory (RFC 0015), and if so the version `current` names, the channel, the
 // last and next check, and any update that waits. It reads `state.json`,
-// `current`, `runtime.json` and `node-path` and makes no network call.
+// `current`, `runtime.json`, `node-path` and `updater-errors` and makes no
+// network call.
 //
 // The row is informational. It warns about an update that waits or is held, a
-// deprecated `current`, a missing node or a missing background job, and it never
+// deprecated `current`, a missing node, a missing background job, unread
+// Upgrading notes or an updater that keeps failing, and it never
 // changes the exit code, with one exception: a version that failed signature or
 // provenance verification is a ✗, because that points at the supply chain.
 
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { PACKAGE_VERSION } from "../util/version.js";
@@ -117,6 +119,11 @@ function warnings(
       );
     }
   }
+  const updater = updaterLine(f);
+  if (updater) out.push(updater);
+  if (state.notesUnseen?.length) {
+    out.push(`Upgrading notes for ${state.notesUnseen.join(", ")}: browxai runtime notes`);
+  }
   if (current && state.currentDeprecated) {
     out.push(`${current} is deprecated: "${state.currentDeprecated}". Run browxai runtime update`);
   }
@@ -127,6 +134,30 @@ function warnings(
     out.push("auto-update is on, but no background job is installed. Run browxai runtime install");
   }
   return out;
+}
+
+/** The background job's updater errors, which the launcher counts in
+ *  `updater-errors` (RFC 0015, D19). Undefined while it succeeds. */
+function updaterLine(f: Facts): string | undefined {
+  let raw: string;
+  try {
+    raw = readFileSync(f.paths.updaterErrors, "utf8").trim();
+  } catch {
+    return undefined;
+  }
+  if (!/^\d+$/.test(raw)) return undefined;
+  const n = Number(raw);
+  const v = f.current ?? "current";
+  if (n === 0) {
+    return `the updater in ${v} exited with an error 3 runs in a row, so the background job ran the previous version's updater once. See ${f.paths.journal}`;
+  }
+  const runs = n === 1 ? "its last run" : `its last ${n} runs`;
+  const next = !f.state.previous
+    ? "There is no previous version to fall back to. Run browxai runtime update to see the error"
+    : n >= 3
+      ? "The next run uses the previous version's updater"
+      : "After 3 in a row the background job runs the previous version's updater once";
+  return `the updater in ${v} exited with an error on ${runs}. ${next}`;
 }
 
 function summary(f: Facts, channel: string, autoOn: boolean, autoSource: string): string {

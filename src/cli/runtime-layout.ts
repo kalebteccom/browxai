@@ -50,6 +50,13 @@ export interface RuntimePaths {
   lock: string;
   /** Where the background job's standard output and error go. */
   agentLog: string;
+  /** Upgrading notes the updater collected, one `<version>.md` per version. */
+  notes: string;
+  /** `previous` from state.json as plain text, for the launcher to read. */
+  previousVersion: string;
+  /** How many background runs in a row `current`'s updater exited 1. The
+   *  launcher writes it. */
+  updaterErrors: string;
 }
 
 export function runtimePaths(root: string): RuntimePaths {
@@ -67,6 +74,9 @@ export function runtimePaths(root: string): RuntimePaths {
     journal: join(root, "journal.jsonl"),
     lock: join(root, "lock"),
     agentLog: join(root, "agent.log"),
+    notes: join(root, "notes"),
+    previousVersion: join(root, "previous-version"),
+    updaterErrors: join(root, "updater-errors"),
   };
 }
 

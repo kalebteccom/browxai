@@ -221,7 +221,7 @@ describe("browxai runtime install: the background job", () => {
     expect(r.code).toBe(0);
     expect(agent.calls).toEqual([`install ${rt.paths.shim} ${NODE}`]);
     expect(r.out).toContain("✓ background job: fake job loaded.");
-    expect(r.out).toContain(`"autoUpdate": "off" in ${rt.paths.settings}`);
+    expect(r.out).toContain("Turn it off: browxai runtime config auto-update off");
   });
 
   it("--no-agent installs no job, and removes one an earlier install left", async () => {

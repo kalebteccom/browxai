@@ -691,10 +691,15 @@ check, so client entries that name the launcher follow updates with no edit.
   and running as root. It uses no administrator rights.
 - **Settings come from the environment and `runtime.json` only.** The channel and
   the auto-update switch are read from `BROWX_RUNTIME_*` variables and the runtime's
-  own `runtime.json`. The workspace config, `set_config` and every MCP tool can't set
-  them, and an unknown value fails closed.
+  own `runtime.json`, which only `browxai runtime config` and `install` write. The
+  workspace config, `set_config` and every MCP tool can't set them, and an unknown
+  value fails closed: `runtime config` refuses it and writes nothing.
 - **No new network from servers.** The launcher reads one link and one file and
-  execs. Only `install` and `update` contact the npm registry, through npm and the
+  execs. For the background job only, it reads `previous-version` and
+  `updater-errors` and waits for the run. A server reads `state.json` once at start,
+  for the Upgrading notes line, and creates an empty marker under `notes/`. A
+  `serve --socket` daemon under the launcher reads the `current` link every 5
+  minutes and exits 75 when idle on an old version. Only `install` and `update` contact the npm registry, through npm and the
   registry in the user's npm config. No MCP tool, capability or default changes.
 - **The background job runs as the user.** `install` adds a launchd user agent or a
   systemd user timer that runs `update --auto` hourly, in the user's own launchd
@@ -705,7 +710,9 @@ check, so client entries that name the launcher follow updates with no edit.
 signatures` for good, and makes at most 6 registry contacts and 2 applies a day.
   `"autoUpdate": "off"` in `runtime.json`, `BROWX_RUNTIME_AUTO_UPDATE=off` in the
   job's environment, or `install --no-agent` turns it off, and a value it doesn't
-  know counts as off.
+  know counts as off. When the current version's updater exits 1 on three runs in a
+  row, the launcher runs the previous version's updater once: a version the runtime
+  already ran, from `versions/`, with no download.
 - **The signed macOS app** never runs runtime code: every `runtime` command exits 2
   inside it.
 

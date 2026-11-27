@@ -9,6 +9,12 @@
 // PATH. The launcher follows it with plain `readlink` (no `-f`, which older macOS
 // lacks) before it finds the runtime, so a link anywhere still runs the runtime
 // the launcher belongs to.
+//
+// One case doesn't exec: `runtime update --auto`, the background job. The
+// launcher waits for it and counts the runs in a row that exit 1 in
+// `updater-errors`. After three, the next run uses the updater of the version in
+// `previous-version` once and writes a `fallback` line to the journal, so a
+// release whose updater breaks can't keep a machine from updating (RFC 0015, D19).
 
 import { existsSync, readFileSync } from "node:fs";
 import { writeFileAtomic } from "./runtime-store.js";
@@ -51,7 +57,30 @@ node=\${BROWX_RUNTIME_NODE:-}
   echo "browxai: no node found. Set BROWX_RUNTIME_NODE." >&2
   exit 127
 }
-BROWX_RUNTIME_DIR=$rt BROWX_RUNTIME_VERSION=\${target##*/} exec "$node" "$cli" "$@"
+v=\${target##*/}
+if [ "$#" -ne 3 ] || [ "$1" != runtime ] || [ "$2" != update ] || [ "$3" != --auto ]; then
+  BROWX_RUNTIME_DIR=$rt BROWX_RUNTIME_VERSION=$v exec "$node" "$cli" "$@"
+fi
+# The background job. After three runs in a row where current's updater exited 1,
+# the next run uses the previous version's updater once.
+errs=$rt/updater-errors
+n=$(cat -- "$errs" 2>/dev/null)
+case $n in '' | *[!0-9]*) n=0 ;; esac
+prev=$(cat -- "$rt/previous-version" 2>/dev/null)
+case $prev in '' | .* | *[!0-9A-Za-z.+-]*) prev= ;; esac
+pcli=$rt/versions/$prev/node_modules/browxai/dist/cli.js
+if [ "$n" -ge 3 ] && [ -n "$prev" ] && [ "$prev" != "$v" ] && [ -f "$pcli" ]; then
+  (umask 077 && echo 0 >"$errs" && printf '{"at":"%s","mode":"auto","event":"fallback","version":"%s","from":"%s","reason":"%s"}\\n' \\
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$prev" "$v" "the updater in $v exited 1 on $n runs in a row" >>"$rt/journal.jsonl")
+  BROWX_RUNTIME_DIR=$rt BROWX_RUNTIME_VERSION=$prev exec "$node" "$pcli" "$@"
+fi
+BROWX_RUNTIME_DIR=$rt BROWX_RUNTIME_VERSION=$v "$node" "$cli" "$@"
+code=$?
+case $code in
+  0) rm -f -- "$errs" ;;
+  1) (umask 077 && echo $((n + 1)) >"$errs") ;;
+esac
+exit "$code"
 `;
 
 /** Write the launcher, mode 0755, unless it already has exactly this text. */

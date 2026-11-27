@@ -97,6 +97,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
    *  passes one, and it gets the same `tools/list` handling. */
   start: (transport?: Transport) => Promise<void>;
   shutdown: () => Promise<void>;
+  /** How many sessions are open now. */
+  openSessions: () => number;
   /** Whether `tools/list` reports this tool under the `toolList` and `toolProfile`
    *  settings. A tool is left out when `toolList` is `enabled` (the default) and its
    *  capability is off, or when `toolProfile` is `core` and the tool is outside the
@@ -375,6 +377,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await server.close().catch(() => undefined);
       removeLogMask();
     },
+    openSessions: () => registry.list().length,
     isToolListed: listing.isListed,
     registrations: host.registrations,
     handlers: toolHandlers,

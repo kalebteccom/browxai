@@ -19,7 +19,16 @@ import { resolveEngineSelection, UnknownEngineError, type EngineKind } from "../
 import { SocketTransport } from "../transport/socket-transport.js";
 import { log } from "../util/logging.js";
 import { isHeadlessEnv } from "../util/config-store.js";
+import { PACKAGE_VERSION } from "../util/version.js";
+import { firstStartLine } from "./runtime-notes.js";
 import { createClientServer } from "./serve-client.js";
+import {
+  drainSetting,
+  startDrain,
+  systemDrainClock,
+  type Drain,
+  type DrainClock,
+} from "./serve-drain.js";
 import {
   SocketPathError,
   isPipePath,
@@ -36,6 +45,13 @@ interface ServeOptions {
    *  Undefined ⇒ server.ts defaults to chromium. Per-session `open_session`
    *  ({engine}) still overrides this default. */
   readonly browserType?: EngineKind;
+  /** Drain onto a new runtime version when idle (serve-drain.ts). `runServe`
+   *  passes the process env; a test passes its own env and clock. */
+  readonly drain?: {
+    readonly env: NodeJS.ProcessEnv;
+    readonly clock?: DrainClock;
+    readonly onDrain: (code: number) => void;
+  };
 }
 
 function parseFlagString(args: string[], flag: string): string | undefined {
@@ -116,6 +132,8 @@ export async function runServe(rawArgs: string[]): Promise<number> {
 export async function startServeForTests(opts: ServeOptions): Promise<{
   server: Server;
   shutdown: () => Promise<void>;
+  /** Socket clients connected now. */
+  connections: () => number;
 }> {
   const socketPath = resolveSocketPath(opts.socketPath);
   // A stale socket left over from a crashed run would block .listen() with
@@ -138,6 +156,7 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
 
   // Each attached client connection gets its own MCP server over the shared handlers.
   const liveConnections = new Set<{ close: () => Promise<void> }>();
+  const drain = opts.drain ? drainFor(opts.drain, browxai, () => liveConnections.size) : undefined;
 
   const netServer: Server = createNetServer((socket) => {
     void (async () => {
@@ -152,8 +171,10 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
           },
         };
         liveConnections.add(conn);
+        drain?.activity();
         socket.on("close", () => {
           liveConnections.delete(conn);
+          drain?.activity();
         });
       } catch (err) {
         log.error(
@@ -171,6 +192,7 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
   await listenPrivate(netServer, socketPath);
 
   const shutdown = async (): Promise<void> => {
+    drain?.stop();
     for (const conn of liveConnections) {
       await conn.close().catch(() => undefined);
     }
@@ -188,11 +210,46 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
     }
   };
 
-  return { server: netServer, shutdown };
+  return { server: netServer, shutdown, connections: () => liveConnections.size };
+}
+
+/** The idle drain of a daemon the runtime launcher started, or undefined. */
+function drainFor(
+  opts: NonNullable<ServeOptions["drain"]>,
+  browxai: { openSessions: () => number },
+  connections: () => number,
+): Drain | undefined {
+  const setting = drainSetting(opts.env, PACKAGE_VERSION);
+  if (!setting.on) {
+    if (setting.warning) log.warn(`browxai serve: ${setting.warning}`);
+    return undefined;
+  }
+  return startDrain({
+    root: setting.root,
+    version: setting.version,
+    connections,
+    sessions: browxai.openSessions,
+    clock: opts.clock ?? systemDrainClock,
+    log: (line) => log.info(line),
+    onDrain: opts.onDrain,
+  });
 }
 
 async function startServe(opts: ServeOptions): Promise<number> {
-  const { shutdown } = await startServeForTests(opts);
+  const notes = firstStartLine(process.env);
+  if (notes) process.stderr.write(notes);
+  // The drain's first check runs 5 minutes after the start, so `shutdown` is set by then.
+  const started: { shutdown?: () => Promise<void> } = {};
+  const { shutdown } = await startServeForTests({
+    ...opts,
+    drain: {
+      env: process.env,
+      onDrain: (code) => {
+        void (started.shutdown?.() ?? Promise.resolve()).finally(() => process.exit(code));
+      },
+    },
+  });
+  started.shutdown = shutdown;
   log.info("serve listening", { socket: opts.socketPath });
 
   // Keep the process alive until a signal.

@@ -12,7 +12,8 @@ import { dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { addVersion, tempRuntime, type TempRuntime } from "./__fixtures__/runtime-tree.js";
 import { SHIM_TEXT, writeShim } from "./runtime-shim.js";
-import { switchCurrent } from "./runtime-store.js";
+import { readJournal } from "./runtime-journal.js";
+import { switchCurrent, writeState } from "./runtime-store.js";
 
 // The launcher runs under whatever /bin/sh the machine has. Each shell found here
 // runs every case: dash (Debian's /bin/sh), bash in POSIX mode, and /bin/sh.
@@ -69,7 +70,7 @@ describe("the launcher text", () => {
 
   it("makes no network call and avoids readlink -f", () => {
     expect(SHIM_TEXT).not.toMatch(/curl|wget|npm|readlink -f|readlink -e|realpath/);
-    expect(SHIM_TEXT.split("\n").length).toBeLessThanOrEqual(45);
+    expect(SHIM_TEXT.split("\n").length).toBeLessThanOrEqual(60);
   });
 });
 
@@ -186,5 +187,110 @@ describe.each(SHELLS)("the launcher under $name", ({ argv: shell }) => {
     expect(r.stderr).toBe(
       `browxai: ${cli} is missing. Run: ${root}/bin/browxai runtime rollback\n`,
     );
+  });
+});
+
+// `current`'s updater that always fails, as a release with a broken updater would.
+const FAILING = `process.stdout.write(JSON.stringify({ version: process.env.BROWX_RUNTIME_VERSION }));
+process.exit(1);
+`;
+
+describe.each(SHELLS)("the background job's updater fallback under $name", ({ argv: shell }) => {
+  const JOB = ["runtime", "update", "--auto"];
+
+  /** current 1.3.0 with a failing updater, previous 1.2.3 with a working one. */
+  function jobLayout(): TempRuntime {
+    rt = tempRuntime();
+    writeShim(rt.paths);
+    writeFileSync(rt.paths.nodePath, process.execPath + "\n");
+    addVersion(rt.paths, "1.2.3", STUB);
+    addVersion(rt.paths, "1.3.0", FAILING);
+    switchCurrent(rt.paths, "1.3.0");
+    writeState(rt.paths, { previous: "1.2.3" });
+    return rt;
+  }
+
+  const errors = (paths: TempRuntime["paths"]) =>
+    existsSync(paths.updaterErrors) ? readFileSync(paths.updaterErrors, "utf8") : undefined;
+  const ran = (r: { stdout: string }) => (JSON.parse(r.stdout) as { version: string }).version;
+
+  it("counts the runs in a row where current's updater exits 1", () => {
+    const { paths } = jobLayout();
+    for (let i = 1; i <= 3; i++) {
+      const r = launch(shell, paths.shim, JOB);
+      expect(r.status).toBe(1);
+      expect(ran(r)).toBe("1.3.0");
+      expect(errors(paths)).toBe(`${i}\n`);
+    }
+    expect(statSync(paths.updaterErrors).mode & 0o777).toBe(0o600);
+  });
+
+  it("runs the previous version's updater once after three, then current's again", () => {
+    const { paths } = jobLayout();
+    for (let i = 0; i < 3; i++) launch(shell, paths.shim, JOB);
+    const fallback = launch(shell, paths.shim, JOB);
+    expect(fallback.status).toBe(0);
+    expect(JSON.parse(fallback.stdout)).toMatchObject({ argv: JOB, version: "1.2.3" });
+    expect(errors(paths)).toBe("0\n");
+    expect(readJournal(paths).at(-1)).toMatchObject({
+      mode: "auto",
+      event: "fallback",
+      version: "1.2.3",
+      from: "1.3.0",
+      reason: "the updater in 1.3.0 exited 1 on 3 runs in a row",
+    });
+    const again = launch(shell, paths.shim, JOB);
+    expect(ran(again)).toBe("1.3.0");
+    expect(errors(paths)).toBe("1\n");
+  });
+
+  it("clears the count when current's updater succeeds", () => {
+    const { paths } = jobLayout();
+    switchCurrent(paths, "1.2.3");
+    writeState(paths, { previous: "1.3.0" });
+    writeFileSync(paths.updaterErrors, "2\n");
+    const r = launch(shell, paths.shim, JOB);
+    expect(r.status).toBe(0);
+    expect(ran(r)).toBe("1.2.3");
+    expect(errors(paths)).toBeUndefined();
+  });
+
+  it("counts only exit 1", () => {
+    const { paths } = jobLayout();
+    switchCurrent(paths, "1.2.3");
+    writeState(paths, { previous: "1.3.0" });
+    const r = launch(shell, paths.shim, JOB, { STUB_EXIT: "7" });
+    expect(r.status).toBe(7);
+    expect(errors(paths)).toBeUndefined();
+  });
+
+  it.each([
+    ["no previous version", (p: TempRuntime["paths"]) => writeState(p, {})],
+    [
+      "a previous-version that isn't a version name",
+      (p: TempRuntime["paths"]) => writeFileSync(p.previousVersion, "../1.2.3\n"),
+    ],
+    [
+      "a previous version that is gone",
+      (p: TempRuntime["paths"]) => writeFileSync(p.previousVersion, "1.1.0\n"),
+    ],
+  ])("keeps running current's updater with %s", (_label, setUp) => {
+    const { paths } = jobLayout();
+    setUp(paths);
+    writeFileSync(paths.updaterErrors, "5\n");
+    const r = launch(shell, paths.shim, JOB);
+    expect(ran(r)).toBe("1.3.0");
+    expect(errors(paths)).toBe("6\n");
+  });
+
+  it("execs as usual for any other arguments", () => {
+    const { paths } = jobLayout();
+    writeFileSync(paths.updaterErrors, "5\n");
+    for (const args of [["runtime", "update"], ["runtime", "update", "--auto", "x"], ["serve"]]) {
+      const r = launch(shell, paths.shim, args);
+      expect(r.status).toBe(1);
+      expect(ran(r)).toBe("1.3.0");
+    }
+    expect(errors(paths)).toBe("5\n");
   });
 });

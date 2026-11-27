@@ -173,6 +173,9 @@ export interface RuntimeState {
   bootSeen?: number;
   /** The registry's deprecation message for `current`, from the last check. */
   currentDeprecated?: string;
+  /** Versions whose Upgrading notes the updater wrote and `runtime notes` has
+   *  not shown yet. */
+  notesUnseen?: string[];
 }
 
 const STRING_FIELDS = [
@@ -232,6 +235,8 @@ function parseState(s: Record<string, unknown>): RuntimeState {
   if (contacts) out.contacts = contacts;
   const applies = strings(s.applies);
   if (applies) out.applies = applies;
+  const notesUnseen = strings(s.notesUnseen)?.filter(isVersion);
+  if (notesUnseen?.length) out.notesUnseen = notesUnseen;
   return out;
 }
 
@@ -262,6 +267,26 @@ function isRecord(value: unknown): boolean {
 
 export function writeState(paths: RuntimePaths, state: RuntimeState): void {
   writeFileAtomic(paths.state, JSON.stringify(state, null, 2) + "\n");
+  syncPreviousVersion(paths, state.previous);
+}
+
+/**
+ * Keep `previous-version` equal to `previous` in state.json. The launcher reads
+ * it to run the previous version's updater when `current`'s keeps failing, and a
+ * shell can read one line where it can't parse JSON.
+ */
+export function syncPreviousVersion(paths: RuntimePaths, previous: string | undefined): void {
+  if (!previous) {
+    rmSync(paths.previousVersion, { force: true });
+    return;
+  }
+  let now: string | undefined;
+  try {
+    now = readFileSync(paths.previousVersion, "utf8");
+  } catch {
+    now = undefined;
+  }
+  if (now !== previous + "\n") writeFileAtomic(paths.previousVersion, previous + "\n");
 }
 
 /** The node recorded at install, or undefined. */

@@ -1,5 +1,6 @@
-// `browxai runtime`: the journal, one JSON line per check, apply, rollback and gc
-// in `<runtime>/journal.jsonl`, mode 0600. It records versions, integrity hashes,
+// `browxai runtime`: the journal, one JSON line per check, apply, rollback, gc,
+// Upgrading note and updater fallback in `<runtime>/journal.jsonl`, mode 0600.
+// It records versions, integrity hashes,
 // reasons and timings, never a token or an npm config value. At 1 MB the file
 // moves to `journal.jsonl.1`, replacing the one before, so the journal holds
 // between 1 and 2 MB.
@@ -9,7 +10,17 @@ import type { RuntimePaths } from "./runtime-layout.js";
 
 export const JOURNAL_MAX_BYTES = 1024 * 1024;
 
-export type JournalEvent = "check" | "apply" | "rollback" | "gc" | "offline" | "error" | "skip";
+export type JournalEvent =
+  | "check"
+  | "apply"
+  | "rollback"
+  | "gc"
+  | "offline"
+  | "error"
+  | "skip"
+  | "notes"
+  /** Written by the launcher: the background run used the previous version's updater. */
+  | "fallback";
 
 export interface JournalEntry {
   at: string;
@@ -22,6 +33,8 @@ export interface JournalEntry {
   reason?: string;
   integrity?: string;
   ms?: number;
+  /** The Upgrading notes of `version`, for a `notes` entry. */
+  notes?: string;
 }
 
 /** Append one entry. A journal that can't be written never stops an update. */
