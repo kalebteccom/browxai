@@ -28,6 +28,7 @@ surface" covers.
 
 ### Fixed
 
+- **Long device filters and diagnostics arguments are masked before they are cut.** The filters a page passes to `requestDevice`, kept for `device_requests` when they serialise past 4,096 characters, and the diagnostics record of a call (string arguments over 256 characters and the 80-character `eval_js` expression head) are masked with the session's registered secrets first, so no head of a registered value that crosses the cut is kept.
 - **Plugin tools check every declared capability and parse their arguments on every caller.** The gate on a plugin tool used to check only the first capability its plugin declared; it now refuses when any of them is off and names that one in `requiredCapability`. A plugin's declared `inputSchema` was applied only on the MCP wire; `batch`, another plugin's `api.callTool` and the SDK now get the same refusal for arguments that do not match, and undeclared keys are dropped for them too.
 - **`open_session({authState})` needs `action`, as `storageState` does.** A saved slot writes cookies and storage into the new session, so a server whose `BROWX_CAPABILITIES` leaves `action` out now returns the standard refusal with `requiredCapability: "action"` before anything launches. Default servers are unchanged.
 - **`profile_restore` needs `action` as well as `human`.** It replaces a profile's cookies and storage with a snapshot's, the same seeding `open_session({storageState})` does. A server without `action` now refuses it. Default servers are unchanged.
