@@ -86,7 +86,9 @@ async function pageTargetId(page: Page): Promise<string> {
 }
 
 /** The pool's view of an attached browser: every live page across every context
- *  is a claimable target, and a new tab in the first context is the fallback.
+ *  is listed, and `create` opens a new tab in the first context. The pool creates
+ *  a tab per session by default and claims a listed page only under
+ *  `BROWX_ATTACH_CLAIM_EXISTING`, or when `create` is absent.
  *
  *  `canCreate: false` drops the fallback, for an attached app whose targets the
  *  protocol cannot mint — Electron answers `Target.createTarget` with "Not

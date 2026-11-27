@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import type { Page } from "playwright-core";
 import {
   AttachLeaseTable,
@@ -91,7 +91,63 @@ describe("AttachLeaseTable", () => {
   });
 });
 
-describe("acquireTarget", () => {
+describe("acquireTarget by default: a fresh tab per session", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("creates a tab and leaves the pre-existing one unclaimed", async () => {
+    const leases = new AttachLeaseTable();
+    const operatorTab = fakePage();
+    const src = source([target("T1", operatorTab)], [target("T2", fakePage())]);
+    const a = await acquireTarget(leases, src, { sessionId: "a", endpoint: ENDPOINT });
+    expect(a.targetId).toBe("T2");
+    expect(a.created).toBe(true);
+    expect(leases.leasedTargets(ENDPOINT)).toEqual(new Set(["T2"]));
+    await releaseTarget(leases, "a", a.page);
+    expect(operatorTab.close).not.toHaveBeenCalled();
+  });
+
+  it("gives concurrent sessions two created tabs", async () => {
+    const leases = new AttachLeaseTable();
+    const src = source(
+      [target("T1", fakePage())],
+      [target("T2", fakePage()), target("T3", fakePage())],
+    );
+    const [a, b] = await Promise.all([
+      acquireTarget(leases, src, { sessionId: "a", endpoint: ENDPOINT }),
+      acquireTarget(leases, src, { sessionId: "b", endpoint: ENDPOINT }),
+    ]);
+    expect(new Set([a.targetId, b.targetId])).toEqual(new Set(["T2", "T3"]));
+    expect(a.created && b.created).toBe(true);
+  });
+
+  it.each(["0", "", "yes"])("does not claim with BROWX_ATTACH_CLAIM_EXISTING=%j", async (v) => {
+    vi.stubEnv("BROWX_ATTACH_CLAIM_EXISTING", v);
+    const leases = new AttachLeaseTable();
+    const src = source([target("T1", fakePage())], [target("T2", fakePage())]);
+    const a = await acquireTarget(leases, src, { sessionId: "a", endpoint: ENDPOINT });
+    expect(a.targetId).toBe("T2");
+  });
+});
+
+describe("acquireTarget with BROWX_ATTACH_CLAIM_EXISTING=1", () => {
+  beforeEach(() => {
+    vi.stubEnv("BROWX_ATTACH_CLAIM_EXISTING", "1");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each(["1", "true", " TRUE "])("claims the pre-existing tab for %j", async (v) => {
+    vi.stubEnv("BROWX_ATTACH_CLAIM_EXISTING", v);
+    const leases = new AttachLeaseTable();
+    const src = source([target("T1", fakePage())], [target("T2", fakePage())]);
+    const a = await acquireTarget(leases, src, { sessionId: "a", endpoint: ENDPOINT });
+    expect(a.targetId).toBe("T1");
+    expect(a.created).toBe(false);
+  });
+
   it("serializes concurrent acquisitions so neither claims the same target", async () => {
     const leases = new AttachLeaseTable();
     const src = source([target("T1", fakePage()), target("T2", fakePage())]);
@@ -138,6 +194,13 @@ describe("acquireTarget", () => {
 });
 
 describe("releaseTarget", () => {
+  beforeEach(() => {
+    vi.stubEnv("BROWX_ATTACH_CLAIM_EXISTING", "1");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it.each([
     { label: "closes a target the session created", created: true },
     { label: "leaves a pre-existing target the session merely claimed open", created: false },

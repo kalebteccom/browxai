@@ -134,6 +134,12 @@ lets the agent call `approve_actions`. See
 An attached Chrome is not owned by browxai: it is never closed on shutdown and
 it survives browxai restarts cleanly.
 
+Each attached session opens a new tab in that Chrome and closes it when the
+session closes, so your own tabs are left alone. Several browxai servers can
+attach to one Chrome this way without sharing a tab. To have a session take
+over a tab that is already open, set `BROWX_ATTACH_CLAIM_EXISTING=1` in the
+server's `env`, and only when one browxai server is attached to that Chrome.
+
 ## Browser channel and background throttling
 
 Two launch-time knobs on a chromium session:
