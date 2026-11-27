@@ -53,6 +53,9 @@ a version bump.
    `npm deprecate browxai@X.Y.Z "<what to use instead>"` within that window:
    the job skips a deprecated version, and `browxai doctor` warns on machines
    that already run it.
+   The runtime also pins each version's provenance to this repository, the
+   `release.yml` workflow and the tag `vX.Y.Z` (see "Provenance and SBOM"), so
+   a version published any other way never becomes current on those machines.
 9. Check the GitHub Release. The workflow creates it from the tag with the
    tag's `CHANGELOG.md` section as its body
    (`scripts/changelog-section.mjs`) and attaches `sbom.cdx.json`. A missing
@@ -104,6 +107,10 @@ Preview locally with `pnpm docs:dev`. Site-related launch gates live in
 - `@rowinbot` is the sole release authority.
 - A breakglass account `@kalebtec-breakglass` is available only in emergencies (loss of primary maintainer access).
 
+## Prereleases and the `next` dist-tag
+
+A tag with a `-` in its version, such as `v0.23.0-next.1`, is a prerelease. `release.yml` publishes it with `npm publish --tag next`, so it never moves the `latest` dist-tag that `npm install browxai` and the runtime's default channel follow. Runtimes on the `next` channel take it after the usual delay. Cut a prerelease with the same steps as a release: its own `CHANGELOG.md` section, the `release` environment approval and the checks in step 8, with `npm view browxai@next version` in place of the `latest` check. When the final release ships, `next` machines move to it on their own, since the `next` channel follows `latest` once `latest` is newer. Remove a prerelease the same way as a release, with `npm deprecate`.
+
 ## OIDC trusted publishing
 
 Releases go out via `.github/workflows/release.yml`, which uses a GitHub Actions OIDC token to authenticate to the npm registry. No long-lived publish token is stored in the repository, and no human or agent ever runs a publish command locally (`AGENTS.md` lists `npm publish` / `pnpm publish` as forbidden). The publish jobs run in a deployment environment named `release` that requires a manual approval before they can execute.
@@ -111,6 +118,7 @@ Releases go out via `.github/workflows/release.yml`, which uses a GitHub Actions
 ## Provenance and SBOM
 
 - Every published artifact is signed with `--provenance` via the OIDC pipeline. The attestation is logged to the Sigstore transparency log and can be verified with `npm audit signatures`.
+- The trusted publisher is this repository's `release.yml`, run from a `v*` tag. `browxai runtime update` relies on that: it reads `dist.attestations.url` and requires the SLSA provenance (`https://slsa.dev/provenance/v1`) to carry `buildDefinition.externalParameters.workflow` with `repository` `https://github.com/kalebteccom/browxai`, `path` `.github/workflows/release.yml` and `ref` `refs/tags/vX.Y.Z`, and a signing certificate for `https://github.com/kalebteccom/browxai/.github/workflows/release.yml@refs/tags/vX.Y.Z`. Renaming the workflow, moving the repository or publishing from a branch makes every runtime hold that version, so any such change ships with a matching change to the pin in `src/cli/runtime-provenance.ts` first, one release ahead.
 - The release workflow generates `sbom.cdx.json` (CycloneDX format) and attaches it to the GitHub Release alongside `THIRD_PARTY_NOTICES.md`.
 
 ## Keystone is a hard prerequisite

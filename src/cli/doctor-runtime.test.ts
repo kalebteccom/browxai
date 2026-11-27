@@ -237,3 +237,34 @@ describe("the runtime row: notes and the updater fallback", () => {
     expect(row().warn).toBeUndefined();
   });
 });
+
+describe("the runtime row on the next channel", () => {
+  function on(version: string): void {
+    rt = tempRuntime();
+    addVersion(rt.paths, version);
+    switchCurrent(rt.paths, version);
+    writeFileSync(rt.paths.nodePath, process.execPath + "\n");
+    writeState(rt.paths, { lastCheck: iso(NOW - 2 * HOUR), nextCheck: iso(NOW + 4 * HOUR) });
+  }
+  const rowOn = (version: string, env: NodeJS.ProcessEnv = {}) =>
+    row({
+      env: { BROWX_RUNTIME_DIR: rt!.paths.root, ...env },
+      selfCli: cliOf(versionDir(rt!.paths, version)),
+      version,
+    });
+
+  it("names the next channel", () => {
+    on("0.23.0-next.1");
+    expect(rowOn("0.23.0-next.1", { BROWX_RUNTIME_CHANNEL: "next" })).toMatchObject({
+      ok: true,
+      detail: expect.stringMatching(/^0\.23\.0-next\.1 \(channel next\), checked 2h ago/),
+    });
+  });
+
+  it("says a prerelease stays on latest until a release passes it", () => {
+    on("0.23.0-next.1");
+    expect(rowOn("0.23.0-next.1").detail).toMatch(
+      /^0\.23\.0-next\.1 \(channel latest, a prerelease kept until latest passes it\), checked 2h ago/,
+    );
+  });
+});

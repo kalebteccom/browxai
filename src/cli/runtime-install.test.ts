@@ -9,6 +9,7 @@ import {
   tempRuntime,
   type TempRuntime,
 } from "./__fixtures__/runtime-tree.js";
+import { fakeIntegrity } from "./__fixtures__/provenance.js";
 import type { SmokeResult } from "./runtime-smoke.js";
 import { SHIM_TEXT } from "./runtime-shim.js";
 import { readCurrent, readState, switchCurrent } from "./runtime-store.js";
@@ -67,7 +68,7 @@ describe("browxai runtime install", () => {
     rt = tempRuntime({ create: false });
     const dir = join(rt.home, "elsewhere");
     const r = await run(["install", "--dir", dir, "--channel", "next"], {
-      registry: () => fakeRegistry(VERSIONS, { next: "0.22.0" }),
+      registry: () => fakeRegistry(VERSIONS, { latest: "0.21.0", next: "0.22.0" }),
     });
     expect(r.code).toBe(0);
     expect(JSON.parse(readFileSync(join(dir, "runtime.json"), "utf8"))).toEqual({
@@ -312,6 +313,7 @@ describe("browxai runtime update: lock, journal and schedule state", () => {
         event: "apply",
         version: "0.22.0",
         from: "0.21.0",
+        integrity: fakeIntegrity("0.22.0"),
         result: "applied",
       },
     ]);

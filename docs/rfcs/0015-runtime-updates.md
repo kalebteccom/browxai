@@ -459,6 +459,27 @@ These weren't verified while writing this RFC. Each is checked before the slice 
 - **Provenance timing.** The S3 pin waits on npm trusted publishing over OIDC being confirmed live for the package.
 - **Same-user writes.** Code running as the user can write the runtime directory. The refusals stop mistakes and other users, nothing more.
 
+## Addendum: S3 provenance pin and the `next` channel, as built
+
+**What the published package carries.** Read from the registry for `browxai@0.21.0` (and checked the same on 0.10.0 and 0.17.0) before the pin was written:
+
+- `dist.attestations` is `{ url, provenance: { predicateType } }`, with `url` `https://registry.npmjs.org/-/npm/v1/attestations/browxai@<v>` and `predicateType` `https://slsa.dev/provenance/v1`. Versions before 0.10.0 have no `dist.attestations`.
+- The document at that URL is `{ attestations: [...] }` with two entries. One has `predicateType` `https://github.com/npm/attestation/tree/main/specs/publish/v0.1`, a Sigstore bundle v0.2 signed with the registry's public key. The other has `predicateType` `https://slsa.dev/provenance/v1`, a bundle `application/vnd.dev.sigstore.bundle.v0.3+json` whose `verificationMaterial.certificate.rawBytes` is the signing certificate.
+- The SLSA bundle's `dsseEnvelope.payloadType` is `application/vnd.in-toto+json`. The decoded payload has `_type` `https://in-toto.io/Statement/v1`, one `subject` `{ name: "pkg:npm/browxai@<v>", digest: { sha512: <hex> } }`, where the hex is the base64 of `dist.integrity` decoded, and `predicate.buildDefinition` with `buildType` `https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1` and `externalParameters.workflow` `{ ref: "refs/tags/v<v>", repository: "https://github.com/kalebteccom/browxai", path: ".github/workflows/release.yml" }`.
+- The certificate's subject alternative name is the URI `https://github.com/kalebteccom/browxai/.github/workflows/release.yml@refs/tags/v<v>`. Its Fulcio extensions name the issuer `https://token.actions.githubusercontent.com`, the repository `kalebteccom/browxai`, the ref `refs/tags/v<v>`, the event `push` and the environment `release`.
+
+Section 4's field names match: `workflow.repository`, `workflow.path` and `workflow.ref` sit under `predicate.buildDefinition.externalParameters`.
+
+**What the pin requires, beyond section 4.** Exactly one SLSA provenance v1 entry, an in-toto v1 statement, the build type above, attestations on the same origin as `dist.tarball`, and a signing certificate whose SAN URI is the workflow at the tag. The certificate check was added because the statement is written by whoever runs the publish: a statement that names this repository, signed by a certificate issued to another, passes a signature check with no identity policy. Node's `X509Certificate` reads the SAN, so no dependency was added. The signature and the certificate chain stay with `npm audit signatures`.
+
+**No cut-off date.** From this slice on, every version needs an attestation. Every release since 0.10.0 has one, and the runtime has never installed an older version, so no date is needed. `update --version` of a pre-0.10.0 version fails verification.
+
+**A failed download is not a mismatch.** The attestations document is fetched with a plain GET, since npm has no command that prints it. A network or HTTP failure counts as an ordinary failed attempt (held after three). Only a document that doesn't name the trusted publisher holds the version for good.
+
+**`next` resolves to the newer of the two dist-tags.** Section 5 reads "the dist-tag for the channel". Built that way, a machine on `next` would stay on `0.23.0-next.1` after `0.23.0` ships on `latest`, which is the stall this RFC exists to end, and `next` would fail outright today, since the package has no `next` dist-tag (`npm view browxai@next` returns E404). So `next` reads `latest` first and takes the `next` dist-tag only when it names a newer version. The delay, the deprecated skip, D7 and every check are the same on both channels. The updater never moves down, so a machine that switches back to `latest` while on a prerelease keeps it until `latest` passes it, and doctor says so.
+
+**`release.yml`.** The publish step adds `--tag next` when `GITHUB_REF_NAME` contains a `-`. Nothing else in the workflow changed. The GitHub Release for a prerelease tag isn't marked as a prerelease by this change.
+
 ## References
 
 - [RFC 0012](0012-signed-macos-app.md): the app, its launcher, the cask as its only update channel.

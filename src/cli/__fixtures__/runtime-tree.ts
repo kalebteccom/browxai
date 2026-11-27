@@ -13,6 +13,14 @@ import {
 import { createLayout } from "../runtime-store.js";
 import type { RunResult, Runner } from "../runtime-exec.js";
 import type { Registry } from "../runtime-npm.js";
+import { SLSA_PROVENANCE_V1 } from "../runtime-provenance.js";
+import {
+  attestationsDoc,
+  attestationsUrl,
+  fakeIntegrity,
+  tarballUrl,
+  type ProvenanceShape,
+} from "./provenance.js";
 import type { AgentKind, AgentPort } from "../runtime-agent.js";
 
 export interface TempRuntime {
@@ -114,13 +122,28 @@ export function fakeNpm(
   return Object.assign(runner, { calls });
 }
 
-/** A registry port that answers from a table of versions and dist-tags. */
+/** How a fake version's provenance looks: a field of a genuine release changed,
+ *  `"missing"` for no attestation, or `"unreadable"` for a fetch that fails. */
+export type FakeProvenance = Partial<Omit<ProvenanceShape, "version">> | "missing" | "unreadable";
+
+export interface FakeVersion {
+  publishedAt?: string;
+  deprecated?: string;
+  enginesNode?: string;
+  /** By default every version carries the provenance of a genuine release. */
+  provenance?: FakeProvenance;
+}
+
+/** A registry port that answers from a table of versions and dist-tags, with an
+ *  attestations document per version that `provenance` shapes. */
 export function fakeRegistry(
-  versions: Record<string, { publishedAt?: string; deprecated?: string; enginesNode?: string }>,
+  versions: Record<string, FakeVersion>,
   tags: Record<string, string>,
   opts: { unreachable?: boolean } = {},
-): Registry {
+): Registry & { attestationReads: string[] } {
+  const attestationReads: string[] = [];
   return {
+    attestationReads,
     view(spec) {
       if (opts.unreachable) {
         return Promise.resolve({
@@ -144,8 +167,23 @@ export function fakeRegistry(
           publishedAt: v.publishedAt ?? "2026-11-20T10:00:00.000Z",
           ...(v.deprecated ? { deprecated: v.deprecated } : {}),
           ...(v.enginesNode ? { enginesNode: v.enginesNode } : {}),
+          integrity: fakeIntegrity(version),
+          tarball: tarballUrl(version),
+          ...(v.provenance === "missing"
+            ? {}
+            : { attestationsUrl: attestationsUrl(version), provenanceType: SLSA_PROVENANCE_V1 }),
+          distTags: { ...tags },
         },
       });
+    },
+    attestations(url) {
+      attestationReads.push(url);
+      const version = url.slice(url.lastIndexOf("@") + 1);
+      const shape = versions[version]?.provenance;
+      if (shape === "unreadable" || shape === "missing" || versions[version] === undefined) {
+        return Promise.resolve({ ok: false, message: `the registry answered 404 for ${url}` });
+      }
+      return Promise.resolve({ ok: true, doc: attestationsDoc({ version, ...shape }) });
     },
   };
 }

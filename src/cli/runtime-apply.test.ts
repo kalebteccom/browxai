@@ -8,6 +8,7 @@ import {
   tempRuntime,
   type TempRuntime,
 } from "./__fixtures__/runtime-tree.js";
+import { releasedInfo } from "./__fixtures__/provenance.js";
 import { applyVersion, selectVersion, type ApplyDeps } from "./runtime-apply.js";
 import { cliOf, versionDir } from "./runtime-layout.js";
 import type { SmokeResult } from "./runtime-smoke.js";
@@ -110,11 +111,7 @@ describe("applyVersion", () => {
     const { paths } = setup("0.21.0");
     const npmRun = fakeNpm();
     const d = deps({ npmRun });
-    const r = await applyVersion(
-      paths,
-      { version: "0.22.0", publishedAt: "2026-11-26T16:29:27.814Z" },
-      d,
-    );
+    const r = await applyVersion(paths, releasedInfo("0.22.0", "2026-11-26T16:29:27.814Z"), d);
     expect(r).toEqual({ ok: true, version: "0.22.0", previous: "0.21.0" });
     expect(readCurrent(paths)).toBe("0.22.0");
     expect(readState(paths).previous).toBe("0.21.0");
@@ -125,7 +122,9 @@ describe("applyVersion", () => {
     expect(JSON.parse(readFileSync(join(dir, ".runtime-meta.json"), "utf8"))).toMatchObject({
       version: "0.22.0",
       publishedAt: "2026-11-26T16:29:27.814Z",
-      verification: "npm audit signatures passed, 0 invalid, 0 missing",
+      verification:
+        "npm audit signatures passed, 0 invalid, 0 missing; provenance names " +
+        "https://github.com/kalebteccom/browxai/.github/workflows/release.yml@refs/tags/v0.22.0",
     });
     expect(statSync(dir).mode & 0o777).toBe(0o700);
     expect(readdirSync(paths.staging)).toEqual([]);
@@ -146,7 +145,7 @@ describe("applyVersion", () => {
     const { paths } = setup("0.21.0");
     const r = await applyVersion(
       paths,
-      { version: "0.22.0", publishedAt: "2026-11-26T16:29:27.814Z" },
+      releasedInfo("0.22.0", "2026-11-26T16:29:27.814Z"),
       deps({ npmRun: fakeNpm({ installStatus: 1 }) }),
     );
     expect(r).toEqual({ ok: false, reason: "npm install failed: npm error code E500" });
@@ -160,7 +159,7 @@ describe("applyVersion", () => {
     const { paths } = setup("0.21.0");
     const r = await applyVersion(
       paths,
-      { version: "0.22.0", publishedAt: "2026-11-26T16:29:27.814Z" },
+      releasedInfo("0.22.0", "2026-11-26T16:29:27.814Z"),
       deps({ npmRun: fakeNpm({ installs: "0.22.1" }) }),
     );
     expect(r).toMatchObject({
@@ -180,14 +179,65 @@ describe("applyVersion", () => {
         return Promise.resolve<SmokeResult>({ ok: true, notes: [] });
       },
     });
-    const r = await applyVersion(
-      paths,
-      { version: "0.22.0", publishedAt: "2026-11-26T16:29:27.814Z" },
-      d,
-    );
+    const r = await applyVersion(paths, releasedInfo("0.22.0", "2026-11-26T16:29:27.814Z"), d);
     expect(r).toMatchObject({ ok: false, reason: expect.stringContaining("verification failed") });
     expect(smoked).toBe(false);
     expect(readState(paths).held).toEqual({ "0.22.0": "verification failed" });
+    expect(readCurrent(paths)).toBe("0.21.0");
+  });
+
+  it("holds a version whose provenance names another repository, before the smoke check", async () => {
+    const { paths } = setup("0.21.0");
+    let smoked = false;
+    const registry = fakeRegistry(
+      { "0.22.0": { provenance: { repository: "https://github.com/someone/browxai-fork" } } },
+      { latest: "0.22.0" },
+    );
+    const d = deps({
+      registry,
+      smoke: () => {
+        smoked = true;
+        return Promise.resolve<SmokeResult>({ ok: true, notes: [] });
+      },
+    });
+    const r = await applyVersion(paths, releasedInfo("0.22.0", "2026-11-26T16:29:27.814Z"), d);
+    expect(r).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(
+        /^verification failed: 0\.22\.0: its provenance names workflow\.repository "https:\/\/github\.com\/someone\/browxai-fork"/,
+      ),
+    });
+    expect(registry.attestationReads).toHaveLength(1);
+    expect(smoked).toBe(false);
+    expect(readState(paths).held).toEqual({ "0.22.0": "verification failed" });
+    expect(readCurrent(paths)).toBe("0.21.0");
+    expect(existsSync(versionDir(paths, "0.22.0"))).toBe(false);
+    expect(readdirSync(paths.staging)).toEqual([]);
+  });
+
+  it("holds a version the registry lists no attestation for", async () => {
+    const { paths } = setup("0.21.0");
+    const { attestationsUrl: _none, ...info } = releasedInfo("0.22.0", "2026-11-26T16:29:27.814Z");
+    const r = await applyVersion(paths, info, deps());
+    expect(r).toMatchObject({
+      ok: false,
+      reason: "verification failed: 0.22.0: the registry lists no provenance attestation for it",
+    });
+    expect(readState(paths).held).toEqual({ "0.22.0": "verification failed" });
+  });
+
+  it("counts an unreadable attestation as a failure it retries, with no hold", async () => {
+    const { paths } = setup("0.21.0");
+    const d = deps({
+      registry: fakeRegistry({ "0.22.0": { provenance: "unreadable" } }, { latest: "0.22.0" }),
+    });
+    const r = await applyVersion(paths, releasedInfo("0.22.0", "2026-11-26T16:29:27.814Z"), d);
+    expect(r).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("the provenance check couldn't run"),
+    });
+    expect(readState(paths).held).toBeUndefined();
+    expect(readState(paths).failed).toEqual({ "0.22.0": 1 });
     expect(readCurrent(paths)).toBe("0.21.0");
   });
 
@@ -198,11 +248,7 @@ describe("applyVersion", () => {
       smoke: () =>
         Promise.resolve<SmokeResult>({ ok: false, reason: 'cli.js --version: printed "9"' }),
     });
-    const r = await applyVersion(
-      paths,
-      { version: "0.22.0", publishedAt: "2026-11-26T16:29:27.814Z" },
-      d,
-    );
+    const r = await applyVersion(paths, releasedInfo("0.22.0", "2026-11-26T16:29:27.814Z"), d);
     expect(r).toMatchObject({ ok: false, reason: expect.stringContaining("smoke check failed") });
     expect(readState(paths).failed).toEqual({ "0.22.0": 2 });
     expect(readCurrent(paths)).toBe("0.21.0");
@@ -223,5 +269,56 @@ describe("applyVersion", () => {
     rmSync(cliOf(versionDir(paths, "0.22.0")));
     const r = await applyVersion(paths, { version: "0.22.0" }, deps());
     expect(r).toMatchObject({ ok: false, reason: expect.stringContaining("has no cli.js") });
+  });
+});
+
+describe("selectVersion on the next channel", () => {
+  const guards = { allowMajor: false, engines: () => Promise.resolve(undefined) };
+
+  it("takes a prerelease newer than latest", async () => {
+    const { paths } = setup("0.22.0");
+    const registry = fakeRegistry(
+      { "0.22.0": {}, "0.23.0-next.1": {} },
+      { latest: "0.22.0", next: "0.23.0-next.1" },
+    );
+    const s = await selectVersion(paths, registry, { channel: "next" }, guards);
+    expect(s).toMatchObject({ kind: "apply", info: { version: "0.23.0-next.1" } });
+  });
+
+  it("moves a prerelease on to the release that passes it", async () => {
+    const { paths } = setup("0.23.0-next.1");
+    const registry = fakeRegistry(
+      { "0.23.0-next.1": {}, "0.23.0": {} },
+      { latest: "0.23.0", next: "0.23.0-next.1" },
+    );
+    const s = await selectVersion(paths, registry, { channel: "next" }, guards);
+    expect(s).toMatchObject({ kind: "apply", info: { version: "0.23.0" } });
+  });
+
+  it("holds a prerelease of a new major version, as on latest", async () => {
+    const { paths } = setup("1.4.0");
+    const registry = fakeRegistry(
+      { "1.4.0": {}, "2.0.0-next.1": {} },
+      { latest: "1.4.0", next: "2.0.0-next.1" },
+    );
+    const s = await selectVersion(paths, registry, { channel: "next" }, guards);
+    expect(s).toMatchObject({
+      kind: "held",
+      info: { version: "2.0.0-next.1" },
+      reason: expect.stringContaining("a new major version (1.4.0 to 2.0.0-next.1)"),
+    });
+  });
+
+  it("leaves a prerelease in place on latest until a newer release", async () => {
+    const { paths } = setup("0.23.0-next.1");
+    const registry = fakeRegistry(
+      { "0.22.0": {}, "0.23.0-next.1": {} },
+      { latest: "0.22.0", next: "0.23.0-next.1" },
+    );
+    const s = await selectVersion(paths, registry, { channel: "latest" }, guards);
+    expect(s).toEqual({
+      kind: "none",
+      message: "current is 0.23.0-next.1, and the latest channel has 0.22.0. Nothing to do.",
+    });
   });
 });

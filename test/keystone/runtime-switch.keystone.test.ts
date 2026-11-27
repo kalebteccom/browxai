@@ -8,8 +8,10 @@
 // `dist/cli.js` answers `--version`, `doctor --json` and an MCP handshake with its
 // own version, and loads `dist/lazy.js` only on `tools/list`, the way browxai loads
 // code lazily. The registry serves their packuments (with `time`, `dist-tags` and
-// `deprecated`) and tarballs. It can't sign, so `npm audit signatures` is replaced
-// by a stub here; its runner contract is unit-tested in src/cli/runtime-npm.test.ts.
+// `deprecated`) and tarballs, and each version's provenance attestations for the
+// real tarball's sha512, so the provenance pin runs over HTTP as it does against
+// npm. It can't sign, so `npm audit signatures` is replaced by a stub here; its
+// runner contract is unit-tested in src/cli/runtime-npm.test.ts.
 //
 // Steps: install gets A; a server started through the launcher stays up on A; B,
 // E and F are published and applied in turn; a new start runs the newest; the A
@@ -37,11 +39,13 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { attestationsDoc } from "../../src/cli/__fixtures__/provenance.js";
 import { fakeAgent, testUid } from "../../src/cli/__fixtures__/runtime-tree.js";
 import type { AutoClock } from "../../src/cli/runtime-auto.js";
 import { readJournal } from "../../src/cli/runtime-journal.js";
 import { runtimePaths, versionDir } from "../../src/cli/runtime-layout.js";
 import { findNpmCli } from "../../src/cli/runtime-npm.js";
+import { SLSA_PROVENANCE_V1 } from "../../src/cli/runtime-provenance.js";
 import { readCurrent, readState } from "../../src/cli/runtime-store.js";
 import { runRuntime } from "../../src/cli/runtime.js";
 import { gatedDescribe, hostGate } from "./keystone-gate.js";
@@ -129,6 +133,10 @@ function packument(): object {
         tarball: `${base}browxai/-/browxai-${v}.tgz`,
         integrity: p.integrity,
         shasum: p.shasum,
+        attestations: {
+          url: `${base}-/npm/v1/attestations/browxai@${v}`,
+          provenance: { predicateType: SLSA_PROVENANCE_V1 },
+        },
       },
       ...(p.deprecated ? { deprecated: p.deprecated } : {}),
     };
@@ -260,6 +268,15 @@ describeRuntime("browxai runtime against a loopback npm registry", () => {
       if (url === "/browxai") {
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify(packument()));
+        return;
+      }
+      // The provenance the release workflow would attach, for the real tarball's
+      // sha512, so the provenance pin runs against this registry too.
+      const a = /^\/-\/npm\/v1\/attestations\/browxai@(.+)$/.exec(url);
+      const attested = a ? published.get(a[1]!) : undefined;
+      if (a && attested) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(attestationsDoc({ version: a[1]!, integrity: attested.integrity })));
         return;
       }
       const m = /^\/browxai\/-\/browxai-(.+)\.tgz$/.exec(url);

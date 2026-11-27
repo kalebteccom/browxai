@@ -23,7 +23,10 @@ import {
   type Verification,
   type VersionInfo,
 } from "./runtime-npm.js";
+import { viewChannel } from "./runtime-channel.js";
+import { pinProvenance } from "./runtime-provenance.js";
 import { heldReason } from "./runtime-schedule.js";
+import type { Channel } from "./runtime-settings.js";
 import { smokeCheck, type SmokeResult } from "./runtime-smoke.js";
 import {
   ensurePrivateDir,
@@ -64,10 +67,13 @@ const NO_GUARDS: SelectGuards = { allowMajor: true, engines: () => Promise.resol
 export async function selectVersion(
   paths: RuntimePaths,
   registry: Registry,
-  want: { channel: string; version?: string },
+  want: { channel: Channel; version?: string },
   guards: SelectGuards = NO_GUARDS,
 ): Promise<Selection> {
-  const viewed = await registry.view(want.version ?? want.channel);
+  const viewed =
+    want.version === undefined
+      ? await viewChannel(registry, want.channel)
+      : await registry.view(want.version);
   if (!viewed.ok)
     return { kind: "error", code: viewed.unreachable ? 3 : 1, message: viewed.message };
   const { info } = viewed;
@@ -231,6 +237,15 @@ async function stage(paths: RuntimePaths, info: VersionInfo, deps: ApplyDeps): P
   const verified = await (deps.verify ?? auditSignatures)(deps.npm, prefix);
   deps.out(`  ${verified.ok ? "✓" : "✗"} ${verified.detail}\n`);
   if (!verified.ok) return fail(`verification failed: ${verified.detail}`, "verification failed");
+  const provenance = await pinProvenance(info, deps.registry);
+  deps.out(`  ${provenance.ok ? "✓" : "✗"} ${provenance.detail}\n`);
+  if (!provenance.ok) {
+    // A mismatch holds the version for good. An attestation that couldn't be
+    // read is an ordinary failure, retried at the next check.
+    return provenance.transient
+      ? fail(`the provenance check couldn't run: ${provenance.detail}`)
+      : fail(`verification failed: ${provenance.detail}`, "verification failed");
+  }
   const current = readCurrent(paths);
   const smoke: SmokeResult = await (deps.smoke ?? smokeCheck)(
     { cli: cliOf(prefix), version: v },
@@ -252,7 +267,7 @@ async function stage(paths: RuntimePaths, info: VersionInfo, deps: ApplyDeps): P
         `Run: npx playwright-core@${bump.to} install chromium\n`,
     );
   }
-  writeMeta(prefix, info, deps, verified.detail);
+  writeMeta(prefix, info, deps, `${verified.detail}; ${provenance.detail}`);
   return { ok: true, prefix };
 }
 

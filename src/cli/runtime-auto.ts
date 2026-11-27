@@ -9,6 +9,7 @@
 import { readFileSync } from "node:fs";
 import { applyVersion } from "./runtime-apply.js";
 import type { Runner } from "./runtime-exec.js";
+import { viewChannel } from "./runtime-channel.js";
 import { collectGarbage } from "./runtime-gc.js";
 import { enginesCheck, guardReason } from "./runtime-guards.js";
 import { npmContext, type FlowDeps, type FlowIo } from "./runtime-install.js";
@@ -143,7 +144,7 @@ async function autoRun(
   const npm = npmContext(paths, deps);
   if ("error" in npm) throw new Error(npm.error);
   updateState(paths, (s) => ({ ...s, contacts: [...lastDay(s.contacts, now), iso(now)] }));
-  const viewed = await (deps.registry ?? npmRegistry)(npm).view(channel.value);
+  const viewed = await viewChannel((deps.registry ?? npmRegistry)(npm), channel.value);
   if (!viewed.ok) return backoff(paths, now, viewed.unreachable, viewed.message, io);
   updateState(paths, (s) => {
     const next: RuntimeState = {
