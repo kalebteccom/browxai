@@ -5,6 +5,7 @@
 
 import { extname, sep } from "node:path";
 import { statSync, readdirSync } from "node:fs";
+import { toDiskName } from "../util/filename-chars.js";
 
 /** One linked resource the discovery script found. `kind` drives subdir
  *  placement in directory mode + content-type inference in single-file mode. */
@@ -85,7 +86,8 @@ export function assetFilename(
   }
   // 8-char hash from the URL to disambiguate collisions across origins.
   const hash = simpleHash(url);
-  const ext = urlExt || guessExtFromContentType(contentType) || guessExtFromKind(kind);
+  // The extension is the one part of the name the allowlist above never sees.
+  const ext = toDiskName(urlExt) || guessExtFromContentType(contentType) || guessExtFromKind(kind);
   return `${stem}-${hash}${ext}`;
 }
 

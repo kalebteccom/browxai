@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pageArchive, defaultArchivePath, type ArchivePage } from "./archive.js";
+import { assetFilename } from "./archive-assets.js";
 
 /** In-memory page stand-in. The discovery script returns whatever HTML +
  *  resources are programmed; per-URL fetch results are mapped by URL. The
@@ -48,6 +49,13 @@ beforeEach(() => {
 });
 afterEach(() => {
   rmSync(WS, { recursive: true, force: true });
+});
+
+describe("assetFilename", () => {
+  it("writes a URL extension with Windows-illegal characters under underscores", () => {
+    const name = assetFilename("https://x.test/a/file.a:b*c", "image", "image/png");
+    expect(name).toMatch(/^file-[0-9a-f]{8}\.a_b_c$/);
+  });
 });
 
 describe("defaultArchivePath", () => {
