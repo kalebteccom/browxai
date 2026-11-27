@@ -47,6 +47,36 @@ describe("keystone skips", () => {
   });
 });
 
+/** CI configs that may run the keystone lane. */
+const CI_DIRS = [".github/workflows", ".woodpecker"].map((d) => join(__dirname, "..", "..", d));
+
+describe("CI keystone runs", () => {
+  // A CI step that runs the keystone lane without BROWX_REQUIRE_BROWSER=1 turns a
+  // browser missing from the image into skips, and the step stays green.
+  it("every CI step that runs pnpm test:keystone sets BROWX_REQUIRE_BROWSER=1", () => {
+    const runs: string[] = [];
+    const offenders: string[] = [];
+    for (const dir of CI_DIRS) {
+      for (const name of readdirSync(dir).filter((n) => /\.ya?ml$/.test(n))) {
+        const lines = readFileSync(join(dir, name), "utf8").split("\n");
+        lines.forEach((line, i) => {
+          if (line.trim().startsWith("#") || !line.includes("pnpm test:keystone")) return;
+          const where = `${name}:${i + 1}`;
+          runs.push(where);
+          const inline = line.includes(`${REQUIRE_BROWSER_ENV}=1`);
+          // A GitHub Actions step: `env:` sits in the lines right after `run:`.
+          const stepEnv = lines
+            .slice(i + 1, i + 4)
+            .some((l) => l.includes(`${REQUIRE_BROWSER_ENV}: "1"`));
+          if (!inline && !stepEnv) offenders.push(`${where}: ${line.trim()}`);
+        });
+      }
+    }
+    expect(runs.length, "no CI step runs the keystone lane").toBeGreaterThan(0);
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("engineGate", () => {
   const present = { executablePath: () => "/bin/chrome", exists: () => true };
   const absent = { executablePath: () => "/bin/chrome", exists: () => false };
