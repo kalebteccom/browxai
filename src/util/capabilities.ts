@@ -1,13 +1,14 @@
 // Capability toggles —  security model. See `docs/threat-model.md` for the
 // full design. The gist:
 //
-//   - Tools group into coarse categories (`read`, `navigation`, `action`, `human`,
-//     `eval`, `byob-attach`, `file-io`). Each is independently enable/disable-able at
-//     server start.
-//   - Default set: read + navigation + action + human. `eval` / `byob-attach` /
-//     `file-io` are off-by-default — opt in via `BROWX_CAPABILITIES`.
-//   - The server's startup log lists the active set; `browxai doctor` warns when
-//     dangerous capabilities are on (`eval`, `byob-attach`).
+//   - Tools group into the coarse categories in `ALL_CAPABILITIES` below. Each is
+//     independently enable/disable-able at server start.
+//   - Default set (`DEFAULT_CAPABILITIES`): read + navigation + action + human.
+//     Every other capability is off by default; opt in via `BROWX_CAPABILITIES`.
+//   - The server's startup log lists the active set and prints one warning per
+//     enabled capability in `CAPABILITY_WARNINGS` (every off-by-default one except
+//     `clipboard` and `file-io`). `browxai doctor` flags `eval` and `byob-attach`
+//     as dangerous.
 //
 // Configuring:
 //   BROWX_CAPABILITIES=read,navigation,action,human            # the default
