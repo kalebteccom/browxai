@@ -204,7 +204,7 @@ describe("browxai runtime update", () => {
 
   it.each([
     [["update", "--version", "latest"]],
-    [["update", "--allow-major"]],
+    [["update", "--auto", "--allow-major"]],
     [["update", "--auto", "--check"]],
     [["update", "--auto", "--version", "0.22.0"]],
   ])("rejects %j as usage", async (args) => {

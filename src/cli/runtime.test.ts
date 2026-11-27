@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -161,6 +161,77 @@ describe("browxai runtime rollback", () => {
     await run(["rollback"]);
     expect(readCurrent(rt.paths)).toBe("0.22.0");
   });
+
+  it("holds the version it left, and a second rollback releases it", async () => {
+    rt = installed();
+    const first = await run(["rollback"], { now: () => Date.parse("2026-11-27T12:00:00.000Z") });
+    expect(first.out).toContain(
+      "0.22.0 is held: the updater doesn't apply it again until a newer version appears. " +
+        "To apply it: browxai runtime update --version 0.22.0",
+    );
+    expect(readState(rt.paths)).toMatchObject({
+      previous: "0.22.0",
+      held: { "0.22.0": "rolled back by user" },
+      pending: { version: "0.22.0", state: "held", reason: "rolled back by user" },
+    });
+    const journal = readFileSync(rt.paths.journal, "utf8").trim().split("\n");
+    expect(JSON.parse(journal.at(-1)!)).toEqual({
+      at: "2026-11-27T12:00:00.000Z",
+      mode: "manual",
+      event: "rollback",
+      version: "0.21.0",
+      from: "0.22.0",
+      reason: "0.22.0 rolled back by user",
+    });
+    await run(["rollback"]);
+    const state = readState(rt.paths);
+    expect(readCurrent(rt.paths)).toBe("0.22.0");
+    expect(state.held).toEqual({ "0.21.0": "rolled back by user" });
+    expect(state.pending).toBeUndefined();
+  });
+
+  it("--to switches to any kept version", async () => {
+    rt = installed();
+    addVersion(rt.paths, "0.20.0");
+    const r = await run(["rollback", "--to", "0.20.0"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("✓ current is 0.20.0, was 0.22.0.");
+    expect(readCurrent(rt.paths)).toBe("0.20.0");
+    expect(readState(rt.paths)).toMatchObject({
+      previous: "0.22.0",
+      held: { "0.22.0": "rolled back by user" },
+    });
+  });
+
+  it("--to refuses a version that isn't kept, and changes nothing", async () => {
+    rt = installed();
+    const r = await run(["rollback", "--to", "0.19.0"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toBe(
+      "browxai runtime: 0.19.0 is not a kept version (kept: 0.22.0, 0.21.0). Nothing was changed.\n",
+    );
+    expect(readCurrent(rt.paths)).toBe("0.22.0");
+    expect(readState(rt.paths).held).toBeUndefined();
+  });
+
+  it("--to the current version changes nothing", async () => {
+    rt = installed();
+    const r = await run(["rollback", "--to", "0.22.0"]);
+    expect(r).toEqual({
+      code: 0,
+      out: "current is already 0.22.0. Nothing was changed.\n",
+      err: "",
+    });
+    expect(readState(rt.paths).held).toBeUndefined();
+  });
+
+  it.each([[["rollback", "--to", "latest"]], [["rollback", "0.21.0"]], [["rollback", "--to"]]])(
+    "rejects %j as usage",
+    async (args) => {
+      rt = installed();
+      expect(await run(args)).toEqual({ code: 2, out: "", err: RUNTIME_USAGE });
+    },
+  );
 
   it("exits 1 and changes nothing with no previous version", async () => {
     rt = installed();

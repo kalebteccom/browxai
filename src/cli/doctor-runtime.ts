@@ -4,7 +4,9 @@
 // `current`, `runtime.json`, `node-path` and `updater-errors` and makes no
 // network call.
 //
-// The row is informational. It warns about an update that waits or is held, a
+// The row is informational. It warns about an update that waits or is held (a
+// new major version, a Node engines range the runtime's node misses, a
+// Playwright bump on a machine with no Google Chrome, a rollback), a
 // deprecated `current`, a missing node, a missing background job, unread
 // Upgrading notes or an updater that keeps failing, and it never
 // changes the exit code, with one exception: a version that failed signature or
@@ -106,11 +108,14 @@ function warnings(
     );
   }
   const p = state.pending;
-  if (p && (!current || safeCompare(p.version, current) > 0) && autoOn) {
+  const newer = !!p && (!current || safeCompare(p.version, current) > 0);
+  // A hold (a new major version, a Node engines range, a Playwright bump, a
+  // rollback) shows with auto-update off too: a manual update stops on it as well.
+  if (p && newer && p.state === "held")
+    out.push(`${p.version} available, held: ${p.reason ?? "no reason recorded"}`);
+  if (p && newer && autoOn) {
     if (p.state === "waiting" && p.until)
       out.push(`${p.version} available, waits until ${p.until}`);
-    if (p.state === "held")
-      out.push(`${p.version} available, held: ${p.reason ?? "no reason recorded"}`);
     if (p.state === "limit") out.push(`${p.version} available, waits for the daily apply limit`);
     if (p.state === "failed") {
       const n = state.failed?.[p.version] ?? 1;

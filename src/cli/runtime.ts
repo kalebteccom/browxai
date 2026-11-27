@@ -4,31 +4,22 @@
 // 1 a failed check or an internal error, 2 usage or a refused context, 3 the
 // npm registry could not be reached.
 
-import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { realSystem, type ClientSystem } from "./init-clients.js";
+import { realSystem } from "./init-clients.js";
 import { runningAppBundle } from "./macos-app.js";
 import { parseRuntimeArgs, RUNTIME_USAGE, type RuntimeArgs } from "./runtime-args.js";
 import { systemAgent, type AgentPort } from "./runtime-agent.js";
 import { autoUpdateFlow, systemBootTime, type AutoClock } from "./runtime-auto.js";
-import { activeTargets } from "./runtime-clients.js";
 import { runProgram } from "./runtime-exec.js";
-import {
-  collectGarbage,
-  renderGc,
-  systemProcessLister,
-  versionsInUse,
-  type ProcessLister,
-} from "./runtime-gc.js";
+import { collectGarbage, renderGc, systemProcessLister, type ProcessLister } from "./runtime-gc.js";
 import { installFlow, updateFlow, type FlowDeps } from "./runtime-install.js";
 import { appendJournal } from "./runtime-journal.js";
 import {
-  cliOf,
   inspectRuntime,
   realContext,
   resolveRuntimeDir,
   runtimePaths,
-  versionDir,
   type RuntimeContext,
   type RuntimePaths,
 } from "./runtime-layout.js";
@@ -36,8 +27,10 @@ import { runConfig } from "./runtime-config.js";
 import { runNotes, type NotesDeps } from "./runtime-notes.js";
 import { readSettingsFile, resolveChannel, type Channel } from "./runtime-settings.js";
 import { PACKAGE_VERSION } from "../util/version.js";
+import { rollback } from "./runtime-rollback.js";
 import { renderStatus, runtimeStatus } from "./runtime-status.js";
-import { readCurrent, readState, switchCurrent, writeState } from "./runtime-store.js";
+import { readState } from "./runtime-store.js";
+import { uninstall } from "./runtime-uninstall.js";
 
 export { RUNTIME_USAGE } from "./runtime-args.js";
 
@@ -105,8 +98,9 @@ export async function runRuntime(args: readonly string[], deps: RuntimeDeps = {}
     io.out(parsed.json ? JSON.stringify(status, null, 2) + "\n" : renderStatus(status));
     return 0;
   }
-  const flow: FlowDeps & { clock: AutoClock } & Pick<RuntimeDeps, "version" | "ownNotes"> = {
+  const flow: Flow = {
     ...deps,
+    home: ctx.home,
     env: ctx.env,
     run,
     list,
@@ -128,10 +122,16 @@ export async function runRuntime(args: readonly string[], deps: RuntimeDeps = {}
   return managedVerb(paths, parsed, flow, io);
 }
 
+/** What a verb needs once the runtime directory passed its checks. */
+type Flow = FlowDeps & { clock: AutoClock; home: string } & Pick<
+    RuntimeDeps,
+    "version" | "ownNotes"
+  >;
+
 function managedVerb(
   paths: RuntimePaths,
   parsed: RuntimeArgs,
-  flow: FlowDeps & { clock: AutoClock } & Pick<RuntimeDeps, "version" | "ownNotes">,
+  flow: Flow,
   io: Io,
 ): Promise<number> | number {
   if (parsed.verb === "config") return runConfig(paths, parsed.change, flow.env, io);
@@ -142,9 +142,21 @@ function managedVerb(
       out: io.out,
     });
   }
-  if (parsed.verb === "rollback") return rollback(paths, io);
+  if (parsed.verb === "rollback") return rollback(paths, parsed.to, io, flow.clock.now);
   if (parsed.verb === "gc") return gc(paths, flow.list, io);
-  if (parsed.verb === "uninstall") return uninstall(paths, parsed.yes, flow, io);
+  if (parsed.verb === "uninstall") {
+    return uninstall(
+      paths,
+      { yes: parsed.yes, keepVersions: parsed.keepVersions },
+      {
+        list: flow.list,
+        home: flow.home,
+        ...(flow.agent ? { agent: flow.agent } : {}),
+        ...(flow.system ? { system: flow.system } : {}),
+      },
+      io,
+    );
+  }
   if (parsed.verb !== "update") return refuse(io, RUNTIME_USAGE);
   if (parsed.auto) return autoUpdateFlow(paths, { skipDelay: parsed.now }, flow, io);
   const channel = channelOf(paths, flow.env, io);
@@ -152,6 +164,7 @@ function managedVerb(
   const want = {
     channel,
     check: parsed.check,
+    allowMajor: parsed.allowMajor,
     ...(parsed.version ? { version: parsed.version } : {}),
   };
   return updateFlow(paths, want, flow, io);
@@ -181,7 +194,7 @@ function channelOf(paths: RuntimePaths, env: NodeJS.ProcessEnv, io: Io): Channel
 function install(
   paths: RuntimePaths,
   parsed: Extract<RuntimeArgs, { verb: "install" }>,
-  flow: FlowDeps,
+  flow: Flow,
   io: Io,
 ): Promise<number> | number {
   const channel = parsed.channel ?? channelOf(paths, flow.env, io);
@@ -192,40 +205,9 @@ function install(
     writeClientConfig: parsed.writeClientConfig,
     profileDirs: parsed.profileDirs,
     agent: !parsed.noAgent,
+    ...(parsed.link ? { linkHome: flow.home } : {}),
   };
   return installFlow(paths, want, flow, io);
-}
-
-/** Switch `current` to the previous version and remember the one it left, so a
- *  second rollback goes forward again. */
-function rollback(paths: RuntimePaths, io: Io): number {
-  const current = readCurrent(paths);
-  const state = readState(paths);
-  const previous = state.previous;
-  if (!previous || previous === current) {
-    io.err("browxai runtime: there is no previous version to roll back to. Nothing was changed.\n");
-    return 1;
-  }
-  if (!existsSync(cliOf(versionDir(paths, previous)))) {
-    io.err(
-      `browxai runtime: ${cliOf(versionDir(paths, previous))} is missing. Nothing was changed.\n`,
-    );
-    return 1;
-  }
-  switchCurrent(paths, previous);
-  writeState(paths, { ...state, ...(current ? { previous: current } : {}) });
-  appendJournal(paths, {
-    at: new Date().toISOString(),
-    mode: "manual",
-    event: "rollback",
-    version: previous,
-    ...(current ? { from: current } : {}),
-  });
-  io.out(`✓ current is ${previous}${current ? `, was ${current}` : ""}.\n`);
-  if (current) {
-    io.out(`  Servers already running keep ${current} until their MCP client starts them again.\n`);
-  }
-  return 0;
 }
 
 async function gc(paths: RuntimePaths, list: ProcessLister, io: Io): Promise<number> {
@@ -242,57 +224,6 @@ async function gc(paths: RuntimePaths, list: ProcessLister, io: Io): Promise<num
     return 1;
   }
   return 0;
-}
-
-/** Remove the runtime directory, unless a running process uses one of its
- *  versions. Names the client configs that still point at the launcher. */
-async function uninstall(
-  paths: RuntimePaths,
-  yes: boolean,
-  flow: FlowDeps,
-  io: Io,
-): Promise<number> {
-  const use = await versionsInUse(paths, flow.list);
-  if (!yes && !use) {
-    return refuse(
-      io,
-      "the process list could not be read, so it is unknown whether a server runs from this runtime. Pass --yes to remove it anyway.",
-    );
-  }
-  if (!yes && use && use.size > 0) {
-    const pids = [...use.values()].flat().join(", ");
-    return refuse(
-      io,
-      `pid ${pids} runs from ${paths.root}. Stop those servers first, or pass --yes. Nothing was changed.`,
-    );
-  }
-  if (flow.agent && flow.agent.installed().length > 0) {
-    const removed = await flow.agent.remove();
-    io.out(`✓ background job: ${removed.detail}\n`);
-  }
-  rmSync(paths.root, { recursive: true, force: true });
-  io.out(`✓ removed ${paths.root}\n`);
-  const still = leftoverConfigs(paths, flow.system);
-  if (still.length) {
-    io.out(
-      `These client configs still name ${paths.shim}. Point their entries at another browxai:\n`,
-    );
-    for (const p of still) io.out(`  ${p}\n`);
-  }
-  return 0;
-}
-
-function leftoverConfigs(paths: RuntimePaths, system: ClientSystem | undefined): string[] {
-  if (!system) return [];
-  return activeTargets(system)
-    .map((t) => t.path)
-    .filter((p) => {
-      try {
-        return readFileSync(p, "utf8").includes(paths.shim);
-      } catch {
-        return false;
-      }
-    });
 }
 
 /** The real path of the `cli.js` this module belongs to. */

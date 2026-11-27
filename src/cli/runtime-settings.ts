@@ -160,3 +160,34 @@ export function resolveCooldown(file: SettingsFile): CooldownSetting {
     warning: `"cooldownHours" in runtime.json is ${JSON.stringify(raw)}, not a number of hours from 0 to ${MAX_COOLDOWN_HOURS}, so the delay is ${DEFAULT_COOLDOWN_HOURS} hours`,
   };
 }
+
+export const MAJOR_POLICIES = ["allow", "hold"] as const;
+export type MajorPolicy = (typeof MAJOR_POLICIES)[number];
+
+export interface MajorSetting {
+  /** True when a new major version may be applied with no `--allow-major`. */
+  allow: boolean;
+  value: MajorPolicy;
+  source: SettingSource;
+  /** Set when `majorPolicy` was not understood and the hold applies. */
+  warning?: string;
+}
+
+/**
+ * The version guard (D7): `majorPolicy` in `runtime.json`, `allow` or `hold`,
+ * else `hold`. A value this code doesn't know fails closed to `hold`, with a
+ * warning.
+ */
+export function resolveMajorPolicy(file: SettingsFile): MajorSetting {
+  const raw = file.majorPolicy;
+  if (raw === undefined) return { allow: false, value: "hold", source: "default" };
+  if (raw === "allow" || raw === "hold") {
+    return { allow: raw === "allow", value: raw, source: "runtime.json" };
+  }
+  return {
+    allow: false,
+    value: "hold",
+    source: "default",
+    warning: `"majorPolicy" in runtime.json is ${JSON.stringify(raw)}, not allow or hold, so a new major version is held`,
+  };
+}

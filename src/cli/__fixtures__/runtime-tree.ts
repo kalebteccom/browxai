@@ -54,14 +54,33 @@ export function addVersion(paths: RuntimePaths, version: string, body?: string):
   return cli;
 }
 
+/** Write `node_modules/<name>/package.json` at `version` under an npm prefix. */
+export function addPackage(prefix: string, name: string, version: string): void {
+  const dir = join(prefix, "node_modules", name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ name, version }));
+}
+
 /** A fake `Runner` for npm: `install` lays out `node_modules/browxai` at the
- *  requested version (or at `installs` as given, to fake a lying registry),
- *  `audit signatures` answers `audit`. Every call is recorded. */
+ *  requested version (or at `installs` as given, to fake a lying registry), and
+ *  `node_modules/playwright-core` at `playwright` when given. `audit signatures`
+ *  answers `audit`, and `<node> --version` prints `nodeVersion` when given.
+ *  Every call is recorded. */
 export function fakeNpm(
-  opts: { audit?: number; installStatus?: number; installs?: string; cliBody?: string } = {},
+  opts: {
+    audit?: number;
+    installStatus?: number;
+    installs?: string;
+    cliBody?: string;
+    playwright?: string;
+    nodeVersion?: string;
+  } = {},
 ): Runner & { calls: Array<{ file: string; args: string[] }> } {
   const calls: Array<{ file: string; args: string[] }> = [];
   const runner = (file: string, args: readonly string[]): Promise<RunResult> => {
+    if (args.length === 1 && args[0] === "--version" && opts.nodeVersion) {
+      return Promise.resolve({ status: 0, stdout: `v${opts.nodeVersion}\n`, stderr: "" });
+    }
     calls.push({ file, args: [...args] });
     if (args.includes("install")) {
       const prefix = args[args.indexOf("--prefix") + 1]!;
@@ -79,6 +98,7 @@ export function fakeNpm(
       mkdirSync(join(pkgDir, "dist"), { recursive: true });
       writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name: "browxai", version }));
       writeFileSync(join(pkgDir, "dist", "cli.js"), opts.cliBody ?? "");
+      if (opts.playwright) addPackage(prefix, "playwright-core", opts.playwright);
       return Promise.resolve({ status: 0, stdout: "", stderr: "" });
     }
     if (args.includes("audit")) {
@@ -96,7 +116,7 @@ export function fakeNpm(
 
 /** A registry port that answers from a table of versions and dist-tags. */
 export function fakeRegistry(
-  versions: Record<string, { publishedAt?: string; deprecated?: string }>,
+  versions: Record<string, { publishedAt?: string; deprecated?: string; enginesNode?: string }>,
   tags: Record<string, string>,
   opts: { unreachable?: boolean } = {},
 ): Registry {
@@ -123,6 +143,7 @@ export function fakeRegistry(
           version,
           publishedAt: v.publishedAt ?? "2026-11-20T10:00:00.000Z",
           ...(v.deprecated ? { deprecated: v.deprecated } : {}),
+          ...(v.enginesNode ? { enginesNode: v.enginesNode } : {}),
         },
       });
     },

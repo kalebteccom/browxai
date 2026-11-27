@@ -1,6 +1,6 @@
 ---
 title: Keep browxai current with a runtime
-description: Install browxai into a runtime directory you own, point MCP clients at one launcher path, and let a background job or `browxai runtime update` move it to new releases. Covers what an update verifies, the background job and how to turn it off, the settings and `browxai runtime config`, Upgrading notes, a daemon that moves to a new version when idle, what the commands refuse, and moving from a hand-made directory.
+description: Install browxai into a runtime directory you own, point MCP clients at one launcher path, and let a background job or `browxai runtime update` move it to new releases. Covers what an update verifies, the versions it holds, the background job and how to turn it off, the settings and `browxai runtime config`, Upgrading notes, rollback, a daemon that moves to a new version when idle, a link on your PATH, what the commands refuse, and moving from a hand-made directory.
 ---
 
 An MCP client starts browxai from the path in its config. When that path names one
@@ -11,14 +11,14 @@ update installs the new release next to the old one, checks it, and only then po
 the launcher at it. The next time a client starts browxai, it gets the new version.
 
 ```text
-browxai runtime install  [--dir PATH] [--channel latest|next] [--no-agent] [--write-client-config] [--profile-dir DIR]...
-browxai runtime update   [--check] [--version V] [--now] [--auto]
+browxai runtime install  [--dir PATH] [--channel latest|next] [--no-agent] [--link] [--write-client-config] [--profile-dir DIR]...
+browxai runtime update   [--check] [--version V] [--allow-major] [--now] [--auto]
 browxai runtime status   [--json]
 browxai runtime notes    [V]
-browxai runtime config   [auto-update on|off | channel latest|next | cooldown-hours N]
-browxai runtime rollback
+browxai runtime config   [auto-update on|off | channel latest|next | major allow|hold | cooldown-hours N]
+browxai runtime rollback [--to V]
 browxai runtime gc
-browxai runtime uninstall [--yes]
+browxai runtime uninstall [--keep-versions] [--yes]
 ```
 
 `install` also sets up a background job that checks for a new release every few
@@ -37,8 +37,10 @@ npx -y browxai runtime install
 `BROWX_RUNTIME_DIR` names another), records the absolute path of the `node` it runs
 on, writes the launcher at `<runtime>/bin/browxai`, then installs the newest release
 of the channel the way `update` does. Then it installs the background job, unless you
-pass `--no-agent`, and prints the client entries to use. When that first install
-fails a check, it exits 1, leaves no current version and installs no job.
+pass `--no-agent`, and prints the client entries to use. With `--link` it also puts
+the launcher on your `PATH` (see [A link to the launcher](#a-link-to-the-launcher)).
+When that first install fails a check, it exits 1, leaves no current version and
+installs no job.
 
 The directory looks like this:
 
@@ -117,11 +119,15 @@ browxai runtime update
 `update` asks the npm registry in your npm config for the channel's newest version
 (`latest` by default). When it is newer than the current one, it installs it and
 switches. When it isn't, it says so and exits 0. A version the maintainers marked
-deprecated on npm is skipped.
+deprecated on npm is skipped, and a held version (see [Held versions](#held-versions))
+is named with its reason and left alone, with exit 0.
 
-- `--check` downloads nothing and prints what `update` would do.
-- `--version V` installs that exact version, newer or older. An older one prints a
-  warning first.
+- `--check` downloads nothing and prints what `update` would do, or why the version
+  is held.
+- `--version V` installs that exact version, newer or older, held or not. An older
+  version, a new major version and a Node engines range your node misses each print
+  a warning first.
+- `--allow-major` applies a new major version this once.
 - `--now` skips the 24-hour wait after publish. A manual update never waits, so it
   matters only with `--auto`.
 - `--auto` is the background job's mode, described below.
@@ -156,6 +162,23 @@ it was.
 
 Afterwards `update` keeps three versions (current, previous and one more) and removes
 older ones that no running process uses.
+
+## Held versions
+
+A newer version is held, and neither `update` nor the background job applies it, in
+these cases:
+
+| Hold                                    | When                                                                                                                                                                                                                                                                                      | What releases it                                                                         |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| A new major version                     | From 1.0 on, a version with a higher major than the current one, 1.0.0 over a 0.x included. Before 1.0 a minor crosses on its own, and its Upgrading notes say what changed.                                                                                                              | `update --allow-major` once, or `runtime config major allow` for the job too             |
+| A Node engines range                    | The version's `engines.node` excludes the node the runtime runs. The reason names the range, the node and its version.                                                                                                                                                                    | A node that satisfies it (`runtime install` records a new one), or `update --version V`  |
+| A Playwright bump with no Google Chrome | The staged version moves `playwright-core` to another version, and the current version's `doctor` finds no Google Chrome, so sessions here launch the bundled Chromium, which the new Playwright needs to download. The updater never downloads a browser, so it removes the staged copy. | `update --version V`, then the `npx playwright-core@<version> install chromium` it names |
+| A rollback                              | `rollback` left this version.                                                                                                                                                                                                                                                             | A newer version, or `update --version V`                                                 |
+| Failed checks                           | 3 failed self-checks, or 1 failed signature check.                                                                                                                                                                                                                                        | A newer version, or `update --version V`, which runs every check again                   |
+
+A held version shows in `browxai runtime status` and in the `runtime` row of
+`browxai doctor` with its reason, also with auto-update off. A machine that uses
+Google Chrome needs nothing for a Playwright bump.
 
 ## The background job
 
@@ -268,20 +291,40 @@ browxai runtime rollback
 `rollback` points `current` at the previous version. It needs no network. Running it
 again goes forward to the version you left.
 
+```bash
+browxai runtime rollback --to 0.21.0
+```
+
+`--to V` points `current` at any kept version (see `browxai runtime status`). A
+version that isn't kept is refused with exit 1 and the list of kept ones.
+
+The version `rollback` leaves is held as "rolled back by user", so neither `update`
+nor the background job applies it again. The hold clears when a newer version is
+applied, or when you name it with `browxai runtime update --version V`. Rolling back
+to a held version releases its hold.
+
 ## Status and cleanup
 
 `browxai runtime status` prints the runtime directory, the current and previous
 versions, the version of the browxai you ran it with, the channel and auto-update
 settings and where each came from, the background job's files, the last and next
-check, a version that waits, the recorded node, and every kept version with the
-processes that use it. `--json` prints the same as one JSON document.
+check, a version that waits, the held versions with their reasons, the recorded
+node, and every kept version with the processes that use it. `--json` prints the
+same as one JSON document.
 
 `browxai runtime gc` removes kept versions past the newest three that no running
 process uses. When it can't read the process list it removes nothing.
 
-`browxai runtime uninstall` removes the background job and the runtime directory. It
-refuses while a server runs from it, unless you pass `--yes`, and it names the client
-configs that still point at the launcher.
+`browxai runtime uninstall` removes the background job, the `~/.local/bin/browxai`
+link when it points at this launcher, and the runtime directory. It refuses while a
+server runs from it, unless you pass `--yes`, and it names the client configs that
+still point at the launcher.
+
+`--keep-versions` removes the job, the link, the launcher, `current`, the settings,
+the state, the journal and the notes, and keeps `versions/` and `layout.json`.
+Servers that run from a kept version keep running, so it doesn't refuse. A later
+`browxai runtime install` finds the kept versions and switches to one with no
+download, and `browxai runtime uninstall` removes the rest.
 
 ## `browxai doctor`
 
@@ -290,7 +333,9 @@ runtime it shows the current version, the channel, when the last check ran, when
 the next one is due, and whether auto-update is on and where that came from. It
 warns about a version that waits or is held, a server older than `current`, a
 `current` the maintainers deprecated, a recorded node that is gone, and auto-update
-on with no background job. It also warns about unread Upgrading notes, and about a
+on with no background job. A held version shows with its reason (a new major
+version, a Node engines range, a Playwright bump on a machine with no Google Chrome,
+a rollback), also with auto-update off. It also warns about unread Upgrading notes, and about a
 current version whose updater failed on its last runs or that the previous version's
 updater stood in for. It fails doctor only when a version failed signature or
 provenance verification. Run from anywhere else it says so, with the path that won't
@@ -298,14 +343,15 @@ update.
 
 ## Settings
 
-| Setting                        | Where                                        | What it does                                                                                                                                                      |
-| ------------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BROWX_RUNTIME_DIR`            | environment                                  | The runtime directory, an absolute path. The launcher sets it for the server it starts.                                                                           |
-| `BROWX_RUNTIME_CHANNEL`        | environment, or `channel` in runtime.json    | `latest` (the default) or `next`. Any other value is refused.                                                                                                     |
-| `BROWX_RUNTIME_AUTO_UPDATE`    | environment, or `autoUpdate` in runtime.json | Whether the background job applies updates. Off in either place wins, and a value other than `on`, `1`, `true`, `yes`, `off`, `0`, `false` or `no` counts as off. |
-| `cooldownHours`                | runtime.json                                 | Hours the background job waits after a release is published, 24 by default, 0 to 720. Another value keeps 24, with a warning.                                     |
-| `BROWX_RUNTIME_NODE`           | environment                                  | The node the launcher and npm run, before the recorded one. The background job sets it to the recorded node.                                                      |
-| `BROWX_RUNTIME_DAEMON_RESTART` | a daemon's environment                       | `idle` (the default under the launcher) lets a `serve --socket` daemon exit 75 to move to a new version; `off` keeps it running. Another value counts as `off`.   |
+| Setting                        | Where                                        | What it does                                                                                                                                                       |
+| ------------------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BROWX_RUNTIME_DIR`            | environment                                  | The runtime directory, an absolute path. The launcher sets it for the server it starts.                                                                            |
+| `BROWX_RUNTIME_CHANNEL`        | environment, or `channel` in runtime.json    | `latest` (the default) or `next`. Any other value is refused.                                                                                                      |
+| `BROWX_RUNTIME_AUTO_UPDATE`    | environment, or `autoUpdate` in runtime.json | Whether the background job applies updates. Off in either place wins, and a value other than `on`, `1`, `true`, `yes`, `off`, `0`, `false` or `no` counts as off.  |
+| `cooldownHours`                | runtime.json                                 | Hours the background job waits after a release is published, 24 by default, 0 to 720. Another value keeps 24, with a warning.                                      |
+| `majorPolicy`                  | runtime.json                                 | `hold` (the default) holds a new major version from 1.0 on. `allow` lets the background job and `update` apply it. Another value counts as `hold`, with a warning. |
+| `BROWX_RUNTIME_NODE`           | environment                                  | The node the launcher and npm run, before the recorded one. The background job sets it to the recorded node.                                                       |
+| `BROWX_RUNTIME_DAEMON_RESTART` | a daemon's environment                       | `idle` (the default under the launcher) lets a `serve --socket` daemon exit 75 to move to a new version; `off` keeps it running. Another value counts as `off`.    |
 
 `browxai runtime config` prints each setting and where its value comes from. With a
 setting it writes `runtime.json`, mode 0600:
@@ -315,6 +361,7 @@ browxai runtime config                    # print the settings
 browxai runtime config auto-update off    # or on
 browxai runtime config channel next       # or latest
 browxai runtime config cooldown-hours 48  # 0 to 720
+browxai runtime config major allow        # or hold
 ```
 
 A value outside these words is a usage error and writes nothing, and a `runtime.json`
@@ -355,9 +402,25 @@ update with `npm install -g browxai@latest` and restart your MCP client.
 
 ## A link to the launcher
 
-The launcher follows a symbolic link to itself, so a link in a directory on your
-`PATH`, such as `ln -s ~/.browxai-runtime/bin/browxai ~/.local/bin/browxai`, runs the
-runtime the launcher belongs to.
+```bash
+browxai runtime install --link
+```
+
+`--link` creates `~/.local/bin` when it is missing and links
+`~/.local/bin/browxai` to the launcher, so a shell runs the runtime's browxai by
+name. The launcher follows a symbolic link to itself, so the link runs the runtime
+the launcher belongs to. `--link` prints each step it takes:
+
+- a link there that already points at this launcher is left as it is;
+- a file there that is anything else, a link to another place included, is left
+  alone, with a warning and no link;
+- when `~/.local/bin` is not on your `PATH`, it says so;
+- when another `browxai` comes earlier on your `PATH`, it names it, since a shell
+  runs that one. Client entries name the launcher by its full path and aren't
+  affected.
+
+`browxai runtime uninstall` removes the link only while it points at this launcher.
+A link you make by hand in another directory on your `PATH` works the same way.
 
 ## Moving from a hand-made directory
 

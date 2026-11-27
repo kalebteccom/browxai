@@ -10,12 +10,13 @@ import { readFileSync } from "node:fs";
 import { applyVersion } from "./runtime-apply.js";
 import type { Runner } from "./runtime-exec.js";
 import { collectGarbage } from "./runtime-gc.js";
+import { enginesCheck, guardReason } from "./runtime-guards.js";
 import { npmContext, type FlowDeps, type FlowIo } from "./runtime-install.js";
 import { appendJournal, type JournalEntry } from "./runtime-journal.js";
 import { compareVersions, type RuntimePaths } from "./runtime-layout.js";
 import { acquireLock } from "./runtime-lock.js";
 import { recordNotes } from "./runtime-notes.js";
-import { npmRegistry, type VersionInfo } from "./runtime-npm.js";
+import { npmRegistry, type NpmContext, type VersionInfo } from "./runtime-npm.js";
 import {
   bootDelayUntil,
   contactGate,
@@ -31,6 +32,7 @@ import {
   resolveAutoUpdate,
   resolveChannel,
   resolveCooldown,
+  resolveMajorPolicy,
 } from "./runtime-settings.js";
 import { writeShim } from "./runtime-shim.js";
 import {
@@ -155,10 +157,12 @@ async function autoRun(
   });
   const cooldown = resolveCooldown(file);
   if (cooldown.warning) io.err(`warning: ${cooldown.warning}\n`);
+  const major = resolveMajorPolicy(file);
+  if (major.warning) io.err(`warning: ${major.warning}\n`);
   return decideAndApply(
     paths,
     viewed.info,
-    { now, skipDelay: opts.skipDelay, hours: cooldown.hours },
+    { now, skipDelay: opts.skipDelay, hours: cooldown.hours, allowMajor: major.allow, npm },
     deps,
     io,
   );
@@ -189,14 +193,26 @@ function backoff(
   return 0;
 }
 
+/** A newer version the major guard or the Node engines hold keeps back. */
+async function guardFor(
+  info: VersionInfo,
+  current: string | undefined,
+  allowMajor: boolean,
+  npm: NpmContext,
+): Promise<string | undefined> {
+  if (!current || compareVersions(info.version, current) <= 0 || info.deprecated) return undefined;
+  return guardReason(info, current, allowMajor, enginesCheck(npm));
+}
+
 async function decideAndApply(
   paths: RuntimePaths,
   info: VersionInfo,
-  at: { now: number; skipDelay: boolean; hours: number },
+  at: { now: number; skipDelay: boolean; hours: number; allowMajor: boolean; npm: NpmContext },
   deps: FlowDeps & { clock: AutoClock },
   io: FlowIo,
 ): Promise<number> {
   const current = readCurrent(paths);
+  const guard = await guardFor(info, current, at.allowMajor, at.npm);
   const decision = decideAuto({
     candidate: info,
     current,
@@ -205,6 +221,7 @@ async function decideAndApply(
     cooldownHours: at.hours,
     skipDelay: at.skipDelay,
     compare: compareVersions,
+    ...(guard ? { guard } : {}),
   });
   if (decision.kind !== "apply") {
     updateState(paths, (s) => {
@@ -249,7 +266,7 @@ async function apply(
     journal(paths, now, {
       event: "apply",
       version: v,
-      result: "failed",
+      result: applied.held ? "held" : "failed",
       reason: applied.reason,
       ms,
     });

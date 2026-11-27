@@ -140,6 +140,18 @@ describe("the runtime row", () => {
     );
   });
 
+  it("warns about a held version with auto-update off too", () => {
+    const reason = "needs Node >=24, and the runtime's node at /opt/node/bin/node is 22.11.0";
+    installed({ pending: { version: "0.23.0", state: "held", reason } });
+    const r = row({
+      env: { BROWX_RUNTIME_DIR: rt!.paths.root, BROWX_RUNTIME_AUTO_UPDATE: "off" },
+    });
+    expect(r.warn).toBe(true);
+    expect(r.detail).toBe(
+      `0.23.0 available, held: ${reason}. 0.22.0 (channel latest), never checked, auto-update off (BROWX_RUNTIME_AUTO_UPDATE)`,
+    );
+  });
+
   it("is informational with auto-update off, and names a version a cached check found", () => {
     installed({ pending: { version: "0.23.0", state: "waiting", until: iso(NOW + HOUR) } });
     expect(

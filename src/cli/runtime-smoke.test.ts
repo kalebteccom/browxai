@@ -154,6 +154,30 @@ describe("smokeCheck", () => {
   });
 });
 
+describe("smokeCheck: the bundled Chromium", () => {
+  it("says so when current's doctor finds no Google Chrome", async () => {
+    const rows = [
+      { name: "chrome", ok: false },
+      { name: "chromium", ok: true, info: true },
+    ];
+    const run = runner({ doctor: { [CURRENT]: rows, [STAGED.cli]: rows } });
+    await expect(smokeCheck(STAGED, CURRENT, deps(run))).resolves.toEqual({
+      ok: true,
+      notes: [],
+      bundledChromium: true,
+    });
+  });
+
+  it("leaves it out when Google Chrome is installed", async () => {
+    const rows = [
+      { name: "chrome", ok: true },
+      { name: "chromium", ok: true, info: true },
+    ];
+    const run = runner({ doctor: { [CURRENT]: rows, [STAGED.cli]: rows } });
+    await expect(smokeCheck(STAGED, CURRENT, deps(run))).resolves.toEqual({ ok: true, notes: [] });
+  });
+});
+
 describe("newFailures", () => {
   it("counts a row name that fails once on current as already failing", () => {
     const current = {
