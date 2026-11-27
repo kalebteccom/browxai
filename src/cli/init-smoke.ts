@@ -23,6 +23,28 @@ export interface SmokeOptions {
   distCli: string;
   /** Per-call limit in ms. Opening a session includes launching the browser. */
   timeoutMs?: number;
+  /** Browser channel for the session; unset launches the installed Google Chrome. */
+  channel?: string;
+}
+
+/** The channel the smoke session opens with: the caller's `BROWX_CHANNEL` when
+ *  set, else `"chromium"` when no Google Chrome is installed (a session with no
+ *  channel would be refused with `chrome-not-installed`), else none. `note` says
+ *  why the bundled build was picked. */
+export function smokeChannel(
+  env: NodeJS.ProcessEnv,
+  findChrome: () => string | undefined,
+): { channel?: string; note?: string } {
+  const set = env.BROWX_CHANNEL?.trim();
+  if (set) return { channel: set };
+  if (findChrome()) return {};
+  return {
+    channel: "chromium",
+    note:
+      "no Google Chrome found, so this check uses the bundled Chromium. Without Chrome, a session " +
+      "with no channel is refused with chrome-not-installed: install Google Chrome, or add " +
+      "BROWX_CHANNEL=chromium to the browxai entry's env.",
+  };
 }
 
 const SESSION = "init-smoke";
@@ -79,7 +101,11 @@ export async function runSmoke(opts: SmokeOptions): Promise<SmokeResult> {
       };
     }
     const started = Date.now();
-    const opened = await call("open_session", { session: SESSION, mode: "incognito" });
+    const opened = await call("open_session", {
+      session: SESSION,
+      mode: "incognito",
+      ...(opts.channel ? { channel: opts.channel } : {}),
+    });
     if (opened.failed) {
       return {
         ok: false,

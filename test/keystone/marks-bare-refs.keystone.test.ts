@@ -132,7 +132,7 @@ function expectBoxNear(actual: Box, expected: Box, label: string): void {
 
 beforeAll(async () => {
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_")) {
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") {
       savedEnv[k] = process.env[k];
       delete process.env[k];
     }

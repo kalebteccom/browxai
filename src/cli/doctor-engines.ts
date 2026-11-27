@@ -1,8 +1,8 @@
 // `browxai doctor` — the per-engine availability probes.
 //
 // One probe per browser engine doctor reports on: chromium (the managed-mode
-// dependency — a missing bundled binary FAILS doctor only when no Google Chrome
-// is installed either) and the five opt-in lanes — firefox, webkit, android,
+// dependency — a missing Google Chrome FAILS doctor when no channel is set, and
+// a missing bundled binary FAILS it when channel "chromium" is set) and the five opt-in lanes — firefox, webkit, android,
 // safari, electron — whose probes are always INFORMATIONAL (a missing binary /
 // no device / an unset attach endpoint just tells the operator how to enable
 // the engine; it never fails doctor). Each returns a doctor `Check` row;
@@ -16,6 +16,9 @@
 import { existsSync } from "node:fs";
 import type { Check } from "./doctor.js";
 import { findInstalledChrome } from "./chrome-launch.js";
+import { BUNDLED_CHANNEL, isBundledChannel } from "../session/chromium-launch-posture.js";
+import { ConfigStore } from "../util/config-store.js";
+import { resolveWorkspace } from "../util/workspace.js";
 import { playwrightInstallCommand } from "../util/playwright-version.js";
 import {
   AndroidCdpAdapter,
@@ -32,55 +35,99 @@ import {
 import { docsUrl } from "../util/docs-links.js";
 import { sanitizeUrl, sanitizeUrlsInText } from "../util/url-sanitizer.js";
 
-// The installed Google Chrome, the browser a chromium session launches by
-// default. Informational: a missing Chrome is only a fault when the bundled
-// Chromium is missing too (see `chromiumCheck`).
-export function chromeCheck(find: () => string | undefined = findInstalledChrome): Check {
+/** The chromium channel a session with no per-session `channel` launches on:
+ *  config `channel` over `BROWX_CHANNEL`, read the way the server reads it.
+ *  Undefined when unset, or when the config cannot be read (another row reports
+ *  that). */
+export function configuredChannel(
+  env: NodeJS.ProcessEnv = process.env,
+  workspaceRoot?: string,
+): string | undefined {
+  try {
+    const store = new ConfigStore(workspaceRoot ?? resolveWorkspace(env).root, {
+      ...env,
+      BROWX_TOOL_LIST: "",
+      BROWX_TOOL_PROFILE: "",
+      BROWX_CHROMIUM_SANDBOX: "",
+    });
+    return store.resolve().channel?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const OPT_IN_HINT = `set BROWX_CHANNEL=${BUNDLED_CHANNEL} to launch the bundled Chromium`;
+
+// The installed Google Chrome, and what a chromium session with no per-session
+// `channel` launches on this machine. With no channel configured and no Chrome,
+// that launch is refused with `chrome-not-installed`, so the row fails.
+export function chromeCheck(
+  find: () => string | undefined = findInstalledChrome,
+  channel: string | undefined = undefined,
+): Check {
   const path = find();
-  if (path) return { name: "chrome", ok: true, detail: path };
+  const where = path ?? "Google Chrome not found";
+  if (isBundledChannel(channel)) {
+    return {
+      name: "chrome",
+      ok: true,
+      ...(path ? {} : { info: true, enable: "install Google Chrome (google.com/chrome)" }),
+      detail: `${where}. Channel "${BUNDLED_CHANNEL}" is set, so sessions launch the bundled Chromium`,
+    };
+  }
+  if (channel) {
+    return {
+      name: "chrome",
+      ok: true,
+      info: true,
+      detail: `${where}. Channel "${channel}" is set, so sessions launch that installed browser`,
+    };
+  }
+  if (path) {
+    return { name: "chrome", ok: true, detail: `${path}. A default session launches it` };
+  }
   return {
     name: "chrome",
-    ok: true,
-    info: true,
+    ok: false,
     detail:
-      "Google Chrome not found. Sessions fall back to the bundled Chromium, and `browxai chrome start` / `chrome login` need Chrome installed",
-    enable: "install Google Chrome (google.com/chrome)",
+      "Google Chrome not found, so a default session is refused with chrome-not-installed. `browxai chrome start` / `chrome login` need Chrome too",
+    fix: `install Google Chrome (google.com/chrome), or ${OPT_IN_HINT}. See ${docsUrl.troubleshootingChromeNotInstalled}`,
   };
 }
 
-// Bundled Chromium (playwright-core's download). The default launch uses the
-// installed Chrome and only falls back to this build, so it is a hard
-// requirement only when `chromeInstalled` is false. Lazy import so doctor
-// doesn't pay the playwright-core cost on bare invocation.
-export async function chromiumCheck(chromeInstalled = false): Promise<Check> {
+// Bundled Chromium (playwright-core's download). Sessions launch it only on
+// channel "chromium", so it is a hard requirement only when `required` is true.
+// Lazy import so doctor doesn't pay the playwright-core cost on bare invocation.
+export async function chromiumCheck(required = false): Promise<Check> {
   const install = playwrightInstallCommand("chromium");
+  const optional = {
+    ok: true,
+    info: true,
+    enable: `\`${install}\`, then ${OPT_IN_HINT}`,
+  } as const;
   try {
     const { chromium } = await import("playwright-core");
     const path = chromium.executablePath();
     if (path && existsSync(path)) {
-      return { name: "chromium", ok: true, detail: `${path}` };
+      return { name: "chromium", ok: true, ...(required ? {} : { info: true }), detail: path };
     }
-    if (chromeInstalled) {
+    if (!required) {
       return {
         name: "chromium",
-        ok: true,
-        info: true,
-        detail:
-          'bundled build not downloaded. Not needed while Google Chrome is installed, but channel "chromium" uses it',
-        enable: `\`${install}\``,
+        ...optional,
+        detail: `bundled build not downloaded. Only channel "${BUNDLED_CHANNEL}" uses it`,
       };
     }
     return {
       name: "chromium",
       ok: false,
-      detail: "no Google Chrome and no bundled Chromium, so a session has no browser to launch",
-      fix: `install Google Chrome, or run \`${install}\``,
+      detail: `channel "${BUNDLED_CHANNEL}" is set, and the bundled Chromium is not downloaded`,
+      fix: `run \`${install}\`, or unset the channel to launch the installed Google Chrome`,
     };
   } catch (e) {
     return {
       name: "chromium",
-      ok: chromeInstalled,
-      ...(chromeInstalled ? { info: true, enable: `\`${install}\`` } : {}),
+      ...(required ? { ok: false } : optional),
       detail: e instanceof Error ? e.message : String(e),
       fix: `reinstall browxai (playwright-core failed to load), then run \`${install}\``,
     };

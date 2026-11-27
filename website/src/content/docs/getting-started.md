@@ -34,7 +34,8 @@ or a cross and the next step under anything that fails. It exits 0 when nothing
 failed. `browxai doctor --verbose` prints every check.
 
 On a machine with no Google Chrome, doctor fails until you add a browser: install
-Chrome, or fetch the bundled Chromium. That is Chromium plus its headless shell,
+Chrome, or fetch the bundled Chromium and opt in to it with
+`BROWX_CHANNEL=chromium`. The bundled build is Chromium plus its headless shell,
 about 300 MB to download and about 700 MB on disk.
 
 ```bash
@@ -48,9 +49,10 @@ Firefox and WebKit sessions use their own Playwright builds
 (`npx playwright-core@1.65.1 install firefox webkit`).
 
 browxai looks for Google Chrome at its default install path on each OS, so a
-distro Chromium package is not picked up. With no Chrome it falls back to the
-bundled Chromium, and `browxai doctor` fails only when neither browser is
-present.
+distro Chromium package is not picked up. With no Chrome, a session is refused
+with `chrome-not-installed` unless `BROWX_CHANNEL=chromium` is set in the
+server's environment (or the session passes `channel: "chromium"`). `browxai
+doctor` says which browser a session will launch.
 
 A global install puts the `browxai` binary on your `PATH`, so an MCP client can
 launch it by name (`command: "browxai"`). The binary is the MCP server on the

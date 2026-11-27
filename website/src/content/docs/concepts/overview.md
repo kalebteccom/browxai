@@ -77,8 +77,9 @@ app and its version.
 
 ### Sessions and lifecycle
 
-Chromium sessions launch the installed Google Chrome, or the bundled Chromium
-when Chrome is missing, on one default profile per workspace. Sessions are
+Chromium sessions launch the installed Google Chrome, on one default profile per
+workspace. On a machine without Chrome, `BROWX_CHANNEL=chromium` opts in to the
+bundled Chromium. Sessions are
 isolated contexts: persistent, incognito, or attached to a Chrome you already
 have open, on your desktop or on a plugged-in Android phone. Each persistent or
 incognito session is its own browser process with its own window, and attached

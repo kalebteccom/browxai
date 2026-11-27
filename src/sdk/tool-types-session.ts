@@ -94,6 +94,10 @@ export interface OpenSessionResultData {
   /** Which requests the replayed HARs answer, when `hars` was given: `"data"`
    *  (data and static requests) or `"all"` (the server has `eval`). */
   fulfils?: "data" | "all";
+  /** On a refusal, its code when it has one: `"chrome-not-installed"` (no
+   *  installed Google Chrome and no channel; `channel: "chromium"` opts in to the
+   *  bundled build), `"invalid-name"`, `"unknown-engine"`. */
+  code?: string;
   error?: string;
 }
 export type OpenSessionResult = OpenSessionResultData;

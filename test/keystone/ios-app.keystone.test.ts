@@ -186,7 +186,7 @@ const savedEnv: Record<string, string | undefined> = {};
 
 function clearBrowxEnv(): void {
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_")) {
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") {
       savedEnv[k] = process.env[k];
       delete process.env[k];
     }
@@ -194,7 +194,8 @@ function clearBrowxEnv(): void {
 }
 
 function restoreEnv(): void {
-  for (const k of Object.keys(process.env)) if (k.startsWith("BROWX_")) delete process.env[k];
+  for (const k of Object.keys(process.env))
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") delete process.env[k];
   for (const [k, v] of Object.entries(savedEnv)) if (v !== undefined) process.env[k] = v;
 }
 

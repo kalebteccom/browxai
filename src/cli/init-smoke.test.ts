@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { onInterrupt, removeDir, runSmoke, type SignalHost } from "./init-smoke.js";
+import { onInterrupt, removeDir, runSmoke, smokeChannel, type SignalHost } from "./init-smoke.js";
 
 function fakeHost(): SignalHost & { emitter: EventEmitter; exits: number[] } {
   const emitter = new EventEmitter();
@@ -71,5 +71,26 @@ describe("removeDir", () => {
 
   it("passes other errors on", () => {
     expect(() => removeDir("/x", failWith("EIO"))).toThrow("EIO");
+  });
+});
+
+describe("smokeChannel", () => {
+  const found = () => "/opt/google/chrome/chrome";
+  const missing = () => undefined;
+
+  it("uses the caller's BROWX_CHANNEL when set, Chrome or not", () => {
+    expect(smokeChannel({ BROWX_CHANNEL: " msedge " }, missing)).toEqual({ channel: "msedge" });
+    expect(smokeChannel({ BROWX_CHANNEL: "chromium" }, found)).toEqual({ channel: "chromium" });
+  });
+
+  it("uses no channel when Chrome is installed", () => {
+    expect(smokeChannel({}, found)).toEqual({});
+  });
+
+  it("picks the bundled build when Chrome is missing, and says what a default session does", () => {
+    const r = smokeChannel({ BROWX_CHANNEL: " " }, missing);
+    expect(r.channel).toBe("chromium");
+    expect(r.note).toMatch(/chrome-not-installed/);
+    expect(r.note).toContain("BROWX_CHANNEL=chromium");
   });
 });

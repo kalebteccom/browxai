@@ -73,24 +73,34 @@ describe("chromium engine — channel resolution", () => {
     );
   });
 
-  it("keeps an extension launch with no channel on the bundled build", async () => {
-    const options = await capturePersistentOptions({ extensionPaths: ["/tmp/ext-a"] });
+  it("refuses an extension launch with no channel before launching anything", async () => {
+    const spy = vi.spyOn(PlaywrightChromiumAdapter.prototype, "launchPersistent");
+    await expect(
+      engineEntry("chromium").makeAdapter({ extensionPaths: ["/tmp/ext-a"] }),
+    ).rejects.toThrow(/^extensions-need-chromium: /);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("launches an extension session on the bundled build when it opted in", async () => {
+    const options = await capturePersistentOptions({
+      extensionPaths: ["/tmp/ext-a"],
+      channel: "chromium",
+    });
     expect(options).not.toHaveProperty("channel");
   });
 
-  it("retries on the bundled build when the default Chrome is not installed", async () => {
+  it("refuses with chrome-not-installed when the default Chrome is missing, with no second launch", async () => {
     const notFound = new Error(
       "Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome",
     );
-    vi.spyOn(log, "warn").mockImplementation(() => undefined);
     const spy = vi
       .spyOn(PlaywrightChromiumAdapter.prototype, "launchPersistent")
-      .mockRejectedValueOnce(notFound)
-      .mockRejectedValueOnce(LAUNCH_STUBBED);
-    await expect(engineEntry("chromium").makeAdapter({})).rejects.toThrow(LAUNCH_STUBBED);
-    expect(spy).toHaveBeenCalledTimes(2);
+      .mockRejectedValue(notFound);
+    await expect(engineEntry("chromium").makeAdapter({})).rejects.toThrow(
+      /^chrome-not-installed: /,
+    );
+    expect(spy).toHaveBeenCalledTimes(1);
     expect(spy.mock.calls[0]![0].options).toHaveProperty("channel", "chrome");
-    expect(spy.mock.calls[1]![0].options).not.toHaveProperty("channel");
   });
 
   it("does not retry when the channel was named", async () => {
@@ -288,21 +298,6 @@ describe("chromium engine — OS sandbox", () => {
     expect(bundledEphemeral).not.toHaveProperty("chromiumSandbox");
   });
 
-  it("applies the bundled rule to the fallback launch after Chrome is not found", async () => {
-    vi.spyOn(sandboxProbe, "gather").mockReturnValue({ ...NORMAL_USER, apparmorRestrictUserns: 1 });
-    vi.spyOn(log, "warn").mockImplementation(() => undefined);
-    const notFound = new Error(
-      "Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome",
-    );
-    const spy = vi
-      .spyOn(PlaywrightChromiumAdapter.prototype, "launchPersistent")
-      .mockRejectedValueOnce(notFound)
-      .mockRejectedValueOnce(LAUNCH_STUBBED);
-    await expect(engineEntry("chromium").makeAdapter({})).rejects.toThrow(LAUNCH_STUBBED);
-    expect(spy.mock.calls[0]![0].options).toHaveProperty("chromiumSandbox", true);
-    expect(spy.mock.calls[1]![0].options).not.toHaveProperty("chromiumSandbox");
-  });
-
   it("names the saved layer when an on launch from config fails", async () => {
     const spy = spyOnLaunch("launchPersistent").mockRejectedValue(SANDBOX_ERROR);
     await expect(
@@ -326,22 +321,19 @@ describe("chromium engine — OS sandbox", () => {
     expect(spy.mock.calls[0]![0]).toMatchObject({ options: { chromiumSandbox: true } });
   });
 
-  it("keeps the default-Chrome fallback working under auto", async () => {
+  it("refuses a missing default Chrome under auto without a sandbox retry", async () => {
     vi.spyOn(sandboxProbe, "gather").mockReturnValue(NORMAL_USER);
     const notFound = new Error(
       "Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome",
     );
-    vi.spyOn(log, "warn").mockImplementation(() => undefined);
     const spy = vi
       .spyOn(PlaywrightChromiumAdapter.prototype, "launchPersistent")
-      .mockRejectedValueOnce(notFound)
-      .mockRejectedValueOnce(LAUNCH_STUBBED);
-    await expect(engineEntry("chromium").makeAdapter({})).rejects.toThrow(LAUNCH_STUBBED);
-    expect(spy).toHaveBeenCalledTimes(2);
-    expect(spy.mock.calls[0]![0].options).toHaveProperty("channel", "chrome");
+      .mockRejectedValue(notFound);
+    await expect(engineEntry("chromium").makeAdapter({})).rejects.toThrow(
+      /^chrome-not-installed: /,
+    );
+    expect(spy).toHaveBeenCalledTimes(1);
     expect(spy.mock.calls[0]![0].options).toHaveProperty("chromiumSandbox", true);
-    expect(spy.mock.calls[1]![0].options).not.toHaveProperty("channel");
-    expect(spy.mock.calls[1]![0].options).toHaveProperty("chromiumSandbox", true);
   });
 });
 
@@ -379,6 +371,7 @@ describe("chromium engine — extension + web-security launch args", () => {
     const options = await capturePersistentOptions({
       disableWebSecurity: true,
       extensionPaths: ["/tmp/ext-a"],
+      channel: "chromium",
     });
     expect(options.args).toEqual([
       "--disable-web-security",

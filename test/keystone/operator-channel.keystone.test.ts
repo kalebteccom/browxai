@@ -70,11 +70,12 @@ let base2: string;
 // leaked BROWX_ALLOWED_ORIGINS made element-substrate's navigate wait on a
 // confirm hook.
 const originalEnv = Object.fromEntries(
-  Object.entries(process.env).filter(([k]) => k.startsWith("BROWX_")),
+  Object.entries(process.env).filter(([k]) => k.startsWith("BROWX_") && k !== "BROWX_CHANNEL"),
 );
 
 function isolateEnv(prefix: string): string {
-  for (const k of Object.keys(process.env)) if (k.startsWith("BROWX_")) delete process.env[k];
+  for (const k of Object.keys(process.env))
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") delete process.env[k];
   const ws = mkdtempSync(join(tmpdir(), prefix));
   process.env.BROWX_WORKSPACE = ws;
   return ws;
@@ -134,7 +135,8 @@ afterAll(async () => {
   process.stderr.write = realStderrWrite;
   await new Promise<void>((r) => http.close(() => r()));
   await new Promise<void>((r) => http2.close(() => r()));
-  for (const k of Object.keys(process.env)) if (k.startsWith("BROWX_")) delete process.env[k];
+  for (const k of Object.keys(process.env))
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") delete process.env[k];
   Object.assign(process.env, originalEnv);
 }, KEYSTONE_TIMEOUT);
 

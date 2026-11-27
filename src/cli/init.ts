@@ -24,8 +24,9 @@ import {
   type ClientSystem,
   type ServerEntry,
 } from "./init-clients.js";
-import { runSmoke, type SmokeOptions, type SmokeResult } from "./init-smoke.js";
+import { runSmoke, smokeChannel, type SmokeOptions, type SmokeResult } from "./init-smoke.js";
 import { appWrapperOf, runningAppBundle } from "./macos-app.js";
+import { findInstalledChrome } from "./chrome-launch.js";
 import {
   applyUserConfig,
   lineDiff,
@@ -48,6 +49,8 @@ interface InitOpts {
 export interface InitDeps {
   system?: ClientSystem;
   smoke?: (opts: SmokeOptions) => Promise<SmokeResult>;
+  /** Where the installed Google Chrome is, for the smoke check's channel. */
+  findChrome?: () => string | undefined;
   /** Reads a user-level config file; undefined when it does not exist. */
   readConfig?: (path: string) => string | undefined;
   /** Writes a planned user-level config file. */
@@ -197,7 +200,7 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   const userConfigOk = userConfigSweep(opts, userEntry, system, deps);
   process.stdout.write(
     `next steps:\n  1) open Claude Code with cwd=${workspace} so this .mcp.json is picked up\n` +
-      `  2) use the \`browxai\` MCP server for managed mode. It needs no more setup: it launches your installed Chrome, or the bundled Chromium without one\n` +
+      `  2) use the \`browxai\` MCP server for managed mode. It launches your installed Google Chrome. Without Chrome, add BROWX_CHANNEL=chromium to its env to use the bundled Chromium\n` +
       `  3) to sign in by hand once, run \`BROWX_WORKSPACE=${ws} browxai chrome login\`. The \`browxai\` entry reuses that login\n` +
       `  4) to attach to a Chrome you start yourself (BYOB, bring your own browser), run \`BROWX_WORKSPACE=${ws} browxai chrome start\`, then use \`browxai-attached\`.\n` +
       `     That entry's env sets ${capabilitiesAssignment("byob-attach")}; without byob-attach every attach is refused.\n` +
@@ -207,7 +210,9 @@ export async function runInit(args: string[], deps: InitDeps = {}): Promise<numb
   let smokeOk = true;
   if (!opts.noSmoke && !opts.noWrite) {
     process.stdout.write("\nchecking that a headless session can take a snapshot...\n");
-    const smoke = await (deps.smoke ?? runSmoke)({ distCli });
+    const { channel, note } = smokeChannel(process.env, deps.findChrome ?? findInstalledChrome);
+    if (note) process.stdout.write(`  ${note}\n`);
+    const smoke = await (deps.smoke ?? runSmoke)({ distCli, ...(channel ? { channel } : {}) });
     process.stdout.write(`  ${smoke.message}\n`);
     smokeOk = smoke.ok;
   }

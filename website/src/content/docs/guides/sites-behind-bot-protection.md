@@ -22,8 +22,8 @@ Playwright's `--enable-automation` switch. Playwright's bundled testing build
 launched with that switch reports `navigator.webdriver` as true and lacks
 components a real Chrome carries, and lighter protection flags exactly that.
 With no `channel` set you get the regular Chrome automatically; if Chrome is not
-installed browxai falls back to the bundled Chromium and logs a warning saying
-so. `channel: "chromium"` pins the bundled build, and `BROWX_AUTOMATION_SWITCH=1`
+installed the session is refused with `chrome-not-installed`, so the testing
+build never runs by accident. `channel: "chromium"` opts in to the bundled build, and `BROWX_AUTOMATION_SWITCH=1`
 puts the automation switch back for debugging.
 
 That is all the default launch changes. browxai adds no

@@ -14,6 +14,7 @@ import { ENGINE_KINDS, IMPLEMENTED_ENGINES, requirePage } from "../engine/index.
 import type { PageCapable } from "../engine/index.js";
 import { PlaywrightTargetSubstrate } from "../page/target-substrate.js";
 import type { ToolResponse } from "./host.js";
+import { chromeNotInstalled } from "../session/chromium-launch-posture.js";
 
 interface CapturedDef {
   description: string;
@@ -24,7 +25,11 @@ type CapturedHandler = (args: Record<string, unknown>) => Promise<ToolResponse>;
 /** Register the lifecycle tools against a minimal mock host and return the
  *  `open_session` def + handler. The registry's `get` throws a sentinel so a
  *  test can prove a code path did (or did NOT) reach it. */
-function captureOpenSession(): { def: CapturedDef; handler: CapturedHandler } {
+function captureOpenSession(
+  get: () => never = () => {
+    throw new Error("registry.get must not be reached");
+  },
+): { def: CapturedDef; handler: CapturedHandler } {
   const defs: Record<string, CapturedDef> = {};
   const handlers: Record<string, CapturedHandler> = {};
   const host = {
@@ -37,9 +42,7 @@ function captureOpenSession(): { def: CapturedDef; handler: CapturedHandler } {
     registry: {
       has: () => false,
       heldAskHuman: () => undefined,
-      get: () => {
-        throw new Error("registry.get must not be reached");
-      },
+      get,
     },
   } as unknown as Parameters<typeof registerSessionLifecycleTools>[0];
   registerSessionLifecycleTools(host);
@@ -81,6 +84,25 @@ describe("open_session — per-session engine surface + validation", () => {
     const body = bodyOf(await handler({ session: "x", engine: "firefox" }));
     expect(body.ok).toBe(false);
     expect(String(body.error)).toContain("registry.get must not be reached");
+  });
+});
+
+describe("open_session — launch channel refusals", () => {
+  it("returns chrome-not-installed as a code next to the message", async () => {
+    const { handler } = captureOpenSession(() => {
+      throw chromeNotInstalled();
+    });
+    const body = bodyOf(await handler({ session: "x" }));
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe("chrome-not-installed");
+    expect(String(body.error)).toMatch(/^chrome-not-installed: /);
+    expect(String(body.error)).toContain("BROWX_CHANNEL=chromium");
+  });
+
+  it("carries no code for an ordinary launch error", async () => {
+    const body = bodyOf(await captureOpenSession().handler({ session: "x" }));
+    expect(body.ok).toBe(false);
+    expect(body).not.toHaveProperty("code");
   });
 });
 

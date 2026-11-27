@@ -85,7 +85,7 @@ async function callText(name: string, args: Record<string, unknown>): Promise<st
 beforeAll(async () => {
   if (!ELECTRON_CDP) return;
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_") && k !== "BROWX_ELECTRON_CDP") {
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL" && k !== "BROWX_ELECTRON_CDP") {
       savedEnv[k] = process.env[k];
       delete process.env[k];
     }

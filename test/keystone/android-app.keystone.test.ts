@@ -53,7 +53,7 @@ const savedEnv: Record<string, string | undefined> = {};
 
 function clearBrowxEnv(): void {
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_") && k !== "BROWX_ANDROID_APP_SERIAL") {
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL" && k !== "BROWX_ANDROID_APP_SERIAL") {
       savedEnv[k] = process.env[k];
       delete process.env[k];
     }

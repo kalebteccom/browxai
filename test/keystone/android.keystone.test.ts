@@ -77,7 +77,7 @@ async function callText(name: string, args: Record<string, unknown>): Promise<st
 beforeAll(async () => {
   if (!androidDeviceAvailable) return;
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_") && k !== "BROWX_ANDROID_SERIAL") {
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL" && k !== "BROWX_ANDROID_SERIAL") {
       savedEnv[k] = process.env[k];
       delete process.env[k];
     }

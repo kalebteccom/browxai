@@ -75,7 +75,8 @@ export function runAsync(command, args = [], opts = {}) {
 }
 
 /** The environment every browxai command runs in: nothing from the pipeline except PATH, a throwaway HOME, telemetry off.
- *  No PLAYWRIGHT_BROWSERS_PATH: browsers land in the default place under HOME, where `browxai init` (which starts its own child with a minimal environment) looks for them too. */
+ *  No PLAYWRIGHT_BROWSERS_PATH: browsers land in the default place under HOME, where `browxai init` (which starts its own child with a minimal environment) looks for them too.
+ *  BROWX_CHANNEL=chromium: the agent has no Google Chrome, and a session with no channel is refused without it, so every run opts in to the bundled Chromium the way the containers guide says. */
 export function cleanEnv(work, extra = {}) {
   const proj = `${work}/project`;
   return {
@@ -85,6 +86,7 @@ export function cleanEnv(work, extra = {}) {
     npm_config_cache: `${work}/npm-cache`,
     NO_UPDATE_NOTIFIER: "1",
     DO_NOT_TRACK: "1",
+    BROWX_CHANNEL: "chromium",
     ...extra,
   };
 }

@@ -29,6 +29,7 @@ import { iosDeviceChecks } from "./doctor-ios-device.js";
 import {
   chromeCheck,
   chromiumCheck,
+  configuredChannel,
   firefoxCheck,
   webkitCheck,
   androidCheck,
@@ -43,6 +44,7 @@ import {
 } from "../engine/index.js";
 import { docsUrl } from "../util/docs-links.js";
 import { formatDoctor } from "./doctor-summary.js";
+import { isBundledChannel } from "../session/chromium-launch-posture.js";
 
 export interface Check {
   name: string;
@@ -213,14 +215,15 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
     });
   }
 
-  // 8. Browser for managed mode. The default launch uses the installed Google
-  // Chrome and falls back to the bundled Chromium, so doctor fails only when
-  // neither exists. 8a2/8a3 follow with the opt-in firefox + webkit binary
-  // probes. All are per-engine availability probes — see
-  // src/cli/doctor-engines.ts.
-  const chrome = chromeCheck();
-  checks.push(chrome);
-  checks.push(await chromiumCheck(!chrome.info));
+  // 8. Browser for managed mode. A session with no channel launches the
+  // installed Google Chrome and is refused without it; channel "chromium" is the
+  // opt-in for the bundled build. So doctor fails on a missing Chrome when no
+  // channel is configured, and on a missing bundled build when "chromium" is.
+  // 8a2/8a3 follow with the opt-in firefox + webkit binary probes. All are
+  // per-engine availability probes — see src/cli/doctor-engines.ts.
+  const channel = configuredChannel();
+  checks.push(chromeCheck(undefined, channel));
+  checks.push(await chromiumCheck(isBundledChannel(channel)));
   // 8a1. Whether those launches run with Chromium's OS sandbox on this host.
   checks.push(chromiumSandboxRow());
   checks.push(await firefoxCheck());

@@ -116,7 +116,7 @@ async function controlledSession(session: string): Promise<void> {
 beforeAll(async () => {
   if (!chromeGate.run) return;
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_")) {
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") {
       savedEnv[k] = process.env[k];
       delete process.env[k];
     }
@@ -140,7 +140,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise<void>((resolve) => (site ? site.close(() => resolve()) : resolve()));
-  for (const k of Object.keys(process.env)) if (k.startsWith("BROWX_")) delete process.env[k];
+  for (const k of Object.keys(process.env))
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") delete process.env[k];
   for (const [k, v] of Object.entries(savedEnv)) if (v !== undefined) process.env[k] = v;
   if (workspace) rmSync(workspace, { recursive: true, force: true });
 }, KEYSTONE_TIMEOUT);

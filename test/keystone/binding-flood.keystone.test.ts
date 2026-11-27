@@ -38,11 +38,12 @@ const realStderrWrite = process.stderr.write.bind(process.stderr);
 // file in the shared keystone process sees the environment it would have seen
 // without this one.
 const originalEnv = Object.fromEntries(
-  Object.entries(process.env).filter(([k]) => k.startsWith("BROWX_")),
+  Object.entries(process.env).filter(([k]) => k.startsWith("BROWX_") && k !== "BROWX_CHANNEL"),
 );
 
 function isolateEnv(prefix: string): string {
-  for (const k of Object.keys(process.env)) if (k.startsWith("BROWX_")) delete process.env[k];
+  for (const k of Object.keys(process.env))
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") delete process.env[k];
   const ws = mkdtempSync(join(tmpdir(), prefix));
   process.env.BROWX_WORKSPACE = ws;
   return ws;
@@ -206,7 +207,8 @@ beforeAll(async () => {
 afterAll(async () => {
   process.stderr.write = realStderrWrite;
   await new Promise<void>((r) => http.close(() => r()));
-  for (const k of Object.keys(process.env)) if (k.startsWith("BROWX_")) delete process.env[k];
+  for (const k of Object.keys(process.env))
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") delete process.env[k];
   Object.assign(process.env, originalEnv);
 }, KEYSTONE_TIMEOUT);
 

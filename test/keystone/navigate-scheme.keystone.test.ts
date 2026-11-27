@@ -47,7 +47,8 @@ const page = (marker: string) =>
 
 async function boot(env: Record<string, string>): Promise<Booted> {
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_") && k !== "BROWX_WORKSPACE") delete process.env[k];
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL" && k !== "BROWX_WORKSPACE")
+      delete process.env[k];
   }
   Object.assign(process.env, env);
   return createServer({ headless: true });
@@ -78,7 +79,7 @@ async function pageHas(call: Call, session: string, text: string): Promise<boole
 
 beforeAll(async () => {
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_")) {
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") {
       savedEnv[k] = process.env[k];
       delete process.env[k];
     }
@@ -98,7 +99,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await fixture?.close().catch(() => undefined);
   await otherOrigin?.close().catch(() => undefined);
-  for (const k of Object.keys(process.env)) if (k.startsWith("BROWX_")) delete process.env[k];
+  for (const k of Object.keys(process.env))
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") delete process.env[k];
   for (const [k, v] of Object.entries(savedEnv)) if (v !== undefined) process.env[k] = v;
   if (workspace) rmSync(workspace, { recursive: true, force: true });
   if (outsideDir) rmSync(outsideDir, { recursive: true, force: true });

@@ -31,7 +31,9 @@ interface CreateMcpClientOptions {
 function cleanChildEnv(opts: CreateMcpClientOptions): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith("BROWX_") || value === undefined) continue;
+    // BROWX_CHANNEL passes through: on a machine without Google Chrome a session
+    // with no channel is refused, and BROWX_CHANNEL=chromium is the opt-in.
+    if ((key.startsWith("BROWX_") && key !== "BROWX_CHANNEL") || value === undefined) continue;
     env[key] = value;
   }
   env.BROWX_WORKSPACE = opts.workspace;

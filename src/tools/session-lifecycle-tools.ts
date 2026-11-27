@@ -22,6 +22,7 @@ import type {
 } from "./host.js";
 import { jsonResult } from "./json-result.js";
 import type { FulfilScope } from "../page/fulfil-policy.js";
+import { LaunchChannelRefusal } from "../session/chromium-launch-posture.js";
 
 /** Wrap a JSON-serialisable body as a tool text response — the shared shape the
  *  session-lifecycle handlers return. */
@@ -30,9 +31,15 @@ function lifecycleJson(body: object): ToolResponse {
 }
 
 /** The standard `ok:false` lifecycle envelope for an unknown throw — the message
- *  lifted from an Error or stringified. */
+ *  lifted from an Error or stringified. A launch refused over its browser channel
+ *  also carries its `code`. */
 function lifecycleError(err: unknown): ToolResponse {
-  return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  const code = err instanceof LaunchChannelRefusal ? { code: err.code } : {};
+  return lifecycleJson({
+    ok: false,
+    ...code,
+    error: err instanceof Error ? err.message : String(err),
+  });
 }
 
 /** Which state-seeding arguments an `open_session` call carries. */
@@ -174,7 +181,7 @@ export function registerSessionLifecycleTools(
           .string()
           .optional()
           .describe(
-            'Playwright browser channel for a chromium session ("chrome", "msedge", "chrome-beta", "chrome-dev", "msedge-beta", "chromium", …). Default (unset here, in config `channel` and in `BROWX_CHANNEL`): the operator\'s INSTALLED Google Chrome, falling back to Playwright\'s bundled Chromium with a logged warning when Chrome is not installed. "chromium" forces the bundled build. Any other channel launches that installed browser and fails if it is missing (there is no download step). A launch with extensions and no channel stays on the bundled build. Ignored on `attached` (already launched) and on firefox/webkit/safari/android (firefox has its own `BROWX_FIREFOX_CHANNEL`). The browser version tracks the operator\'s install, not the version browxai pins.',
+            'Playwright browser channel for a chromium session ("chrome", "msedge", "chrome-beta", "chrome-dev", "msedge-beta", "chromium", …). Default (unset here, in config `channel` and in `BROWX_CHANNEL`): the operator\'s INSTALLED Google Chrome. With no Chrome installed the open is refused with `code: "chrome-not-installed"`. "chromium" launches Playwright\'s bundled Chromium, and is the opt-in for machines without Chrome (containers, CI). Any other channel launches that installed browser and fails if it is missing (there is no download step). Loading extensions needs "chromium": with no channel, `extensions_install` is refused with `extensions-need-chromium`. Ignored on `attached` (already launched) and on firefox/webkit/safari/android (firefox has its own `BROWX_FIREFOX_CHANNEL`). The browser version tracks the operator\'s install, not the version browxai pins.',
           ),
         backgroundThrottling: z
           .enum(["default", "disabled"])

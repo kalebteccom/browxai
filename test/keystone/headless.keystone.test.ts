@@ -67,7 +67,7 @@ beforeAll(async () => {
   // or CI. BROWX_WORKSPACE is a *location* anchor (not config — see
   // docs/tool-reference.md); point it at a throwaway tmp dir for hermeticity.
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_")) {
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") {
       savedEnv[k] = process.env[k];
       delete process.env[k];
     }

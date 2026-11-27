@@ -110,6 +110,14 @@ describe("runSmoke against a fake server", () => {
     expect(fake.closed).toBe(1);
   });
 
+  it("opens the session on the channel it was given", async () => {
+    await runSmoke({ distCli: DIST_CLI, channel: "chromium" });
+    expect(fake.requests[0]).toEqual({
+      name: "open_session",
+      arguments: { session: "init-smoke", mode: "incognito", channel: "chromium" },
+    });
+  });
+
   it("starts the built cli with a headless, minimal environment", async () => {
     await runSmoke({ distCli: DIST_CLI });
     expect(fake.params?.command).toBe(process.execPath);
