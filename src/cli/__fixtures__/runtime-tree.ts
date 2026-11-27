@@ -11,6 +11,8 @@ import {
   type RuntimePaths,
 } from "../runtime-layout.js";
 import { createLayout } from "../runtime-store.js";
+import type { RunResult, Runner } from "../runtime-exec.js";
+import type { Registry } from "../runtime-npm.js";
 
 export interface TempRuntime {
   /** A fresh temp directory that stands in for the home directory. */
@@ -49,4 +51,78 @@ export function addVersion(paths: RuntimePaths, version: string, body?: string):
   writeFileSync(cli, body ?? `process.stdout.write(${JSON.stringify(version)} + "\\n");\n`);
   chmodSync(versionDir(paths, version), 0o700);
   return cli;
+}
+
+/** A fake `Runner` for npm: `install` lays out `node_modules/browxai` at the
+ *  requested version (or at `installs` as given, to fake a lying registry),
+ *  `audit signatures` answers `audit`. Every call is recorded. */
+export function fakeNpm(
+  opts: { audit?: number; installStatus?: number; installs?: string; cliBody?: string } = {},
+): Runner & { calls: Array<{ file: string; args: string[] }> } {
+  const calls: Array<{ file: string; args: string[] }> = [];
+  const runner = (file: string, args: readonly string[]): Promise<RunResult> => {
+    calls.push({ file, args: [...args] });
+    if (args.includes("install")) {
+      const prefix = args[args.indexOf("--prefix") + 1]!;
+      const spec = args.find((a) => a.startsWith("browxai@"))!;
+      if (opts.installStatus) {
+        return Promise.resolve({
+          status: opts.installStatus,
+          stdout: "",
+          stderr: "npm error code E500\n",
+        });
+      }
+      const version = opts.installs ?? spec.slice("browxai@".length);
+      const pkgDir = join(prefix, "node_modules", "browxai");
+      mkdirSync(join(pkgDir, "dist"), { recursive: true });
+      writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name: "browxai", version }));
+      writeFileSync(join(pkgDir, "dist", "cli.js"), opts.cliBody ?? "");
+      return Promise.resolve({ status: 0, stdout: "", stderr: "" });
+    }
+    if (args.includes("audit")) {
+      const status = opts.audit ?? 0;
+      return Promise.resolve({
+        status,
+        stdout: JSON.stringify({ invalid: status ? [{}] : [], missing: [] }),
+        stderr: "",
+      });
+    }
+    return Promise.resolve({ status: 1, stdout: "", stderr: `unexpected: ${args.join(" ")}` });
+  };
+  return Object.assign(runner, { calls });
+}
+
+/** A registry port that answers from a table of versions and dist-tags. */
+export function fakeRegistry(
+  versions: Record<string, { publishedAt?: string; deprecated?: string }>,
+  tags: Record<string, string>,
+  opts: { unreachable?: boolean } = {},
+): Registry {
+  return {
+    view(spec) {
+      if (opts.unreachable) {
+        return Promise.resolve({
+          ok: false,
+          unreachable: true,
+          message: "the npm registry could not be reached (ENOTFOUND)",
+        });
+      }
+      const version = tags[spec] ?? spec;
+      const v = versions[version];
+      if (!v)
+        return Promise.resolve({
+          ok: false,
+          unreachable: false,
+          message: `no browxai version for "${spec}"`,
+        });
+      return Promise.resolve({
+        ok: true,
+        info: {
+          version,
+          publishedAt: v.publishedAt ?? "2026-11-20T10:00:00.000Z",
+          ...(v.deprecated ? { deprecated: v.deprecated } : {}),
+        },
+      });
+    },
+  };
 }

@@ -6,7 +6,7 @@
 // relative `current` symlink naming one of them, and the launcher at `bin/browxai`.
 // This code manages a directory only when `layout.json` is in it.
 
-import { lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
@@ -149,7 +149,8 @@ export function migrationSteps(dir: string): string {
     "To move to a managed runtime:\n" +
     "  1. Unload and remove any background job that updates that directory.\n" +
     "  2. Move the directory aside, then run: browxai runtime install\n" +
-    `  3. Point each client entry at ${join(dir, "bin", "browxai")}.\n` +
+    `  3. Point client entries at ${join(dir, "bin", "browxai")}: browxai runtime install --write-client-config,\n` +
+    "     with --profile-dir DIR for each further config directory.\n" +
     "  4. Remove the old directory once no process uses it.\n"
   );
 }
@@ -275,6 +276,32 @@ function overlapReason(dir: string, ctx: RuntimeContext): string | undefined {
     if (within(rt, app)) {
       return `the runtime directory ${dir} is inside the Browxai app's folder ${app}. Choose another directory.`;
     }
+  }
+  return undefined;
+}
+
+const RUNTIME_CLI =
+  /^(.*)[\\/]versions[\\/][^\\/]+[\\/]node_modules[\\/]browxai[\\/]dist[\\/]cli\.js$/;
+
+/**
+ * The launcher to name in a client entry when this browxai runs from a runtime:
+ * `BROWX_RUNTIME_DIR` is set (the launcher sets it), or the real path of `cli.js`
+ * sits under `<runtime>/versions/`. Undefined otherwise, and when that runtime has
+ * no `layout.json` or no launcher, so a stray variable never names a missing file.
+ */
+export function runtimeLauncherFor(distCli: string, env: NodeJS.ProcessEnv): string | undefined {
+  let real = distCli;
+  try {
+    real = realpathSync(distCli);
+  } catch {
+    /* keep the path as given */
+  }
+  const fromEnv = env.BROWX_RUNTIME_DIR?.trim();
+  const roots = [fromEnv && isAbsolute(fromEnv) ? fromEnv : undefined, RUNTIME_CLI.exec(real)?.[1]];
+  for (const root of roots) {
+    if (!root) continue;
+    const paths = runtimePaths(root);
+    if (existsSync(paths.layout) && existsSync(paths.shim)) return paths.shim;
   }
   return undefined;
 }

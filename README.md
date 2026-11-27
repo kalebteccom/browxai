@@ -108,6 +108,8 @@ Wire it into an MCP client over the stdio transport, e.g. in an `.mcp.json`:
 
 No global install? Use `{ "command": "npx", "args": ["-y", "browxai"] }` as the entry instead.
 
+To keep client entries on the newest release without editing them, install a runtime with `npx -y browxai runtime install`. It keeps each release side by side under `~/.browxai-runtime`, gives every client one launcher path, and `browxai runtime update` checks a new release before switching to it. See [Keep browxai current with a runtime](https://browxai.com/guides/runtime-updates/).
+
 Restart the client, then ask your agent to open a page and describe it. A Chrome window opens (set `BROWX_HEADLESS=1` or `true` for none) and the agent works through `navigate`, `snapshot`, `find` and `click`. Tools that need an off-by-default capability, such as `eval_js`, answer with an error that names the capability until you enable it. `BROWX_CAPABILITIES` replaces the default set, so list the defaults too: `read,navigation,action,human,eval`.
 
 browxai does not defeat or spoof bot detection, and it cannot clear a challenge page for you. `browxai chrome login` opens the same Chrome profile with nothing attached, so you can clear the challenge and sign in by hand: see [Sites behind bot protection](https://browxai.com/guides/sites-behind-bot-protection/). For drop-in setup per harness, see [Harness setup](#harness-setup) below.
