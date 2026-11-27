@@ -20,6 +20,14 @@ export interface TempRuntime {
   cleanup: () => void;
 }
 
+/** The uid the tests run as. CI containers run as root, which every runtime
+ *  command refuses, so there the owner checks are left out (undefined, as on
+ *  Windows). The root refusal has its own test. */
+export function testUid(): number | undefined {
+  const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
+  return uid === 0 ? undefined : uid;
+}
+
 /** A home directory with a runtime path under it. `create` lays the runtime out. */
 export function tempRuntime(opts: { create?: boolean; dirName?: string } = {}): TempRuntime {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "bx-rt-")));
@@ -29,7 +37,7 @@ export function tempRuntime(opts: { create?: boolean; dirName?: string } = {}): 
     env: { BROWX_WORKSPACE: join(home, "workspace"), BROWX_RUNTIME_DIR: paths.root },
     home,
     platform: process.platform,
-    uid: typeof process.getuid === "function" ? process.getuid() : undefined,
+    uid: testUid(),
   };
   return { home, paths, ctx, cleanup: () => rmSync(home, { recursive: true, force: true }) };
 }
