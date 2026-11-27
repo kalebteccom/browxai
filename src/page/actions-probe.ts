@@ -246,10 +246,6 @@ export async function probe(
   }
 }
 
-const OWNER_ROLES = new Set(["combobox", "listbox", "radiogroup", "group", "menu", "tablist"]);
-const ROW_ROLES = new Set(["row", "listitem", "article"]);
-const ROW_TAGS = new Set(["tr", "li"]);
-
 /**
  * In-page script used by `preProbe` and the post-action half of `probe`. Walks up
  * the target's ancestor chain for the nearest owning form control (combobox /
@@ -257,14 +253,20 @@ const ROW_TAGS = new Set(["tr", "li"]);
  * container (`role=row`/`listitem`/`article`, or `<tr>`/`<li>`). Capped at 6
  * ancestor steps and 200 chars per text field. Returns {} when nothing matches.
  *
- * Defined as a plain function (not an arrow) so Playwright can stringify it
- * across the CDP boundary cleanly. `el` is typed `unknown` and narrowed to the
- * precise structural `AncestorEl` shape — the leading runtime check makes the
- * narrowing sound. The per-concern matchers are nested so the whole thing stays
- * one self-contained serializable literal.
+ * Playwright sends this function's source text to the page, so it can read
+ * nothing from module scope: the role and tag lists, the matchers and the caps
+ * are all declared inside it. `el` is typed `unknown` and narrowed to the
+ * structural `AncestorEl` shape after the leading runtime check. Exported for
+ * the unit test that runs it from its source text alone.
  */
-const probeAncestorsScript = function probeAncestors(el: unknown, slack: number): PreProbeData {
+export const probeAncestorsScript = function probeAncestors(
+  el: unknown,
+  slack: number,
+): PreProbeData {
   if (!el || typeof el !== "object") return {};
+  const OWNER_ROLES = ["combobox", "listbox", "radiogroup", "group", "menu", "tablist"];
+  const ROW_ROLES = ["row", "listitem", "article"];
+  const ROW_TAGS = ["tr", "li"];
   // Each field is read one character past its cap plus the mask slack; the
   // server masks it, then cuts it to the cap with "…".
   const TEXT_READ = 200 + slack + 1;
@@ -276,7 +278,7 @@ const probeAncestorsScript = function probeAncestors(el: unknown, slack: number)
   function isFieldOwner(cur: AncestorEl, role: string | null, ariaLabel: string | null): boolean {
     const ds = cur.dataset || {};
     const hasTestAttr = !!(ds.testid || ds.test || ds.cy || ds.qa);
-    if (role && OWNER_ROLES.has(role)) return true;
+    if (role && OWNER_ROLES.includes(role)) return true;
     return hasTestAttr && !!(role || ariaLabel);
   }
   function matchOwner(cur: AncestorEl): { ownerText?: string; ownerLabel?: string } | null {
@@ -293,8 +295,8 @@ const probeAncestorsScript = function probeAncestors(el: unknown, slack: number)
   function matchContainer(cur: AncestorEl): PreProbeData["container"] | null {
     const role: string | null = cur.getAttribute ? cur.getAttribute("role") : null;
     const tag = cur.tagName ? cur.tagName.toLowerCase() : "";
-    if (!((role && ROW_ROLES.has(role)) || ROW_TAGS.has(tag))) return null;
-    const kind = role && ROW_ROLES.has(role) ? role : tag;
+    if (!((role && ROW_ROLES.includes(role)) || ROW_TAGS.includes(tag))) return null;
+    const kind = role && ROW_ROLES.includes(role) ? role : tag;
     const rowText = (cur.innerText || "").trim().replace(/\s+/g, " ");
     const capped = rowText.slice(0, TEXT_READ);
     const firstText = (cur.innerText || "")

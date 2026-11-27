@@ -1154,6 +1154,28 @@ const UNSETTLED_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+// Row-evidence page — a table and a labelled listbox, so a click on a cell or a
+// list item has a repeated container (<tr>, <li>) and an owning control
+// (role=listbox) among its ancestors. The probe walk starts at the target's
+// parent, so the list targets are spans inside each <li>. Clicking a cell
+// marks it, which changes the row text between the pre- and post-action probes.
+const ROW_EVIDENCE_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>row evidence</title></head>
+<body>
+  <table>
+    <tbody>
+      <tr><td id="cell-alice" onclick="this.textContent = 'Alice (picked)'">Alice</td><td>Admin</td></tr>
+      <tr><td id="cell-bob">Bob</td><td>Viewer</td></tr>
+    </tbody>
+  </table>
+  <ul role="listbox" aria-label="Fruit">
+    <li><span id="item-apple">Apple</span> <small>ripe</small></li>
+    <li><span id="item-pear">Pear</span> <small>hard</small></li>
+  </ul>
+</body>
+</html>`;
+
 const LAYOUT_THRASH_PAGE = `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>layout-thrash keystone</title>
@@ -1483,6 +1505,11 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/unsettled-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(UNSETTLED_PAGE);
+      return;
+    }
+    if (u.pathname === "/row-evidence-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(ROW_EVIDENCE_PAGE);
       return;
     }
     if (u.pathname === "/layout-thrash-page") {
