@@ -4,7 +4,8 @@
 // five-minute confirm window.
 //
 //   1. An attached session holds the tools that change the browser, whichever
-//      handler they live in, and the read tools that return its cookie values:
+//      handler they live in, and the read tools that return its cookie values,
+//      web storage or IndexedDB values, plus `heap_snapshot`:
 //      each call reaches the daemon as a `byob_action` approval and comes back
 //      as a `policy:` refusal when the daemon says no.
 //   2. Read tools and the tools pinned as not held run without a prompt.
@@ -82,7 +83,7 @@ beforeAll(async () => {
   workspace = mkdtempSync(join(tmpdir(), "browx-byob-hold-"));
   process.env.BROWX_WORKSPACE = workspace;
   process.env.BROWX_CAPABILITIES =
-    "read,navigation,action,human,eval,byob-attach,self-approval,operator-channel";
+    "read,navigation,action,human,eval,file-io,byob-attach,self-approval,operator-channel";
 
   fixture = await startFixture();
   profileDir = mkdtempSync(join(tmpdir(), "browx-byob-hold-profile-"));
@@ -172,6 +173,13 @@ describeHold("attached-session hold — real Chrome, operator answers no", () =>
     ["cookies_get", { name: "ks-cookie" }],
     ["cookies_list", {}],
     ["dump_storage_state", {}],
+    ["localstorage_get", { key: "ks-key" }],
+    ["localstorage_list", {}],
+    ["sessionstorage_get", { key: "ks-key" }],
+    ["sessionstorage_list", {}],
+    ["idb_get", { dbName: "ks-db", storeName: "ks-store", key: "ks-key" }],
+    // Needs `file-io`, which this server has, so the call reaches the hold.
+    ["heap_snapshot", {}],
   ];
 
   it(
@@ -244,6 +252,8 @@ describeHold("attached-session hold — real Chrome, operator answers no", () =>
       expect(evaluated.value).toBe(2);
       const cookies = await call("cookies_list", { session: "managed" });
       expect(cookies.ok, JSON.stringify(cookies)).toBe(true);
+      const stored = await call("localstorage_list", { session: "managed" });
+      expect(stored.ok, JSON.stringify(stored)).toBe(true);
       expect(asked.length).toBe(before);
     },
     KEYSTONE_TIMEOUT,

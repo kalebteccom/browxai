@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import {
   newExtensionRegistry,
   resolveExtensionPath,
+  operatorExtensionsDir,
   readManifest,
   extensionIdFromPath,
   buildLaunchArgs,
@@ -49,24 +50,29 @@ afterEach(() => {
 // --- resolveExtensionPath --------------------------------------------------
 
 describe("resolveExtensionPath", () => {
+  const noEnv = {};
+
   it.each([
     {
       label: "a path that escapes the workspace",
       inputs: ["../escape"],
-      message: /must resolve inside/,
+      message: /load only from/,
     },
     { label: "an empty or whitespace path", inputs: ["", "   "], message: /required/ },
-    { label: "a non-existent directory", inputs: ["ext/missing"], message: /not found/ },
+    { label: "a non-existent directory", inputs: ["extensions/missing"], message: /not found/ },
     {
       label: "a file (not a directory)",
-      inputs: ["not-a-dir.crx"],
-      setup: () => writeFileSync(join(workspace, "not-a-dir.crx"), "binary", "utf8"),
+      inputs: ["extensions/not-a-dir.crx"],
+      setup: () => {
+        mkdirSync(join(workspace, "extensions"), { recursive: true });
+        writeFileSync(join(workspace, "extensions/not-a-dir.crx"), "binary", "utf8");
+      },
       message: /not a directory/,
     },
     {
       label: "a directory missing manifest.json",
-      inputs: ["no-manifest"],
-      setup: () => mkdirSync(join(workspace, "no-manifest"), { recursive: true }),
+      inputs: ["extensions/no-manifest"],
+      setup: () => mkdirSync(join(workspace, "extensions/no-manifest"), { recursive: true }),
       message: /no manifest\.json/,
     },
   ] as Array<{ label: string; inputs: string[]; setup?: () => void; message: RegExp }>)(
@@ -74,24 +80,29 @@ describe("resolveExtensionPath", () => {
     ({ inputs, setup, message }) => {
       setup?.();
       for (const input of inputs) {
-        expect(() => resolveExtensionPath(workspace, input, "extensions_install")).toThrow(message);
+        expect(() => resolveExtensionPath(workspace, input, "extensions_install", noEnv)).toThrow(
+          message,
+        );
       }
     },
   );
 
-  it("accepts an absolute path that is INSIDE the workspace", () => {
-    const ext = makeExtensionDir(workspace, "ext/inside", {
+  it("accepts a relative or absolute path under the workspace extensions/ directory", () => {
+    const ext = makeExtensionDir(workspace, "extensions/inside", {
       name: "inside",
       version: "1.0.0",
       manifest_version: 3,
     });
-    expect(resolveExtensionPath(workspace, ext, "extensions_install")).toBe(ext);
+    expect(resolveExtensionPath(workspace, ext, "extensions_install", noEnv)).toBe(ext);
+    expect(resolveExtensionPath(workspace, "extensions/inside", "extensions_install", noEnv)).toBe(
+      ext,
+    );
   });
 
-  // A directory a tool writes into holds page content or what the agent saved,
-  // so an extension staged there is refused even with a valid manifest.
-  it.each([".artifacts/s1/ext", ".downloads/s1/ext", "archives/ext", "ASSETS/ext"])(
-    "rejects %s, under a tool output directory",
+  // Only `extensions/` is a staging directory. A directory a tool writes into,
+  // or any other workspace directory, is refused even with a valid manifest.
+  it.each([".artifacts/s1/ext", ".downloads/s1/ext", "archives/ext", "assets/ext", "ext/inside"])(
+    "rejects %s, outside extensions/",
     (rel) => {
       const dir = makeExtensionDir(workspace, rel, {
         name: "x",
@@ -99,24 +110,98 @@ describe("resolveExtensionPath", () => {
         manifest_version: 3,
       });
       for (const input of [rel, dir]) {
-        const run = () => resolveExtensionPath(workspace, input, "extensions_install");
-        if (rel === "ASSETS/ext" && process.platform === "linux") {
-          // Case-sensitive filesystem: `ASSETS` is a different directory.
-          expect(run()).toBe(dir);
-        } else {
-          expect(run).toThrow(/where browxai tools write/);
-        }
+        expect(() => resolveExtensionPath(workspace, input, "extensions_install", noEnv)).toThrow(
+          /load only from the workspace extensions\/ directory/,
+        );
       }
     },
   );
 
-  it("accepts a directory whose name only starts like a tool output directory", () => {
-    const ext = makeExtensionDir(workspace, "archives-mine/ext", {
+  it("rejects a directory whose name only starts like extensions/", () => {
+    makeExtensionDir(workspace, "extensions-mine/ext", {
       name: "x",
       version: "1.0.0",
       manifest_version: 3,
     });
-    expect(resolveExtensionPath(workspace, "archives-mine/ext", "extensions_install")).toBe(ext);
+    expect(() =>
+      resolveExtensionPath(workspace, "extensions-mine/ext", "extensions_install", noEnv),
+    ).toThrow(/load only from/);
+  });
+
+  it("rejects a link under extensions/ that points into a tool output directory", () => {
+    const target = makeExtensionDir(workspace, ".downloads/s1/ext", {
+      name: "x",
+      version: "1.0.0",
+      manifest_version: 3,
+    });
+    mkdirSync(join(workspace, "extensions"), { recursive: true });
+    symlinkSync(target, join(workspace, "extensions", "linked"));
+    expect(() =>
+      resolveExtensionPath(workspace, "extensions/linked", "extensions_install", noEnv),
+    ).toThrow(/load only from/);
+  });
+
+  describe("BROWX_EXTENSIONS_DIR", () => {
+    let outside: string;
+    beforeEach(() => {
+      outside = mkdtempSync(join(tmpdir(), "browxai-ext-operator-"));
+    });
+    afterEach(() => rmSync(outside, { recursive: true, force: true }));
+
+    it("accepts an extension under the operator directory, outside the workspace", () => {
+      const ext = makeExtensionDir(outside, "helper", {
+        name: "helper",
+        version: "1.0.0",
+        manifest_version: 3,
+      });
+      const env = { BROWX_EXTENSIONS_DIR: outside };
+      expect(resolveExtensionPath(workspace, ext, "extensions_install", env)).toBe(ext);
+    });
+
+    it("still accepts the workspace extensions/ directory", () => {
+      const ext = makeExtensionDir(workspace, "extensions/inside", {
+        name: "inside",
+        version: "1.0.0",
+        manifest_version: 3,
+      });
+      const env = { BROWX_EXTENSIONS_DIR: outside };
+      expect(resolveExtensionPath(workspace, "extensions/inside", "extensions_install", env)).toBe(
+        ext,
+      );
+    });
+
+    it("rejects a path outside both directories", () => {
+      const other = mkdtempSync(join(tmpdir(), "browxai-ext-other-"));
+      try {
+        const ext = makeExtensionDir(other, "x", { name: "x", version: "1", manifest_version: 3 });
+        const env = { BROWX_EXTENSIONS_DIR: outside };
+        expect(() => resolveExtensionPath(workspace, ext, "extensions_install", env)).toThrow(
+          /or BROWX_EXTENSIONS_DIR/,
+        );
+      } finally {
+        rmSync(other, { recursive: true, force: true });
+      }
+    });
+
+    it.each([
+      ["a relative path", () => "relative/dir", /must be an absolute path/],
+      ["a directory inside the workspace", () => join(workspace, "downloads"), /overlaps/],
+      ["a parent of the workspace", () => join(workspace, ".."), /overlaps/],
+    ] as Array<[string, () => string, RegExp]>)("refuses %s", (_label, dir, message) => {
+      const ext = makeExtensionDir(workspace, "extensions/inside", {
+        name: "inside",
+        version: "1.0.0",
+        manifest_version: 3,
+      });
+      expect(() =>
+        operatorExtensionsDir(workspace, "extensions_install", { BROWX_EXTENSIONS_DIR: dir() }),
+      ).toThrow(message);
+      expect(() =>
+        resolveExtensionPath(workspace, ext, "extensions_install", {
+          BROWX_EXTENSIONS_DIR: dir(),
+        }),
+      ).toThrow(message);
+    });
   });
 });
 

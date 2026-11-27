@@ -699,7 +699,7 @@ the same gate refusal and hint.
 
 - `read`, default **on**. Tools: `snapshot`, `find`, `text_search`, `inspect`, `screenshot`, `console_read`, `network_read`, `ws_read`, `list_named_refs`, `profile_status`.
 
-  Read-only; can't change page state. Always safe to enable. `cookies_get`, `cookies_list` and `dump_storage_state` return cookie values, which can carry credentials, so in an attached session they wait for the `byob_action` approval (see "What `byob_action` holds").
+  Read-only; can't change page state. Always safe to enable. `cookies_get`, `cookies_list` and `dump_storage_state` return cookie values, and `localstorage_get`, `localstorage_list`, `sessionstorage_get`, `sessionstorage_list` and `idb_get` return stored app data; both can carry credentials, so in an attached session these tools wait for the `byob_action` approval (see "What `byob_action` holds"). In a managed session they run without asking.
 
   `profile_status` is the one workspace-introspection member: it enumerates the managed profile directories under `$BROWX_WORKSPACE/profiles`, reporting each one's name, workspace-rooted path, size, file count, and last-modified time, plus the ids of any live session open on it. It launches nothing and contacts no page. Disclosure is bounded to two origin-ish surfaces, both strictly narrower than what `cookies_list` already returns under this same capability: cookie **domains** (never names, never values) of a context that is **already open**, and the domains/origins recorded in a same-named `auth_save` slot. It does NOT decrypt a closed profile's cookie store and does not claim authentication state. See `docs/tool-reference.md` for the per-field provenance table. Profile names are workspace-rooted through `resolveWorkspacePath`, so a name that escapes the profiles directory is refused; symlinks inside a profile directory are skipped, never followed out of the workspace; and the directory walk carries an entry budget so a pathological workspace cannot stall the agent loop.
 
@@ -711,13 +711,15 @@ the same gate refusal and hint.
 
   The core agentic surface. Confirmation hook gates the irreversible sub-cases (see policy).
 
-  `open_session` itself needs no capability, so a read-only server can open sessions. Two of its arguments need `action`: `storageState` writes cookies and storage into the new session, as `inject_storage_state` does, and `hars` answers the new session's requests from recorded responses, as `route` does. Without `action` either one returns the standard refusal before anything launches.
+  `open_session` itself needs no capability, so a read-only server can open sessions. Three of its arguments need `action`: `storageState` and `authState` write cookies and storage into the new session, as `inject_storage_state` and `auth_load` do, and `hars` answers the new session's requests from recorded responses, as `route` does. Without `action` each one returns the standard refusal before anything launches. A replayed HAR follows the `route` rule below: without `eval` it answers data and static requests only, and a page, iframe, script or worker request goes to the network (a guard route registered after the HAR routes sends it there). The `open_session` result carries `fulfils: "data"` or `"all"`.
 
   `route` and `route_queue` answer a matching request with a body the caller wrote, and `sw_intercept_fetch` does the same for the requests it pauses. Under `action` alone they answer data and static requests only: the resource types `xhr`, `fetch`, `eventsource`, `image`, `media`, `font`, `stylesheet`, `texttrack` and `manifest`. A matching document, script or worker request, or one of any other type, goes to the real network, so the page runs what its own server sent. The check reads the resource type the browser gives the request. The response's content type does not decide it, because a browser runs a classic script whatever its content type when the response has no `nosniff` header. Answering those requests is part of `eval` (below). Each result carries `fulfils: "data"` or `"all"`, and `unroute`, `sw_unintercept_fetch` and a replacing install report `skippedExecutable`, the number of matches left to the network. Pinned by `test/keystone/route-fulfil.keystone.test.ts`.
 
-- `human`, default **on**. Tools: `await_human`, `name_ref`.
+  `caches_put` stores a response the caller wrote in the page's CacheStorage, and an app whose service worker answers from that cache hands it to the page. Under `action` alone it refuses an HTML, XHTML, SVG or JavaScript content type with the standard `eval` refusal, and stores every other response with `X-Content-Type-Options: nosniff`, so the browser runs none of them as a script. With `eval` the headers are stored as given. Pinned by `test/keystone/caches-put-sw.keystone.test.ts`.
 
-  Pure coordination primitives. The human's answer comes only from the `browxai` isolated world (section 7 above); page scripts cannot produce it.
+- `human`, default **on**. Tools: `await_human`, `name_ref`, `profile_snapshot`, `profile_restore`.
+
+  Pure coordination primitives. The human's answer comes only from the `browxai` isolated world (section 7 above); page scripts cannot produce it. `profile_restore` replaces a profile's cookies and storage with a snapshot's, the same seeding `open_session({storageState})` does, so it also needs `action` and returns the standard refusal without it.
 
 - Service-worker tooling, no capability of its own. Tools: `workers_list` (`read`), `worker_message_send` (`action`), `worker_messages_read` (`read`), `sw_intercept_fetch` (`action`), plus `sw_unintercept_fetch` (`action`).
 
@@ -741,7 +743,7 @@ the same gate refusal and hint.
 
 - `eval`, default **off**. Tools: `eval_js`, `poll_eval`.
 
-  Arbitrary page-side JS execution. `poll_eval` re-runs an expression until it is truthy and is gated by `eval` alone. Off by default; loud warning when enabled.
+  Arbitrary page-side JS execution. `poll_eval` re-runs an expression until it is truthy and is gated by `eval` alone. It also lets `route`, `route_queue`, `sw_intercept_fetch` and the HARs `open_session({hars})` replays answer document, script and worker requests, and `caches_put` store a document or script response (see `action` above). Off by default; loud warning when enabled.
 
   `eval` also gates one branch of `route`, `route_queue` and `sw_intercept_fetch`: answering a document, script or worker request with a canned body. A page runs such a response, so a body the caller wrote is caller-written script in the page, the same thing `eval_js` gives. With `eval` on, the three tools answer every matching request and report `fulfils: "all"`. Without it they answer data and static requests only (see `action`), and a canned response whose content type is HTML, XHTML, SVG or a JavaScript type is refused at install with the standard gate refusal (`requiredCapability: "eval"`) and a `reason`, before any route is installed.
 
@@ -819,7 +821,7 @@ the same gate refusal and hint.
 
 - `extensions`, default **off**. Tools: `extensions_install`, `extensions_list`, `extensions_reload`, `extensions_trigger`, `extensions_uninstall`.
 
-  Per-session unpacked-Chromium-extension management, which emits `--load-extension` + `--disable-extensions-except` at managed-profile launch. A loaded extension can read every page the session visits and make arbitrary network requests, so it is **trust-equivalent to the agent's own action surface**: the extension code is in-scope. **It is also effectively `self-approval`:** an extension with the `debugger` permission can reach the human world over CDP and answer `await_human` and every confirm hook (section 7). The same holds for such an extension already installed in a profile an attached session drives. Headed + persistent sessions only: `incognito` / `attached` sessions refuse (Chromium does not load unpacked extensions in incognito, and the attached/BYOB browser is not-owned). Workspace-rooted path safety on `extensions_install`. It also refuses a directory under one that browxai tools write into (`.artifacts/`, `.auth-states/`, `.downloads/`, `archives/`, `assets/`, `diagnostics/`, `dom-dumps/`, `elements/`, `har/`, `heap-snapshots/`, `pdfs/`, `perf/`, `perf-traces/`, `replays/`, `screenshots/`, `videos/`), compared through links and without case where the filesystem folds it: downloads and exports hold page content and `.artifacts/` holds what the agent saved, so an extension staged there would run code the page or the agent wrote. A tool that writes to an agent-chosen path can still write elsewhere in the workspace, so the operator keeps extensions in a directory the agent does not write to. install/reload/uninstall **rebuild the underlying browser context** (refs and console/network/ws buffers reset; profile state on disk survives). Loud one-time warning at server boot. Same posture class as `eval` / `network-body` / `secrets`.
+  Per-session unpacked-Chromium-extension management, which emits `--load-extension` + `--disable-extensions-except` at managed-profile launch. A loaded extension can read every page the session visits and make arbitrary network requests, so it is **trust-equivalent to the agent's own action surface**: the extension code is in-scope. **It is also effectively `self-approval`:** an extension with the `debugger` permission can reach the human world over CDP and answer `await_human` and every confirm hook (section 7). The same holds for such an extension already installed in a profile an attached session drives. Headed + persistent sessions only: `incognito` / `attached` sessions refuse (Chromium does not load unpacked extensions in incognito, and the attached/BYOB browser is not-owned). `extensions_install` loads only from the workspace `extensions/` directory, or from the directory the operator names in `BROWX_EXTENSIONS_DIR`, compared through links and without case where the filesystem folds it. `extensions/` is write-protected like `plugins/`, so no tool (an export, a download, `asset_export` with an agent-chosen `intoDir`) can put files there, and `BROWX_EXTENSIONS_DIR` is env-only and refused when it overlaps the workspace. An extension the session loads is therefore one the operator staged, never code the page or the agent wrote. install/reload/uninstall **rebuild the underlying browser context** (refs and console/network/ws buffers reset; profile state on disk survives). Loud one-time warning at server boot. Same posture class as `eval` / `network-body` / `secrets`.
 
 - `stealth`, default **off**. Tools: none, this one is a behaviour gate.
 
@@ -837,7 +839,9 @@ the same gate refusal and hint.
 
   Per-session clipboard model for `shortcut` copy, cut and paste chords. Each session keeps its own buffer. The shared OS clipboard is written only at the moment of a copy, cut or paste command (`pbcopy` on macOS, `clip` on Windows, `xclip` on Linux, fixed argv, content over stdin) and is never read back into a session, so one session cannot pick up what a person or another session put there. With the capability off, `shortcut` still reports what the page handled and leaves the OS clipboard alone.
 
-- `file-io`, default **off**. Tools: `upload_file`, `drop_files`, `download_get`, `downloads_capture`, `fs_picker_respond`, `screenshot_on`, `screenshot_schedule`, `page_archive`, `asset_export`, `dom_export`, `element_export`, `get_video`, `stop_video`, the `path` argument of `screenshot`, and a `file:` URL passed to `navigate`. Also the tools under `action` or `read` that write a workspace file: `pdf_save`, `heap_snapshot`, `perf_start` and `perf_stop`, `perf_audit`, `layout_thrash_trace`, `start_har`, `artifact_save`, `open_session` with `har` or `recordVideo`, and the `path` argument of `dump_storage_state` and `export_playwright_script`. Each keeps its own capability and adds `file-io` for the write.
+- `file-io`, default **off**. Tools: `upload_file`, `drop_files`, `download_get`, `downloads_capture`, `fs_picker_respond`, `screenshot_on`, `screenshot_schedule`, `page_archive`, `asset_export`, `dom_export`, `element_export`, `get_video`, `stop_video`, the `path` argument of `screenshot`, and a `file:` URL passed to `navigate`. Also the tools under `action`, `read` or `human` that write a workspace file: `pdf_save`, `heap_snapshot`, `perf_start` and `perf_stop`, `perf_audit`, `layout_thrash_trace`, `start_har`, `artifact_save`, `auth_save` (the `.auth-states/` slot), `profile_snapshot` (the `profile-snapshots/` copy), `open_session` with `har` or `recordVideo`, and the `path` argument of `dump_storage_state` and `export_playwright_script`. Each keeps its own capability and adds `file-io` for the write.
+
+  Two writers sit under their own off-by-default capability and do not add `file-io`: `start_recording({replay})` writes the `.browx` archive under `replay`, and the diagnostics recorder writes its JSONL under `diagnostics`. Reading a workspace file needs no `file-io`: `inject_storage_state({state: path})`, `open_session` `storageState` as a path, `authState` and `hars`, `auth_load`, `memory_diff`, `perf_insights` and `heap_retainers` read from the workspace under their own capability. The workspace path rules apply to every one of them.
 
   Tools that read a file into the page or write page-derived bytes to disk. Every path goes through `resolveWorkspacePath` in `src/util/workspace.ts`, so a path that escapes `$BROWX_WORKSPACE` is rejected. `navigate` to a `file:` URL follows the same rule as a file read: the path must sit inside the workspace after links are resolved, and outside the browser profile directories. The `file_upload` and `file_download` confirm hooks (see `BROWX_CONFIRM_REQUIRED`) are reserved names that no tool consults yet, so the `file-io` gate and the workspace path rules are what hold these tools. Downloaded and exported files carry real page content and are as sensitive as the session that produced them.
 
@@ -932,7 +936,7 @@ path (`pdf_save`, `dom_export`, `element_export`, `page_archive`, `asset_export`
 `screenshot`, heap snapshots, traces, HAR, video, replay, `dump_storage_state`,
 `export_playwright_script`, the file-picker write target) refuse
 `<workspace>/config.json`, `plugins.json`, `plugins-lock.json`, `chrome.pid`, `chrome.profile`, the snapshot key,
-the `plugins/`, `profile/`, `profiles/` and `profile-snapshots/` trees, the
+the `plugins/`, `extensions/`, `profile/`, `profiles/` and `profile-snapshots/` trees, the
 `BROWX_DEFAULT_PROFILE` directory and the `chrome-profile/` directory that
 releases before 0.13.0 used for `chrome start`, case-insensitively and after
 resolving symlinks. A write whose real path leaves `$BROWX_WORKSPACE` is refused
@@ -1020,13 +1024,16 @@ handler. A tool added under one of those capabilities is held with no code of it
 not held themselves, and each tool they dispatch is.
 
 Tools under those capabilities that change nothing in the browser are not held:
-`wait_for`, `unroute`, `ws_unintercept`, `sw_unintercept_fetch`, `stop_har`, `perf_start`, `perf_stop`, `perf_insights`, `coverage_start`, `heap_snapshot`, `heap_retainers`, `artifact_save`, `auth_delete`, `pdf_save`, `flake_check`, `downloads_capture`, `download_get`, `get_video`, `stop_video`, `asset_export`, `dom_export`, `element_export`, `page_archive`, `screenshot_on`, `screenshot_schedule` and `extensions_list`. Each one says why at its registration, and
+`wait_for`, `unroute`, `ws_unintercept`, `sw_unintercept_fetch`, `stop_har`, `perf_start`, `perf_stop`, `perf_insights`, `coverage_start`, `heap_retainers`, `artifact_save`, `auth_delete`, `pdf_save`, `flake_check`, `downloads_capture`, `download_get`, `get_video`, `stop_video`, `asset_export`, `dom_export`, `element_export`, `page_archive`, `screenshot_on`, `screenshot_schedule` and `extensions_list`. Each one says why at its registration, and
 `test/architecture/byob-hold-completeness.test.ts` pins the list, so adding one is a
 visible change. `read` tools, `await_human`, `approve_actions` and the session and config
-tools are not held, with three exceptions: `cookies_get`, `cookies_list` and
-`dump_storage_state` return the attached browser's cookie values, so each opts in with
+tools are not held, with eight exceptions. `cookies_get`, `cookies_list` and
+`dump_storage_state` return the attached browser's cookie values, and `localstorage_get`,
+`localstorage_list`, `sessionstorage_get`, `sessionstorage_list` and `idb_get` return the
+values apps keep in web storage and IndexedDB, session tokens among them. Each opts in with
 `byobConfirm: true` and is held like a tool that changes the browser. The same test pins
-those three.
+those eight. `heap_snapshot` is held too: it is an `action` tool, and the snapshot holds
+the attached tab's whole JS heap. A server without `file-io` refuses it before the prompt.
 
 A refused call returns `error: "policy: …"`. The ways through are the operator's: answer
 the prompt, remove `byob_action` from `BROWX_CONFIRM_REQUIRED`, or enable `self-approval`

@@ -12,6 +12,7 @@
 import type { BrowserSession } from "./types.js";
 import type { EngineKind } from "../engine/types.js";
 import type { RefRegistry } from "../page/refs.js";
+import type { FulfilScope } from "../page/fulfil-policy.js";
 import type { SnapshotSubstrate } from "../page/snapshot-substrate.js";
 import type { FrameRegistry } from "../page/frames.js";
 import type { ConsoleBuffer } from "../page/console.js";
@@ -393,4 +394,8 @@ export interface OpenSpec {
    *  {notFound:"fallback"})` — requests in the archive are served from it,
    *  anything missing falls through to the live network. */
   hars?: string[];
+  /** Which requests the replayed HARs answer: `"data"` (the default) serves
+   *  data and static requests only, `"all"` serves every match and is what a
+   *  server with `eval` passes. */
+  harsFulfils?: FulfilScope;
 }

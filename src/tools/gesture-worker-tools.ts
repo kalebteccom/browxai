@@ -218,7 +218,7 @@ export function registerGestureWorkerTools(
       const executable = [
         response.contentType,
         ...Object.entries(response.headers ?? {})
-          .filter(([name]) => name.toLowerCase() === "content-type")
+          .filter(([name]) => name.trim().toLowerCase() === "content-type")
           .map(([, value]) => value),
       ].find(isExecutableContentType);
       if (executable !== undefined) {

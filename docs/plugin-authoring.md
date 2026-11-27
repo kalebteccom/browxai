@@ -130,7 +130,9 @@ The `api` argument exposes:
     object to keep keys you did not list. Pass an empty object (or omit)
     for argless tools. The host validates every call against this schema,
     and keys the schema does not declare are dropped before your handler
-    runs, so declare every argument the tool reads. If you import `zod`,
+    runs, so declare every argument the tool reads. That holds for every
+    caller: an MCP client, `batch`, another plugin's `api.callTool` and
+    the SDK all get the same refusal for arguments that do not match. If you import `zod`,
     use `zod@^4` (what the host ships) and list it under
     `peerDependencies` (`"zod": "^4.0.0"`) so you share the host's copy.
   - `handler(args)` returns the MCP envelope `{content:[...]}`.
@@ -216,10 +218,10 @@ server's active set. A mismatch disables your plugin with status
 are resolved ONCE at server start.
 
 At dispatch time every tool you register goes through the host's
-capability gate against your declared `capabilities` (specifically:
-the first one). A call against the tool with the capability NOT in
-the active set returns the same structured `requiredCapability` shape
-core browxai tools return.
+capability gate against every capability your plugin declared. A call
+against the tool while any one of them is missing from the active set
+returns the same structured `requiredCapability` shape core browxai
+tools return, naming the first missing one.
 
 The v1 plugin-runtime contract gates the WHOLE plugin against the
 declared `capabilities` list. Fine-grained per-tool capability

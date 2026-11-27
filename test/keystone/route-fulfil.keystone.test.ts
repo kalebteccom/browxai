@@ -11,12 +11,16 @@
 // uses `contentType: "application/json"` on purpose: a browser runs a classic
 // script whatever its content type when the response carries no `nosniff`.
 //
+// `open_session({hars})` follows the same rule for the responses a HAR holds:
+// the archive answers the page's fetch, and its copy of the page and of
+// `/app.js` is used only with `eval`.
+//
 // The page reports what it loaded as one paragraph per source (`doc=`,
 // `script=`, `api=`, `worker=`, `shared-fetch=`), so each case reads the result
 // with an exact `text_search` and needs no `eval_js`.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -404,6 +408,121 @@ describe("route fulfilment with eval enabled", () => {
       expect(await has(call, session, "doc=real")).toBe(false);
 
       await call("unroute", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
+/** One HAR entry answering GET `url` with `body` typed `mimeType`. */
+function harEntry(url: string, mimeType: string, body: string): Record<string, unknown> {
+  return {
+    startedDateTime: new Date(0).toISOString(),
+    time: 0,
+    request: {
+      method: "GET",
+      url,
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: [],
+      queryString: [],
+      headersSize: -1,
+      bodySize: 0,
+    },
+    response: {
+      status: 200,
+      statusText: "OK",
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: [{ name: "content-type", value: mimeType }],
+      content: { size: Buffer.byteLength(body), mimeType, text: body },
+      redirectURL: "",
+      headersSize: -1,
+      bodySize: Buffer.byteLength(body),
+    },
+    cache: {},
+    timings: { send: 0, wait: 0, receive: 0 },
+  };
+}
+
+/** Write a HAR holding the fixture's page, its `/app.js` and its `/api/data`,
+ *  each marked `har`, and return its workspace-relative path. */
+function writeReplayHar(name: string): string {
+  const entries = [
+    harEntry(`${base}/page`, "text/html; charset=utf-8", PAGE.replace("doc=real", "doc=har")),
+    harEntry(`${base}/app.js`, "text/javascript", say("script=har")),
+    harEntry(`${base}/api/data`, "application/json", '{"from":"har"}'),
+  ];
+  const har = { log: { version: "1.2", creator: { name: "keystone", version: "1" }, entries } };
+  writeFileSync(join(workspace, name), JSON.stringify(har));
+  return name;
+}
+
+describe("HAR replay with the default capability set", () => {
+  let server: Booted;
+  let call: Call;
+  const session = "ks-har-replay";
+
+  beforeAll(async () => {
+    server = await boot();
+    call = callerFor(server);
+  }, KEYSTONE_TIMEOUT);
+
+  afterAll(async () => {
+    await server?.shutdown().catch(() => undefined);
+  }, KEYSTONE_TIMEOUT);
+
+  it(
+    "serves the fetch from the HAR and loads the real page and script",
+    async () => {
+      const opened = await call<{ ok: boolean; harsReplay: number; fulfils: string }>(
+        "open_session",
+        { session, mode: "incognito", hars: [writeReplayHar("ks-replay-default.har")] },
+      );
+      expect(opened.ok).toBe(true);
+      expect(opened.harsReplay).toBe(1);
+      expect(opened.fulfils).toBe("data");
+
+      await call("navigate", { session, url: `${base}/page` });
+      expect(await appears(call, session, "api=har")).toBe(true);
+      expect(await has(call, session, "doc=real")).toBe(true);
+      expect(await has(call, session, "script=real")).toBe(true);
+      expect(await has(call, session, "doc=har")).toBe(false);
+      expect(await has(call, session, "script=har")).toBe(false);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
+describe("HAR replay with eval enabled", () => {
+  let server: Booted;
+  let call: Call;
+  const session = "ks-har-replay-eval";
+
+  beforeAll(async () => {
+    server = await boot("read,navigation,action,human,eval");
+    call = callerFor(server);
+  }, KEYSTONE_TIMEOUT);
+
+  afterAll(async () => {
+    await server?.shutdown().catch(() => undefined);
+  }, KEYSTONE_TIMEOUT);
+
+  it(
+    "serves the page, the script and the fetch from the HAR",
+    async () => {
+      const opened = await call<{ ok: boolean; fulfils: string }>("open_session", {
+        session,
+        mode: "incognito",
+        hars: [writeReplayHar("ks-replay-eval.har")],
+      });
+      expect(opened.ok).toBe(true);
+      expect(opened.fulfils).toBe("all");
+
+      await call("navigate", { session, url: `${base}/page` });
+      expect(await appears(call, session, "api=har")).toBe(true);
+      expect(await has(call, session, "doc=har")).toBe(true);
+      expect(await has(call, session, "script=har")).toBe(true);
+      expect(await has(call, session, "doc=real")).toBe(false);
     },
     KEYSTONE_TIMEOUT,
   );

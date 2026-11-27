@@ -13,8 +13,9 @@
 //   extensions       extensions_install / _list / _reload / _trigger / _uninstall
 //   canvas           canvas_capture, gesture_chain, canvas_world_to_screen,
 //                    canvas_screen_to_world, canvas_query
-//   file-io          the 13 tool-gated tools, the `action` and `read` tools that
-//                    write a workspace file (`artifact_save`, `start_har`, and
+//   file-io          the 13 tool-gated tools, the `action`, `read` and `human`
+//                    tools that write a workspace file (`artifact_save`,
+//                    `start_har`, `auth_save`, `profile_snapshot`, and
 //                    `dump_storage_state` / `export_playwright_script` with `path`),
 //                    plus the `screenshot({path})` branch and `navigate` to a `file:` URL
 //   diagnostics      diagnostics_note
@@ -24,13 +25,15 @@
 // Not table-driven, because the gate is an argument or a result field:
 //   network-body     `open_session({har:{content:"embed"}})`, and the body of a
 //                    `caches_get` entry, which is left out with `bodyOmitted`
-//   action           `open_session` `storageState` / `hars` on a server without it
+//   action           `open_session` `storageState` / `authState` / `hars`, and
+//                    `profile_restore`, on a server without it
 //   file-io          `pdf_save`, `heap_snapshot`, `perf_start`, `perf_stop`,
 //                    `perf_audit`, `layout_thrash_trace` on an open session (the
 //                    engine check runs first, so they read the session), and
 //                    `open_session` with `har` or `recordVideo`
 //   secrets          `get_credential` on a server with `credentials` alone
-//   extensions       `extensions_install` from a directory tools write into
+//   extensions       `extensions_install` from outside the workspace `extensions/`
+//                    directory, and a tool writing into that directory
 // Not table-driven, because the gate is a behaviour branch and not a tool gate:
 //   clipboard        `shortcut` copy/cut/paste leaves the OS clipboard and the
 //                    per-session buffer alone
@@ -119,6 +122,8 @@ const DENIALS: readonly Case[] = [
   { capability: "file-io", tool: "stop_video", args: {} },
   { capability: "file-io", tool: "get_video", args: {} },
   { capability: "file-io", tool: "artifact_save", args: { name: "ks-denied", content: "x" } },
+  { capability: "file-io", tool: "auth_save", args: { name: "ks-denied" } },
+  { capability: "file-io", tool: "profile_snapshot", args: { snapshot: "ks-denied" } },
   { capability: "file-io", tool: "start_har", args: { path: "ks-file-io-denials/x.har" } },
   {
     capability: "file-io",
@@ -509,13 +514,14 @@ describe("capability denials with the default capability set", () => {
 // here is refused before a browser starts.
 describe("arguments gated on a capability the server lacks", () => {
   it(
-    "open_session refuses storageState and hars on a server without action",
+    "open_session refuses storageState, authState and hars on a server without action",
     async () => {
       const server = await boot("read,navigation,human");
       try {
         const call = callerFor(server);
         for (const seed of [
           { storageState: { cookies: [], origins: [] } },
+          { authState: "ks-missing" },
           { hars: ["ks-missing.har"] },
         ]) {
           const denied = await call<Denied & { reason: string }>("open_session", {
@@ -525,10 +531,28 @@ describe("arguments gated on a capability the server lacks", () => {
           });
           expect(denied.ok, JSON.stringify(seed)).toBe(false);
           expect(denied.requiredCapability).toBe("action");
-          expect(denied.reason).toMatch(/storageState|hars/);
+          expect(denied.reason).toMatch(/storageState|authState|hars/);
         }
         const listed = await call<{ sessions: unknown[] }>("list_sessions", {});
         expect(listed.sessions).toEqual([]);
+      } finally {
+        await server.shutdown().catch(() => undefined);
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "profile_restore refuses on a server without action",
+    async () => {
+      const server = await boot("read,navigation,human");
+      try {
+        const denied = await callerFor(server)<Denied & { reason: string }>("profile_restore", {
+          snapshot: "ks-missing",
+        });
+        expect(denied.ok).toBe(false);
+        expect(denied.requiredCapability).toBe("action");
+        expect(denied.reason).toMatch(/profile_restore replaces/);
       } finally {
         await server.shutdown().catch(() => undefined);
       }
@@ -626,6 +650,21 @@ describe("the same surfaces with their capabilities on", () => {
   );
 
   it(
+    "file-io: auth_save writes its slot file",
+    async () => {
+      await call("navigate", { session, url: `${fixture.url}/` });
+      const saved = await call<{ ok: boolean; requiredCapability?: string }>("auth_save", {
+        session,
+        name: "ks-enabled",
+      });
+      expect(saved.requiredCapability).toBeUndefined();
+      expect(saved.ok).toBe(true);
+      expect(existsSync(join(workspace, ".auth-states", "ks-enabled.json"))).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
     "file-io: layout_thrash_trace writes its trace file",
     async () => {
       const r = await call<{ ok: boolean; tracePath: string; requiredCapability?: string }>(
@@ -682,6 +721,21 @@ describe("the same surfaces with their capabilities on", () => {
   );
 
   it(
+    "extensions: no tool writes into the workspace extensions/ directory",
+    async () => {
+      const denied = await call<{ ok: boolean; error: string }>("asset_export", {
+        session,
+        filter: {},
+        intoDir: "extensions/ks-written",
+      });
+      expect(denied.ok).toBe(false);
+      expect(denied.error).toMatch(/refusing to write/);
+      expect(existsSync(join(workspace, "extensions", "ks-written"))).toBe(false);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
     "extensions: an extension staged under .artifacts is refused",
     async () => {
       const dir = join(workspace, ".artifacts", "ks-ext");
@@ -703,8 +757,8 @@ describe("the same surfaces with their capabilities on", () => {
         });
         expect(denied.ok).toBe(false);
         // The session is headless, so the headed-session check refuses first. The
-        // tool-output directory guard has its own unit test in extensions.test.ts.
-        expect(denied.error).toMatch(/where browxai tools write|requires a headed session/);
+        // staging-directory rule has its own unit test in extensions.test.ts.
+        expect(denied.error).toMatch(/load only from|requires a headed session/);
       } finally {
         await call("close_session", { session: "ks-ext-persistent" });
       }

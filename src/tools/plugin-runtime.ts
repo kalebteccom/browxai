@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { z } from "zod";
 
 import { startPluginRuntime } from "../plugin/runtime.js";
-import { toToolInput } from "../plugin/input-schema.js";
+import { toToolInput, type ToolInput } from "../plugin/input-schema.js";
 import type {
   PluginInputSchema,
   PluginRecord,
@@ -15,7 +15,7 @@ import { log } from "../util/logging.js";
 import type { ToolHost, ToolResponse } from "./host.js";
 import { activeSecretRegistries, maskToolResponse } from "./host-egress-mask.js";
 import { docsUrl } from "../util/docs-links.js";
-import { jsonResult, type TextResponse } from "./json-result.js";
+import { errorResult, jsonResult, type TextResponse } from "./json-result.js";
 
 /** The createServer-owned pieces the plugin runtime needs that the shared
  *  `ToolHost` doesn't surface: the raw MCP server (for plugin-tool
@@ -96,6 +96,9 @@ export async function wirePluginRuntime(
    *  tools; `isToolEnabled` consults this first for namespaced tools and
    *  falls back to the core map otherwise. */
   const pluginToolCapability = new Map<string, Capability | undefined>();
+  /** Every capability each plugin tool's plugin declared. The gate refuses a
+   *  call when any one of them is off. */
+  const pluginToolCapabilities = new Map<string, readonly Capability[]>();
   /** Per-plugin-tool ownership map (tool → plugin npm name). Mirrors the
    *  runtime's internal liveTools registry so the host-side `ownerOf`
    *  hook can answer "who owns tool X" without crossing the runtime
@@ -114,9 +117,9 @@ export async function wirePluginRuntime(
   // consults `TOOL_CAPABILITY` for the core surface only. The wrapper
   // injected on every plugin tool registration does the check inline.
   const pluginGate = (toolName: string): TextResponse | null => {
-    const cap = pluginToolCapability.get(toolName);
-    if (cap === undefined) return null; // no capability declared → allowed
-    if (caps.enabled.has(cap)) return null;
+    const declared = pluginToolCapabilities.get(toolName) ?? [];
+    const cap = declared.find((c) => !caps.enabled.has(c));
+    if (cap === undefined) return null; // every declared capability is on, or none declared
     return jsonResult({
       ok: false,
       error: `plugin tool "${toolName}" is disabled: its capability "${cap}" is not enabled on this server`,
@@ -129,21 +132,26 @@ export async function wirePluginRuntime(
     });
   };
 
+  /** The object schema a plugin tool's arguments are parsed with, or undefined
+   *  for a tool that declared none. */
+  const pluginArgSchema = (input: ToolInput | undefined): z.ZodTypeAny | undefined => {
+    if (input === undefined) return undefined;
+    return input.passthrough ? z.object(input.shape).passthrough() : z.object(input.shape);
+  };
+
   const registerPluginTool = (
     name: string,
     def: { description: string; inputSchema?: PluginInputSchema | undefined },
     handler: PluginToolHandler,
-    capability: string | undefined,
+    capabilities: readonly string[],
     ownerPlugin: string,
   ): void => {
     // Convert before recording anything: a malformed declaration throws here
     // and fails the plugin's load, leaving no half-registered tool behind.
     const input = toToolInput(name, def.inputSchema);
-    if (capability !== undefined) {
-      pluginToolCapability.set(name, capability as Capability);
-    } else {
-      pluginToolCapability.set(name, undefined);
-    }
+    const argSchema = pluginArgSchema(input);
+    pluginToolCapabilities.set(name, capabilities as readonly Capability[]);
+    pluginToolCapability.set(name, capabilities[0] as Capability | undefined);
     notePluginTool?.(name, pluginToolCapability.get(name));
     pluginToolOwner.set(name, ownerPlugin);
     pluginToolDef.set(name, {
@@ -159,9 +167,18 @@ export async function wirePluginRuntime(
       const startedAt = Date.now();
       const gated = pluginGate(name);
       if (gated) return gated;
+      // The MCP wire parses arguments before dispatch, but `batch`, another
+      // plugin's `api.callTool` and the SDK transports call this directly, so
+      // the declared schema is applied here for every caller.
+      const parsed = argSchema ? argSchema.safeParse(args ?? {}) : undefined;
+      if (parsed && !parsed.success) {
+        return errorResult(
+          `${name}: the arguments do not match the tool's input schema.\n${z.prettifyError(parsed.error)}`,
+        );
+      }
       let inner: PluginToolResponse;
       try {
-        inner = await handler(args);
+        inner = await handler(parsed ? parsed.data : args);
       } catch (e) {
         inner = jsonResult({
           ok: false,

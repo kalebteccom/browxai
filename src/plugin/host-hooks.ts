@@ -38,17 +38,17 @@ export interface RuntimeHostHooks {
    * (capability gate, metrics, diagnostics) so plugin tools behave
    * identically to core tools at the dispatch boundary.
    *
-   * `capability` is whatever the plugin declared for itself — passed
-   * through so the host's gate can refuse if the capability isn't
-   * active. `ownerPlugin` is the npm name of the plugin registering
-   * the tool — kept on the host side so `ownerOf` can answer cross-
-   * plugin lookups.
+   * `capabilities` is every capability the plugin declared for itself,
+   * passed through so the host's gate refuses a call when any one of
+   * them isn't active. `ownerPlugin` is the npm name of the plugin
+   * registering the tool — kept on the host side so `ownerOf` can answer
+   * cross-plugin lookups.
    */
   registerTool(
     name: string,
     def: { description: string; inputSchema?: PluginInputSchema | undefined },
     handler: PluginToolHandler,
-    capability: string | undefined,
+    capabilities: readonly string[],
     ownerPlugin: string,
   ): void;
 

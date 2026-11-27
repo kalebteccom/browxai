@@ -25,16 +25,18 @@
 //
 // Replay strategy. `open_session({hars: ["file.har", ...]})` calls
 // `context.routeFromHAR(file, {notFound:"fallback"})` on each path immediately
-// after context creation. Files that escape the workspace are rejected (the
-// `resolveWorkspacePath` helper); a missing file is a hard error (no silent
-// fallback to network on a typo).
+// after context creation. Without `eval`, a guard route then keeps the archive
+// to data and static requests, as `route` is kept (`fulfil-policy.ts`). Files
+// that escape the workspace are rejected (the `resolveWorkspacePath` helper); a
+// missing file is a hard error (no silent fallback to network on a typo).
 //
 // Per-session state lives in `SessionEntry.har`; the registry's HAR field is
 // initialised at session creation and consulted by `start_har`/`stop_har`.
 
 import { existsSync, mkdirSync, statSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { BrowserContext } from "playwright-core";
+import type { BrowserContext, Route } from "playwright-core";
+import { isDataResourceType, type FulfilScope } from "./fulfil-policy.js";
 import { resolveWorkspaceReadPath, resolveWorkspaceWritePath } from "../session/storage.js";
 
 /** Maximum size (in bytes) at which a finalized HAR is returned inline rather
@@ -239,17 +241,35 @@ export function readHarIfSmall(
   return readFileSync(path, "utf8");
 }
 
+/** The route handler that keeps a replayed HAR to data and static requests.
+ *  Registered after the HAR routes, so it runs first: a request whose resource
+ *  type is outside `DATA_RESOURCE_TYPES` goes straight to the network, and
+ *  every other request falls back into the HAR routes. Exported for the unit
+ *  test. */
+export async function harReplayGuard(route: Route): Promise<void> {
+  if (isDataResourceType(route.request().resourceType())) return route.fallback();
+  return route.continue();
+}
+
 /** Apply replay HAR(s) to a live context. Each file is wired with
  *  `notFound:"fallback"` so a request that isn't in the archive falls through
  *  to the live network (the safer default; agents who want a hermetic replay
- *  can route the rest themselves). */
+ *  can route the rest themselves).
+ *
+ *  A HAR answers with bodies the caller supplied, as `route` does, so it
+ *  follows the same rule (`fulfil-policy.ts`): with `scope` `"data"` only data
+ *  and static requests are served from the archive, and a page, iframe, script
+ *  or worker request goes to the network. `"all"` (the server has `eval`)
+ *  serves every match. */
 export async function applyHarReplay(
   context: BrowserContext,
   files: readonly string[],
+  scope: FulfilScope = "data",
 ): Promise<void> {
   for (const f of files) {
     await context.routeFromHAR(f, { notFound: "fallback" });
   }
+  if (scope === "data" && files.length > 0) await context.route("**/*", harReplayGuard);
 }
 
 /** Build the Playwright `recordHar` option for `open_session({har})`. The

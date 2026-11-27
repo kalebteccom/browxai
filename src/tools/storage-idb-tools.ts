@@ -107,8 +107,11 @@ export function registerStorageIdbTools(
     "idb_get",
     {
       capability: "read",
+      // Held in an attached session: returns a stored value from the attached
+      // browser's IndexedDB, where apps keep tokens and user data.
+      byobConfirm: true,
       description:
-        "Read the value at a key in an object store: `{found:true, value}` or `{found:false}`. Keys may be strings, numbers, dates (as ISO strings) or arrays. Values travel as JSON, so a value that is not JSON-serialisable (Blob, ArrayBuffer, Map, Set) returns a structured error and stays in the store; store binary data base64-encoded at the app level. A value the app stored with `JSON.stringify` comes back as the raw string, so call `JSON.parse` yourself if you expect an object. Use `idb_list_databases` and `idb_list_stores` to find names. Origin-scoped: navigate first.",
+        "Read the value at a key in an object store: `{found:true, value}` or `{found:false}`. Keys may be strings, numbers, dates (as ISO strings) or arrays. Values travel as JSON, so a value that is not JSON-serialisable (Blob, ArrayBuffer, Map, Set) returns a structured error and stays in the store; store binary data base64-encoded at the app level. A value the app stored with `JSON.stringify` comes back as the raw string, so call `JSON.parse` yourself if you expect an object. Use `idb_list_databases` and `idb_list_stores` to find names. Origin-scoped: navigate first. In an attached session the call waits for the `byob_action` approval.",
       inputSchema: {
         dbName: z.string().describe("Database name."),
         storeName: z.string().describe("Object store name (must exist)."),
