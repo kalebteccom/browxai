@@ -1,6 +1,8 @@
-// Runtime keystone (RFC 0015, test 4): `browxai runtime install`, `update`, `gc`
-// and `rollback` against a loopback npm registry, with real npm, the real
-// launcher and real processes. No browser.
+// Runtime keystone (RFC 0015, test 4): `browxai runtime install`, `update`, `gc`,
+// `rollback` and the background job's one-shot run, `update --auto`, against a
+// loopback npm registry, with real npm, the real launcher and real processes. No
+// browser, and no launchd or systemd: the job itself is a fake here, and its
+// unit files are tested in src/cli/runtime-agent.test.ts.
 //
 // The packages are small stand-ins named `browxai`, packed with `npm pack`: each
 // `dist/cli.js` answers `--version`, `doctor --json` and an MCP handshake with its
@@ -14,7 +16,10 @@
 // server still answers `tools/list` as A after a forced gc that kept A because it
 // is in use; rollback goes back one version; a C whose `--version` lies fails the
 // smoke check and never becomes current; a deprecated D is skipped; once the A
-// server exits, gc removes A.
+// server exits, gc removes A. Then `update --auto`, on a clock the test moves:
+// the first run after a boot waits; the next applies a version published two
+// days earlier; a version whose updater can't start fails smoke step 4 and
+// `current` stays; with the registry gone the run exits 0 and backs off.
 
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import {
@@ -32,7 +37,9 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { testUid } from "../../src/cli/__fixtures__/runtime-tree.js";
+import { fakeAgent, testUid } from "../../src/cli/__fixtures__/runtime-tree.js";
+import type { AutoClock } from "../../src/cli/runtime-auto.js";
+import { readJournal } from "../../src/cli/runtime-journal.js";
 import { runtimePaths, versionDir } from "../../src/cli/runtime-layout.js";
 import { findNpmCli } from "../../src/cli/runtime-npm.js";
 import { readCurrent, readState } from "../../src/cli/runtime-store.js";
@@ -40,6 +47,7 @@ import { runRuntime } from "../../src/cli/runtime.js";
 import { gatedDescribe, hostGate } from "./keystone-gate.js";
 
 const STEP_TIMEOUT = 120_000;
+const HOUR = 60 * 60 * 1000;
 const NPM_CLI = findNpmCli(process.execPath);
 const describeRuntime = gatedDescribe(
   hostGate(
@@ -48,12 +56,17 @@ const describeRuntime = gatedDescribe(
   ),
 );
 
-const STUB = (version: string, says: string) => `#!/usr/bin/env node
+const STUB = (version: string, says: string, noUpdater = false) => `#!/usr/bin/env node
 "use strict";
 const V = ${JSON.stringify(version)};
 const argv = process.argv.slice(2);
 if (argv[0] === "--version") {
   process.stdout.write(${JSON.stringify(says)} + "\\n");
+  process.exit(0);
+}
+if (argv[0] === "runtime" && argv[1] === "status" && argv[2] === "--json") {
+  if (${JSON.stringify(noUpdater)}) process.exit(2);
+  process.stdout.write(JSON.stringify({ dir: process.env.BROWX_RUNTIME_DIR, layout: "absent" }) + "\\n");
   process.exit(0);
 }
 if (argv[0] === "doctor" && argv[1] === "--json") {
@@ -126,14 +139,20 @@ function packument(): object {
 
 /** Pack a stand-in browxai at `version` whose `--version` prints `says`, and
  *  publish it on the loopback registry under the `latest` tag. */
-function publish(version: string, opts: { says?: string; deprecated?: string } = {}): void {
+function publish(
+  version: string,
+  opts: { says?: string; deprecated?: string; time?: string; noUpdater?: boolean } = {},
+): void {
   const pkg = join(tmp, "src", version);
   mkdirSync(join(pkg, "dist"), { recursive: true });
   writeFileSync(
     join(pkg, "package.json"),
     JSON.stringify({ name: "browxai", version, files: ["dist"] }),
   );
-  writeFileSync(join(pkg, "dist", "cli.js"), STUB(version, opts.says ?? version));
+  writeFileSync(
+    join(pkg, "dist", "cli.js"),
+    STUB(version, opts.says ?? version, opts.noUpdater ?? false),
+  );
   writeFileSync(
     join(pkg, "dist", "lazy.js"),
     `module.exports = { version: ${JSON.stringify(version)} };\n`,
@@ -155,19 +174,27 @@ function publish(version: string, opts: { says?: string; deprecated?: string } =
     tgz: join(dest, packed!.filename),
     integrity: packed!.integrity,
     shasum: packed!.shasum,
-    time: new Date().toISOString(),
+    time: opts.time ?? new Date().toISOString(),
     ...(opts.deprecated ? { deprecated: opts.deprecated } : {}),
   });
   tags.latest = version;
 }
 
-async function runtime(args: string[]): Promise<{ code: number; out: string; err: string }> {
+async function runtime(
+  args: string[],
+  extra: { clock?: AutoClock; env?: NodeJS.ProcessEnv } = {},
+): Promise<{ code: number; out: string; err: string }> {
   let out = "";
   let err = "";
   const paths = runtimePaths(join(home, ".browxai-runtime"));
   const code = await runRuntime(args, {
     ctx: {
-      env: { ...npmEnv, BROWX_WORKSPACE: join(home, "workspace"), BROWX_RUNTIME_DIR: paths.root },
+      env: {
+        ...npmEnv,
+        ...extra.env,
+        BROWX_WORKSPACE: join(home, "workspace"),
+        BROWX_RUNTIME_DIR: paths.root,
+      },
       home,
       platform: process.platform,
       uid: testUid(),
@@ -176,6 +203,8 @@ async function runtime(args: string[]): Promise<{ code: number; out: string; err
     // A loopback registry can't sign packages, so npm audit signatures can't pass here.
     verify: () => Promise.resolve({ ok: true, detail: "signatures not checked by this test" }),
     system: { platform: process.platform, home, env: {}, exists: () => false },
+    agent: fakeAgent(),
+    ...(extra.clock ? { clock: extra.clock } : {}),
     out: (t) => (out += t),
     err: (t) => (err += t),
   });
@@ -364,6 +393,85 @@ describeRuntime("browxai runtime against a loopback npm registry", () => {
       expect(r.code).toBe(0);
       expect(r.out).toContain("removed: 1.0.0");
       expect(existsSync(versionDir(paths(), "1.0.0"))).toBe(false);
+    },
+    STEP_TIMEOUT,
+  );
+
+  // The background job's clock: past the manual run's next check, on a boot the
+  // runtime hasn't seen yet.
+  let clockNow = Date.now() + 7 * HOUR;
+  const BOOT = Date.now() - HOUR;
+  const jobClock: AutoClock = {
+    now: () => clockNow,
+    random: () => 0,
+    bootTime: () => Promise.resolve(BOOT),
+  };
+  const twoDaysAgo = () => new Date(clockNow - 48 * HOUR).toISOString();
+
+  it(
+    "update --auto: the first run after a boot waits, the next applies a version past its delay",
+    async () => {
+      publish("1.4.0", { time: twoDaysAgo() });
+      const waited = await runtime(["update", "--auto"], { clock: jobClock });
+      expect(waited.code).toBe(0);
+      expect(readCurrent(paths())).toBe("1.1.1");
+      expect(readState(paths()).bootSeen).toBe(BOOT);
+      clockNow += 11 * 60_000;
+      const r = await runtime(["update", "--auto"], { clock: jobClock });
+      expect(r.err).toBe("");
+      expect(r.code).toBe(0);
+      expect(readCurrent(paths())).toBe("1.4.0");
+      expect(readJournal(paths()).at(-1)).toMatchObject({
+        mode: "auto",
+        event: "apply",
+        version: "1.4.0",
+        from: "1.1.1",
+        result: "applied",
+      });
+      const fresh = startThroughLauncher();
+      expect(versionOf(await fresh.request("initialize", handshake))).toBe("1.4.0");
+      fresh.child.stdin.end();
+    },
+    STEP_TIMEOUT,
+  );
+
+  it(
+    "update --auto: a version whose updater can't start fails the smoke check, and current stays",
+    async () => {
+      publish("1.5.0", { time: twoDaysAgo(), noUpdater: true });
+      clockNow += 7 * HOUR;
+      const r = await runtime(["update", "--auto"], { clock: jobClock });
+      expect(r.code).toBe(0);
+      expect(r.out).toContain("smoke check failed: runtime status --json: exit 2");
+      expect(readCurrent(paths())).toBe("1.4.0");
+      expect(existsSync(versionDir(paths(), "1.5.0"))).toBe(false);
+      expect(readdirSync(paths().staging).filter((n) => n.startsWith("1.5.0-"))).toEqual([]);
+      expect(readState(paths())).toMatchObject({
+        failed: { "1.5.0": 1 },
+        pending: { version: "1.5.0", state: "failed" },
+      });
+      expect(readJournal(paths()).at(-1)).toMatchObject({
+        event: "apply",
+        version: "1.5.0",
+        result: "failed",
+      });
+    },
+    STEP_TIMEOUT,
+  );
+
+  it(
+    "update --auto: with the registry gone it exits 0, keeps current and backs off",
+    async () => {
+      await new Promise<void>((r) => server.close(() => r()));
+      clockNow += 7 * HOUR;
+      const r = await runtime(["update", "--auto"], {
+        clock: jobClock,
+        env: { npm_config_fetch_retries: "0" },
+      });
+      expect(r.code).toBe(0);
+      expect(readCurrent(paths())).toBe("1.4.0");
+      expect(readState(paths())).toMatchObject({ lastResult: "offline", backoffMs: HOUR });
+      expect(readJournal(paths()).at(-1)).toMatchObject({ event: "offline" });
     },
     STEP_TIMEOUT,
   );

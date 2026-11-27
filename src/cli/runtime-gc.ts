@@ -16,6 +16,7 @@ import {
 import { join } from "node:path";
 import { isVersion, versionDir, type RuntimePaths } from "./runtime-layout.js";
 import type { Runner } from "./runtime-exec.js";
+import { pidAlive } from "./runtime-lock.js";
 import { listVersions, readCurrent, type RuntimeState } from "./runtime-store.js";
 
 /** How many versions gc keeps: current, previous and one more. */
@@ -172,7 +173,7 @@ export async function collectGarbage(
       }
     }
   }
-  result.stagingRemoved = sweepStaging(paths, deps.now?.() ?? Date.now(), deps.alive ?? isAlive);
+  result.stagingRemoved = sweepStaging(paths, deps.now?.() ?? Date.now(), deps.alive ?? pidAlive);
   return result;
 }
 
@@ -210,15 +211,6 @@ function sweepStaging(paths: RuntimePaths, now: number, alive: (pid: number) => 
     removed.push(name);
   }
   return removed;
-}
-
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "EPERM";
-  }
 }
 
 export function renderGc(r: GcResult): string {

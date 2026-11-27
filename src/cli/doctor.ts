@@ -25,6 +25,7 @@ import { toolListRow } from "./doctor-tool-list.js";
 import { toolProfileRow } from "./doctor-tool-profile.js";
 import { chromiumSandboxRow } from "./doctor-chromium-sandbox.js";
 import { macosAppCheck } from "./doctor-macos-daemon.js";
+import { runtimeRow } from "./doctor-runtime.js";
 import { iosDeviceChecks } from "./doctor-ios-device.js";
 import {
   chromeCheck,
@@ -115,6 +116,10 @@ export async function runDoctor(args: readonly string[] = []): Promise<number> {
   // Informational: it warns, it never fails doctor.
   const macosApp = await macosAppCheck();
   if (macosApp) checks.push(macosApp);
+
+  // 1c. Whether browxai runs from a runtime directory that updates it, and what
+  // that runtime's updater last found. Reads local files only.
+  checks.push(runtimeRow());
 
   // 2. $BROWX_WORKSPACE writable?
   try {

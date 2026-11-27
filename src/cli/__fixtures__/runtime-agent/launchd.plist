@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kalebtec.browxai.runtime-update</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/someone/.browxai-runtime/bin/browxai</string>
+    <string>runtime</string>
+    <string>update</string>
+    <string>--auto</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/opt/node@22/bin:/usr/bin:/bin</string>
+    <key>BROWX_RUNTIME_NODE</key>
+    <string>/opt/homebrew/opt/node@22/bin/node</string>
+  </dict>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>Nice</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/someone/.browxai-runtime/agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/someone/.browxai-runtime/agent.log</string>
+</dict>
+</plist>

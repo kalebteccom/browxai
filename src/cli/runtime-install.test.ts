@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   addVersion,
+  fakeAgent,
   fakeNpm,
   fakeRegistry,
   tempRuntime,
@@ -35,6 +36,7 @@ async function run(args: string[], deps: RuntimeDeps = {}) {
     registry: () => fakeRegistry(VERSIONS, { latest: "0.21.0" }),
     smoke: () => Promise.resolve<SmokeResult>({ ok: true, notes: [] }),
     system: { platform: "linux", home: rt!.home, env: {}, exists: () => false },
+    agent: fakeAgent(),
     out: (t) => (out += t),
     err: (t) => (err += t),
     ...deps,
@@ -203,14 +205,154 @@ describe("browxai runtime update", () => {
   it.each([
     [["update", "--version", "latest"]],
     [["update", "--allow-major"]],
-    [["update", "--auto"]],
+    [["update", "--auto", "--check"]],
+    [["update", "--auto", "--version", "0.22.0"]],
   ])("rejects %j as usage", async (args) => {
     rt = installed();
     expect((await run(args)).code).toBe(2);
   });
 });
 
+describe("browxai runtime install: the background job", () => {
+  it("installs the job by default with the recorded node, after current is set", async () => {
+    rt = tempRuntime({ create: false });
+    const agent = fakeAgent();
+    const r = await run(["install"], { agent });
+    expect(r.code).toBe(0);
+    expect(agent.calls).toEqual([`install ${rt.paths.shim} ${NODE}`]);
+    expect(r.out).toContain("✓ background job: fake job loaded.");
+    expect(r.out).toContain(`"autoUpdate": "off" in ${rt.paths.settings}`);
+  });
+
+  it("--no-agent installs no job, and removes one an earlier install left", async () => {
+    rt = tempRuntime({ create: false });
+    const agent = fakeAgent();
+    await run(["install"], { agent });
+    const r = await run(["install", "--no-agent"], { agent });
+    expect(r.code).toBe(0);
+    expect(agent.calls).toEqual([`install ${rt.paths.shim} ${NODE}`, "remove"]);
+    expect(agent.installed()).toEqual([]);
+  });
+
+  it("installs no job when the first install fails a check", async () => {
+    rt = tempRuntime({ create: false });
+    const agent = fakeAgent();
+    const r = await run(["install"], {
+      agent,
+      smoke: () => Promise.resolve<SmokeResult>({ ok: false, reason: "no answer" }),
+    });
+    expect(r.code).toBe(1);
+    expect(agent.calls).toEqual([]);
+  });
+
+  it("keeps the install and warns when the job can't be loaded", async () => {
+    rt = tempRuntime({ create: false });
+    const r = await run(["install"], { agent: fakeAgent({ installOk: false }) });
+    expect(r.code).toBe(0);
+    expect(readCurrent(rt.paths)).toBe("0.21.0");
+    expect(r.err).toContain(
+      "warning: the background job was not installed: systemctl --user daemon-reload failed (no user bus)",
+    );
+  });
+
+  it("says so where the platform has no job", async () => {
+    rt = tempRuntime({ create: false });
+    const agent = fakeAgent({ kind: undefined });
+    const r = await run(["install"], { agent });
+    expect(r.out).toContain("No background job on this platform.");
+    expect(agent.calls).toEqual([]);
+  });
+});
+
+describe("browxai runtime update: lock, journal and schedule state", () => {
+  function installed(): TempRuntime {
+    rt = tempRuntime();
+    writeFileSync(rt.paths.nodePath, NODE + "\n");
+    addVersion(rt.paths, "0.21.0");
+    switchCurrent(rt.paths, "0.21.0");
+    return rt;
+  }
+  const NOW = Date.parse("2026-11-27T12:00:00.000Z");
+
+  it("refuses while another live run holds the lock, and changes nothing", async () => {
+    rt = installed();
+    writeFileSync(
+      rt.paths.lock,
+      JSON.stringify({ pid: process.ppid, startedAt: new Date(NOW).toISOString() }),
+    );
+    const r = await run(["update"], {
+      now: () => NOW,
+      registry: () => fakeRegistry(VERSIONS, { latest: "0.22.0" }),
+    });
+    expect(r.code).toBe(1);
+    expect(r.err).toContain(`another update run (pid ${process.ppid}`);
+    expect(readCurrent(rt.paths)).toBe("0.21.0");
+  });
+
+  it("records the check, writes journal lines and releases the lock", async () => {
+    rt = installed();
+    const r = await run(["update"], {
+      now: () => NOW,
+      random: () => 0,
+      registry: () => fakeRegistry(VERSIONS, { latest: "0.22.0" }),
+    });
+    expect(r.code).toBe(0);
+    const state = readState(rt.paths);
+    expect(state.lastCheck).toBe("2026-11-27T12:00:00.000Z");
+    expect(state.nextCheck).toBe("2026-11-27T18:00:00.000Z");
+    expect(state.lastResult).toBe("applied 0.22.0");
+    const lines = readFileSync(rt.paths.journal, "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(lines).toEqual([
+      {
+        at: "2026-11-27T12:00:00.000Z",
+        mode: "manual",
+        event: "apply",
+        version: "0.22.0",
+        from: "0.21.0",
+        result: "applied",
+      },
+    ]);
+    expect(existsSync(rt.paths.lock)).toBe(false);
+  });
+
+  it("rewrites a launcher an older version wrote", async () => {
+    rt = installed();
+    writeFileSync(rt.paths.shim, "#!/bin/sh\nold\n");
+    await run(["update"]);
+    expect(readFileSync(rt.paths.shim, "utf8")).toBe(SHIM_TEXT);
+  });
+});
+
 describe("browxai runtime uninstall", () => {
+  it("removes the background job with the directory", async () => {
+    rt = tempRuntime();
+    addVersion(rt.paths, "0.21.0");
+    const agent = fakeAgent();
+    await agent.install(rt.paths, NODE);
+    const r = await run(["uninstall"], { agent });
+    expect(r.code).toBe(0);
+    expect(agent.calls.at(-1)).toBe("remove");
+    expect(r.out).toContain("✓ background job: removed the fake job");
+    expect(existsSync(rt.paths.root)).toBe(false);
+  });
+
+  it("leaves the job alone when it refuses", async () => {
+    rt = tempRuntime();
+    addVersion(rt.paths, "0.21.0");
+    const agent = fakeAgent();
+    await agent.install(rt.paths, NODE);
+    const command = `node ${rt.paths.root}/versions/0.21.0/node_modules/browxai/dist/cli.js`;
+    const r = await run(["uninstall"], {
+      agent,
+      list: () => Promise.resolve([{ pid: 777, command }]),
+    });
+    expect(r.code).toBe(2);
+    expect(agent.calls).not.toContain("remove");
+  });
+
   it("refuses while a process uses a version, then removes the directory with --yes", async () => {
     rt = tempRuntime();
     addVersion(rt.paths, "0.21.0");

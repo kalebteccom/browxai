@@ -1,6 +1,6 @@
 ---
 title: Keep browxai current with a runtime
-description: Install browxai into a runtime directory you own, point MCP clients at one launcher path, and update, check and roll back releases with `browxai runtime`. Covers what an update verifies, the settings, what the commands refuse, and moving from a hand-made directory.
+description: Install browxai into a runtime directory you own, point MCP clients at one launcher path, and let a background job or `browxai runtime update` move it to new releases. Covers what an update verifies, the background job and how to turn it off, the settings, what the commands refuse, and moving from a hand-made directory.
 ---
 
 An MCP client starts browxai from the path in its config. When that path names one
@@ -11,16 +11,17 @@ update installs the new release next to the old one, checks it, and only then po
 the launcher at it. The next time a client starts browxai, it gets the new version.
 
 ```text
-browxai runtime install  [--dir PATH] [--channel latest|next] [--write-client-config] [--profile-dir DIR]...
-browxai runtime update   [--check] [--version V] [--now]
+browxai runtime install  [--dir PATH] [--channel latest|next] [--no-agent] [--write-client-config] [--profile-dir DIR]...
+browxai runtime update   [--check] [--version V] [--now] [--auto]
 browxai runtime status   [--json]
 browxai runtime rollback
 browxai runtime gc
 browxai runtime uninstall [--yes]
 ```
 
-There is no background check yet. A runtime changes only when you run
-`browxai runtime install` or `browxai runtime update`.
+`install` also sets up a background job that checks for a new release every few
+hours and applies it with the same checks. See [The background job](#the-background-job)
+for what it does and how to turn it off.
 
 ## Install a runtime
 
@@ -33,21 +34,25 @@ npx -y browxai runtime install
 `install` creates the runtime directory (`~/.browxai-runtime` unless `--dir` or
 `BROWX_RUNTIME_DIR` names another), records the absolute path of the `node` it runs
 on, writes the launcher at `<runtime>/bin/browxai`, then installs the newest release
-of the channel the way `update` does. It ends by printing the client entries to use.
-When that first install fails a check, it exits 1 and leaves no current version.
+of the channel the way `update` does. Then it installs the background job, unless you
+pass `--no-agent`, and prints the client entries to use. When that first install
+fails a check, it exits 1, leaves no current version and installs no job.
 
 The directory looks like this:
 
 ```text
 ~/.browxai-runtime/
   layout.json         marks a directory browxai manages
-  runtime.json        your settings (channel), mode 0600
-  node-path           the node the launcher runs
+  runtime.json        your settings, mode 0600
+  node-path           the node the launcher and the background job run
   bin/browxai         the launcher
   current             a link to the version clients run
   versions/0.22.0/    one npm install per version, never changed after it is used
   staging/            installs in progress
-  state.json          the previous version and failed attempts
+  state.json          the previous version, failed attempts, and the job's schedule
+  journal.jsonl       one line per check, apply, rollback and gc, mode 0600
+  agent.log           the background job's output on macOS, mode 0600
+  lock                held by the update that is running
 ```
 
 ## Point your MCP clients at the launcher
@@ -112,7 +117,9 @@ deprecated on npm is skipped.
 - `--check` downloads nothing and prints what `update` would do.
 - `--version V` installs that exact version, newer or older. An older one prints a
   warning first.
-- `--now` is accepted and changes nothing: a manual update never waits.
+- `--now` skips the 24-hour wait after publish. A manual update never waits, so it
+  matters only with `--auto`.
+- `--auto` is the background job's mode, described below.
 
 Servers that are already running keep the version they started with, until their
 client starts them again.
@@ -134,14 +141,72 @@ it was.
    as failing verification.
 3. **A short self-check.** With an empty temp workspace and none of your `BROWX_*`
    settings, the staged copy must print its own version for `--version`, answer an
-   MCP handshake with that version and at least one tool, and show no `doctor --json`
-   row failing that passes on the current version. No browser starts.
+   MCP handshake with that version and at least one tool, show no `doctor --json`
+   row failing that passes on the current version, and run its own
+   `runtime status --json`, so a release whose updater can't start never becomes
+   current. No browser starts.
 4. **The switch.** The checked copy moves to `versions/<version>`, and the `current`
    link is replaced in one `rename`, so a client that starts during the switch gets
    either the old version or the new one.
 
 Afterwards `update` keeps three versions (current, previous and one more) and removes
 older ones that no running process uses.
+
+## The background job
+
+`install` adds a job that runs `<runtime>/bin/browxai runtime update --auto` once an
+hour, as you, with no administrator rights:
+
+- **macOS:** a launchd user agent,
+  `~/Library/LaunchAgents/com.kalebtec.browxai.runtime-update.plist`, loaded with
+  `launchctl bootstrap gui/<uid>`. Its output goes to `<runtime>/agent.log`.
+- **Linux:** a systemd user timer and service,
+  `~/.config/systemd/user/browxai-runtime-update.timer` and `.service`, enabled with
+  `systemctl --user enable --now`. Without lingering, the timer runs only while you
+  are logged in.
+- **Windows:** no job. See [Windows](#windows).
+
+The job doesn't read your shell's `PATH`. Its `PATH` is the directory of the node
+`install` recorded, then `/usr/bin` and `/bin`, and `BROWX_RUNTIME_NODE` names that
+node, so it finds the same node and npm under mise, nvm or Homebrew. If a version
+manager removes that node, run `browxai runtime install` again to record another.
+
+Each hourly run returns at once unless a check is due. When one is, `update --auto`:
+
+| What                          | Value                                                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Check interval                | 6 hours, plus 0 to 60 minutes picked at random                                                          |
+| After a restart               | the first check waits 10 to 30 minutes after the first run that follows it                              |
+| Registry contacts             | at most 6 in 24 hours                                                                                   |
+| Applies                       | at most 2 in 24 hours                                                                                   |
+| Wait after publish            | 24 hours (`cooldownHours` in `runtime.json`), so a release can be withdrawn before it spreads           |
+| A failed self-check           | the version is tried again at the next check, and held after 3 failures                                 |
+| A failed signature check      | the version is held at once and not tried again                                                         |
+| The registry can't be reached | nothing changes, and the next contact waits 1 hour, then 2, 4 and so on up to 24 hours                  |
+| Another update is running     | the run exits 0 and changes nothing (`<runtime>/lock`, stale after an hour or once its process is gone) |
+
+The job exits 0 for all of these, so an offline machine never shows a failing job.
+It exits 1 only for an internal error, which the journal records. A manual
+`browxai runtime update` counts as a check too, and moves the next one 6 hours on.
+
+`browxai runtime status` and the `runtime` row of `browxai doctor` show the last
+check, the next one, and a version that waits or is held, with the reason.
+`<runtime>/journal.jsonl` keeps one line per check, apply, rollback and gc, with
+versions, integrity hashes, reasons and timings. It records no npm config value. At
+1 MB it moves to `journal.jsonl.1`, replacing the one before.
+
+### Turn it off
+
+- Set `"autoUpdate": "off"` in `<runtime>/runtime.json`. The job reads that file on
+  every run.
+- Or set `BROWX_RUNTIME_AUTO_UPDATE=off` in the job's own environment. The job
+  doesn't read your shell's variables, so a value set in your shell profile doesn't
+  reach it.
+- Or remove the job: `browxai runtime install --no-agent` removes a job an earlier
+  install added, and `browxai runtime uninstall` removes it with the runtime.
+
+Off in either place wins, and a value other than `on`, `1`, `true`, `yes`, `off`, `0`,
+`false` or `no` counts as off.
 
 ## Roll back
 
@@ -156,26 +221,40 @@ again goes forward to the version you left.
 
 `browxai runtime status` prints the runtime directory, the current and previous
 versions, the version of the browxai you ran it with, the channel and auto-update
-settings and where each came from, the recorded node, and every kept version with
-the processes that use it. `--json` prints the same as one JSON document.
+settings and where each came from, the background job's files, the last and next
+check, a version that waits, the recorded node, and every kept version with the
+processes that use it. `--json` prints the same as one JSON document.
 
 `browxai runtime gc` removes kept versions past the newest three that no running
 process uses. When it can't read the process list it removes nothing.
 
-`browxai runtime uninstall` removes the runtime directory. It refuses while a server
-runs from it, unless you pass `--yes`, and it names the client configs that still
-point at the launcher.
+`browxai runtime uninstall` removes the background job and the runtime directory. It
+refuses while a server runs from it, unless you pass `--yes`, and it names the client
+configs that still point at the launcher.
+
+## `browxai doctor`
+
+The `runtime` row reads the runtime's files and makes no network call. Run from a
+runtime it shows the current version, the channel, when the last check ran, when
+the next one is due, and whether auto-update is on and where that came from. It
+warns about a version that waits or is held, a server older than `current`, a
+`current` the maintainers deprecated, a recorded node that is gone, and auto-update
+on with no background job. It fails doctor only when a version failed signature or
+provenance verification. Run from anywhere else it says so, with the path that won't
+update.
 
 ## Settings
 
-| Setting                     | Where                                        | What it does                                                                                                                                          |
-| --------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BROWX_RUNTIME_DIR`         | environment                                  | The runtime directory, an absolute path. The launcher sets it for the server it starts.                                                               |
-| `BROWX_RUNTIME_CHANNEL`     | environment, or `channel` in runtime.json    | `latest` (the default) or `next`. Any other value is refused.                                                                                         |
-| `BROWX_RUNTIME_AUTO_UPDATE` | environment, or `autoUpdate` in runtime.json | Read now and shown by `status`. Off in either place wins, and a value other than `on`, `1`, `true`, `yes`, `off`, `0`, `false` or `no` counts as off. |
-| `BROWX_RUNTIME_NODE`        | environment                                  | The node the launcher and npm run, before the recorded one.                                                                                           |
+| Setting                     | Where                                        | What it does                                                                                                                                                      |
+| --------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BROWX_RUNTIME_DIR`         | environment                                  | The runtime directory, an absolute path. The launcher sets it for the server it starts.                                                                           |
+| `BROWX_RUNTIME_CHANNEL`     | environment, or `channel` in runtime.json    | `latest` (the default) or `next`. Any other value is refused.                                                                                                     |
+| `BROWX_RUNTIME_AUTO_UPDATE` | environment, or `autoUpdate` in runtime.json | Whether the background job applies updates. Off in either place wins, and a value other than `on`, `1`, `true`, `yes`, `off`, `0`, `false` or `no` counts as off. |
+| `cooldownHours`             | runtime.json                                 | Hours the background job waits after a release is published, 24 by default, 0 to 720. Another value keeps 24, with a warning.                                     |
+| `BROWX_RUNTIME_NODE`        | environment                                  | The node the launcher and npm run, before the recorded one. The background job sets it to the recorded node.                                                      |
 
-`install --channel` writes the channel to `runtime.json`. These settings come only
+`install --channel` writes the channel to `runtime.json`. Edit the file by hand for
+`autoUpdate` and `cooldownHours`. These settings come only
 from the environment and `runtime.json`. The workspace config, `set_config` and MCP
 tools can't change them. The launcher also sets `BROWX_RUNTIME_VERSION` for the
 server it starts, for information only.
@@ -204,9 +283,15 @@ names.
 
 ## Windows
 
-There is no launcher on Windows. Use `npx -y browxai@latest` as the client command,
+There is no launcher and no background job on Windows. Use `npx -y browxai@latest` as the client command,
 which resolves the newest version on every start and needs the network to start, or
 update with `npm install -g browxai@latest` and restart your MCP client.
+
+## A link to the launcher
+
+The launcher follows a symbolic link to itself, so a link in a directory on your
+`PATH`, such as `ln -s ~/.browxai-runtime/bin/browxai ~/.local/bin/browxai`, runs the
+runtime the launcher belongs to.
 
 ## Moving from a hand-made directory
 

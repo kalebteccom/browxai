@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 import { realSystem, type ClientSystem } from "./init-clients.js";
 import { runningAppBundle } from "./macos-app.js";
 import { parseRuntimeArgs, RUNTIME_USAGE, type RuntimeArgs } from "./runtime-args.js";
+import { systemAgent, type AgentPort } from "./runtime-agent.js";
+import { autoUpdateFlow, systemBootTime, type AutoClock } from "./runtime-auto.js";
 import { activeTargets } from "./runtime-clients.js";
 import { runProgram } from "./runtime-exec.js";
 import {
@@ -19,6 +21,7 @@ import {
   type ProcessLister,
 } from "./runtime-gc.js";
 import { installFlow, updateFlow, type FlowDeps } from "./runtime-install.js";
+import { appendJournal } from "./runtime-journal.js";
 import {
   cliOf,
   inspectRuntime,
@@ -36,9 +39,13 @@ import { readCurrent, readState, switchCurrent, writeState } from "./runtime-sto
 export { RUNTIME_USAGE } from "./runtime-args.js";
 
 /** Seams a test can replace. */
-export interface RuntimeDeps extends Partial<Omit<FlowDeps, "env" | "list">> {
+export interface RuntimeDeps extends Partial<Omit<FlowDeps, "env" | "list" | "agent">> {
   ctx?: RuntimeContext;
   list?: ProcessLister;
+  /** The background job. Tests pass a fake: the real one loads launchd or systemd units. */
+  agent?: AgentPort;
+  /** The clock and boot time `update --auto` reads. */
+  clock?: Partial<AutoClock>;
   /** The Browxai app this process runs from, or undefined outside it. */
   appBundle?: () => string | undefined;
   /** The real path of the `cli.js` this process runs. */
@@ -78,23 +85,35 @@ export async function runRuntime(args: readonly string[], deps: RuntimeDeps = {}
   const paths = runtimePaths(dir.dir);
   const run = deps.run ?? runProgram;
   const list = deps.list ?? systemProcessLister(run, ctx.platform);
+  const agent =
+    deps.agent ??
+    systemAgent({ platform: ctx.platform, home: ctx.home, uid: ctx.uid, env: ctx.env, run });
   if (parsed.verb === "status") {
     const status = await runtimeStatus(paths, checked.found, {
       env: ctx.env,
       list,
       selfCli: deps.selfCli ?? selfCliPath(),
+      agentInstalled: () => agent.installed(),
     });
     io.out(parsed.json ? JSON.stringify(status, null, 2) + "\n" : renderStatus(status));
     return 0;
   }
-  const flow: FlowDeps = {
+  const flow: FlowDeps & { clock: AutoClock } = {
     ...deps,
     env: ctx.env,
     run,
     list,
     execPath: deps.execPath ?? process.execPath,
     system: deps.system ?? realSystem(),
+    agent,
+    clock: {
+      now: deps.clock?.now ?? deps.now ?? Date.now,
+      random: deps.clock?.random ?? deps.random ?? Math.random,
+      bootTime: deps.clock?.bootTime ?? systemBootTime(run, ctx.platform),
+    },
   };
+  flow.now = flow.clock.now;
+  flow.random = flow.clock.random;
   if (parsed.verb === "install") return install(paths, parsed, flow, io);
   if (checked.found.kind !== "managed") {
     return refuse(io, `no browxai runtime at ${dir.dir}. Run: browxai runtime install`);
@@ -105,13 +124,14 @@ export async function runRuntime(args: readonly string[], deps: RuntimeDeps = {}
 function managedVerb(
   paths: RuntimePaths,
   parsed: RuntimeArgs,
-  flow: FlowDeps,
+  flow: FlowDeps & { clock: AutoClock },
   io: Io,
 ): Promise<number> | number {
   if (parsed.verb === "rollback") return rollback(paths, io);
   if (parsed.verb === "gc") return gc(paths, flow.list, io);
   if (parsed.verb === "uninstall") return uninstall(paths, parsed.yes, flow, io);
   if (parsed.verb !== "update") return refuse(io, RUNTIME_USAGE);
+  if (parsed.auto) return autoUpdateFlow(paths, { skipDelay: parsed.now }, flow, io);
   const channel = channelOf(paths, flow.env, io);
   if (!channel) return 2;
   const want = {
@@ -156,6 +176,7 @@ function install(
     ...(parsed.channel ? { channelFlag: parsed.channel } : {}),
     writeClientConfig: parsed.writeClientConfig,
     profileDirs: parsed.profileDirs,
+    agent: !parsed.noAgent,
   };
   return installFlow(paths, want, flow, io);
 }
@@ -178,6 +199,13 @@ function rollback(paths: RuntimePaths, io: Io): number {
   }
   switchCurrent(paths, previous);
   writeState(paths, { ...state, ...(current ? { previous: current } : {}) });
+  appendJournal(paths, {
+    at: new Date().toISOString(),
+    mode: "manual",
+    event: "rollback",
+    version: previous,
+    ...(current ? { from: current } : {}),
+  });
   io.out(`✓ current is ${previous}${current ? `, was ${current}` : ""}.\n`);
   if (current) {
     io.out(`  Servers already running keep ${current} until their MCP client starts them again.\n`);
@@ -187,6 +215,12 @@ function rollback(paths: RuntimePaths, io: Io): number {
 
 async function gc(paths: RuntimePaths, list: ProcessLister, io: Io): Promise<number> {
   const result = await collectGarbage(paths, readState(paths), { list });
+  appendJournal(paths, {
+    at: new Date().toISOString(),
+    mode: "manual",
+    event: "gc",
+    result: result.removed.length ? `removed ${result.removed.join(", ")}` : "removed nothing",
+  });
   io.out(renderGc(result));
   if (result.unknown) {
     io.err("browxai runtime: the process list could not be read, so no version was removed.\n");
@@ -216,6 +250,10 @@ async function uninstall(
       io,
       `pid ${pids} runs from ${paths.root}. Stop those servers first, or pass --yes. Nothing was changed.`,
     );
+  }
+  if (flow.agent && flow.agent.installed().length > 0) {
+    const removed = await flow.agent.remove();
+    io.out(`✓ background job: ${removed.detail}\n`);
   }
   rmSync(paths.root, { recursive: true, force: true });
   io.out(`✓ removed ${paths.root}\n`);

@@ -6,7 +6,9 @@
 //   2. an MCP handshake over stdio reports that version and at least one tool,
 //      within 20 seconds;
 //   3. `doctor --json` shows no row failing that passes on `current`. Rows that
-//      depend on the machine fail on both and don't count.
+//      depend on the machine fail on both and don't count;
+//   4. `runtime status --json` exits 0 and prints JSON, so a version whose
+//      updater can't start never becomes `current` and can't strand the machine.
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -82,10 +84,41 @@ export async function smokeCheck(
       };
     }
     if (tools < 1) return { ok: false, reason: "MCP handshake: tools/list returned no tool" };
-    return await doctorStep(staged, currentCli, env, deps);
+    const doctor = await doctorStep(staged, currentCli, env, deps);
+    if (!doctor.ok) return doctor;
+    const status = await statusStep(
+      staged.cli,
+      { ...env, BROWX_RUNTIME_DIR: `${workspace}-runtime` },
+      deps,
+    );
+    return status ?? doctor;
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
+}
+
+/** Step 4: the staged updater reads a runtime directory and reports. The
+ *  directory named here doesn't exist, so the check writes nothing. Undefined
+ *  when it passes. */
+async function statusStep(
+  cli: string,
+  env: Record<string, string>,
+  deps: SmokeDeps,
+): Promise<SmokeResult | undefined> {
+  const r = await deps.run(deps.node, [cli, "runtime", "status", "--json"], {
+    env,
+    timeoutMs: 20_000,
+  });
+  if (r.status !== 0) {
+    return { ok: false, reason: `runtime status --json: ${r.error ?? `exit ${r.status}`}` };
+  }
+  try {
+    const parsed = JSON.parse(r.stdout) as { dir?: unknown };
+    if (typeof parsed.dir !== "string") throw new Error("no dir");
+  } catch {
+    return { ok: false, reason: "runtime status --json: it printed no status" };
+  }
+  return undefined;
 }
 
 type DoctorReport = { checks: Array<{ name: string; ok: boolean }> };

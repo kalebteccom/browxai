@@ -7,14 +7,25 @@ const CURRENT = "/rt/versions/0.21.0/node_modules/browxai/dist/cli.js";
 
 type Doctor = Array<{ name: string; ok: boolean }> | "unsupported";
 
-/** A runner that answers `--version` and `doctor --json` per cli path. */
-function runner(opts: { version?: string; doctor?: Record<string, Doctor> } = {}) {
+/** A runner that answers `--version`, `doctor --json` per cli path and `runtime status --json`. */
+function runner(
+  opts: { version?: string; doctor?: Record<string, Doctor>; status?: RunResult } = {},
+) {
   const calls: Array<{ args: string[]; env?: NodeJS.ProcessEnv }> = [];
   const run = (_file: string, args: readonly string[], o?: RunOptions): Promise<RunResult> => {
     calls.push({ args: [...args], env: o?.env });
     const [cli, sub] = args;
     if (sub === "--version")
       return Promise.resolve({ status: 0, stdout: `${opts.version ?? "0.22.0"}\n`, stderr: "" });
+    if (sub === "runtime") {
+      return Promise.resolve(
+        opts.status ?? {
+          status: 0,
+          stdout: JSON.stringify({ dir: o?.env?.BROWX_RUNTIME_DIR }),
+          stderr: "",
+        },
+      );
+    }
     const d = opts.doctor?.[cli!] ?? [{ name: "node", ok: true }];
     if (d === "unsupported") return Promise.resolve({ status: 2, stdout: "", stderr: "usage" });
     const ok = d.every((c) => c.ok);
@@ -51,18 +62,35 @@ describe("checkEnv", () => {
 });
 
 describe("smokeCheck", () => {
-  it("passes a version that answers all three checks", async () => {
+  it("passes a version that answers all four checks", async () => {
     const run = runner();
     await expect(smokeCheck(STAGED, CURRENT, deps(run))).resolves.toEqual({ ok: true, notes: [] });
     expect(run.calls.map((c) => c.args.slice(1))).toEqual([
       ["--version"],
       ["doctor", "--json"],
       ["doctor", "--json"],
+      ["runtime", "status", "--json"],
     ]);
     for (const c of run.calls) {
       expect(c.env?.BROWX_CAPABILITIES).toBeUndefined();
       expect(c.env?.BROWX_WORKSPACE).toMatch(/browxai-runtime-check-/);
     }
+    // The staged updater reads a runtime directory that doesn't exist and isn't in the workspace.
+    const status = run.calls.at(-1)!.env!;
+    expect(status.BROWX_RUNTIME_DIR).toBe(`${status.BROWX_WORKSPACE}-runtime`);
+  });
+
+  it("fails a version whose runtime status --json exits non-zero or prints no status", async () => {
+    const broken = runner({ status: { status: 2, stdout: "", stderr: "usage" } });
+    await expect(smokeCheck(STAGED, CURRENT, deps(broken))).resolves.toEqual({
+      ok: false,
+      reason: "runtime status --json: exit 2",
+    });
+    const garbled = runner({ status: { status: 0, stdout: "not json", stderr: "" } });
+    await expect(smokeCheck(STAGED, CURRENT, deps(garbled))).resolves.toEqual({
+      ok: false,
+      reason: "runtime status --json: it printed no status",
+    });
   });
 
   it("fails a --version that prints another version", async () => {

@@ -13,7 +13,13 @@ import {
   readSettingsFile,
   type SettingSource,
 } from "./runtime-settings.js";
-import { listVersions, readCurrent, readNodePath, readState } from "./runtime-store.js";
+import {
+  listVersions,
+  readCurrent,
+  readNodePath,
+  readState,
+  type PendingUpdate,
+} from "./runtime-store.js";
 
 export interface RuntimeStatus {
   dir: string;
@@ -30,6 +36,12 @@ export interface RuntimeStatus {
   versions: Array<{ version: string; current: boolean; previous: boolean; pids: number[] }>;
   /** False when the process list couldn't be read, so `pids` is empty for all. */
   pidsKnown: boolean;
+  /** The background job's files that exist; empty when no job is installed. */
+  agent: string[];
+  lastCheck?: string;
+  nextCheck?: string;
+  lastResult?: string;
+  pending?: PendingUpdate;
 }
 
 export interface StatusDeps {
@@ -37,6 +49,8 @@ export interface StatusDeps {
   list: ProcessLister;
   /** The real path of the `cli.js` this process runs. */
   selfCli: string;
+  /** The background job's files that exist. */
+  agentInstalled?: () => string[];
 }
 
 export async function runtimeStatus(
@@ -57,10 +71,11 @@ export async function runtimeStatus(
     node: { exists: false },
     versions: [],
     pidsKnown: true,
+    agent: deps.agentInstalled?.() ?? [],
   };
   if (found.kind !== "managed") return base;
   const current = readCurrent(paths);
-  const { previous } = readState(paths);
+  const { previous, lastCheck, nextCheck, lastResult, pending } = readState(paths);
   const node = readNodePath(paths);
   const use = await versionsInUse(paths, deps.list);
   return {
@@ -76,6 +91,10 @@ export async function runtimeStatus(
       pids: use?.get(v) ?? [],
     })),
     pidsKnown: use !== undefined,
+    ...(lastCheck ? { lastCheck } : {}),
+    ...(nextCheck ? { nextCheck } : {}),
+    ...(lastResult ? { lastResult } : {}),
+    ...(pending ? { pending } : {}),
   };
 }
 
@@ -112,10 +131,14 @@ export function renderStatus(s: RuntimeStatus): string {
   lines.push(
     `  channel:      ${s.channel.value ? `${s.channel.value} (${s.channel.source})` : `✗ ${s.channel.error}`}`,
   );
-  lines.push(
-    `  auto-update:  ${s.autoUpdate.on ? "on" : "off"} (${s.autoUpdate.source}). No background job is installed, so updates run when you run browxai runtime update`,
-  );
+  lines.push(`  auto-update:  ${s.autoUpdate.on ? "on" : "off"} (${s.autoUpdate.source})`);
   if (s.autoUpdate.warning) lines.push(`  ⚠ ${s.autoUpdate.warning}`);
+  lines.push(
+    s.agent.length
+      ? `  job:          ${s.agent.join(", ")}`
+      : "  job:          none installed. Updates run when you run browxai runtime update",
+  );
+  lines.push(...scheduleLines(s));
   if (!s.node.path) lines.push("  node:         not recorded. Run: browxai runtime install");
   else if (!s.node.exists)
     lines.push(`  ⚠ the recorded node at ${s.node.path} is gone. Run browxai runtime install`);
@@ -134,4 +157,21 @@ function versionLine(v: RuntimeStatus["versions"][number], pidsKnown: boolean): 
       ? `in use by pid ${v.pids.join(", ")}`
       : "";
   return [v.version.padEnd(12), tags.join(", "), pids].filter(Boolean).join("  ").trimEnd();
+}
+
+function scheduleLines(s: RuntimeStatus): string[] {
+  const lines: string[] = [];
+  lines.push(
+    `  last check:   ${s.lastCheck ?? "never"}${s.lastResult ? ` (${s.lastResult})` : ""}`,
+  );
+  if (s.nextCheck) lines.push(`  next check:   ${s.nextCheck}`);
+  const p = s.pending;
+  if (p) {
+    const why =
+      p.state === "waiting"
+        ? `waits until ${p.until}`
+        : `${p.state}${p.reason ? `: ${p.reason}` : ""}`;
+    lines.push(`  pending:      ${p.version}, ${why}`);
+  }
+  return lines;
 }

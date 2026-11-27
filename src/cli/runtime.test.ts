@@ -1,7 +1,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { addVersion, tempRuntime, type TempRuntime } from "./__fixtures__/runtime-tree.js";
+import {
+  addVersion,
+  fakeAgent,
+  tempRuntime,
+  type TempRuntime,
+} from "./__fixtures__/runtime-tree.js";
 import { cliOf, versionDir } from "./runtime-layout.js";
 import { readCurrent, readState, switchCurrent, writeState } from "./runtime-store.js";
 import { RUNTIME_USAGE, runRuntime, type RuntimeDeps } from "./runtime.js";
@@ -22,6 +27,7 @@ async function run(args: string[], deps: RuntimeDeps = {}) {
     list: async () => [],
     selfCli: "/elsewhere/dist/cli.js",
     system: { platform: "linux", home: rt!.home, env: {}, exists: () => false },
+    agent: fakeAgent(),
     out: (t) => (out += t),
     err: (t) => (err += t),
     ...deps,

@@ -1,0 +1,10 @@
+[Unit]
+Description=browxai runtime update check
+
+[Service]
+Type=oneshot
+ExecStart="/home/someone/.browxai-runtime/bin/browxai" runtime update --auto
+Environment="PATH=/home/someone/.local/share/mise/installs/node/22.11.0/bin:/usr/bin:/bin"
+Environment="BROWX_RUNTIME_NODE=/home/someone/.local/share/mise/installs/node/22.11.0/bin/node"
+Nice=10
+IOSchedulingClass=idle
