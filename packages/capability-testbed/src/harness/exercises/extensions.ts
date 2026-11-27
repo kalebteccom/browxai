@@ -113,7 +113,8 @@ async function prepareTarget(ctx: ExerciseCtx): Promise<ExtensionTarget> {
   const session = unique("extensions", ctx);
   const profile = unique("extensions-profile", ctx);
   const path = await writeExtension(ctx);
-  await ctx.client.callTool("open_session", { session, mode: "persistent", profile });
+  // Google Chrome ignores --load-extension, so an extension session runs the bundled Chromium.
+  await ctx.client.callTool("open_session", { session, mode: "persistent", profile, channel: "chromium" });
   await ctx.client.callTool("navigate", { session, url: `${ctx.baseUrl}/core` });
   return { session, path };
 }

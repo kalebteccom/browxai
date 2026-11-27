@@ -76,6 +76,10 @@ export interface SessionCore {
    *  attached sessions and for a persistent session on the workspace's
    *  default profile. */
   launchProfile?: string;
+  /** Browser channel the persistent session launched with (per-session spec,
+   *  else config `channel` / `BROWX_CHANNEL`), so the `extensions_*` rebuild
+   *  relaunches on the same browser. Undefined when no channel was set. */
+  launchChannel?: string;
 }
 
 /** Observation role — the snapshot/find/frames/console reads. */
@@ -331,8 +335,9 @@ export interface OpenSpec {
   profile?: string;
   /** Playwright browser `channel` for a chromium session (`"chrome"`,
    *  `"msedge"`, …). Falls back to config `channel` / `BROWX_CHANNEL`; unset
-   *  everywhere launches the installed Google Chrome, or the bundled Chromium
-   *  when Chrome is not installed. `"chromium"` forces the bundled build.
+   *  everywhere launches the installed Google Chrome, and is refused with
+   *  `chrome-not-installed` when Chrome is not installed. `"chromium"` launches
+   *  the bundled build.
    *  Ignored on `attached` (externally launched) and on the non-chromium
    *  engines. */
   channel?: string;

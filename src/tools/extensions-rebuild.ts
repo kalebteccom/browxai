@@ -11,6 +11,7 @@
 import type { SessionEntry } from "../session/registry.js";
 import { openManagedSession } from "../session/managed.js";
 import { resolveProfileDir } from "../session/profile-guard.js";
+import { planChromiumChannel } from "../session/chromium-launch-posture.js";
 import { resolveDevice } from "../session/device.js";
 import { reapplyAll as reapplyEmulation } from "../session/emulation.js";
 import { attachDialogPolicy } from "../session/dialog.js";
@@ -67,6 +68,11 @@ export async function rebuildPersistentForExtensions(
   // profile (maybe BROWX_DEFAULT_PROFILE) still resolves to it.
   const profileDir = e.session.profileDir ?? resolveProfileDir(workspace, e.launchProfile);
   const extensionPaths = e.extensions.loaded.filter((x) => x.enabled).map((x) => x.path);
+  // Relaunch on the channel the session opened with. A launch with extensions and
+  // no channel is refused (`extensions-need-chromium`) here, before the live
+  // session is torn down, so the refusal leaves the session working.
+  const channel = e.launchChannel;
+  planChromiumChannel({ channel, extensionPaths });
   // Preserve the engine across the rebuild (extensions are Chromium-only, so
   // this is chromium today; reading it before close keeps the rebuild engine-
   // faithful for when a second engine lands).
@@ -90,6 +96,7 @@ export async function rebuildPersistentForExtensions(
     chromiumSandbox: launchConfig.chromiumSandbox,
     chromiumSandboxSource: configStore.chromiumSandboxSource(),
     browserType: rebuildEngine,
+    ...(channel ? { channel } : {}),
     ...(extensionPaths.length ? { extensionPaths } : {}),
   });
   // Rebuild the per-session inner pieces. The secrets / dialog policy /

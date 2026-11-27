@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   automationSwitchOptions,
+  isBundledChannel,
   isChannelNotInstalled,
+  LaunchChannelRefusal,
   launchWithChannelPlan,
   planChromiumChannel,
 } from "./chromium-launch-posture.js";
-import { log } from "../util/logging.js";
 import { playwrightInstallCommand } from "../util/playwright-version.js";
 
 const NOT_FOUND = new Error(
@@ -20,51 +21,81 @@ afterEach(() => {
 describe("planChromiumChannel", () => {
   it.each([
     {
-      label: "defaults to the installed Chrome, with a fallback to the bundled build",
+      label: "defaults to the installed Chrome, refused when it is missing",
       input: {},
       channel: "chrome",
-      fallback: true,
+      defaulted: true,
     },
     {
       label: "treats an empty channel as the default",
       input: { channel: "" },
       channel: "chrome",
-      fallback: true,
+      defaulted: true,
     },
     {
-      label: "honours an explicit chrome without a fallback",
+      label: "honours an explicit chrome as given",
       input: { channel: "chrome" },
       channel: "chrome",
-      fallback: false,
+      defaulted: false,
     },
     {
-      label: '"chromium" forces the bundled build, matched case- and whitespace-insensitively',
+      label: '"chromium" opts in to the bundled build, matched case- and whitespace-insensitively',
       input: { channel: " Chromium " },
       channel: undefined,
-      fallback: false,
+      defaulted: false,
     },
     {
-      label: "keeps an extension launch with no channel on the bundled build",
-      input: { extensionPaths: ["/tmp/ext"] },
+      label: "launches an extension session that opted in on the bundled build",
+      input: { extensionPaths: ["/tmp/ext"], channel: "chromium" },
       channel: undefined,
-      fallback: undefined,
+      defaulted: false,
     },
     {
       label: "keeps an explicit channel for an extension launch",
       input: { extensionPaths: ["/tmp/ext"], channel: "chrome" },
       channel: "chrome",
-      fallback: undefined,
+      defaulted: false,
     },
     {
       label: "treats an empty extension list as no extensions",
       input: { extensionPaths: [] },
       channel: "chrome",
-      fallback: undefined,
+      defaulted: true,
     },
-  ])("$label", ({ input, channel, fallback }) => {
+  ])("$label", ({ input, channel, defaulted }) => {
     const plan = planChromiumChannel(input);
     expect(plan.channel).toBe(channel);
-    if (fallback !== undefined) expect(plan.fallbackToBundled).toBe(fallback);
+    expect(plan.defaulted).toBe(defaulted);
+  });
+
+  it("refuses an extension launch with no channel, naming the opt-in", () => {
+    const err = (() => {
+      try {
+        planChromiumChannel({ extensionPaths: ["/tmp/ext"] });
+      } catch (e) {
+        return e;
+      }
+      return undefined;
+    })();
+    expect(err).toBeInstanceOf(LaunchChannelRefusal);
+    const refusal = err as LaunchChannelRefusal;
+    expect(refusal.code).toBe("extensions-need-chromium");
+    expect(refusal.message).toMatch(/^extensions-need-chromium: /);
+    expect(refusal.message).toContain('`channel: "chromium"`');
+    expect(refusal.message).toContain("BROWX_CHANNEL=chromium");
+    expect(refusal.message).toContain("#extensions-need-chromium");
+  });
+});
+
+describe("isBundledChannel", () => {
+  it.each([
+    ["chromium", true],
+    [" CHROMIUM ", true],
+    ["chrome", false],
+    ["", false],
+    [undefined, false],
+  ])("%j is %s", (channel, expected) => {
+    expect(isBundledChannel(channel)).toBe(expected);
   });
 });
 
@@ -85,29 +116,40 @@ describe("isChannelNotInstalled", () => {
 describe("launchWithChannelPlan", () => {
   it("launches the planned channel when it works", async () => {
     const launch = vi.fn().mockResolvedValue("ok");
-    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
-    const out = await launchWithChannelPlan({ channel: "chrome", fallbackToBundled: true }, launch);
+    const out = await launchWithChannelPlan({ channel: "chrome", defaulted: true }, launch);
     expect(out).toBe("ok");
     expect(launch).toHaveBeenCalledTimes(1);
     expect(launch).toHaveBeenCalledWith({ channel: "chrome" });
-    expect(warn).not.toHaveBeenCalled();
   });
 
-  it("falls back to the bundled build and logs why when Chrome is not installed", async () => {
-    const launch = vi.fn().mockRejectedValueOnce(NOT_FOUND).mockResolvedValueOnce("bundled");
-    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
-    const out = await launchWithChannelPlan({ channel: "chrome", fallbackToBundled: true }, launch);
+  it("refuses a default launch with chrome-not-installed when Chrome is missing, launching nothing else", async () => {
+    const launch = vi.fn().mockRejectedValue(NOT_FOUND);
+    const err = await launchWithChannelPlan({ channel: "chrome", defaulted: true }, launch).catch(
+      (e: unknown) => e,
+    );
+    expect(launch.mock.calls).toEqual([[{ channel: "chrome" }]]);
+    expect(err).toBeInstanceOf(LaunchChannelRefusal);
+    const refusal = err as LaunchChannelRefusal;
+    expect(refusal.code).toBe("chrome-not-installed");
+    expect(refusal.message).toMatch(/^chrome-not-installed: /);
+    expect(refusal.message).toMatch(/Install Google Chrome/);
+    expect(refusal.message).toContain("BROWX_CHANNEL=chromium");
+    expect(refusal.message).toContain('`channel: "chromium"`');
+    expect(refusal.message).toContain("#chrome-not-installed");
+    expect(refusal.cause).toBe(NOT_FOUND);
+  });
+
+  it("launches the bundled build only on the opt-in", async () => {
+    const launch = vi.fn().mockResolvedValue("bundled");
+    const out = await launchWithChannelPlan(planChromiumChannel({ channel: "chromium" }), launch);
     expect(out).toBe("bundled");
-    expect(launch.mock.calls).toEqual([[{ channel: "chrome" }], [{}]]);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0]![0]).toMatch(/no installed "chrome" browser found/);
-    expect(warn.mock.calls[0]![0]).toMatch(/bundled Chromium/);
+    expect(launch.mock.calls).toEqual([[{}]]);
   });
 
-  it("does not substitute for an explicit channel", async () => {
+  it("passes Playwright's error through for an explicit channel", async () => {
     const launch = vi.fn().mockRejectedValue(NOT_FOUND);
     await expect(
-      launchWithChannelPlan({ channel: "chrome", fallbackToBundled: false }, launch),
+      launchWithChannelPlan({ channel: "chrome", defaulted: false }, launch),
     ).rejects.toBe(NOT_FOUND);
     expect(launch).toHaveBeenCalledTimes(1);
   });
@@ -116,30 +158,26 @@ describe("launchWithChannelPlan", () => {
     const boom = new Error("profile locked");
     const launch = vi.fn().mockRejectedValue(boom);
     await expect(
-      launchWithChannelPlan({ channel: "chrome", fallbackToBundled: true }, launch),
+      launchWithChannelPlan({ channel: "chrome", defaulted: true }, launch),
     ).rejects.toBe(boom);
     expect(launch).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("a launch that finds no browser", () => {
+describe("a bundled launch that finds no download", () => {
   const NO_BUNDLED = new Error(
     "browserType.launchPersistentContext: Executable doesn't exist at /home/u/.cache/ms-playwright/chromium-1200/chrome-linux/chrome\n" +
       "Looks like Playwright was just installed or updated. Please run: npx playwright install",
   );
 
-  it("adds an install hint after the fallback to the bundled build also fails", async () => {
-    vi.spyOn(log, "warn").mockImplementation(() => undefined);
-    const launch = vi.fn().mockRejectedValueOnce(NOT_FOUND).mockRejectedValueOnce(NO_BUNDLED);
-    const err = await launchWithChannelPlan(
-      { channel: "chrome", fallbackToBundled: true },
-      launch,
-    ).catch((e: unknown) => e);
+  it("adds an install hint naming the pinned download", async () => {
+    const launch = vi.fn().mockRejectedValue(NO_BUNDLED);
+    const err = await launchWithChannelPlan({ defaulted: false }, launch).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toContain("Executable doesn't exist");
-    expect((err as Error).message).toMatch(/Install Google Chrome/);
     expect((err as Error).message).toContain(`\`${playwrightInstallCommand("chromium")}\``);
     expect((err as Error).message).toMatch(/npx playwright-core@\d+\.\d+\.\d+ install chromium/);
+    expect((err as Error).message).toMatch(/installed Google Chrome/);
     expect((err as Error).cause).toBe(NO_BUNDLED);
   });
 });

@@ -200,7 +200,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // resolve the gated launch knobs *fresh* per session so a `set_config`
       // takes effect on the next open_session without a server restart.
       // `disableWebSecurity` is off by default; `channel` unset launches the
-      // installed Chrome (bundled Chromium when it is absent), and the per-session
+      // installed Chrome (refused when it is absent), and the per-session
       // spec wins. `chromiumSandbox` has no per-session form: it is operator policy.
       const launchConfig = configStore.resolve();
       const disableWebSecurity = launchConfig.disableWebSecurity === true;
@@ -507,6 +507,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         downloads: downloadsReg,
         artifacts: artifactsReg,
         ...(mode === "persistent" && spec?.profile ? { launchProfile: spec.profile } : {}),
+        ...(mode === "persistent" && channel ? { launchChannel: channel } : {}),
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
         // Fresh replay orchestrator per session (capability `replay`). Inactive

@@ -12,9 +12,13 @@ FROM mcr.microsoft.com/playwright:v1.65.1-noble
 
 # BROWX_HEADLESS=1: the container has no display, and browxai launches headed
 # unless told otherwise.
+# BROWX_CHANNEL=chromium: the image ships Playwright's Chromium and no Google
+# Chrome. A session with no channel launches only an installed Chrome and is
+# refused with `chrome-not-installed` without one.
 ENV NODE_ENV=production \
     BROWX_WORKSPACE=/workspace \
-    BROWX_HEADLESS=1
+    BROWX_HEADLESS=1 \
+    BROWX_CHANNEL=chromium
 
 # All browxai file IO is workspace-rooted. Mount a volume here to keep profiles,
 # screenshots and downloads outside the container's writable layer.

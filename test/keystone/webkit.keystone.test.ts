@@ -82,7 +82,7 @@ async function callText(name: string, args: Record<string, unknown>): Promise<st
 beforeAll(async () => {
   if (!webkitAvailable) return;
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_")) {
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") {
       savedEnv[k] = process.env[k];
       delete process.env[k];
     }

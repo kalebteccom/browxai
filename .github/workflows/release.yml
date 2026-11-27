@@ -64,9 +64,12 @@ jobs:
       # did not, so the release keystone could never pass.
       - run: pnpm build
       # A keystone whose Playwright browser is missing fails here (test/keystone/keystone-gate.ts).
+      # BROWX_CHANNEL=chromium: the keystones run on the pinned bundled Chromium, and a
+      # session with no channel is refused on a host without Google Chrome.
       - run: pnpm test:keystone
         env:
           BROWX_REQUIRE_BROWSER: "1"
+          BROWX_CHANNEL: chromium
       - name: Upload dist artifact
         if: matrix.node-version == 26
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

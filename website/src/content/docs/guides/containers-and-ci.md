@@ -14,7 +14,7 @@ in the repository. Nothing here opens a TCP port, and the
 The Dockerfile starts from Playwright's own image, `mcr.microsoft.com/playwright`.
 That base gives you Chromium with the system libraries it needs and a non-root
 user called `pwuser`. The Dockerfile then installs browxai into that user's home
-directory with `npm install --ignore-scripts`, sets three environment variables
+directory with `npm install --ignore-scripts`, sets four environment variables
 and declares `/workspace` as a volume.
 
 ### Why the tag has to match
@@ -51,6 +51,7 @@ subcommand. `doctor` prints one line per area and exits 0 when nothing failed.
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `BROWX_HEADLESS=1`           | A container has no display. browxai launches headed unless told otherwise, and the first session fails without a display.           |
 | `BROWX_WORKSPACE=/workspace` | All browxai file IO is rooted here, never in the working directory. Profiles, screenshots and downloads land in this directory.     |
+| `BROWX_CHANNEL=chromium`     | The image has Playwright's Chromium and no Google Chrome. Without this, every session is refused with `chrome-not-installed`.       |
 | `USER pwuser`                | browxai and Chromium run as a non-root user. `/workspace` is created and owned by that user in the image.                           |
 | `VOLUME ["/workspace"]`      | Mount a volume here to keep the workspace out of the container's writable layer, so you can inspect it or throw it away on its own. |
 
@@ -70,10 +71,11 @@ signals reach browxai.
 
 ### Which browser it launches
 
-With no `BROWX_CHANNEL`, browxai first looks for an installed Google Chrome. The
-Playwright image has none, so it logs a warning and falls back to the bundled
-Chromium. Set `BROWX_CHANNEL=chromium` to go straight to the bundled build and
-skip the warning.
+With no `BROWX_CHANNEL`, a session launches the installed Google Chrome and
+nothing else. The Playwright image has none, so without the opt-in every session
+is refused with `chrome-not-installed`. The reference image sets
+`BROWX_CHANNEL=chromium`, which launches the bundled Chromium. Set it in any
+container or CI job that has no Google Chrome, your own images included.
 
 ### Sandbox flags and shared memory
 

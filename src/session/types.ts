@@ -70,10 +70,11 @@ export interface SessionOptions {
    *  internal pipe. Refused on incognito / attached at the tool layer. */
   extensionPaths?: readonly string[];
   /** Playwright browser `channel` for the chromium launch — `"chrome"`,
-   *  `"msedge"`, … Unset launches the operator's installed Google Chrome and
-   *  falls back to Playwright's bundled Chromium when Chrome is not installed;
-   *  `"chromium"` forces the bundled build. A launch with extension paths and no
-   *  channel stays on the bundled build. Read only by the chromium engine module:
+   *  `"msedge"`, … Unset launches the operator's installed Google Chrome and is
+   *  refused with `chrome-not-installed` when Chrome is not installed;
+   *  `"chromium"` launches Playwright's bundled build. A launch with extension
+   *  paths and no channel is refused with `extensions-need-chromium`. Read only
+   *  by the chromium engine module:
    *  firefox resolves its own channel from `BROWX_FIREFOX_CHANNEL`, and webkit /
    *  safari / android have none. */
   channel?: string;

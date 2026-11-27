@@ -156,13 +156,14 @@ Two launch-time knobs on a chromium session:
 
 - A chromium session with no `channel` launches the installed Google Chrome,
   without Playwright's `--enable-automation` switch. That has been the default
-  since 0.13.0. It launches the bundled Chromium instead when Chrome is not
-  installed (with a logged warning), and when the launch loads extensions and
-  names no channel, because branded Chrome ignores `--load-extension`.
-  `open_session({ channel: "chromium" })` pins the bundled build, and any other
-  channel (`"msedge"`, `"chrome-beta"`) launches that installed browser. The
-  browser version follows the install. Server-wide default via the `channel`
-  config key or `BROWX_CHANNEL`. See
+  since 0.13.0. With no Chrome installed the session is refused with
+  `chrome-not-installed`. `open_session({ channel: "chromium" })` or
+  `BROWX_CHANNEL=chromium` opts in to the bundled Chromium, for containers and CI
+  machines without Chrome. Loading extensions needs that opt-in too, because
+  branded Chrome ignores `--load-extension`. Any other channel (`"msedge"`,
+  `"chrome-beta"`) launches that installed browser. The browser version follows
+  the install. Server-wide default via the `channel` config key or
+  `BROWX_CHANNEL`. See
   [Sites behind bot protection](/guides/sites-behind-bot-protection/).
 - `open_session({ backgroundThrottling: "disabled" })` launches with Chrome's
   three background-lifecycle flags off, so a backgrounded session keeps timers
@@ -175,9 +176,10 @@ Two launch-time knobs on a chromium session:
 Both are launch-time, so an attached session ignores them. Pass
 `--disable-background-throttling` to `browxai chrome start` instead.
 
-A window titled "Google Chrome for Testing" on a machine with Google Chrome
-installed usually means the MCP client starts a browxai older than 0.13.0, which
-launched the bundled build by default. Point the client entry at a current
+A window titled "Google Chrome for Testing" is the bundled build. With no
+`channel: "chromium"` set, it usually means the MCP client starts an older
+browxai, which launched the bundled build by default (before 0.13.0) or when
+Chrome was missing. Point the client entry at a current
 version, for example `npx -y browxai@latest`, and restart the client.
 
 ## Running several clients
@@ -199,11 +201,11 @@ set them up.
   Each session still launches its own browser. See
   [Connect MCP clients to one daemon](/guides/bridge/).
 - **Servers attached to one Chrome.** Start Chrome with `browxai chrome start`
-  and set `BROWX_ATTACH_CDP` on the server. Every attached session leases its own
+  and set `BROWX_ATTACH_CDP` on the server. Every attached session opens its own
   tab in that Chrome and uses its logins, and actions wait for a person's
   confirmation by default. A server knows only the tabs its own sessions lease,
-  so run one attached server per Chrome, and use the daemon when several clients
-  need it.
+  so with `BROWX_ATTACH_CLAIM_EXISTING` set, run one attached server per Chrome,
+  and use the daemon when several clients need it.
 
 ## Device and viewport
 

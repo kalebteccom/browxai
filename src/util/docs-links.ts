@@ -50,6 +50,11 @@ export const docsUrl = {
   troubleshooting: docLink("/guides/troubleshooting/"),
   troubleshootingProfileInUse: docLink("/guides/troubleshooting/", "profile-in-use"),
   troubleshootingOriginBlocked: docLink("/guides/troubleshooting/", "origin-blocked"),
+  troubleshootingChromeNotInstalled: docLink("/guides/troubleshooting/", "chrome-not-installed"),
+  troubleshootingExtensionsNeedChromium: docLink(
+    "/guides/troubleshooting/",
+    "extensions-need-chromium",
+  ),
   pluginAuthoring: docLink("/plugins/authoring/"),
   pluginGovernance: docLink("/plugins/governance/"),
   pluginsFirstParty: docLink("/plugins/first-party/"),

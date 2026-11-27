@@ -223,6 +223,31 @@ describe("browxai init", () => {
       expect(out).toContain("✗ no browser");
     });
 
+    it("opens the smoke session on the bundled build, with a note, when Chrome is missing", async () => {
+      vi.stubEnv("BROWX_CHANNEL", "");
+      const smoke = vi.fn().mockResolvedValue({ ok: true, message: "✓ first snapshot in 9 ms" });
+      try {
+        expect(await runInit([dir, ...WRITE], { smoke, findChrome: () => undefined })).toBe(0);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      expect(smoke).toHaveBeenCalledWith(expect.objectContaining({ channel: "chromium" }));
+      expect(out).toMatch(/no Google Chrome found/);
+      expect(out).toContain("BROWX_CHANNEL=chromium");
+    });
+
+    it("opens the smoke session with no channel when Chrome is installed", async () => {
+      vi.stubEnv("BROWX_CHANNEL", "");
+      const smoke = vi.fn().mockResolvedValue({ ok: true, message: "✓ first snapshot in 9 ms" });
+      try {
+        expect(await runInit([dir, ...WRITE], { smoke, findChrome: () => "/opt/chrome" })).toBe(0);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      expect(smoke.mock.calls[0]![0]).not.toHaveProperty("channel");
+      expect(out).not.toMatch(/no Google Chrome found/);
+    });
+
     it("does not run under --no-smoke", async () => {
       const smoke = vi.fn();
       expect(await runInit([dir, ...WRITE, "--no-smoke"], { smoke })).toBe(0);

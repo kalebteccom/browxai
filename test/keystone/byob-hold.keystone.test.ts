@@ -75,7 +75,7 @@ async function waitFor(cond: () => boolean, ms = 10_000): Promise<void> {
 beforeAll(async () => {
   if (!chromeGate.run) return;
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_")) {
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") {
       savedEnv[k] = process.env[k];
       delete process.env[k];
     }
@@ -150,7 +150,8 @@ afterAll(async () => {
     await exited;
   }
   await fixture?.close();
-  for (const k of Object.keys(process.env)) if (k.startsWith("BROWX_")) delete process.env[k];
+  for (const k of Object.keys(process.env))
+    if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") delete process.env[k];
   for (const [k, v] of Object.entries(savedEnv)) {
     if (v !== undefined) process.env[k] = v;
   }

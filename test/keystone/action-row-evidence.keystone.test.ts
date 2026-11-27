@@ -50,7 +50,7 @@ async function call<T>(name: string, args: Record<string, unknown>): Promise<T> 
 describeChromium("action row-evidence keystone", () => {
   beforeAll(async () => {
     for (const k of Object.keys(process.env)) {
-      if (k.startsWith("BROWX_")) {
+      if (k.startsWith("BROWX_") && k !== "BROWX_CHANNEL") {
         savedEnv[k] = process.env[k];
         delete process.env[k];
       }

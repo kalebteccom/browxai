@@ -10,7 +10,9 @@ configuration, and prints the next step under anything that fails.
 ## A session will not open
 
 The error mentions a browser. Run `browxai doctor`. It says whether Google
-Chrome and the bundled Chromium are present. Install Chrome, or fetch Chromium:
+Chrome is installed, what a session with no channel launches, and whether the
+bundled Chromium is present. Install Chrome, or fetch Chromium and set
+`BROWX_CHANNEL=chromium` (see [`chrome-not-installed`](#chrome-not-installed)):
 
 ```bash
 npx playwright-core@1.65.1 install chromium
@@ -23,9 +25,9 @@ headed session fails. Set `BROWX_HEADLESS=1` in the server's environment.
 
 browxai launches the installed Google Chrome by default since 0.13.0. A window
 titled "Google Chrome for Testing" is Playwright's bundled build, which browxai
-launches when Chrome is not installed, when a launch loads extensions, or when
-the session sets `channel: "chromium"`. If none of those applies, the MCP client
-is probably starting a browxai older than 0.13.0. Point the client entry at a
+launches only when the session or the server sets `channel: "chromium"` (or
+`BROWX_CHANNEL=chromium`). If neither does, the MCP client is probably starting
+an older browxai, which launched it by default or when Chrome was missing. Point the client entry at a
 current version and restart the client:
 
 ```json
@@ -79,6 +81,36 @@ these:
 - Quit that Chrome, or `close_session` the other session.
 - Pass `profile: "name"` to `open_session`.
 - Use `mode: "incognito"`.
+
+## `chrome-not-installed`
+
+```text
+chrome-not-installed: no installed Google Chrome was found, and a chromium session with no channel launches only that ...
+```
+
+A session with no `channel` launches the installed Google Chrome, and this
+machine has none. browxai does not switch to its bundled Chromium on its own. Do
+one of these:
+
+- Install Google Chrome.
+- Opt in to the bundled Chromium: set `BROWX_CHANNEL=chromium` in the server's
+  environment, or the `channel` config key, or pass `channel: "chromium"` to
+  `open_session`. Fetch it first with
+  `npx playwright-core@1.65.1 install chromium`.
+
+Containers and CI jobs without Chrome need the opt-in. The reference image sets
+it. See [Run browxai in a container and in CI](/guides/containers-and-ci/).
+
+## `extensions-need-chromium`
+
+```text
+extensions-need-chromium: loading extensions needs Playwright's bundled Chromium ...
+```
+
+Google Chrome ignores `--load-extension`, so extensions load only in the bundled
+Chromium. Close the session, open it again with `channel: "chromium"` (or set
+`BROWX_CHANNEL=chromium`), then call `extensions_install`. The refused session
+keeps running as it was.
 
 ## `invalid-name`
 

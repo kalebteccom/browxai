@@ -52,7 +52,8 @@ steps:
       - corepack enable
       - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium firefox webkit
       # BROWX_REQUIRE_BROWSER=1: a keystone whose Playwright browser is missing fails here (test/keystone/keystone-gate.ts).
-      - BROWX_REQUIRE_BROWSER=1 bash scripts/gate-slot.sh pnpm test:keystone --shard=$(echo $CI_STEP_NAME | tr -dc 1-9)/4
+      # BROWX_CHANNEL=chromium: the image has no Google Chrome, and a session with no channel is refused without it. The keystones keep this one BROWX_ variable when they clear the rest.
+      - BROWX_CHANNEL=chromium BROWX_REQUIRE_BROWSER=1 bash scripts/gate-slot.sh pnpm test:keystone --shard=$(echo $CI_STEP_NAME | tr -dc 1-9)/4
   - <<: *shard
     name: keystone-2
   - <<: *shard
