@@ -16,6 +16,7 @@ import { runServe, SERVE_USAGE } from "./serve.js";
 import { runCall, CALL_USAGE } from "./shell-call.js";
 import { runTools, TOOLS_USAGE } from "./shell-tools.js";
 import { runBridge, BRIDGE_USAGE } from "./bridge.js";
+import { runRuntime, RUNTIME_USAGE } from "./runtime.js";
 import { runPlugin } from "../plugin/cli.js";
 
 // Each handler consumes `rest` (`runDoctor` reads `--verbose`). `tools` and `call` are the
@@ -32,4 +33,5 @@ registerCommand("serve", (rest) => runServe(rest), SERVE_USAGE);
 registerCommand("tools", (rest) => runTools(rest), TOOLS_USAGE);
 registerCommand("call", (rest) => runCall(rest), CALL_USAGE);
 registerCommand("bridge", (rest) => runBridge(rest), BRIDGE_USAGE);
+registerCommand("runtime", (rest) => runRuntime(rest), RUNTIME_USAGE);
 registerCommand("plugin", (rest) => runPlugin(rest, process.cwd()));

@@ -73,12 +73,22 @@ describe("subcommand usage registry", () => {
       "doctor",
       "init",
       "plugin",
+      "runtime",
       "serve",
       "tools",
     ]);
     expect(usageFor("plugin")).toBeUndefined();
     expect(commandFor("plugin")).toBeDefined();
-    for (const name of ["chrome", "doctor", "init", "serve", "tools", "call", "bridge"]) {
+    for (const name of [
+      "chrome",
+      "doctor",
+      "init",
+      "serve",
+      "tools",
+      "call",
+      "bridge",
+      "runtime",
+    ]) {
       expect(usageFor(name), name).toMatch(new RegExp(`^usage: browxai ${name}\\b`));
     }
   });

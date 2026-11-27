@@ -89,6 +89,9 @@ Usage: browxai [subcommand]
                                 (from the macOS app: start its login agent).
                                 Exit 0 the client closed, 1 internal error,
                                 2 usage, 3 no daemon.
+  browxai runtime <verb>        keep browxai releases side by side under one
+                                launcher path: status, rollback, gc.
+                                \`browxai runtime --help\` lists them.
   browxai plugin <sub>          install, remove, list, info, upgrade or sync
                                 plugins. Everything stays in the workspace.
                                 \`browxai plugin help\` lists them.
