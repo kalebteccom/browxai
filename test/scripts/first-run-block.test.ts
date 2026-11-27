@@ -307,13 +307,15 @@ describe("first-run documented-paths facts", () => {
     expect(paths).not.toContain("call");
     expect(paths).not.toContain("tools");
     expect(paths).toContain("serve");
-    for (const flag of ["--args-file", "--json", "--max-chars", "--out", "--session"]) {
+    for (const flag of ["--args-file", "--max-chars", "--out", "--session"]) {
       expect(cli.flags, flag).toContain(flag);
       expect(without.flags, flag).not.toContain(flag);
     }
     // `serve` takes --socket and `chrome start` takes --force, so an older build still shows both.
     expect(without.flags).toContain("--socket");
     expect(without.flags).toContain("--force");
+    // `doctor` and `runtime status` take --json too.
+    expect(without.flags).toContain("--json");
   });
 
   it("finds the first-party plugin docs/plugins.md installs by name", () => {

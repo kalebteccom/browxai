@@ -73,6 +73,7 @@ export function fakeNpm(
         });
       }
       const version = opts.installs ?? spec.slice("browxai@".length);
+      // `prefix` is a staging directory of a runtime that tempRuntime() made under tmpdir().
       const pkgDir = join(prefix, "node_modules", "browxai");
       mkdirSync(join(pkgDir, "dist"), { recursive: true });
       writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name: "browxai", version }));
